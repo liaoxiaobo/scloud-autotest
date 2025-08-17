@@ -1,93 +1,253 @@
-# playwright-sugon
+# Sugon Web 自动化测试框架
 
+基于 Playwright + Pytest 的 Web 自动化测试框架，专为曙光云平台前端功能测试设计。
 
+## 🚀 项目特性
 
-## Getting started
+- **测试技术栈**：基于 Playwright + Pytest，支持多浏览器并行测试
+- **页面对象模式**：采用 POM 设计模式，提高代码复用性和维护性
+- **内置服务导航**：自动识别多层级菜单结构，支持跨服务页面的快速切换
+- **完善的断言体系**：内置丰富的断言方法，覆盖常见测试场景
+- **详细测试报告**：集成 Allure 报告，支持失败截图和详细日志
+- **灵活配置管理**：支持多环境配置和命令行参数定制
+- **分布式执行**：支持 pytest-xdist 并行测试，提高执行效率
+- **CI/CD集成**：提供完整的容器化部署方案，支持 Jenkins CI/CD
+- **自动失败重试**：集成 pytest-rerunfailures，提高测试稳定性
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## 📁 项目结构
 
 ```
-cd existing_repo
-git remote add origin https://code.mysugoncloud.com/full-stack-cloud/playwright-sugon.git
-git branch -M main
-git push -uf origin main
+sugon_web/
+├── common/                 # 公共模块
+│   ├── base.py            # 基础页面类
+│   └── playwright.py      # Playwright 封装
+├── pages/                 # 页面对象
+│   ├── login.py          # 登录页面
+│   └── evs.py            # 云硬盘页面
+├── testcase/             # 测试用例
+│   ├── conftest.py       # pytest 配置和 fixtures
+│   ├── test_login.py     # 登录测试
+│   └── test_evs.py       # 云硬盘测试
+├── utils/                # 工具模块
+│   ├── logger.py         # 日志工具
+│   └── util.py           # 通用工具函数
+└── requirements.txt      # 项目依赖
 ```
 
-## Integrate with your tools
+## 🛠️ 环境准备
 
-- [ ] [Set up project integrations](https://code.mysugoncloud.com/full-stack-cloud/playwright-sugon/-/settings/integrations)
+### 1. 安装依赖
 
-## Collaborate with your team
+```bash
+pip install -r requirements.txt
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### 2. 安装浏览器
 
-## Test and Deploy
+```bash
+playwright install
+```
 
-Use the built-in continuous integration in GitLab.
+## 🎯 快速开始
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### 运行测试
 
-***
+```bash
+# 运行所有测试
+pytest sugon_web/testcase/
 
-# Editing this README
+# 运行ecs模块测试
+pytest -k "ecs" sugon_web/testcase/
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# 指定环境和浏览器
+pytest sugon_web/testcase/ --host=172.22.1.170 --browser-type=chromium
 
-## Suggestions for a good README
+# 生成 Allure 报告
+pytest sugon_web/testcase/ --alluredir=allure-result
+allure serve allure-result
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### 命令行参数
 
-## Name
-Choose a self-explaining name for your project.
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--host` | 172.22.1.170 | 测试环境管理VIP |
+| `--username` | admin | 登录用户名 |
+| `--password` | keystone_sugon | 登录密码 |
+| `--browser-type` | chromium | 浏览器类型 (chromium/firefox/webkit) |
+| `--headless` | false | 是否无头模式运行 |
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## 📝 编写测试用例
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### 1. 创建页面对象
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```python
+from sugon_web.common.base import BasePage, submenu
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+class MyServicePage(BasePage):
+    def __init__(self, page, env):
+        super().__init__(page, env)
+    
+    @submenu("服务列表")
+    def create_resource(self, name, **kwargs):
+        """创建资源"""
+        self.btn_create.click()
+        self.input_name.fill(name)
+        self.dialog_confirm.click()
+    
+    @property
+    def input_name(self):
+        return self.get_by_placeholder("请输入名称")
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 2. 编写测试用例
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```python
+import pytest
+from sugon_web.utils.util import random_data
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+class TestMyService:
+    def test_create_resource(self, my_service_page):
+        """资源创建测试"""
+        name = random_data()
+        my_service_page.create_resource(name)
+        my_service_page.assert_popup_success()
+        my_service_page.assert_list_contain(name)
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### 3. 配置 Fixture
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```python
+@pytest.fixture(scope="module")
+def my_service_page(page, env):
+    """初始化服务页面"""
+    page = MyServicePage(page, env)
+    page.goto_service('我的服务')
+    return page
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## 🔧 核心功能详解
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### 智能导航系统
 
-## License
-For open source projects, say how it is licensed.
+框架内置服务导航映射，支持自动识别多层级菜单：
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```python
+# 三层结构：资源中心 -> 计算 -> 云服务器
+page.goto_service('云服务器')
+
+# 两层结构：基础设施 -> 区域资源
+page.goto_service('区域资源')
+```
+
+### 装饰器模式
+
+使用 `@submenu` 装饰器确保方法在正确的子菜单页面执行：
+
+```python
+@submenu("云硬盘")
+def evs_create(self, name):
+    """自动切换到云硬盘子菜单后执行创建操作"""
+    pass
+```
+
+### 断言方法
+
+框架提供丰富的断言方法：
+
+```python
+# 弹窗断言
+page.assert_popup_success()
+page.assert_popup_error("错误信息")
+
+# 资源状态断言
+page.assert_status(name, status="可用")
+
+# 列表断言
+page.assert_list_contain(keyword)
+page.assert_deleted(name)
+```
+
+### 数据生成
+
+使用 `random_data()` 生成测试数据：
+
+```python
+from sugon_web.utils.util import random_data
+
+name = random_data()                    # 生成随机字符串
+phone = random_data('phone')            # 生成手机号
+email = random_data('email')            # 生成邮箱
+cidr = random_data('cidr', version=4)   # 生成IPv4网段
+```
+
+## 📊 测试报告
+
+### Allure 报告
+
+```bash
+# 生成报告数据
+pytest --alluredir=reports
+
+# 启动报告服务
+allure serve reports
+```
+
+### 失败截图
+
+测试失败时自动生成截图，保存到 `screenshots/` 目录并添加到 Allure 报告中。
+
+## 🎨 最佳实践
+
+### 1. 页面对象设计
+
+- 各个页面对象继承 `base.py` 里的 `BasePage` 类
+- 所有页面元素默认定义为私有属性，且优先复用`BasePage`中已定义的公共元素，避免在子类中重复定义
+- 复杂的元素操作封装为私有方法（如 `_select_cluster()`）
+- 只有业务操作可封装为公有方法，命名采用 `服务_操作` 格式（如 `evs_create`、`evs_delete`）
+- 公有方法必须写docstrings，方便理解代码的用途和用法
+- 使用 `@submenu` 装饰器确保公有方法在正确的子菜单页面执行
+
+
+### 2. 测试用例组织
+
+- 按服务模块组织测试类
+- 测试方法命名清晰描述测试场景
+- 使用框架内置的断言方法
+- 使用参数化测试覆盖多种场景
+
+
+### 3. 数据管理
+
+- 使用 `random_data()` 生成唯一测试数据
+- 合理使用 fixture 管理测试数据，比如使用 fixture 的 yield 机制管理测试用例的前置资源创建/清理等
+
+### 4. 错误处理
+
+- 充分利用框架的日志功能
+- 测试失败时自动生成截图并添加到 Allure 报告
+- 使用 `close_dialog_if_exists()` 处理意外弹窗
+
+### 5. 元素定位
+
+- 优先使用Playwright的语义化定位方法（`get_by_role`、`get_by_placeholder`）
+- 使用 `click_dropdown_option()` 处理下拉菜单操作
+
+## 🤝 贡献指南
+
+1. Fork 项目到个人仓库
+2. 创建功能分支：`git checkout -b feature/new-service`
+3. 提交代码：`git commit -m 'Add new service tests'`
+4. 推送分支：`git push origin feature/new-service`
+5. 创建 Pull Request
+
+### 代码规范
+
+- 遵循 PEP 8 代码风格
+- 添加必要的注释和文档字符串
+- 确保新增测试用例通过
+- 更新相关文档
+
+---
+
+**Happy Testing! 🎉**
