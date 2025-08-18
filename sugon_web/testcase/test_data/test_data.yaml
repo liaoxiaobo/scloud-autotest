@@ -1,0 +1,44 @@
+# 测试数据配置
+evs:
+  test_volume_create:
+    - empty: true
+      size: 30
+      volume_type: "xstor-type"
+      desc: "小容量空盘，用于基础功能验证"
+    - empty: false
+      size: 50
+      volume_type: "xstor-type"
+      image_name: "xstor-test"
+      desc: "从镜像创建的中等容量云硬盘"
+    - empty: true
+      size: 100
+      volume_type: "xstor-type"
+      desc: "大容量空盘测试场景"
+
+  test_volume_modify:
+    - new_name_suffix: "222"
+      new_desc: "少时诵诗书少时诵诗书3331112222"
+    - new_name_suffix: "-modified"
+      new_desc: "Updated description for testing"
+    - new_name_suffix: "_v2"
+      new_desc: "这是一个很长的描述信息，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+
+  test_volume_expand:
+    - new_size: 50
+    - new_size: 100
+    - new_size: 200
+
+  test_volume_clone:
+    - clone_name_prefix: "clone-"
+    - clone_name_prefix: "backup-"
+    - clone_name_prefix: "test-copy-"
+
+  test_volume_add_snapshot:
+    - snapshot_name_prefix: "snapshot-"
+      desc: "基础快照测试"
+    - snapshot_name_prefix: "backup-"
+      desc: "三生三世十里桃花"
+    - snapshot_name_prefix: "daily-"
+      desc: "Daily backup snapshot for testing purposes with long description"
+    - snapshot_name_prefix: "test-"
+      desc: "包含特殊字符的快照描述！@#￥%……&*（）测试"

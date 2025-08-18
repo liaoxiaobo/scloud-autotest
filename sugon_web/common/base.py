@@ -1,5 +1,6 @@
 import re
 from functools import wraps
+from time import sleep
 from playwright.sync_api import expect
 from sugon_web.utils.logger import logger
 from sugon_web.common.playwright import Playwright
@@ -82,6 +83,7 @@ class BasePage(Playwright):
         """自动登录"""
         if not self._is_logged_in():
             self._login()
+            self.wait_for_page_ready()
             self.close_dialog_if_exists()
 
     def _is_logged_in(self):
@@ -134,6 +136,7 @@ class BasePage(Playwright):
         button_texts = ["新建", "创建集群"]  # 优先匹配更具体的文本
 
         for text in button_texts:
+            sleep(2)  # 确保页面按钮元素完全加载
             buttons = self.get_by_text(text, exact=True)
             if buttons.count() > 0:
                 return buttons
@@ -189,7 +192,6 @@ class BasePage(Playwright):
 
     def close_dialog_if_exists(self):
         """公共方法: 关闭可能存在的对话框"""
-        # 检查并关闭对话框
         if self.dialog_close.is_visible():
             logger.info("发现未关闭的对话框，正在关闭...")
             self.dialog_close.click()

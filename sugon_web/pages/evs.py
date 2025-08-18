@@ -12,7 +12,7 @@ class EvsPage(BasePage):
         name,
         count=1,
         size=30,
-        empty=False,
+        empty=True,
         image_name="xstor-test",
         volume_type="xstor-type",
         desc=""
@@ -23,7 +23,7 @@ class EvsPage(BasePage):
             name: 云硬盘名称
             count: 创建数量，默认为1
             size: 云硬盘大小（GB），默认为30GB
-            empty: 是否创建空白云硬盘，默认False（从镜像创建）
+            empty: 是否创建空白云硬盘，默认True
             image_name: 镜像名称，默认为"xstor-test"
             volume_type: 云硬盘类型，默认为"xstor-type"
             desc: 云硬盘描述信息，默认为空
@@ -33,10 +33,10 @@ class EvsPage(BasePage):
 
         if count != 1:
             self._set_count(count)
-        if empty:
+        if not empty:
             self._select_image_source()
         self._select_volume_type(volume_type)
-        if empty:
+        if not empty:
             self._select_image(image_name)
 
         self._input_size.fill(str(size))
@@ -75,7 +75,9 @@ class EvsPage(BasePage):
     def _select_image(self, name):
         """选择镜像"""
         self.locator("div:nth-child(6) > .el-form-item__content > .el-select > .el-input").click()
-        self.locator("ul").filter(has_text=re.compile(fr"^{name}$")).locator("span").click()
+        self.get_by_text(name, exact=True).click()
+        # self.get_by_role("listitem").filter(has_text=f"{name}").click()  #  存在包含name的字符串时，无法定位到元素
+        # self.get_by_role("listitem").filter(has_text=re.compile(fr"^{name}$")).click()
 
     def _select_mode(self, mode):
         """选择云硬盘模式"""

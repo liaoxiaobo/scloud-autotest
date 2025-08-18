@@ -10,7 +10,7 @@ from sugon_web.utils.logger import logger
 def pytest_addoption(parser):
     """添加命令行参数"""
     parser.addoption("--host", action="store", default='172.22.1.170', help="测试环境管理VIP")
-    parser.addoption("--headless", action="store", default="true", help="是否无头模式运行（true/false）")
+    parser.addoption("--headless", action="store", default="false", help="是否无头模式运行（true/false）")
     parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
     parser.addoption("--username", action="store", default="admin", help="登录用户名")
     parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
