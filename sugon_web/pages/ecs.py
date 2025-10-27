@@ -7,7 +7,7 @@ class EcsPage(BasePage):
     def __init__(self, page, env):
         super().__init__(page, env)
 
-    @submenu("云服务器")
+    @submenu("弹性云服务器")
     def ecs_create(self, name, cluster="Autotest", flavor="计算标准型", 
                    image_type="ceph-test", os_version="centos7.9", 
                    network="Autotest", subnet="Autotest(10.189.173.0/24)",
