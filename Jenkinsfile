@@ -43,7 +43,7 @@ pipeline {
             }
           steps{
                 script {
-                    def pytestCommand = "pytest --host=$host --username=${params.USER} --password=${params.PWD} -n 2 --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=$host --username=${params.USER} --password=${params.PWD} -n 2 --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
 
                     // 用例筛选逻辑
                     if (params.KEY) {

@@ -1,50 +1,65 @@
 # Sugon Web 自动化测试框架
 
-基于 Playwright + Pytest 的 Web 自动化测试框架，专为曙光云平台前端功能测试设计。
-
 ## 🚀 项目特性
 
-- **测试技术栈**：基于 Playwright + Pytest，支持多浏览器并行测试
+- **测试技术栈**：基于 Playwright + Pytest 开发的Web自动化测试框架
 - **页面对象模式**：采用 POM 设计模式，提高代码复用性和维护性
+- **灵活配置管理**：支持多浏览器、多环境配置和命令行参数定制
+- **详细测试报告**：集成 Allure 报告，支持失败截图和详细日志
 - **内置服务导航**：自动识别多层级菜单结构，支持跨服务页面的快速切换
 - **完善的断言体系**：内置丰富的断言方法，覆盖常见测试场景
-- **详细测试报告**：集成 Allure 报告，支持失败截图和详细日志
-- **灵活配置管理**：支持多环境配置和命令行参数定制
 - **分布式执行**：支持 pytest-xdist 并行测试，提高执行效率
 - **CI/CD集成**：提供完整的容器化部署方案，支持 Jenkins CI/CD
-- **自动失败重试**：集成 pytest-rerunfailures，提高测试稳定性
 
 ## 📁 项目结构
-
 ```
 sugon_web/
-├── common/                 # 公共模块
-│   ├── base.py            # 基础页面类
-│   └── playwright.py      # Playwright 封装
-├── pages/                 # 页面对象
-│   ├── login.py          # 登录页面
-│   └── evs.py            # 云硬盘页面
-├── testcase/             # 测试用例
-│   ├── conftest.py       # pytest 配置和 fixtures
-│   ├── test_login.py     # 登录测试
-│   └── test_evs.py       # 云硬盘测试
-├── utils/                # 工具模块
-│   ├── logger.py         # 日志工具
-│   └── util.py           # 通用工具函数
-└── requirements.txt      # 项目依赖
+├── conftest.py
+├── pytest.ini
+├── common/
+│   ├── base.py
+│   └── playwright.py
+├── pages/
+│   ├── ecs.py
+│   ├── evs.py
+│   └── login.py
+├── testcase/
+│   ├── conftest.py
+│   ├── test_ecs.py
+│   ├── test_evs.py
+│   ├── test_login.py
+│   └── test_data/
+│       └── test_data.yaml
+└── utils/
+    ├── logger.py
+    └── util.py
 ```
+
+## 项目目录说明
+
+### 1. `common/`
+- 公共模块：
+  - `base.py`：页面基类，封装公共页面元素和操作方法。
+  - `playwright.py`：封装底层Playwright API，统一提供元素定位器和操作方法，简化上层调用。
+
+### 2. `pages/`
+- 页面对象模型（POM）：将页面元素和操作封装在类中（如login.py），测试用例只调用方法
+
+### 3. `testcase/`
+- 测试用例：如 test_login.py （登录测试）、 test_ecs.py （云服务器测试）等
+- 子目录 `test_data/` 存放测试数据文件（如 `test_data.yaml`）。
+
+### 4. `utils/`
+- 工具模块：如 logger.py （日志工具）、 util.py （通用工具函数）。
+
+### 5. `conftest.py` 和 `pytest.ini`
+- 全局 Fixture 定义和Pytest 配置文件。
 
 ## 🛠️ 环境准备
 
-### 1. 安装依赖
-
 ```bash
 pip install -r requirements.txt
-```
 
-### 2. 安装浏览器
-
-```bash
 playwright install
 ```
 
@@ -69,62 +84,14 @@ allure serve allure-result
 
 ### 命令行参数
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--host` | 172.22.1.170 | 测试环境管理VIP |
-| `--username` | admin | 登录用户名 |
+| 参数 | 示例值            | 说明 |
+|------|----------------|------|
+| `--host` | 172.22.1.170   | 测试环境管理VIP |
+| `--username` | admin          | 登录用户名 |
 | `--password` | keystone_sugon | 登录密码 |
-| `--browser-type` | chromium | 浏览器类型 (chromium/firefox/webkit) |
-| `--headless` | false | 是否无头模式运行 |
+| `--browser-type` | chromium       | 浏览器类型 (chromium/firefox/webkit) |
+| `--headless` | false          | 是否无头模式运行 |
 
-## 📝 编写测试用例
-
-### 1. 创建页面对象
-
-```python
-from sugon_web.common.base import BasePage, submenu
-
-class MyServicePage(BasePage):
-    def __init__(self, page, env):
-        super().__init__(page, env)
-    
-    @submenu("服务列表")
-    def create_resource(self, name, **kwargs):
-        """创建资源"""
-        self.btn_create.click()
-        self.input_name.fill(name)
-        self.dialog_confirm.click()
-    
-    @property
-    def input_name(self):
-        return self.get_by_placeholder("请输入名称")
-```
-
-### 2. 编写测试用例
-
-```python
-import pytest
-from sugon_web.utils.util import random_data
-
-class TestMyService:
-    def test_create_resource(self, my_service_page):
-        """资源创建测试"""
-        name = random_data()
-        my_service_page.create_resource(name)
-        my_service_page.assert_popup_success()
-        my_service_page.assert_list_contain(name)
-```
-
-### 3. 配置 Fixture
-
-```python
-@pytest.fixture(scope="module")
-def my_service_page(page, env):
-    """初始化服务页面"""
-    page = MyServicePage(page, env)
-    page.goto_service('我的服务')
-    return page
-```
 
 ## 🔧 核心功能详解
 
@@ -136,8 +103,8 @@ def my_service_page(page, env):
 # 三层结构：资源中心 -> 计算 -> 云服务器
 page.goto_service('云服务器')
 
-# 两层结构：基础设施 -> 区域资源
-page.goto_service('区域资源')
+# 两层结构：基础设施 -> 存储设施
+page.goto_service('存储设施')
 ```
 
 ### 装饰器模式
@@ -145,15 +112,15 @@ page.goto_service('区域资源')
 使用 `@submenu` 装饰器确保方法在正确的子菜单页面执行：
 
 ```python
-@submenu("云硬盘")
-def evs_create(self, name):
-    """自动切换到云硬盘子菜单后执行创建操作"""
+@submenu("弹性云服务器")
+def ecs_create(self, name):
+    """自动进入到'弹性云服务器'子菜单页面"""
     pass
 ```
 
-### 断言方法
+### 断言体系
 
-框架提供丰富的断言方法：
+框架提供公共的断言方法：
 
 ```python
 # 弹窗断言
@@ -168,9 +135,9 @@ page.assert_list_contain(keyword)
 page.assert_deleted(name)
 ```
 
-### 数据生成
+### 测试数据生成
 
-使用 `random_data()` 生成测试数据：
+使用 `random_data()` 随机生成测试数据，多用于资源名称：
 
 ```python
 from sugon_web.utils.util import random_data
@@ -181,57 +148,27 @@ email = random_data('email')            # 生成邮箱
 cidr = random_data('cidr', version=4)   # 生成IPv4网段
 ```
 
-## 📊 测试报告
-
-### Allure 报告
-
-```bash
-# 生成报告数据
-pytest --alluredir=reports
-
-# 启动报告服务
-allure serve reports
-```
-
-### 失败截图
-
-测试失败时自动生成截图，保存到 `screenshots/` 目录并添加到 Allure 报告中。
-
 ## 🎨 最佳实践
 
 ### 1. 页面对象设计
 
-- 各个页面对象继承 `base.py` 里的 `BasePage` 类
+- 页面对象继承 `base.py` 里的 `BasePage` 类
 - 所有页面元素默认定义为私有属性，且优先复用`BasePage`中已定义的公共元素，避免在子类中重复定义
 - 复杂的元素操作封装为私有方法（如 `_select_cluster()`）
 - 只有业务操作可封装为公有方法，命名采用 `服务_操作` 格式（如 `evs_create`、`evs_delete`）
 - 公有方法必须写docstrings，方便理解代码的用途和用法
-- 使用 `@submenu` 装饰器确保公有方法在正确的子菜单页面执行
-
 
 ### 2. 测试用例组织
 
-- 按服务模块组织测试类
-- 测试方法命名清晰描述测试场景
-- 使用框架内置的断言方法
-- 使用参数化测试覆盖多种场景
-
+- 添加 allure.title 描述测试用例，命名采用 `服务-xx功能验证` 格式（如 `云硬盘-创建功能验证`）
+- 添加 allure.step，将测试步骤结构化，便于在报告中查看
 
 ### 3. 数据管理
-
-- 使用 `random_data()` 生成唯一测试数据
+- 使用 `random_data()` 生成唯一的测试数据
 - 合理使用 fixture 管理测试数据，比如使用 fixture 的 yield 机制管理测试用例的前置资源创建/清理等
 
-### 4. 错误处理
-
-- 充分利用框架的日志功能
-- 测试失败时自动生成截图并添加到 Allure 报告
-- 使用 `close_dialog_if_exists()` 处理意外弹窗
-
-### 5. 元素定位
-
+### 4. 元素定位
 - 优先使用Playwright的语义化定位方法（`get_by_role`、`get_by_placeholder`）
-- 使用 `click_dropdown_option()` 处理下拉菜单操作
 
 ## 🤝 贡献指南
 
