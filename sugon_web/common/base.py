@@ -178,12 +178,30 @@ class BasePage(Playwright):
     @property
     def dialog_confirm(self):
         """公共元素:对话框确定按钮"""
-        return self.get_by_role("dialog").get_by_text("确定")
+        # 首选语义化定位
+        locator = self.get_by_role("dialog").get_by_text("确定")
+        if locator.is_visible():
+            return locator
+
+        # 备选CSS定位
+        css_locator = self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
+        if css_locator.is_visible():
+            return css_locator
+        raise Exception("定位失败：无法找到可见的确定按钮")
 
     @property
     def dialog_cancel(self):
         """公共元素:对话框取消按钮"""
-        return self.get_by_role("dialog").get_by_text("取消")
+        # 首选语义化定位
+        locator = self.get_by_role("dialog").get_by_text("取消")
+        if locator.is_visible():
+            return locator
+
+        # 备选CSS定位
+        css_locator = self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
+        if css_locator.is_visible():
+            return css_locator
+        raise Exception("定位失败：无法找到可见的取消按钮")
 
     @property
     def dialog_close(self):
