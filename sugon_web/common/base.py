@@ -76,6 +76,7 @@ class BasePage(Playwright):
     def __init__(self, page, env, auto_login=True):
         super().__init__(page)
         self.env = env
+        self.storage_pool, self.volume_type = env['stor'] + '-test', env['stor'] + '-type'
         if auto_login:
             self._auto_login()  # 根据参数决定是否自动登录
 
@@ -158,7 +159,23 @@ class BasePage(Playwright):
     @property
     def _input_search(self):
         """公共元素:搜索框"""
-        return self.locator(".input-with-select > .el-input__inner")
+        # 仅适用于规格搜索
+        try:
+            button = self.get_by_role("textbox", name="搜索（规格名称）")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过角色定位失败: {e}")
+
+        # CSS定位(适用于列表页)
+        try:
+            button = self.locator(".input-with-select > .el-input__inner")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过CSS定位失败: {e}")
+
+        raise Exception("定位失败：无法找到可见的搜索按钮")
 
     @property
     def _btn_search(self):
@@ -178,30 +195,46 @@ class BasePage(Playwright):
     @property
     def dialog_confirm(self):
         """公共元素:对话框确定按钮"""
-        # 首选语义化定位
-        locator = self.get_by_role("dialog").get_by_text("确定")
-        if locator.is_visible():
-            return locator
+        # 方法1：通过角色和名称定位
+        try:
+            button = self.get_by_role("dialog").get_by_text("确定")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过角色定位失败: {e}")
 
-        # 备选CSS定位
-        css_locator = self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
-        if css_locator.is_visible():
-            return css_locator
-        raise Exception("定位失败：无法找到可见的确定按钮")
+        # 方法二：CSS定位(适用于删除云盘对话框)
+        try:
+            button = self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过CSS定位失败: {e}")
+
+        # 如果所有方法都失败，抛出异常
+        raise Exception(f"无法定位‘确定’操作按钮")
 
     @property
     def dialog_cancel(self):
         """公共元素:对话框取消按钮"""
-        # 首选语义化定位
-        locator = self.get_by_role("dialog").get_by_text("取消")
-        if locator.is_visible():
-            return locator
+        # 方法1：通过角色和名称定位
+        try:
+            button = self.get_by_role("dialog").get_by_text("取消")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过角色定位失败: {e}")
 
-        # 备选CSS定位
-        css_locator = self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
-        if css_locator.is_visible():
-            return css_locator
-        raise Exception("定位失败：无法找到可见的取消按钮")
+        # 方法二：CSS定位(适用于删除云盘对话框)
+        try:
+            button = self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
+            if button.is_visible():
+                return button
+        except Exception as e:
+            logger.debug(f"通过CSS定位失败: {e}")
+
+        # 如果所有方法都失败，抛出异常
+        raise Exception(f"无法定位‘取消’操作按钮")
 
     @property
     def dialog_close(self):
@@ -404,7 +437,17 @@ class BasePage(Playwright):
 
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
-        return self.get_by_role("row", name=name).get_by_role("button")
+        # 两种定位方式，第二种适用于ecs列表页面
+        buttons = [
+            self.get_by_role("row", name=name).get_by_role("button"),
+            self.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr:nth-child(1) > .el-table_1_column_13 > .cell > .el-dropdown > .cloud-button")
+        ]
+        for button in buttons:
+            sleep(1)  # 确保页面按钮元素完全加载
+            if button.is_visible():
+                return button
+        raise Exception("未找到资源操作按钮")
+
 
     def click_dropdown_option(self, resource_name: str, option_text: str):
         """

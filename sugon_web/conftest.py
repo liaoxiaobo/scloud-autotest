@@ -14,6 +14,7 @@ def pytest_addoption(parser):
     parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
     parser.addoption("--username", action="store", default="admin", help="登录用户名")
     parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
+    parser.addoption("--stor", action="store", default='xbd', help="storage backend")
 
 
 @pytest.fixture(scope="session")
@@ -22,10 +23,12 @@ def env(pytestconfig):
     host = pytestconfig.getoption("--host")
     username = pytestconfig.getoption("--username")
     password = pytestconfig.getoption("--password")
+    stor = pytestconfig.getoption("--stor")
     env = {
         'url': f"https://{host}:30000",
         "username": username,
-        "password": password
+        "password": password,
+        "stor": stor
     }
     logger.info(f"测试环境配置加载完成")
     yield env
