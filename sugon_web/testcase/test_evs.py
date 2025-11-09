@@ -104,7 +104,3 @@ class TestEVS:
             evs_page.evss_delete(snapshot_name)
             evs_page.assert_deleted(snapshot_name)
 
-
-class TestEVSS:
-
-    pass

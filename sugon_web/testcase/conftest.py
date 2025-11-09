@@ -55,5 +55,5 @@ def volume(evs_page):
 def ecs_page(page, env):
     """初始化弹性云服务器页对象"""
     page = EcsPage(page, env)
-    page.goto_service('云服务器')
+    page.goto_service('弹性云服务器')
     return page

@@ -14,18 +14,15 @@ class TestECS:
         with allure.step("创建云服务器"):
             ecs_page.ecs_create(
                 name=name,
-                cluster="Autotest",
-                flavor="计算标准型",
-                image_type="ceph-test",
-                os_version="centos7.9",
                 network="Autotest",
-                subnet="Autotest(10.189.173.0/24)"
+                subnet="Autotest(10.31.156.0/24)"
             )
 
         with allure.step("验证创建结果"):
-            ecs_page.assert_popup_success()
-            ecs_page.assert_status(name, status="运行中", timeout=300)
+            ecs_page.assert_popup_success("创建实例命令下发成功")
+            ecs_page.assert_status(name, status="运行", timeout=300)
 
         with allure.step("清理测试数据"):
+            ecs_page.ecs_remove(name)
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)

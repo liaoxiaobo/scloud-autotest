@@ -8,13 +8,23 @@ class EcsPage(BasePage):
         super().__init__(page, env)
 
     @submenu("弹性云服务器")
-    def ecs_create(self, name, cluster="Autotest", flavor="计算标准型", 
-                   image_type="ceph-test", os_version="centos7.9", 
-                   network="Autotest", subnet="Autotest(10.189.173.0/24)",
-                   login_password="sugon@20", vnc_password="sugon@20", **kwargs):
+    def ecs_create(
+            self,
+            name,
+            network,
+            subnet,
+            cluster="Autotest",
+            flavor="ecs.c6.large",
+            image_name="",
+            os_version="centos7.9",
+            login_password="sugon@20",
+            vnc_password="sugon@20",
+            sys_size = 100,
+            **kwargs
+    ):
         """创建云服务器"""
         logger.info(f"开始创建云服务器: {name}")
-        
+
         # 点击新建按钮
         self.btn_create.click()
         
@@ -28,7 +38,10 @@ class EcsPage(BasePage):
         self._select_flavor(flavor)
         
         # 选择镜像
-        self._select_image(image_type, os_version)
+        self._select_image(image_name, os_version)
+
+        # 配置系统盘
+        self._set_sys_volume(sys_size)
         
         # 选择网络
         self._select_network(network, subnet)
@@ -48,14 +61,17 @@ class EcsPage(BasePage):
     def _select_flavor(self, flavor):
         """选择规格"""
         self.locator(".el-icon-circle-plus-outline").first.click()
+        self.search(flavor)
         self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").click()
         self.get_by_role("dialog").get_by_text("确定").click()
 
-    def _select_image(self, image_type, os_version):
+    def _select_image(self, image_name, os_version):
         """选择镜像"""
-        # 选择镜像类型
+        image_name = image_name or self.storage_pool
+
+        # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
-        self.get_by_text(image_type).click()
+        self.get_by_text(self.storage_pool).click()
         
         # 选择操作系统版本
         self.get_by_role("textbox", name="请选择操作系统版本").click()
@@ -67,7 +83,15 @@ class EcsPage(BasePage):
         
         # 选择具体镜像
         self.get_by_role("textbox", name="请选择镜像").click()
-        self.get_by_title(image_type).click()
+        self.get_by_title(image_name).click()
+
+    def _set_sys_volume(self, size, mode="厚置备"):
+        """系统盘配置"""
+        if "xbd" in self.storage_pool:
+            self.get_by_role("textbox", name="请选择", exact=True).nth(4).click()
+            self.get_by_text(mode).click()
+        self.get_by_role("spinbutton").nth(1).fill(str(size))
+
 
     def _select_network(self, network, subnet):
         """选择网络"""
@@ -89,7 +113,13 @@ class EcsPage(BasePage):
         self.get_by_role("textbox", name="VNC密码最长为8位").fill(vnc_password)
         self.locator("div").filter(has_text=re.compile(r"^确认VNC密码$")).get_by_role("textbox").fill(vnc_password)
 
-    @submenu("云服务器")
+    @submenu("弹性云服务器")
+    def ecs_remove(self, name):
+        """回收云服务器"""
+        self.click_dropdown_option(name, "删除")
+        self.dialog_confirm.click()
+
+    @submenu("回收站")
     def ecs_delete(self, name):
         """删除云服务器"""
         logger.info(f"开始删除云服务器: {name}")

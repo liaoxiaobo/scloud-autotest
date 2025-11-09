@@ -13,8 +13,8 @@ class EvsPage(BasePage):
         count=1,
         size=30,
         empty=True,
-        image_name="xstor-test",
-        volume_type="xstor-type",
+        image_name="",
+        volume_type="",
         desc=""
     ):
         """创建云硬盘
@@ -24,10 +24,12 @@ class EvsPage(BasePage):
             count: 创建数量，默认为1
             size: 云硬盘大小（GB），默认为30GB
             empty: 是否创建空白云硬盘，默认True
-            image_name: 镜像名称，默认为"xstor-test"
-            volume_type: 云硬盘类型，默认为"xstor-type"
+            image_name: 镜像名称
+            volume_type: 云硬盘类型
             desc: 云硬盘描述信息，默认为空
         """
+        image_name = image_name or self.storage_pool
+        volume_type = volume_type or self.volume_type
         self.btn_create.click()
         self._input_name.fill(name)
 
