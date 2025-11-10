@@ -516,3 +516,42 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("networkidle", timeout=10000)  # 等待网络空闲
         self.page.wait_for_load_state("domcontentloaded", timeout=10000)  # 等待DOM加载完成
+
+    def get_row_details(self, name: str):
+        """公共方法：获取目标行数据"""
+        # 定位目标行
+        self.logger.info(f"开始获取行数据: {name}")
+        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
+
+        # 获取表头（尝试多种定位方式）
+        headers = []
+
+        # 方式1：通过<thead>定位
+        if self.locator("thead").count() > 0:
+            headers = self.locator("thead th").all_text_contents()
+
+        # 方式2：通过第一行定位
+        elif self.locator("tr:first-child th").count() > 0:
+            headers = self.locator("tr:first-child th").all_text_contents()
+
+        # 获取单元格内容
+        cells = target_row.get_by_role("cell").all()
+        cell_contents = [cell.text_content() for cell in cells]
+        cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]   # 去除所有空白字符，并去除前后空格
+        # print(cell_contents)
+
+        # 设置默认排除列表
+        exclude_headers = ["", "操作"]
+
+        # 组合数据
+        if headers:
+            result = {}
+            for header, content in zip(headers, cell_contents):
+                clean_header = header.strip()
+
+                # 过滤条件：不在排除列表中
+                if clean_header not in exclude_headers:
+                    result[clean_header] = content
+            return result
+        else:
+            return cell_contents
