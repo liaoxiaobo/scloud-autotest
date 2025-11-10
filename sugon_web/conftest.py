@@ -5,11 +5,13 @@ import allure
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger
+from sugon_web.utils.util import get_file_abspath
+from sugon_web.common.ssh import SSH
 
 
 def pytest_addoption(parser):
     """添加命令行参数"""
-    parser.addoption("--host", action="store", default='172.22.1.170', help="测试环境管理VIP")
+    parser.addoption("--host", action="store", default='172.22.3.140', help="测试环境管理VIP")
     parser.addoption("--headless", action="store", default="false", help="是否无头模式运行（true/false）")
     parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
     parser.addoption("--username", action="store", default="admin", help="登录用户名")
@@ -25,10 +27,12 @@ def env(pytestconfig):
     password = pytestconfig.getoption("--password")
     stor = pytestconfig.getoption("--stor")
     env = {
+        'host': host,
         'url': f"https://{host}:30000",
         "username": username,
         "password": password,
-        "stor": stor
+        "stor": stor,
+        "pkey": "pkey_scloudadmin"  # 默认使用scloudadmin用户的私钥
     }
     logger.info(f"测试环境配置加载完成")
     yield env
@@ -163,3 +167,25 @@ def pytest_runtest_makereport(item, call):
         if rep.failed:
             logger.error(f"测试清理失败: {item.name}")
 
+
+@pytest.fixture(scope="session")
+def m1(env):
+    ssh = SSH()
+    ssh.connect(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']), use_jumphost=False)
+    yield ssh
+    ssh.close()
+
+
+@pytest.fixture(scope="session")
+def jump_host(env):
+    ssh = SSH()
+    ssh._set_jumphost(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']))
+    yield ssh
+    ssh.close()
+    
+@pytest.fixture(scope="class")
+def ssh(jump_host):
+    ssh = SSH()
+    ssh.jumphost_client = jump_host.jumphost_client  # 传递跳板机客户端到SSH实例
+    yield ssh
+    ssh.close()

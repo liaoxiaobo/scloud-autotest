@@ -1,4 +1,5 @@
 import ipaddress
+import os
 import random
 import string
 from typing import List, Dict, Any
@@ -7,6 +8,19 @@ import yaml
 from pathlib import Path
 
 fake = Faker(locale="zh_CN")
+
+def get_file_abspath(name):
+    """
+    默认在根目录下遍历查找文件，并返回文件的abspath
+    :param name:
+    :return:
+    """
+    current_dir = os.path.dirname(__file__)
+    father_dir = os.path.dirname(current_dir)
+    for dirpath, dirname, filenames in os.walk(father_dir):
+        if name in filenames:
+            return os.path.join(dirpath, name)
+    return None
 
 
 def random_data(data_type='string', length=5, cidr=None, version=4):
