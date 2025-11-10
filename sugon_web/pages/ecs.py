@@ -1,4 +1,5 @@
 import re
+from time import sleep
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
@@ -126,3 +127,4 @@ class EcsPage(BasePage):
         self.click_dropdown_option(name, "删除")
         self.dialog_confirm.click()
         logger.info(f"云服务器删除请求已提交: {name}")
+        sleep(6)    # 临时方案: 等待删除弹窗自动关闭，规避元素未消失导致的定位异常

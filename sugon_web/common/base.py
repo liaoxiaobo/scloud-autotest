@@ -281,6 +281,7 @@ class BasePage(Playwright):
                 root_menu = navigation_path[0]
                 self.hover(root_menu)
                 self.click(service)
+                self.wait_for_page_ready()
                 self.logger.info(f"成功导航到服务: {root_menu} -> {service}")
 
             elif len(navigation_path) == 2:
@@ -289,6 +290,7 @@ class BasePage(Playwright):
                 self.hover(root_menu)
                 self.hover(category)
                 self.click(service)
+                self.wait_for_page_ready()
                 self.logger.info(f"成功导航到服务: {root_menu} -> {category} -> {service}")
 
             else:
@@ -317,6 +319,7 @@ class BasePage(Playwright):
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
         self.wait_for_page_ready()
+        self.logger.info(f"成功导航到子菜单: {submenu}")
 
     def assert_popup_success(self, text=None, timeout=5):
         """公共方法: 根据弹窗文本和类型，断言操作成功
@@ -437,11 +440,16 @@ class BasePage(Playwright):
 
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
-        # 两种定位方式，第二种适用于ecs列表页面
-        buttons = [
-            self.get_by_role("row", name=name).get_by_role("button"),
-            self.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr:nth-child(1) > .el-table_1_column_13 > .cell > .el-dropdown > .cloud-button")
-        ]
+
+        # 定位资源行
+        row = self.locator(f"tr:has-text('{name}')")
+        # 组合定位器：title属性 + 类名 + 图标验证
+        action_button = row.locator(
+            ".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)"
+        ).last
+
+        # 提供两种定位方式，第二种适用于ecs列表页面
+        buttons = [self.get_by_role("row", name=name).get_by_role("button"), action_button]
         for button in buttons:
             sleep(1)  # 确保页面按钮元素完全加载
             if button.is_visible():

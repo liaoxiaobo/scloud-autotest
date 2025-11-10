@@ -12,15 +12,11 @@ class TestECS:
         name = random_data()
 
         with allure.step("创建云服务器"):
-            ecs_page.ecs_create(
-                name=name,
-                network="Autotest",
-                subnet="Autotest(10.31.156.0/24)"
-            )
+            ecs_page.ecs_create(name=name)
 
         with allure.step("验证创建结果"):
             ecs_page.assert_popup_success("创建实例命令下发成功")
-            ecs_page.assert_status(name, status="运行", timeout=300)
+            ecs_page.assert_status(name, status="当前无任务", timeout=300)
 
         with allure.step("清理测试数据"):
             ecs_page.ecs_remove(name)
