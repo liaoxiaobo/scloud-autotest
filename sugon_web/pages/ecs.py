@@ -11,8 +11,8 @@ class EcsPage(BasePage):
     def ecs_create(
             self,
             name,
-            network,
-            subnet,
+            network= "Autotest",
+            subnet= "Autotest(10",
             cluster="Autotest",
             flavor="ecs.c6.large",
             image_name="",
@@ -101,7 +101,7 @@ class EcsPage(BasePage):
         
         # 选择子网
         self.get_by_role("textbox", name="请选择子网").click()
-        self.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(subnet)}$")).locator("span").click()
+        self.get_by_role("listitem").filter(has_text=re.compile(rf"{re.escape(subnet)}")).locator("span").click()   # 去掉^和$，进行模糊匹配
 
     def _set_passwords(self, login_password, vnc_password):
         """设置密码"""
