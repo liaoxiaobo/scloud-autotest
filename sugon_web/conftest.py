@@ -75,6 +75,11 @@ def page(env, pytestconfig):
             page.goto(env['url'])
             logger.info(f"页面导航完成，当前URL: {page.url}")
 
+            # 检查是否已登录，如果未登录则执行登录
+            if not _is_logged_in(page):
+                _login(page, env)
+                logger.info("登录成功")
+
             yield page
 
             logger.info("开始清理浏览器资源...")
@@ -189,3 +194,32 @@ def ssh(jump_host):
     ssh.jumphost_client = jump_host.jumphost_client  # 传递跳板机客户端到SSH实例
     yield ssh
     ssh.close()
+
+def _is_logged_in(page):
+    """检查是否已登录"""
+    try:
+        # 检查登录表单是否存在，如果存在说明未登录
+        login_form = page.get_by_placeholder("请输入登录账号")
+        login_form.wait_for(timeout=2000)
+        return False
+    except:
+        # 找不到登录表单，说明已登录
+        return True
+
+
+def _login(page, env):
+    """执行登录操作"""
+    username = env.get("username")
+    password = env.get("password")
+
+    if not username or not password:
+        raise ValueError("环境配置中缺少用户名或密码")
+
+    # 填写登录信息
+    page.get_by_placeholder("请输入登录账号").fill(username)
+    page.get_by_placeholder("请输入登录密码").fill(password)
+    page.get_by_text("登 录").click()
+
+    # 等待页面加载完成
+    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("domcontentloaded")

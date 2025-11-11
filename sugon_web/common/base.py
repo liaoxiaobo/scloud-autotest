@@ -73,58 +73,10 @@ def submenu(name):
 
 class BasePage(Playwright):
 
-    def __init__(self, page, env, auto_login=True):
+    def __init__(self, page, env):
         super().__init__(page)
         self.env = env
         self.storage_pool, self.volume_type = env['stor'] + '-test', env['stor'] + '-type'
-        if auto_login:
-            self._auto_login()  # 根据参数决定是否自动登录
-
-    def _auto_login(self):
-        """自动登录"""
-        if not self._is_logged_in():
-            self._login()
-            self.wait_for_page_ready()
-            self.close_dialog_if_exists()
-
-    def _is_logged_in(self):
-        """检查是否已登录"""
-        try:
-            # 检查登录表单是否存在，如果存在说明未登录
-            login_form = self.get_by_placeholder("请输入登录账号")
-            login_form.wait_for(timeout=2000)
-            return False
-        except:
-            # 找不到登录表单，说明已登录
-            return True
-
-    def _login(self):
-        """执行登录操作"""
-        username = self.env.get("username")
-        password = self.env.get("password")
-        
-        if not username or not password:
-            raise ValueError("环境配置中缺少用户名或密码")
-
-        # 填写登录信息
-        self._input_username.fill(username)
-        self._input_password.fill(password)
-        self._btn_login.click()
-
-    @property
-    def _input_username(self):
-        """登录页面元素:用户名输入框"""
-        return self.get_by_placeholder("请输入登录账号")
-
-    @property
-    def _input_password(self):
-        """登录页面元素:密码输入框"""
-        return self.get_by_placeholder("请输入登录密码")
-
-    @property
-    def _btn_login(self):
-        """登录页面元素:登录按钮"""
-        return self.get_by_text("登 录")
 
     @property
     def popup(self):

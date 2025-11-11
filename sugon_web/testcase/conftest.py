@@ -25,6 +25,7 @@ def close_dialog_before_test(page):
 def login_page(page, env):
     """初始化登录页对象"""
     page = LoginPage(page, env)
+    page.logout()   # 登录测试用例需要先退出登录状态
     return page
 
 
