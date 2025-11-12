@@ -111,13 +111,14 @@ class BasePage(Playwright):
     @property
     def _input_search(self):
         """公共元素:搜索框"""
-        # 仅适用于规格搜索
-        try:
-            button = self.get_by_role("textbox", name="搜索（规格名称）")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过角色定位失败: {e}")
+        search_names = ["搜索（规格名称）", "搜索（固定IP）"]
+        for name in search_names:
+            try:
+                button = self.get_by_role("textbox", name=name)
+                if button.is_visible():
+                    return button
+            except Exception as e:
+                logger.debug(f"通过角色定位（{name}）失败: {e}")
 
         # CSS定位(适用于列表页)
         try:
@@ -206,6 +207,7 @@ class BasePage(Playwright):
             self.logger.info(f"开始搜索: {keyword}")
             self._input_search.fill(keyword)
             self._btn_search.click()
+            self.wait_for_page_ready()
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
@@ -466,44 +468,129 @@ class BasePage(Playwright):
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
+        self.page.wait_for_timeout(1000)
         self.page.wait_for_load_state("networkidle", timeout=10000)  # 等待网络空闲
         self.page.wait_for_load_state("domcontentloaded", timeout=10000)  # 等待DOM加载完成
 
-    def get_row_details(self, name: str):
-        """公共方法：获取目标行数据"""
-        # 定位目标行
-        self.logger.info(f"开始获取行数据: {name}")
-        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-
-        # 获取表头（尝试多种定位方式）
+    def _get_table_headers(self, target_row=None):
+        """获取表头信息，支持多种定位策略"""
         headers = []
 
-        # 方式1：通过<thead>定位
+        # 策略1：通过<thead>定位
         if self.locator("thead").count() > 0:
             headers = self.locator("thead th").all_text_contents()
 
-        # 方式2：通过第一行定位
+        # 策略2：通过第一行定位
         elif self.locator("tr:first-child th").count() > 0:
             headers = self.locator("tr:first-child th").all_text_contents()
 
-        # 获取单元格内容
+        self.logger.info(f"获取到的表头: {headers}")
+        return headers
+
+    def _find_target_row(self, name: str):
+        """定位目标行，支持多种定位策略"""
+        # 策略1：通过角色定位
+        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
+
+        # 策略2：通过文本内容定位
+        if target_row.count() == 0:
+            self.logger.info(f"原有定位方式未找到行，尝试使用 tr:has-text 定位方式")
+            target_row = self.locator(f"tr:has-text('{name}')")
+
+        return target_row if target_row.count() > 0 else None
+
+    def _get_cell_contents(self, target_row):
+        """获取单元格内容并进行清洗"""
         cells = target_row.get_by_role("cell").all()
         cell_contents = [cell.text_content() for cell in cells]
-        cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]   # 去除所有空白字符，并去除前后空格
-        # print(cell_contents)
+        cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]
+        self.logger.info(f"获取到的单元格内容: {cell_contents}")
+        return cell_contents
 
-        # 设置默认排除列表
+    def get_row_details(self, name: str):
+        """公共方法：根据名称获取目标行数据"""
+        self.logger.info(f"开始获取行数据: {name}")
+
+        # 定位目标行
+        target_row = self._find_target_row(name)
+        if not target_row:
+            self.logger.warning(f"未找到包含 '{name}' 的行")
+            return {}
+
+        # 获取表头和单元格内容
+        headers = self._get_table_headers()
+        cell_contents = self._get_cell_contents(target_row)
+
+        # 组合数据，将表头和单元格内容对应起来
+        result = dict(zip(headers, cell_contents))
+
+        # 移除不需要的键
         exclude_headers = ["", "操作"]
+        for key in exclude_headers:
+            if key in result:
+                del result[key]
+        return result
 
-        # 组合数据
-        if headers:
-            result = {}
-            for header, content in zip(headers, cell_contents):
-                clean_header = header.strip()
+    def get_column_data(self, header_name: str):
+        """根据表头名称获取该列的所有数据"""
+        self.logger.info(f"开始获取列数据: {header_name}")
 
-                # 过滤条件：不在排除列表中
-                if clean_header not in exclude_headers:
-                    result[clean_header] = content
-            return result
-        else:
-            return cell_contents
+        # 复用已有的方法获取表头信息
+        headers = self._get_table_headers()
+        if not headers:
+            self.logger.warning("未找到表头信息")
+            return []
+
+        # 检查目标表头是否存在
+        if header_name not in headers:
+            self.logger.warning(f"表头 '{header_name}' 不存在")
+            return []
+
+        # 获取目标列的索引
+        header_index = headers.index(header_name)
+        self.logger.info(f"表头 '{header_name}' 的索引位置: {header_index}")
+
+        # 获取所有数据行
+        all_rows = self._get_all_data_rows()
+        if not all_rows:
+            self.logger.warning("未找到数据行")
+            return []
+
+        # 提取目标列的数据
+        column_data = []
+        for i, row in enumerate(all_rows):
+            try:
+                cells = row.get_by_role("cell").all()
+                if len(cells) > header_index:
+                    cell_content = cells[header_index].text_content()
+                    # 清洗数据
+                    cleaned_content = re.sub(r'\s+', ' ', cell_content).strip()
+                    if cleaned_content:  # 只添加非空内容
+                        column_data.append(cleaned_content)
+                        self.logger.debug(f"第{i + 1}行数据: {cleaned_content}")
+            except Exception as e:
+                self.logger.warning(f"获取第{i + 1}行数据时出错: {e}")
+
+        self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
+        return column_data
+
+    def _get_all_data_rows(self):
+        """获取所有数据行（排除表头行）"""
+        # 策略1：通过tbody定位数据行
+        if self.locator("tbody tr").count() > 0:
+            return self.locator("tbody tr").all()
+
+        # 策略2：通过排除表头行的方式定位数据行
+        # 先获取所有行
+        all_rows = self.locator("tr").all()
+
+        # 获取表头行数（可能有多个表头行）
+        header_rows = 0
+        for row in all_rows:
+            if row.locator("th").count() > 0:
+                header_rows += 1
+            else:
+                break
+
+        # 返回非表头行
+        return all_rows[header_rows:] if header_rows > 0 else all_rows
