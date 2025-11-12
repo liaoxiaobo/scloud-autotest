@@ -37,8 +37,7 @@ def random_data(data_type='string', length=5, cidr=None, version=4):
 
     elif data_type == 'cidr':
         if version == 4:
-            # return fake.ipv4_private(network=True, address_class=None)
-            return str(ipaddress.IPv4Network((random.randint(0x0a000000, 0x0affffff), 24), strict=False))   # 生成一个 10.0.0.0 到 10.255.255.255 之间的整数作为网络地址部分
+            return str(ipaddress.IPv4Network((random.randint(0x0a000000, 0x0affffff), 24), strict=False))
         elif version == 6:
             ipv6 = str(fake.ipv6(network=True)).split('/')
             ipv6[1] = '128'
@@ -59,6 +58,7 @@ def random_data(data_type='string', length=5, cidr=None, version=4):
                     return ipv4
     else:
         return None
+
 
 
 def load_data(case_name: str, data_file: str = "test_data.yaml") -> List[Dict[str, Any]]:
@@ -97,13 +97,13 @@ def load_data(case_name: str, data_file: str = "test_data.yaml") -> List[Dict[st
         for service, service_data in all_data.items():
             if isinstance(service_data, dict) and case_name in service_data:
                 test_data = service_data[case_name]
-                
+
                 # 确保返回的是列表格式
                 if not isinstance(test_data, list):
                     raise ValueError(f"测试数据必须是列表格式，当前类型: {type(test_data)}")
-                
+
                 return test_data
-        
+
         # 如果没找到，抛出异常
         raise KeyError(f"测试用例 '{case_name}' 在数据文件中不存在")
 

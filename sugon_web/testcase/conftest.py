@@ -1,4 +1,6 @@
+import allure
 import pytest
+
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage

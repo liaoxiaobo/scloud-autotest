@@ -1,4 +1,4 @@
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, expect, BrowserContext
 from sugon_web.utils.logger import logger
 
 
@@ -104,4 +104,23 @@ class Playwright:
             return result
         except Exception as e:
             self.logger.error(f"悬停元素失败: {original_selector}")
+            raise
+
+    # 切换浏览器tab页
+    def switch_to_new_tab(self, pageindex=-1):
+        """切换到新打开的标签页"""
+        try:
+            # 获取当前浏览器上下文中的所有页面
+            pages = self.page.context.pages
+            # 切换到最新打开的页面（通常是最后一个）
+            if len(pages) > 1:
+                new_page = pages[pageindex]
+                self.page = new_page
+                self.logger.info("成功切换到新标签页")
+                return new_page
+            else:
+                self.logger.warning("没有检测到新标签页")
+                return self.page
+        except Exception as e:
+            self.logger.error(f"切换标签页失败: {str(e)}")
             raise
