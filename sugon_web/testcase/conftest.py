@@ -1,6 +1,5 @@
 import allure
 import pytest
-
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
@@ -77,7 +76,7 @@ def _ecs(ecs_page):
     ecs_page.ecs_create(name)
     ecs_page.assert_popup_success("创建实例命令下发成功")
     ecs_page.assert_status(name, status="当前无任务", timeout=300)
-    row_data = ecs_page.get_row_details(name)
+    row_data = ecs_page.get_row_data(name)
     metadata = {
         "name": name,
         "id": row_data["名称/ID"],
@@ -93,7 +92,7 @@ def _ecs(ecs_page):
     # ecs_page.mfip_create(row_data["项目名称"], "Autotest",metadata["ip"])
     # ecs_page.assert_popup_success()
     # ecs_page.mfip_search(metadata["ip"])
-    # metadata["mfip"] = ecs_page.get_row_details(metadata["ip"]).get("Mfip 地址")
+    # metadata["mfip"] = ecs_page.get_row_data(metadata["ip"]).get("Mfip 地址")
 
     yield metadata
 

@@ -51,7 +51,7 @@ class TestECS:
 
         with allure.step(f"验证克隆结果{clone_name}"):
             ecs_page.assert_popup_success(f"{name}实例克隆成功")
-            image_name = ecs_page.get_row_details(name).get("镜像名称")
+            image_name = ecs_page.get_row_data(name).get("镜像名称")
             ecs_page.assert_image_name(clone_name, image_name)
             ecs_page.assert_status(name, status="当前无任务", timeout=300)
 

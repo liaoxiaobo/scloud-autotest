@@ -132,11 +132,11 @@ class EcsPage(BasePage):
 
     def assert_physical_mac(self, name: str, mac: str):
         logger.info(f"验证{name}服务器物理机地址: {mac}")
-        expect(self.get_row_details(name).get("物理机")).__eq__(mac)
+        expect(self.get_row_data(name).get("物理机")).__eq__(mac)
 
     def assert_image_name(self, name: str, image_name: str):
         logger.info(f"验证{name}服务器镜像名称: {image_name}")
-        assert self.get_row_details(name).get("镜像名称").__eq__(image_name), f"{name}服务器镜像名称与{image_name}不一致"
+        assert self.get_row_data(name).get("镜像名称").__eq__(image_name), f"{name}服务器镜像名称与{image_name}不一致"
 
     @submenu("弹性云服务器")
     def ecs_edit(self, name: str, newname: str):

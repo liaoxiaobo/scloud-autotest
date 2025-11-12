@@ -23,7 +23,7 @@ class TestEVS:
         with allure.step("验证创建结果"):
             evs_page.assert_popup_success("创建云硬盘成功")
             evs_page.assert_status(name, status="可用")
-            data = evs_page.get_row_details(name)
+            data = evs_page.get_row_data(name)
 
             if not params['empty']:
                 assert data['可启动'] == '是'

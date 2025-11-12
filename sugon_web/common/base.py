@@ -507,7 +507,7 @@ class BasePage(Playwright):
         self.logger.info(f"获取到的单元格内容: {cell_contents}")
         return cell_contents
 
-    def get_row_details(self, name: str):
+    def get_row_data(self, name: str):
         """公共方法：根据名称获取目标行数据"""
         self.logger.info(f"开始获取行数据: {name}")
 

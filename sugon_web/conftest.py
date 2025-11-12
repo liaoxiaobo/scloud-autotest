@@ -174,7 +174,8 @@ def pytest_runtest_makereport(item, call):
 
 
 @pytest.fixture(scope="session")
-def m1(env):
+def ssh_host(env):
+    """创建直接连接到目标主机的SSH会话，不使用跳板机"""
     ssh = SSH()
     ssh.connect(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']), use_jumphost=False)
     yield ssh
@@ -183,17 +184,21 @@ def m1(env):
 
 @pytest.fixture(scope="session")
 def jump_host(env):
+    """创建并配置跳板机连接"""
     ssh = SSH()
     ssh._set_jumphost(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']))
     yield ssh
     ssh.close()
     
 @pytest.fixture(scope="class")
-def ssh(jump_host):
+def ssh_vm(jump_host):
+    """创建通过跳板机连接的SSH会话"""
     ssh = SSH()
-    ssh.jumphost_client = jump_host.jumphost_client  # 传递跳板机客户端到SSH实例
-    yield ssh
-    ssh.close()
+    try:
+        ssh.jumphost_client = jump_host.jumphost_client
+        yield ssh
+    finally:
+        ssh.close()
 
 def _is_logged_in(page):
     """检查是否已登录"""
