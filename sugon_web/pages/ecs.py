@@ -130,9 +130,25 @@ class EcsPage(BasePage):
         logger.info(f"云服务器删除请求已提交: {name}")
         sleep(6)    # 临时方案: 等待删除弹窗自动关闭，规避元素未消失导致的定位异常
 
-    def assert_physical_mac(self, name: str, mac: str):
-        logger.info(f"验证{name}服务器物理机地址: {mac}")
-        expect(self.get_row_data(name).get("物理机")).__eq__(mac)
+    def assert_ecs_info(self, name: str, row_name: str, exception: str):
+        """验证云服务器信息
+        Args:
+            name: 云服务器名称
+            row_name: 验证参数
+            exception: 验证内容
+        """
+        logger.info(f"验证{name}云服务器{row_name}: {exception}")
+        assert self.get_row_data(name).get(row_name).__contains__(exception)
+
+    def assert_ecs_info_not_contains(self, name: str, row_name: str, exception: str):
+        """验证云服务器信息
+        Args:
+            name: 云服务器名称
+            row_name: 验证参数
+            exception: 验证内容
+        """
+        logger.info(f"验证{name}云服务器{row_name}: {exception}")
+        assert exception not in self.get_row_data(name).get(row_name)
 
     def assert_image_name(self, name: str, image_name: str):
         logger.info(f"验证{name}服务器镜像名称: {image_name}")
@@ -147,7 +163,7 @@ class EcsPage(BasePage):
         """
         logger.info(f"云服务器{name}：编辑修改为{newname}")
         self.click_dropdown_option(name, "编辑")
-        self.get_by_role("textbox", name="请输入实例名称").click()
+        # self.get_by_role("textbox", name="请输入实例名称").click()
         self.get_by_role("textbox", name="请输入实例名称").fill(newname)
         self.dialog_confirm.click()
 
@@ -228,7 +244,6 @@ class EcsPage(BasePage):
 
         # 选择网络
         self.locator("//label[text()='网络']/following-sibling::div//input").click()
-        # self.get_by_label("克隆").locator("div").filter(has_text=re.compile(r"^网络$")).get_by_placeholder("请选择").click()
         self.get_by_text(net, exact=True).click()
 
         # 选择子网
@@ -266,12 +281,19 @@ class EcsPage(BasePage):
             name: 云服务器名称
             operation：操作选项
         """
-        logger.info(f"暂停云服务器：{name}")
+        logger.info(f"{name}云服务器：{operation}")
         try:
             self.click_dropdown_option(name, operation)
         except:
             logger.info(f"云服务器{name}已经{operation}")
-        self.dialog_confirm.click()
+        if operation == "重启":
+            self.get_by_label("重启", exact=True).get_by_text("重启").nth(3).click()
+        elif operation == "强制重启":
+            self.get_by_label("强制重启", exact=True).get_by_text("强制重启").nth(2).click()
+        elif operation in ["恢复运行", "暂停", "取消暂停"]:
+            self.get_by_label(operation, exact=True).get_by_text("确定", exact=True).click()
+        else:
+            self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
     def ecs_reset_state(self, name: str):
@@ -287,14 +309,22 @@ class EcsPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
-    def ecs_load_network(self, name: str, net: str, subnet: str, modle: str, ipv4: dict = {}):
+    def ecs_load_network(
+            self,
+            name: str,
+            net: str,
+            subnet: str,
+            mode="标准",
+            ipv4={}
+    ):
         """加载网卡
         Args:
             name: 云服务器名称
             net：网络
             subnet：子网
-            modle：网络加速模式
+            mode：网络加速模式
             ipv4：IPV4分配方式，{"method": "自动分配"}，{"method": "选择端口", "端口":"xxxx"},{"method": "选择端口",“加密网卡”:True}
+            TODO
         """
         logger.info(f"云服务器{name}：加载网卡")
         try:
@@ -306,17 +336,18 @@ class EcsPage(BasePage):
             # 选择子网
             logger.info(f"云服务器{name}：选择子网{subnet}")
             self.get_by_role("textbox", name="请选择子网").click()
-            self.get_by_text(subnet).click()
+            self.get_by_role("listitem").filter(has_text=f"{net}({subnet}").click()
             # 选择网络加速模式
-            if modle:
-                logger.info(f"云服务器{name}：选择网络加速模式{modle}")
-                self.get_by_role("radio").filter(has_text=modle).click()
+            if mode:
+                logger.info(f"云服务器{name}：选择网络加速模式{mode}")
+                self.get_by_role("radio").filter(has_text=mode).click()
             if ipv4:
                 for key, value in ipv4.items():
                     logger.info(f"云服务器{name}：IPV4分配方式{key}：{value}")
-                    self.get_by_role("radio").filter(has_text=key).click()  # 待完成 20251111
-                    self.get_by_text(value).click()  # 待完成 20251111
-            self.dialog_confirm.click()
+                    self.get_by_role("radio").filter(has_text=key).click()
+                    self.get_by_text(value).click()
+            # self.dialog_confirm.click()
+            self.get_by_label("加载网卡").get_by_text("确定").click()
         except:
             logger.info(f"云服务器{name}状态异常，无法加载网卡")
 
@@ -333,11 +364,12 @@ class EcsPage(BasePage):
             # 选择网络
             self.get_by_role("textbox", name="请选择网络").click()
             self.get_by_role("listitem").filter(has_text=net).click()
+            self.dialog_confirm.click()
         except:
             logger.info(f"云服务器{name}状态异常，无法卸载网卡")
 
     @submenu("弹性云服务器")
-    def ecs_load_pubnet(self, name: str, subnet: str, IPaddr: str, pub_net: str = "public_net(基础版)"):
+    def ecs_bind_pubip(self, name: str, IPaddr: str, subnet: str = "Autotest", pub_net: str = "public_net(基础版)"):
         """绑定公网IP
         Args:
             name: 云服务器名称
@@ -345,20 +377,121 @@ class EcsPage(BasePage):
             IPaddr：公网ip地址
             pub_net：公网资源池
         """
-        logger.info(f"云服务器{name}：绑定公网IP：{subnet}，IP：{IPaddr}")
+        logger.info(f"云服务器{name}：绑定公网IP：{subnet}")
         try:
+            self.click_dropdown_option(name, "绑定公网IP")
             # 选择端口
-            self.get_by_role("radio").filter(has_text=subnet).click()
+            self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
             self.get_by_text("下一步", exact=True).click()
             # 选择资源池
             self.get_by_role("dialog", name="绑定公网IP").get_by_placeholder("请选择").click()
             self.get_by_text(pub_net).click()
             # 选择公网ip
             try:
-                self.get_by_role("row").filter(has_text=IPaddr).get_by_role("radio").click()
-                self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
-                self.click_dropdown_option()
-            except:
+                # self.get_by_role("row").nth(1).get_by_role("radio").first.click()
+                self.get_by_role("row").first.get_by_role("div").first.click()
+                self.get_by_role("row").first.get_by_role("cell").first.click()
+                # self.get_by_role("row").get_by_role("cell").first.click()
+                ip = self.get_by_role("row").first.get_by_role("cell").nth(1).text_content()
+                self.dialog_confirm()
+                return str(ip)
+            except Exception as e:
                 logger.info(f"资源池{pub_net}中无该IP：{IPaddr}")
+                raise f"资源池{pub_net}中无该IP：{IPaddr}"
+        except Exception as e:
+            raise f"云服务器{name}绑定公网IP失败：{e}"
+
+    @submenu("弹性云服务器")
+    def ecs_unbind_pubip(self, name: str, IP_addr: str):
+        """解绑公网IP
+        Args:
+            name: 云服务器名称
+            IP_addr：公网ip地址
+        """
+        logger.info(f"云服务器{name}：解绑公网IP：{IP_addr}")
+        try:
+            self.click_dropdown_option(name, "解绑公网IP")
+            self.get_by_role("dialog", name="解除绑定公网IP").get_by_placeholder("请选择").click()
+            self.get_by_role("listitem").filter(has_text=IP_addr).click()
+            self.dialog_confirm()
         except:
-            logger.info(f"云服务器{name}状态异常 或 已绑定公网IP")
+            logger.info(f"云服务器{name}状态异常 或 未绑定公网IP")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_spec(self, name: str, spec: dict):
+        """修改规格
+        Args:
+            name: 云服务器名称
+            spec: {"基础规格":True,"CPU": "2", "Mem": "4"}
+        """
+        cpu = spec.get("CPU", "2")
+        mem = spec.get("Mem", "4")
+        self.click_dropdown_option(name, "修改规格")
+        try:
+            if spec.get("基础规格"):
+                classify = spec.get("classify")
+                logger.info(f"云服务器{name}修改规格为{classify}{cpu}核{mem}GiB")
+                self.get_by_text(spec.get("classify")).click()
+                self.get_by_role("row").filter(has_text=f'{cpu} 核').and_(
+                    self.get_by_role("row").filter(has_text=f'{mem}.00 GiB')).get_by_role(
+                    "radio").click()
+                # self.dialog_confirm()
+                self.get_by_label("修改规格").get_by_text("确定").click()
+            else:
+                logger.info(f"云服务器{name}修改自定义规格为{cpu}核{mem}GiB")
+                self.get_by_role("radio").filter(has_text="自定义规格").click()
+                self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(1).fill(cpu)
+                self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(2).fill(mem)
+                # self.dialog_confirm()
+                self.get_by_label("修改规格").get_by_text("确定").click()
+        except:
+            logger.info(f"请确认分类{spec.get("classify")}中是否有该规格{cpu}核{mem}GiB")
+            raise f"请确认分类{spec.get("classify")}中是否有该规格{cpu}核{mem}GiB"
+
+    @submenu("弹性云服务器")
+    def ecs_modify_pwd(self, name: str, pwd: str, confirm: str):
+        """修改密码
+        Args:
+            name: 云服务器名称
+            pwd: 密码
+            confirm: 确认密码
+        """
+        logger.info(f"云服务器{name}修改密码为{pwd}")
+        self.click_dropdown_option(name, "修改密码")
+        try:
+            self.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(pwd)
+            self.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(confirm)
+            self.get_by_label("修改密码").get_by_text("确定").click()
+        except Exception as e:
+            logger.info(f"云服务器{name}修改密码失败:{e}")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_vnc_pwd(self, name: str, vncpwd: str, confirmpwd: str):
+        """修改vnc密码
+        Args:
+            name: 云服务器名称
+            operation: {"new_pwd":"a123456","confirm": "a123456"}
+        """
+        logger.info(f"云服务器{name}修改密码为{vncpwd}")
+        self.click_dropdown_option(name, "修改VNC密码")
+        if not self.get_by_role("switch").locator("span").is_enabled():
+            self.get_by_role("switch").locator("span").click()
+        try:
+            self.get_by_role("textbox", name="VNC密码最长为8位").fill(vncpwd)
+            self.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(confirmpwd)
+            self.get_by_label("修改VNC密码").get_by_text("确定").click()
+            # self.dialog_confirm()
+        except Exception as e:
+            logger.info(f"云服务器{name}修改VNC密码失败:{e}")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_hostname(self, name: str, hostname: str):
+        """修改主机名
+        Args:
+            name: 云服务器名称
+            hostname: 主机名
+        """
+        logger.info(f"云服务器{name}修改主机名称为{hostname}")
+        self.click_dropdown_option(name, "修改主机名")
+        self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
+        self.get_by_label("修改主机名").get_by_text("确定").click()
