@@ -7,6 +7,7 @@ from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import get_file_abspath
 from sugon_web.common.ssh import SSH
+from sugon_web.common.base import BasePage
 
 
 def pytest_addoption(parser):
@@ -79,6 +80,10 @@ def page(env, pytestconfig):
             if not _is_logged_in(page):
                 _login(page, env)
                 logger.info("登录成功")
+
+                # 关闭弹窗
+                base_page = BasePage(page, env)
+                base_page.close_dialog_if_exists()
 
             yield page
 

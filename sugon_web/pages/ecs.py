@@ -140,7 +140,7 @@ class EcsPage(BasePage):
         logger.info(f"验证{name}云服务器{row_name}: {exception}")
         assert self.get_row_data(name).get(row_name).__contains__(exception)
 
-    def assert_ecs_info_notcaontains(self, name: str, row_name: str, exception: str):
+    def assert_ecs_info_not_contains(self, name: str, row_name: str, exception: str):
         """验证云服务器信息
         Args:
             name: 云服务器名称
@@ -163,7 +163,7 @@ class EcsPage(BasePage):
         """
         logger.info(f"云服务器{name}：编辑修改为{newname}")
         self.click_dropdown_option(name, "编辑")
-        self.get_by_role("textbox", name="请输入实例名称").click()
+        # self.get_by_role("textbox", name="请输入实例名称").click()
         self.get_by_role("textbox", name="请输入实例名称").fill(newname)
         self.dialog_confirm.click()
 
@@ -244,7 +244,6 @@ class EcsPage(BasePage):
 
         # 选择网络
         self.locator("//label[text()='网络']/following-sibling::div//input").click()
-        # self.get_by_label("克隆").locator("div").filter(has_text=re.compile(r"^网络$")).get_by_placeholder("请选择").click()
         self.get_by_text(net, exact=True).click()
 
         # 选择子网
@@ -325,6 +324,7 @@ class EcsPage(BasePage):
             subnet：子网
             mode：网络加速模式
             ipv4：IPV4分配方式，{"method": "自动分配"}，{"method": "选择端口", "端口":"xxxx"},{"method": "选择端口",“加密网卡”:True}
+            TODO
         """
         logger.info(f"云服务器{name}：加载网卡")
         try:
@@ -344,8 +344,8 @@ class EcsPage(BasePage):
             if ipv4:
                 for key, value in ipv4.items():
                     logger.info(f"云服务器{name}：IPV4分配方式{key}：{value}")
-                    self.get_by_role("radio").filter(has_text=key).click()  # 待完成 20251111
-                    self.get_by_text(value).click()  # 待完成 20251111
+                    self.get_by_role("radio").filter(has_text=key).click()
+                    self.get_by_text(value).click()
             # self.dialog_confirm.click()
             self.get_by_label("加载网卡").get_by_text("确定").click()
         except:
@@ -395,9 +395,10 @@ class EcsPage(BasePage):
                 ip = self.get_by_role("row").first.get_by_role("cell").nth(1).text_content()
                 self.dialog_confirm()
                 return str(ip)
-            except:
+            except Exception as e:
                 logger.info(f"资源池{pub_net}中无该IP：{IPaddr}")
-        except  Exception as e:
+                raise f"资源池{pub_net}中无该IP：{IPaddr}"
+        except Exception as e:
             raise f"云服务器{name}绑定公网IP失败：{e}"
 
     @submenu("弹性云服务器")
@@ -491,28 +492,6 @@ class EcsPage(BasePage):
             hostname: 主机名
         """
         logger.info(f"云服务器{name}修改主机名称为{hostname}")
-        try:
-            self.click_dropdown_option(name, "修改主机名")
-            # self.locator("div").filter(has_text=re.compile(r"^请输入主机名称$")).get_by_role("textbox").fill(hostname)
-            self.get_by_role("textbox", name="请输入主机名称").click()
-            self.get_by_role("textbox", name="请输入主机名称",exact=True).fill(hostname)
-            # self.dialog_confirm()
-            self.get_by_label("修改主机名").get_by_text("确定").click()
-        except Exception as e:
-            raise f"云服务器{name}修改主机名称失败:{e}"
-
-    @submenu("弹性云服务器")
-    def check_ecs_status(self, name, status="运行", target_column=0, timeout=5, name_column=2):
-        timeout_ms = timeout * 1000  # 转换为毫秒
-        # 使用 getByRole 精确匹配行名称
-        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-        try:
-            expect(target_row).to_be_visible(timeout=5000)  # 短超时检查存在性
-        except:
-            logger(f"未找到名称为 '{name}' 的资源行")
-
-        if target_column:
-            column = target_row.locator(f"td:nth-child({target_column})")
-            expect(column).to_contain_text(status, timeout=timeout_ms)
-        else:
-            expect(target_row).to_contain_text(status, timeout=timeout_ms)
+        self.click_dropdown_option(name, "修改主机名")
+        self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
+        self.get_by_label("修改主机名").get_by_text("确定").click()
