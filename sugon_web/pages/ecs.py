@@ -495,3 +495,19 @@ class EcsPage(BasePage):
         self.click_dropdown_option(name, "修改主机名")
         self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
         self.get_by_label("修改主机名").get_by_text("确定").click()
+
+    @submenu("镜像服务")
+    def ecs_image_delete(self, image_name):
+        """删除指定名称的镜像
+
+        Args:
+            image_name: 镜像名称
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(image_name, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()

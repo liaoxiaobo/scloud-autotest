@@ -38,17 +38,44 @@ def evs_page(page, env):
     page.goto_service('云硬盘')
     return page
 
+
 @pytest.fixture(scope="class")
-def volume(evs_page):
-    """初始化云硬盘数据"""
+def volume(evs_page, request):
+    """初始化云硬盘数据
+
+    Args:
+        request: pytest fixture，用于获取参数
+        request.param: 包含云硬盘配置的字典，例如：
+            {
+                "empty": True,  # 是否创建空白云硬盘，默认为True
+                "image_name": "",  # 镜像名称，当empty=False时使用
+                "size": 30,  # 云硬盘大小，默认为30GB
+                "desc": ""  # 云硬盘描述，默认为空
+            }
+    """
+    # 获取参数，如果没有提供则使用默认值
+    params = getattr(request, 'param', {})
+    empty = params.get('empty', True)
+    image_name = params.get('image_name', '')
+    size = params.get('size', 30)
+    desc = params.get('desc', '')
+
     name = random_data()
-    evs_page.evs_create(name)
+    evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
+    evs_page.evs_create(
+        name=name,
+        empty=empty,
+        image_name=image_name,
+        size=size,
+        desc=desc
+    )
     evs_page.assert_popup_success()
     evs_page.assert_status(name, status="可用")
     volume = {"name": name}
-    
+
     yield volume
 
+    evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
     evs_page.evs_remove(volume["name"])
     evs_page.evs_delete(volume["name"])
     evs_page.assert_deleted(volume["name"])
@@ -110,3 +137,51 @@ def vm(_ecs, ops_page):
     _ecs["mfip"] = ops_page.get_column_data("Mfip 地址")[0]   # 更新metadata
 
     yield _ecs
+
+
+@pytest.fixture(scope="class")
+def evss_policy(evs_page):
+    """创建并返回一个快照策略，测试结束后自动清理"""
+    policy_name = random_data()
+
+    # 创建快照策略
+    evs_page.evss_policy_create(
+        name=policy_name,
+        enabled=True,
+        hours=[0, 1, 2],
+        retention_type="按数量",
+        retention_value=1,
+        cycle_days=1
+    )
+
+    # 验证创建成功
+    evs_page.assert_popup_success("添加策略成功")
+
+    # 返回策略名称供测试使用
+    yield policy_name
+
+    # 测试结束后清理
+    with allure.step("清理测试数据"):
+        evs_page.evss_policy_delete(policy_name)    # TODO: 删除失败，云盘未解绑
+        evs_page.assert_deleted(policy_name)
+
+
+@pytest.fixture(scope="class")
+def evss(evs_page, volume):
+    """创建并返回一个快照，测试结束后自动清理"""
+    snapshot_name = random_data()
+
+    # 创建快照
+    evs_page.evss_create(volume["name"], snapshot_name, "测试快照")
+    evs_page.assert_popup_success("创建快照成功")
+    evs_page.goto_submenu("快照")
+    evs_page.assert_status(snapshot_name, status="可用")
+
+    # 返回快照名称供测试使用
+    yield {"name": snapshot_name, "volume_name": volume["name"]}
+
+    # 测试结束后清理
+    with allure.step("清理测试数据"):
+        evs_page.goto_submenu("快照")
+        evs_page.evss_delete(snapshot_name)
+        evs_page.assert_deleted(snapshot_name)
