@@ -1,7 +1,7 @@
 import re
 from functools import wraps
-from time import sleep
-from playwright.sync_api import expect
+from typing import Callable
+from playwright.sync_api import expect, Page, Locator
 from sugon_web.utils.logger import logger
 from sugon_web.common.playwright import Playwright
 
@@ -61,9 +61,9 @@ SERVICE_MAP = {
     '平台升级': ('运维',),
 }
 
-def submenu(name):
+def submenu(name: str) -> Callable:
     """装饰器：确保在指定的EVS子菜单页面"""
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             self.goto_submenu(name)
@@ -73,124 +73,134 @@ def submenu(name):
 
 class BasePage(Playwright):
 
-    def __init__(self, page, env):
+    def __init__(self, page: Page, env: dict) -> None:
         super().__init__(page)
         self.env = env
         self.storage_pool, self.volume_type = env['stor'] + '-test', env['stor'] + '-type'
 
     @property
-    def popup(self):
+    def popup(self) -> Locator:
         """公共元素:页面弹窗"""
         return self.locator(".el-message__content")
 
     @property
-    def btn_create(self):
+    def btn_create(self) -> Locator:
         """公共元素:新建按钮"""
-        button_texts = ["新建", "创建集群"]  # 优先匹配更具体的文本
+        locators = [
+            self.get_by_text("新建", exact=True),
+            self.get_by_text("创建集群", exact=True)
+        ]
 
-        for text in button_texts:
-            sleep(2)  # 确保页面按钮元素完全加载
-            buttons = self.get_by_text(text, exact=True)
-            if buttons.count() > 0:
-                return buttons
-
-        raise Exception("未找到新建按钮")
-
-    @property
-    def btn_submit(self):
-        """公共元素:表单提交按钮"""
-        button_texts = ["立即创建"]  # 优先匹配更具体的文本
-
-        for text in button_texts:
-            buttons = self.get_by_text(text)
-            if buttons.count() > 0:
-                return buttons
-
-        raise Exception("未找到新建按钮")
-
-    @property
-    def _input_search(self):
-        """公共元素:搜索框"""
-        search_names = ["搜索（规格名称）", "搜索（固定IP）"]
-        for name in search_names:
+        for locator in locators:
             try:
-                button = self.get_by_role("textbox", name=name)
-                if button.is_visible():
-                    return button
+                if locator.count() > 0:
+                    return locator
             except Exception as e:
-                logger.debug(f"通过角色定位（{name}）失败: {e}")
+                logger.debug(f"定位新建按钮失败: {e}")
 
-        # CSS定位(适用于列表页)
-        try:
-            button = self.locator(".input-with-select > .el-input__inner")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过CSS定位失败: {e}")
-
-        raise Exception("定位失败：无法找到可见的搜索按钮")
+        raise Exception("定位失败：新建按钮未找到")
 
     @property
-    def _btn_search(self):
+    def btn_submit(self) -> Locator:
+        """公共元素:表单提交按钮"""
+        locators = [
+            self.get_by_text("立即创建")
+        ]
+
+        for locator in locators:
+            try:
+                if locator.count() > 0:
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位提交按钮失败: {e}")
+
+        raise Exception("定位失败：表单提交按钮未找到")
+
+    @property
+    def _input_search(self) -> Locator:
+        """公共元素:搜索框"""
+        # 使用 Playwright 的惰性定位器（Locator）机制，只有在调用如 is_visible() 时才会真正执行DOM查询
+        locators = [
+            self.get_by_role("textbox", name="搜索（规格名称）"),
+            self.get_by_role("textbox", name="搜索（固定IP）"),
+            self.locator(".input-with-select > .el-input__inner")
+        ]
+
+        for locator in locators:
+            try:
+                if locator.is_visible():
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位搜索框失败: {e}")
+
+        raise Exception("定位失败：搜索框未找到")
+
+    @property
+    def _btn_search(self) -> Locator:
         """公共元素:搜索按钮"""
         return self.get_by_text("搜索", exact=True)
 
     @property
-    def btn_reset(self):
+    def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
         return self.get_by_text("重置")
 
     @property
-    def btn_refresh(self):
+    def btn_refresh(self) -> Locator:
         """公共元素:刷新按钮"""
-        return self.locator("#serverRefresh")
+        # 定义多种定位策略
+        locators = [
+            self.locator("#serverRefresh"),
+            self.locator(".el-icon-refresh")
+        ]
+
+        # 尝试每种定位策略
+        for locator in locators:
+            try:
+                if locator.is_visible():
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位刷新按钮失败: {e}")
+
+        # 如果所有方法都失败，抛出异常
+        raise Exception("定位失败：刷新按钮未找到")
 
     @property
-    def dialog_confirm(self):
+    def dialog_confirm(self) -> Locator:
         """公共元素:对话框确定按钮"""
-        # 方法1：通过角色和名称定位
-        try:
-            button = self.get_by_role("dialog").get_by_text("确定")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过角色定位失败: {e}")
+        locators = [
+            self.get_by_role("dialog").get_by_text("确定", exact=True),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
+        ]
 
-        # 方法二：CSS定位(适用于删除云盘对话框)
-        try:
-            button = self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过CSS定位失败: {e}")
+        for locator in locators:
+            try:
+                if locator.is_visible():
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位确定按钮失败: {e}")
 
-        # 如果所有方法都失败，抛出异常
-        raise Exception(f"无法定位‘确定’操作按钮")
+        raise Exception("定位失败：对话框'确定'按钮未找到")
 
     @property
-    def dialog_cancel(self):
+    def dialog_cancel(self) -> Locator:
         """公共元素:对话框取消按钮"""
-        # 方法1：通过角色和名称定位
-        try:
-            button = self.get_by_role("dialog").get_by_text("取消")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过角色定位失败: {e}")
+        locators = [
+            self.get_by_role("dialog").get_by_text("取消"),
+            self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
+        ]
 
-        # 方法二：CSS定位(适用于删除云盘对话框)
-        try:
-            button = self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
-            if button.is_visible():
-                return button
-        except Exception as e:
-            logger.debug(f"通过CSS定位失败: {e}")
+        for locator in locators:
+            try:
+                if locator.is_visible():
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位取消按钮失败: {e}")
 
-        # 如果所有方法都失败，抛出异常
-        raise Exception(f"无法定位‘取消’操作按钮")
+        raise Exception("定位失败：对话框'取消'按钮未找到")
 
     @property
-    def dialog_close(self):
+    def dialog_close(self) -> Locator:
         """公共元素:对话框关闭按钮"""
         return self.get_by_role("button", name="Close")
 
@@ -342,33 +352,55 @@ class BasePage(Playwright):
         matched = any(keyword in name for name in actual_names)
         assert matched, f"未找到包含关键字 '{keyword}' 的名称，实际名称列表: {actual_names}"
 
-    def assert_status(self, name: str, status='运行中', timeout=60, name_column=2, target_column=0):
+    def assert_status(self, name: str, status='运行中', timeout=60, refresh=False, refresh_interval=10):
         """
-        公共方法: 验证页面表格中指定资源的状态是否符合预期。
+        公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
         Args:
             name: 资源名称
             status: 期望状态
             timeout: 超时时间（秒）
-            name_column: 名称所在列（从1开始）
-            target_column: 状态所在列（0表示整行匹配）
+            refresh: 是否需要定期刷新页面，默认为False
+            refresh_interval: 刷新间隔时间（秒），默认为10秒，仅在refresh=True时有效
         """
-        timeout_ms = timeout * 1000  # 转换为毫秒
+        import time
 
-        # 使用 getByRole 精确匹配行名称
-        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-
-        # 检查行是否存在，避免后续长时间等待
-        try:
-            expect(target_row).to_be_visible(timeout=5000)  # 短超时检查存在性
-        except Exception:
-            raise AssertionError(f"未找到名称为 '{name}' 的资源行")
-
-        if target_column:
-            column = target_row.locator(f"td:nth-child({target_column})")
-            expect(column).to_contain_text(status, timeout=timeout_ms)
-        else:
+        # 不刷新模式：直接使用Playwright的高效等待机制
+        if not refresh:
+            timeout_ms = timeout * 1000  # 转换为毫秒
+            target_row = self._find_target_row(name)
             expect(target_row).to_contain_text(status, timeout=timeout_ms)
+            self.logger.info(f"资源状态验证成功: {name} -> {status}")
+            return
+
+        # 刷新模式：定期刷新页面并检查状态
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                # 刷新页面
+                if time.time() - start_time > 0:
+                    self.btn_refresh.click()
+                    self.wait_for_page_ready()
+
+                # 定位目标行并检查状态
+                target_row = self._find_target_row(name)
+                current_status = target_row.inner_text()
+
+                # 如果状态匹配，则返回
+                if status in current_status:
+                    self.logger.info(f"资源状态验证成功: {name} -> {status}")
+                    return
+
+            except Exception as e:
+                self.logger.debug(f"检查状态时出错: {e}")
+
+            # 等待下一次刷新
+            time.sleep(refresh_interval)
+
+        # 超时后抛出异常
+        raise AssertionError(
+            f"在{timeout}秒内未能获取到期望状态 '{status}'，当前状态: '{current_status if 'current_status' in locals() else '未知'}'")
 
     def assert_deleted(self, resource_name: str, timeout=60):
         """
@@ -397,18 +429,20 @@ class BasePage(Playwright):
 
         # 定位资源行
         row = self.locator(f"tr:has-text('{name}')")
-        # 组合定位器：title属性 + 类名 + 图标验证
-        action_button = row.locator(
-            ".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)"
-        ).last
 
         # 提供两种定位方式，第二种适用于ecs列表页面
-        buttons = [self.get_by_role("row", name=name).get_by_role("button"), action_button]
-        for button in buttons:
-            sleep(1)  # 确保页面按钮元素完全加载
-            if button.is_visible():
-                return button
-        raise Exception("未找到资源操作按钮")
+        locators = [
+            self.get_by_role("row", name=name).get_by_role("button"),
+            row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
+        ]
+        for locator in locators:
+            try:
+                if locator.is_visible():
+                    return locator
+            except Exception as e:
+                logger.debug(f"定位资源操作按钮失败: {e}")
+
+        raise Exception("定位失败：资源操作按钮未找到")
 
 
     def click_dropdown_option(self, resource_name: str, option_text: str):
@@ -494,10 +528,16 @@ class BasePage(Playwright):
 
         # 策略2：通过文本内容定位
         if target_row.count() == 0:
-            self.logger.info(f"原有定位方式未找到行，尝试使用 tr:has-text 定位方式")
+            self.logger.info(f"未找到资源行，尝试使用 tr:has-text 定位方式")
             target_row = self.locator(f"tr:has-text('{name}')")
 
-        return target_row if target_row.count() > 0 else None
+        # 检查行是否存在，避免后续长时间等待
+        try:
+            expect(target_row).to_be_visible(timeout=5000)  # 短超时检查存在性
+        except Exception:
+            raise AssertionError(f"未找到名称为 '{name}' 的资源行")
+
+        return target_row
 
     def _get_cell_contents(self, target_row):
         """获取单元格内容并进行清洗"""
