@@ -68,3 +68,10 @@ evs:
   test_ecs_network:
     - network_info:
       net: "Autotest"
+  test_ecs_bind_unbind_group:
+    - param:
+      operation: "绑定亲和组"
+      group_name: "caowl-反亲和"
+    - param:
+      operation: "解绑亲和组"
+      group_name: "caowl-反亲和"

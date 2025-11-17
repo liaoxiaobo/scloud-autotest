@@ -1,3 +1,5 @@
+from tokenize import group
+
 import pytest
 import allure
 from sugon_web.utils.util import random_data, load_data
@@ -7,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.feature('弹性云服务器 ECS')
 class TestECS:
 
-    @allure.title("云服务器-创建功能验证")
+    @allure.title("弹性云服务器-创建功能验证")
     def test_ecs_create(self, ecs_page):
         name = random_data()
 
@@ -23,7 +25,7 @@ class TestECS:
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)
 
-    @allure.title(f"云服务器-电源操作功能验证")
+    @allure.title(f"弹性云服务器-电源操作功能验证")
     @pytest.mark.parametrize("params", load_data('test_ecs_operations', "ecs_operation_data.yaml"))
     def test_ecs_operations(self, ecs_page, _ecs, params):
         name = _ecs.get("name")
@@ -35,11 +37,11 @@ class TestECS:
             ecs_page.assert_popup_success(f"{name}{desc}", timeout=60)
             ecs_page.assert_status(name, status=staus)
 
-    @allure.title("云服务器-编辑功能验证")
+    @allure.title("弹性云服务器-编辑功能验证")
     def test_ecs_edit(self, ecs_page, _ecs):
         name = _ecs.get("name")
         newname = random_data('string', 5)
-        with allure.step("编辑云服务器"):
+        with allure.step("编辑弹性云服务器"):
             ecs_page.ecs_edit(name, newname)
 
         with allure.step("验证创建结果"):
@@ -57,7 +59,7 @@ class TestECS:
     @allure.title("弹性云服务器-克隆功能验证")
     def test_ecs_clone(self, ecs_page, _ecs):
         name = _ecs.get("name")
-        with allure.step(f"克隆云服务器{name}"):
+        with allure.step(f"克隆弹性云服务器{name}"):
             clone_name = random_data('string', 5)
             ecs_page.ecs_clone(name, clone_name, 'Autotest', 'Autotest', {})
 
@@ -127,19 +129,19 @@ class TestECS:
             ecs_page.assert_status(name, status="运行")
 
     @allure.title("弹性云服务器-绑定/解绑公网IP功能验证")
-    def test_ecs_pubip(self, ecs_page, _ecs):
+    def test_ecs_pub_ip(self, ecs_page, _ecs):
         name = _ecs.get("name")
-        # subnet = network_info.get("subnet")
         with allure.step(f"云服务器{name}绑定公网IP"):
-            pubip = ecs_page.ecs_bind_pubip(name, "")
+            pub_ip = ecs_page.ecs_bind_pub_ip(name)
         with allure.step("验证绑定公网IP结果"):
             ecs_page.assert_popup_success(f"执行成功")
-            ecs_page.assert_ecs_info(name, "IP地址", pubip)
-        with allure.step(f"云服务器{name}解绑公网IP{pubip}"):
-            ecs_page.ecs_unbind_pubip(name, pubip)
+            ecs_page.assert_ecs_info(name, "IP地址", pub_ip)
+
+        with allure.step(f"云服务器{name}解绑公网IP{pub_ip}"):
+            ecs_page.ecs_unbind_pub_ip(name, pub_ip)
             ecs_page.assert_popup_success(f"执行成功")
         with allure.step("验证解绑公网IP结果"):
-            ecs_page.assert_ecs_info_notcaontains(name, "IP地址", pubip)
+            ecs_page.assert_ecs_info_not_contains(name, "IP地址", pub_ip)
 
     @allure.title("弹性云服务器-修改密码功能验证")
     def test_ecs_modifypwd(self, ecs_page, _ecs):
@@ -169,6 +171,7 @@ class TestECS:
         with allure.step("验证还原密码结果"):
             ecs_page.assert_popup_success(f"修改vnc密码成功")
 
+    @allure.title("弹性云服务器-修改主机名功能验证")
     def test_ecs_modify_hostname(self, ecs_page, _ecs):
         name = _ecs.get("name")
         hostname = random_data(4)
@@ -177,3 +180,25 @@ class TestECS:
             ecs_page.ecs_modify_hostname(name, hostname)
         with allure.step("验证修改主机名结果"):
             ecs_page.assert_popup_success(f"更新实例成功")
+
+    @allure.title("弹性云服务器-时间同步服务器功能验证")
+    def test_ecs_time_synchronize(self, ecs_page, _ecs):
+        name = _ecs.get("name")
+        time_server = "100.126.255.250"
+        interval = "7200"
+        with allure.step(f"弹性云服务器{name}配置时间同步服务器"):
+            ecs_page.assert_status(name, status="运行")
+            ecs_page.ecs_time_synchronize(name, time_server, interval)
+            ecs_page.assert_popup_success("修改时间同步服务器成功")
+
+    @allure.title("弹性云服务器-绑定/解绑亲和组功能验证")
+    @pytest.mark.parametrize("params", load_data('test_ecs_bind_unbind_group', "ecs_operation_data.yaml"))
+    def test_ecs_bind_unbind_group(self, ecs_page, _ecs, params):
+        name = _ecs.get("name")
+        operation = params.get("operation")
+        group_name = params.get("group_name")
+        with allure.step(f"云服务器{name}{operation}"):
+            ecs_page.assert_status(name, status="运行")
+            ecs_page.ecs_bind_unbind_group(name, operation, group_name)
+        with allure.step(f"验证{operation}结果"):
+            ecs_page.assert_popup_success(f"{name}实例{operation}成功")
