@@ -194,7 +194,7 @@ def jump_host(env):
     ssh._set_jumphost(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']))
     yield ssh
     ssh.close()
-    
+
 @pytest.fixture(scope="class")
 def ssh_vm(jump_host):
     """创建通过跳板机连接的SSH会话"""

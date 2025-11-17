@@ -2,7 +2,8 @@ pipeline {
     agent any
     parameters {
         // choice(name: 'BRANCH', choices: ["master"], description: '代码分支')
-        string(name: 'HOST', defaultValue: '172.22.1.170', description: '测试环境管理VIP')
+        string(name: 'HOST', defaultValue: '172.22.1.190', description: '测试环境管理VIP')
+        choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '存储池')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         choice(name: 'MODULE', choices: ["all", "iaas", "paas"], description: '云服务类别（选择 all 运行所有用例）')
@@ -12,7 +13,7 @@ pipeline {
     }
     environment {
         // branch = "${params.BRANCH}"
-        host = "${params.HOST}"
+        START_TIME = new Date().format("yyyy.MM.dd HH:mm:ss")
     }
     stages {
         // stage('Checkout') {
@@ -43,7 +44,7 @@ pipeline {
             }
           steps{
                 script {
-                    def pytestCommand = "pytest --headless=true --host=$host --username=${params.USER} --password=${params.PWD} -n 2 --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n 2 --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
 
                     // 用例筛选逻辑
                     if (params.KEY) {
@@ -117,7 +118,7 @@ def sendNotification(String result) {
                     "content": [
                         [{
                             "tag": "text",
-                            "text": "测试环境: ${params.HOST}:30000\\n测试结果: ${result}\\n执行时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n"
+                            "text": "测试环境: ${params.HOST}:30000\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n"
                         }, {
                             "tag": "a",
                             "text": "查看报告",
