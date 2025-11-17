@@ -85,7 +85,7 @@ class EcsPage(BasePage):
         
         # 选择具体镜像
         self.get_by_role("textbox", name="请选择镜像").click()
-        self.get_by_title(image_name).click()
+        self.get_by_title(image_name, exact=True).click()
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
@@ -168,7 +168,7 @@ class EcsPage(BasePage):
 
     @submenu("弹性云服务器")
     def ecs_vnc(self, name: str, vncpwd: str, pwd: str=None):
-        """重建云主机
+        """修改VNC密码
         Args：
             name: 云服务器名称
             password: VNC登录密码
@@ -189,6 +189,7 @@ class EcsPage(BasePage):
             bit: 重建云主机的操作系统位数
             image: 重建云主机的镜像源
         """
+        image = image or self.storage_pool
         logger.info(f"重建云主机：{name}，操作系统版本：{version}，操作系统位数：{bit}，镜像：{image}")
         self.click_dropdown_option(name, "重建云主机")
         # 选择操作系统版本
@@ -200,7 +201,7 @@ class EcsPage(BasePage):
         self.get_by_role("listitem").filter(has_text=bit).click()
         # 选择镜像源
         self.get_by_role("textbox", name="请选择镜像").click()
-        self.get_by_title(image).click()
+        self.get_by_title(image, exact=True).click()
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
@@ -284,10 +285,10 @@ class EcsPage(BasePage):
         logger.info(f"云服务器{name}：重置状态")
         try:
             self.click_dropdown_option(name, "重置状态")
+            self.dialog_confirm.click()
         except Exception as e:
-            logger.error(f"云服务器{name}：重置状态失败")
+            logger.error(f"云服务器{name}：重置状态失败:{e}")
             raise e
-        self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
     def ecs_load_network(
@@ -296,7 +297,7 @@ class EcsPage(BasePage):
             net: str,
             subnet: str,
             mode="标准",
-            ipv4: dict[str, dict] = None
+            ipv4: dict = None
     ):
         """加载网卡
         Args:
@@ -305,7 +306,7 @@ class EcsPage(BasePage):
             subnet: 子网
             mode: 网络加速模式
             ipv4: IPV4分配方式，{"method": "自动分配"}，{"method": "选择端口", "端口":"xxxx"},{"method": "选择端口",“加密网卡”:True}
-            TODO
+            TODO: 加速模式、分配方式不同场景加载网卡的用例
         """
         logger.info(f"云服务器{name}：加载网卡")
         try:
@@ -387,30 +388,56 @@ class EcsPage(BasePage):
         """修改规格
         Args:
             name: 云服务器名称
-            spec: {"基础规格":True,"CPU": "2", "Mem": "4"}
+            spec: {
+                "type": "基础规格" | "自定义规格",  # 规格类型
+                "classify": "计算型" | "通用型" | "内存型",  # 规格分类（仅基础规格需要）
+                "CPU": "2",  # CPU核数
+                "Mem": "4",  # 内存大小
+                "flavor_name": "ecs.c6.xlarge"  # 规格名称（可选，用于精确匹配）
+                "shutdown": False | True
+            }
         """
         cpu = spec.get("CPU", "2")
         mem = spec.get("Mem", "4")
+        spec_type = spec.get("spec_type")
+
         self.click_dropdown_option(name, "修改规格")
         try:
-            if spec.get("基础规格"):
-                classify = spec.get("classify")
-                logger.info(f"云服务器{name}修改规格为{classify}{cpu}核{mem}GiB")
-                self.get_by_text(spec.get("classify")).click()
-                (self.get_by_role("row").filter(has_text=f'{cpu} 核')
-                .and_(self.get_by_role("row").filter(has_text=f'{mem}.00 GiB')
-                .and_(self.get_by_role("row").filter(has_text="标准"))
-                ).get_by_role("radio").click())
+            if spec_type:
+                classify = spec.get("classify", "计算型")
+                flavor_name = spec.get("flavor_name")
+                logger.info(f"云服务器{name}修改规格为{classify} {cpu}核{mem}GiB")
+                
+                # 选择规格分类
+                if classify:
+                    self.get_by_text(classify).click()
+                
+                # 选择具体规格
+                if flavor_name:
+                    # 通过规格名称精确匹配
+                    self.get_by_role("row").filter(has_text=flavor_name).get_by_role("radio").click()
+                else:
+                    # 通过CPU和内存模糊匹配
+                    (self.get_by_role("row").filter(has_text=f"{cpu} 核")
+                     .and_(self.get_by_role("row").filter(has_text=f"{mem}.00 GiB"))
+                     .and_(self.get_by_role("row").filter(has_text="标准"))
+                     .get_by_role("radio").click())
+                
                 self.dialog_confirm.click()
-            else:
+                
+            else:  # 自定义规格
                 logger.info(f"云服务器{name}修改自定义规格为{cpu}核{mem}GiB")
                 self.get_by_role("radio").filter(has_text="自定义规格").click()
+                
+                # 填写CPU和内存
                 self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(1).fill(cpu)
                 self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(2).fill(mem)
-                # self.dialog_confirm.click()
+                
+                # 点击确定按钮
                 self.get_by_label("修改规格").get_by_text("确定").click()
+                
         except Exception as e:
-            logger.info(f"云服务器{name}修改规格失败:{e}")
+            logger.error(f"云服务器{name}修改规格失败: {e}")
             raise e
 
     @submenu("弹性云服务器")
@@ -460,7 +487,8 @@ class EcsPage(BasePage):
         """
         logger.info(f"云服务器{name}修改主机名称为{hostname}")
         self.click_dropdown_option(name, "修改主机名")
-        self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
+        self.get_by_role("textbox", name="请输入主机名称",exact=True).fill(hostname)
+        # self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
         self.get_by_label("修改主机名").get_by_text("确定").click()
 
     @submenu("弹性云服务器")
