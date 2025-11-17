@@ -111,3 +111,9 @@ def load_data(case_name: str, data_file: str = "test_data.yaml") -> List[Dict[st
         raise yaml.YAMLError(f"YAML文件格式错误: {e}")
     except Exception as e:
         raise Exception(f"加载测试数据失败: {e}")
+
+
+def random_string(k: int) -> str:
+    """生成指定长度的随机字符串（小写字母+数字）"""
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=k))
+
