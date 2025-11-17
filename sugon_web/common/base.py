@@ -2,7 +2,6 @@ import re
 from functools import wraps
 from typing import Callable
 from playwright.sync_api import expect, Page, Locator
-from sugon_web.utils.logger import logger
 from sugon_web.common.playwright import Playwright
 
 
@@ -96,7 +95,7 @@ class BasePage(Playwright):
                 if locator.count() > 0:
                     return locator
             except Exception as e:
-                logger.debug(f"定位新建按钮失败: {e}")
+                self.logger.debug(f"定位新建按钮失败: {e}")
 
         raise Exception("定位失败：新建按钮未找到")
 
@@ -112,7 +111,7 @@ class BasePage(Playwright):
                 if locator.count() > 0:
                     return locator
             except Exception as e:
-                logger.debug(f"定位提交按钮失败: {e}")
+                self.logger.debug(f"定位提交按钮失败: {e}")
 
         raise Exception("定位失败：表单提交按钮未找到")
 
@@ -131,7 +130,7 @@ class BasePage(Playwright):
                 if locator.is_visible():
                     return locator
             except Exception as e:
-                logger.debug(f"定位搜索框失败: {e}")
+                self.logger.debug(f"定位搜索框失败: {e}")
 
         raise Exception("定位失败：搜索框未找到")
 
@@ -160,7 +159,7 @@ class BasePage(Playwright):
                 if locator.is_visible():
                     return locator
             except Exception as e:
-                logger.debug(f"定位刷新按钮失败: {e}")
+                self.logger.debug(f"定位刷新按钮失败: {e}")
 
         # 如果所有方法都失败，抛出异常
         raise Exception("定位失败：刷新按钮未找到")
@@ -178,7 +177,7 @@ class BasePage(Playwright):
                 if locator.is_visible():
                     return locator
             except Exception as e:
-                logger.debug(f"定位确定按钮失败: {e}")
+                self.logger.debug(f"定位确定按钮失败: {e}")
 
         raise Exception("定位失败：对话框'确定'按钮未找到")
 
@@ -195,7 +194,7 @@ class BasePage(Playwright):
                 if locator.is_visible():
                     return locator
             except Exception as e:
-                logger.debug(f"定位取消按钮失败: {e}")
+                self.logger.debug(f"定位取消按钮失败: {e}")
 
         raise Exception("定位失败：对话框'取消'按钮未找到")
 
@@ -207,7 +206,7 @@ class BasePage(Playwright):
     def close_dialog_if_exists(self):
         """公共方法: 关闭可能存在的对话框"""
         if self.dialog_close.is_visible():
-            logger.info("发现未关闭的对话框，正在关闭...")
+            self.logger.info("发现未关闭的对话框，正在关闭...")
             self.dialog_close.click()
             # self.page.keyboard.press("Escape")    # 也可以按ESC键
 
@@ -438,9 +437,11 @@ class BasePage(Playwright):
         for locator in locators:
             try:
                 if locator.is_visible():
+                    self.logger.info(f"定位资源的目标行: {name}")
+                    self.logger.info(f"定位资源的操作按钮: {name}")
                     return locator
             except Exception as e:
-                logger.debug(f"定位资源操作按钮失败: {e}")
+                self.logger.debug(f"定位资源操作按钮失败: {e}")
 
         raise Exception("定位失败：资源操作按钮未找到")
 
@@ -456,8 +457,6 @@ class BasePage(Playwright):
         try:
             # 点击指定行资源的操作按钮
             operation_btn=self._btn_operation(resource_name)
-            self.logger.info(f"找到目标行: {resource_name}")
-            self.logger.info(f"点击操作按钮: {resource_name}")
             operation_btn.click()
 
             # 等待下拉菜单出现
@@ -471,7 +470,7 @@ class BasePage(Playwright):
                     option = specific_dropdown.get_by_text(option_text, exact=True)
                     if option.is_visible() and option.is_enabled():
                         option.click()
-                        self.logger.info(f"通过aria-controls点击选项: {resource_name} -> {option_text}")
+                        self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
                         return
                     else:
                         raise Exception(f"选项不可见或不可用: {option_text}")
@@ -497,7 +496,7 @@ class BasePage(Playwright):
                 raise Exception(f"所有方法都失败，未找到可用的选项: {option_text}")
 
         except Exception as e:
-            self.logger.error(f"点击下拉菜单选项失败: {resource_name} -> {option_text}, 错误: {e}")
+            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
             raise
 
     def wait_for_page_ready(self):
