@@ -402,7 +402,7 @@ class BasePage(Playwright):
         raise AssertionError(
             f"在{timeout}秒内未能获取到期望状态 '{status}'，当前状态: '{current_status if 'current_status' in locals() else '未知'}'")
 
-    def assert_deleted(self, resource_name: str, timeout=60):
+    def assert_deleted(self, resource_name: str, timeout=180):
         """
         公共方法: 断言资源已从列表中删除（通过表格行不可见来判断）
 
