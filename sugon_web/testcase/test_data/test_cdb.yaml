@@ -1,0 +1,38 @@
+mysql:
+    test_create_and_delete_instance:
+        - instance_type: "单机"
+          version: "8.0"
+          port: 3306
+          disk_size: 20
+        - instance_type: "高可用"
+          version: "8.0"
+          port: 3307
+          disk_size: 30
+        - instance_type: "集群"
+          version: "8.0"
+          port: 3312
+          disk_size: 70
+        - instance_type: "单机"
+          version: "5.7"
+          port: 3308
+          disk_size: 40
+        - instance_type: "高可用"
+          version: "5.7"
+          port: 3309
+          disk_size: 50
+        - instance_type: "集群"
+          version: "5.7"
+          port: 3313
+          disk_size: 90
+        - instance_type: "单机"
+          version: "5.6"
+          port: 3310
+          disk_size: 60
+        - instance_type: "高可用"
+          version: "5.6"
+          port: 3311
+          disk_size: 70
+        - instance_type: "集群"
+          version: "5.6"
+          port: 3314
+          disk_size: 100
