@@ -3,6 +3,7 @@ import os
 import pytest
 import allure
 from datetime import datetime
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import get_file_abspath
@@ -19,6 +20,28 @@ def pytest_addoption(parser):
     parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
     parser.addoption("--stor", action="store", default='xbd', help="storage backend")
 
+def pytest_configure(config):
+    """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
+
+    # 获取项目根目录
+    current_dir = Path(__file__).resolve().parent
+    project_root = current_dir.parent
+
+    # 创建 logs 目录
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    # 设置日志文件路径（添加日期）
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_file_path = log_dir / f"pytest-{today}.log"
+    config.option.log_file = str(log_file_path)
+
+    # 创建 allure-result 目录
+    allure_dir = project_root / "allure-result"
+    allure_dir.mkdir(exist_ok=True)
+
+    # 设置 allure-result 目录路径
+    config.option.allure_report_dir = str(allure_dir)
 
 @pytest.fixture(scope="session")
 def env(pytestconfig):
@@ -176,7 +199,6 @@ def pytest_runtest_makereport(item, call):
     elif rep.when == "teardown":
         if rep.failed:
             logger.error(f"测试清理失败: {item.name}")
-
 
 @pytest.fixture(scope="session")
 def ssh_host(env):
