@@ -92,12 +92,15 @@ class BasePage(Playwright):
 
         for locator in locators:
             try:
-                if locator.count() > 0:
+                # 等待元素可见
+                expect(locator).to_be_visible(timeout=2000)
+                # 确保按钮既可见又可用
+                if locator.is_enabled():
                     return locator
             except Exception as e:
-                self.logger.debug(f"定位新建按钮失败: {e}")
+                self.logger.debug(f"检查按钮状态时出错: {e}")
 
-        raise Exception("定位失败：新建按钮未找到")
+        raise Exception(f"定位失败：新建按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
     @property
     def btn_submit(self) -> Locator:
@@ -108,12 +111,15 @@ class BasePage(Playwright):
 
         for locator in locators:
             try:
-                if locator.count() > 0:
+                # 等待元素可见
+                expect(locator).to_be_visible(timeout=2000)
+                # 确保按钮既可见又可用
+                if locator.is_enabled():
                     return locator
             except Exception as e:
-                self.logger.debug(f"定位提交按钮失败: {e}")
+                self.logger.debug(f"检查按钮状态时出错: {e}")
 
-        raise Exception("定位失败：表单提交按钮未找到")
+        raise Exception(f"定位失败：按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
     @property
     def _input_search(self) -> Locator:
@@ -434,17 +440,21 @@ class BasePage(Playwright):
             self.get_by_role("row", name=name).get_by_role("button"),
             row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
         ]
+
+        # 尝试定位
         for locator in locators:
             try:
-                if locator.is_visible():
+                # 等待元素可见
+                expect(locator).to_be_visible(timeout=2000)
+                # 确保按钮既可见又可用
+                if locator.is_enabled():
                     self.logger.info(f"定位资源的目标行: {name}")
                     self.logger.info(f"定位资源的操作按钮: {name}")
                     return locator
             except Exception as e:
-                self.logger.debug(f"定位资源操作按钮失败: {e}")
+                self.logger.debug(f"检查按钮状态时出错: {e}")
 
-        raise Exception("定位失败：资源操作按钮未找到")
-
+        raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
     def click_dropdown_option(self, resource_name: str, option_text: str):
         """
@@ -501,9 +511,8 @@ class BasePage(Playwright):
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
-        self.page.wait_for_timeout(1000)
-        self.page.wait_for_load_state("networkidle", timeout=10000)  # 等待网络空闲
-        self.page.wait_for_load_state("domcontentloaded", timeout=10000)  # 等待DOM加载完成
+        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
+        self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
 
     def _get_table_headers(self, target_row=None):
         """获取表头信息，支持多种定位策略"""
