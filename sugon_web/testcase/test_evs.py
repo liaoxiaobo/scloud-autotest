@@ -81,7 +81,7 @@ class TestEVS:
         evs_page.goto_submenu("云硬盘")    # TODO: 连跑时会处于回收站页，加跳转解决
         keyword = volume['name'][:-2]
         evs_page.search(keyword)
-        evs_page.assert_list_contain(keyword)
+        evs_page.assert_list_contain(keyword, prefix_mode=True)
 
     @allure.title("云硬盘-修改名称")
     @pytest.mark.parametrize("params", load_data('test_volume_modify'))
