@@ -53,6 +53,7 @@ class EcsPage(BasePage):
         
         # 提交创建
         self.get_by_text("立即创建").click()
+        self.wait_for_operation_complete()
         logger.info(f"云服务器创建请求已提交: {name}")
 
     def _select_cluster(self, cluster):

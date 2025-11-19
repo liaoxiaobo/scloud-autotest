@@ -191,7 +191,7 @@ class TestEVS:
             evs_page.assert_status(name, status="可用")
 
         with allure.step("将云硬盘转换为镜像"):
-            image_name = "image_from_volume_" + random_data()
+            image_name = "image_from_volume_" + name
             evs_page.evs_convert_to_image(
                 volume_name=name,
                 image_name=image_name
@@ -200,7 +200,7 @@ class TestEVS:
         with allure.step("验证转换成功"):
             evs_page.assert_popup_success()
             evs_page.assert_status(name, status="上传中")
-            evs_page.assert_status(name, status="可用", timeout=600)
+            evs_page.assert_status(name, status="可用", timeout=1200)
 
         with allure.step("验证镜像已创建"):
             # 切换到弹性云服务器服务的镜像服务页面

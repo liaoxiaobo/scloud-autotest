@@ -198,7 +198,7 @@ class EvsPage(BasePage):
         self.locator("span").filter(has_text="挂载").click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_unmount(self, volume_name, server_name):
@@ -219,7 +219,7 @@ class EvsPage(BasePage):
         self.get_by_label("卸载").get_by_text("确定").click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_enable_qos(self, volume_name, read_speed=None, write_speed=None, read_iops=None, write_iops=None):
