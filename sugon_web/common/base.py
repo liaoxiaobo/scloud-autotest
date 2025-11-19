@@ -82,6 +82,44 @@ class BasePage(Playwright):
         """公共元素:页面弹窗"""
         return self.locator(".el-message__content")
 
+    def _find_element(self, locators, element_name="元素", timeout=1000, check_visible=True, check_enabled=False):
+        """
+        通用方法：从多个定位器中查找满足条件的元素
+
+        Args:
+            locators: 定位器列表
+            element_name: 元素名称，用于错误信息
+            timeout: 等待超时时间（毫秒）
+            check_visible: 是否检查元素可见
+            check_enabled: 是否检查元素可用
+
+        Returns:
+            Locator: 找到的定位器
+
+        Raises:
+            Exception: 未找到满足条件的元素
+        """
+        for locator in locators:
+            try:
+                # 如果需要检查可见性
+                if check_visible:
+                    expect(locator).to_be_visible(timeout=timeout)
+
+                # 如果需要检查可用性
+                if check_enabled:
+                    expect(locator).to_be_enabled(timeout=timeout)
+
+                # 所有条件满足，返回定位器
+                return locator
+
+            except Exception as e:
+                self.logger.debug(f"检查{element_name}状态时出错: {e}")
+                continue  # 尝试下一个定位器
+
+        # 所有定位器都失败，抛出异常
+        locator_strs = [str(loc) for loc in locators]
+        raise Exception(f"定位失败：{element_name}未找到。尝试的定位器: {locator_strs}")
+
     @property
     def btn_create(self) -> Locator:
         """公共元素:新建按钮"""
@@ -90,14 +128,7 @@ class BasePage(Playwright):
             self.get_by_text("创建集群", exact=True)
         ]
 
-        for locator in locators:
-            try:
-                if locator.count() > 0:
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位新建按钮失败: {e}")
-
-        raise Exception("定位失败：新建按钮未找到")
+        return self._find_element(locators, "新建按钮")
 
     @property
     def btn_submit(self) -> Locator:
@@ -106,14 +137,7 @@ class BasePage(Playwright):
             self.get_by_text("立即创建")
         ]
 
-        for locator in locators:
-            try:
-                if locator.count() > 0:
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位提交按钮失败: {e}")
-
-        raise Exception("定位失败：表单提交按钮未找到")
+        return self._find_element(locators, "表单提交按钮")
 
     @property
     def _input_search(self) -> Locator:
@@ -125,14 +149,7 @@ class BasePage(Playwright):
             self.locator(".input-with-select > .el-input__inner")
         ]
 
-        for locator in locators:
-            try:
-                if locator.is_visible():
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位搜索框失败: {e}")
-
-        raise Exception("定位失败：搜索框未找到")
+        return self._find_element(locators, "搜索框")
 
     @property
     def _btn_search(self) -> Locator:
@@ -147,22 +164,12 @@ class BasePage(Playwright):
     @property
     def btn_refresh(self) -> Locator:
         """公共元素:刷新按钮"""
-        # 定义多种定位策略
         locators = [
             self.locator("#serverRefresh"),
             self.locator(".el-icon-refresh")
         ]
 
-        # 尝试每种定位策略
-        for locator in locators:
-            try:
-                if locator.is_visible():
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位刷新按钮失败: {e}")
-
-        # 如果所有方法都失败，抛出异常
-        raise Exception("定位失败：刷新按钮未找到")
+        return self._find_element(locators, "刷新按钮")
 
     @property
     def dialog_confirm(self) -> Locator:
@@ -172,14 +179,7 @@ class BasePage(Playwright):
             self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
         ]
 
-        for locator in locators:
-            try:
-                if locator.is_visible():
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位确定按钮失败: {e}")
-
-        raise Exception("定位失败：对话框'确定'按钮未找到")
+        return self._find_element(locators, "对话框'确定'按钮")
 
     @property
     def dialog_cancel(self) -> Locator:
@@ -189,14 +189,7 @@ class BasePage(Playwright):
             self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
         ]
 
-        for locator in locators:
-            try:
-                if locator.is_visible():
-                    return locator
-            except Exception as e:
-                self.logger.debug(f"定位取消按钮失败: {e}")
-
-        raise Exception("定位失败：对话框'取消'按钮未找到")
+        return self._find_element(locators, "对话框'取消'按钮")
 
     @property
     def dialog_close(self) -> Locator:
@@ -281,6 +274,7 @@ class BasePage(Playwright):
 
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
+        self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
@@ -434,17 +428,21 @@ class BasePage(Playwright):
             self.get_by_role("row", name=name).get_by_role("button"),
             row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
         ]
+
+        # 尝试定位
         for locator in locators:
             try:
-                if locator.is_visible():
+                # 等待元素可见
+                expect(locator).to_be_visible(timeout=2000)
+                # 确保按钮既可见又可用
+                if locator.is_enabled():
                     self.logger.info(f"定位资源的目标行: {name}")
                     self.logger.info(f"定位资源的操作按钮: {name}")
                     return locator
             except Exception as e:
-                self.logger.debug(f"定位资源操作按钮失败: {e}")
+                self.logger.debug(f"检查按钮状态时出错: {e}")
 
-        raise Exception("定位失败：资源操作按钮未找到")
-
+        raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
     def click_dropdown_option(self, resource_name: str, option_text: str):
         """
@@ -501,9 +499,8 @@ class BasePage(Playwright):
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
-        self.page.wait_for_timeout(1000)
-        self.page.wait_for_load_state("networkidle", timeout=10000)  # 等待网络空闲
-        self.page.wait_for_load_state("domcontentloaded", timeout=10000)  # 等待DOM加载完成
+        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
+        self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
 
     def _get_table_headers(self, target_row=None):
         """获取表头信息，支持多种定位策略"""
