@@ -53,6 +53,7 @@ class EcsPage(BasePage):
         
         # 提交创建
         self.get_by_text("立即创建").click()
+        self.wait_for_operation_complete()
         logger.info(f"云服务器创建请求已提交: {name}")
 
     def _select_cluster(self, cluster):
@@ -189,7 +190,6 @@ class EcsPage(BasePage):
             bit: 重建云主机的操作系统位数
             image: 重建云主机的镜像源
         """
-        image = image or self.storage_pool
         logger.info(f"重建云主机：{name}，操作系统版本：{version}，操作系统位数：{bit}，镜像：{image}")
         self.click_dropdown_option(name, "重建云主机")
         # 选择操作系统版本
@@ -487,8 +487,7 @@ class EcsPage(BasePage):
         """
         logger.info(f"云服务器{name}修改主机名称为{hostname}")
         self.click_dropdown_option(name, "修改主机名")
-        self.get_by_role("textbox", name="请输入主机名称",exact=True).fill(hostname)
-        # self.locator("//*[text()='新主机名']/following-sibling::div//input").fill(hostname)
+        self.get_by_placeholder("请输入主机名称").fill(hostname)
         self.get_by_label("修改主机名").get_by_text("确定").click()
 
     @submenu("弹性云服务器")

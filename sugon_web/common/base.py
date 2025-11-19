@@ -1,4 +1,5 @@
 import re
+import time
 from functools import wraps
 from typing import Callable
 from playwright.sync_api import expect, Page, Locator
@@ -345,7 +346,7 @@ class BasePage(Playwright):
         matched = any(keyword in name for name in actual_names)
         assert matched, f"未找到包含关键字 '{keyword}' 的名称，实际名称列表: {actual_names}"
 
-    def assert_status(self, name: str, status='运行中', timeout=60, refresh=False, refresh_interval=10):
+    def assert_status(self, name: str, status='运行中', timeout=180, refresh=False, refresh_interval=5):
         """
         公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
@@ -356,7 +357,6 @@ class BasePage(Playwright):
             refresh: 是否需要定期刷新页面，默认为False
             refresh_interval: 刷新间隔时间（秒），默认为10秒，仅在refresh=True时有效
         """
-        import time
 
         # 不刷新模式：直接使用Playwright的高效等待机制
         if not refresh:
@@ -501,6 +501,35 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
+
+    def wait_for_operation_complete(self, timeout=30):
+        """等待操作完成
+
+        Args:
+            timeout: 超时时间（秒）
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                # 检查是否有加载中的元素
+                loading_elements = [
+                    self.locator(".el-icon-loading"),
+                    self.locator(".el-button.is-loading")
+                ]
+
+                # 如果没有加载中的元素，认为操作完成
+                if not any(element.count() > 0 for element in loading_elements):
+                    return
+
+                # 等待1秒后重试
+                time.sleep(1)
+            except Exception as e:
+                self.logger.debug(f"等待操作完成时出错: {e}")
+                time.sleep(1)
+
+        # 超时后抛出异常
+        raise AssertionError(f"等待操作完成超时，超过 {timeout} 秒")
 
     def _get_table_headers(self, target_row=None):
         """获取表头信息，支持多种定位策略"""

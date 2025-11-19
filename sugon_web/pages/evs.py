@@ -198,7 +198,7 @@ class EvsPage(BasePage):
         self.locator("span").filter(has_text="挂载").click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_unmount(self, volume_name, server_name):
@@ -219,7 +219,7 @@ class EvsPage(BasePage):
         self.get_by_label("卸载").get_by_text("确定").click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_enable_qos(self, volume_name, read_speed=None, write_speed=None, read_iops=None, write_iops=None):
@@ -468,7 +468,7 @@ class EvsPage(BasePage):
         # 设置执行时间 - 修改这里，使用exact=True参数
         if hours:
             for hour in hours:
-                self.get_by_text(f"{hour:02d}:00", exact=True).click()
+                self.get_by_text(f"{hour:02d}:00", exact=True).last.click()
 
         # 设置快照周期（天）
         self.locator("form div").filter(has_text="快照周期 天").get_by_role("spinbutton").fill(str(cycle_days))
