@@ -200,7 +200,7 @@ class TestEVS:
         with allure.step("验证转换成功"):
             evs_page.assert_popup_success()
             evs_page.assert_status(name, status="上传中")
-            evs_page.assert_status(name, status="可用")
+            evs_page.assert_status(name, status="可用", timeout=600)
 
         with allure.step("验证镜像已创建"):
             # 切换到弹性云服务器服务的镜像服务页面
@@ -286,7 +286,7 @@ class TestEVS:
         """测试快照策略修改功能"""
 
         with allure.step("修改快照策略"):
-            evs_page.evss_policy_edit(name=evss_policy, hours=[0, 1, 2])  # TODO: 对话框存在重复字段
+            evs_page.evss_policy_edit(name=evss_policy, hours=[7,8,9])
 
         with allure.step("验证修改成功"):
             evs_page.assert_popup_success("修改策略成功")

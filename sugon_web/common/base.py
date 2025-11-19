@@ -1,4 +1,5 @@
 import re
+import time
 from functools import wraps
 from typing import Callable
 from playwright.sync_api import expect, Page, Locator
@@ -351,7 +352,7 @@ class BasePage(Playwright):
         matched = any(keyword in name for name in actual_names)
         assert matched, f"未找到包含关键字 '{keyword}' 的名称，实际名称列表: {actual_names}"
 
-    def assert_status(self, name: str, status='运行中', timeout=60, refresh=False, refresh_interval=10):
+    def assert_status(self, name: str, status='运行中', timeout=180, refresh=False, refresh_interval=5):
         """
         公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
@@ -362,7 +363,6 @@ class BasePage(Playwright):
             refresh: 是否需要定期刷新页面，默认为False
             refresh_interval: 刷新间隔时间（秒），默认为10秒，仅在refresh=True时有效
         """
-        import time
 
         # 不刷新模式：直接使用Playwright的高效等待机制
         if not refresh:

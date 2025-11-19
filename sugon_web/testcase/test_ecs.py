@@ -77,8 +77,9 @@ class TestECS:
     @allure.title("弹性云服务器-重建云服务器功能验证")
     def test_ecs_rebuild(self, ecs_page, _ecs):
         name = _ecs.get("name")
+        image = ecs_page.storage_pool   # 获取存储池同名镜像
         with allure.step("重建云服务器"):
-            ecs_page.ecs_rebuild(name, 'centos', '64位', 'xbd')
+            ecs_page.ecs_rebuild(name, 'centos7.9', '64位', image)
 
         with allure.step("验证重建结果"):
             ecs_page.assert_popup_success(f"{name}实例重建成功")
@@ -174,7 +175,7 @@ class TestECS:
     @allure.title("弹性云服务器-修改主机名功能验证")
     def test_ecs_modify_hostname(self, ecs_page, _ecs):
         name = _ecs.get("name")
-        hostname = random_data(4)
+        hostname = random_data()
         with allure.step(f"云服务器{name}修改主机名"):
             ecs_page.assert_status(name, status="运行")
             ecs_page.ecs_modify_hostname(name, hostname)
