@@ -211,6 +211,7 @@ class BasePage(Playwright):
             self._input_search.fill(keyword)
             self._btn_search.click()
             self.wait_for_page_ready()
+            self.page.wait_for_timeout(1000)
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
@@ -517,6 +518,7 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
+        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
 
     def wait_for_operation_complete(self, timeout=30):
         """等待操作完成
