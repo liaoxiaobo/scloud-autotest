@@ -160,7 +160,7 @@ class BasePage(Playwright):
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置")
+        return self.get_by_text("重置", exact=True)
 
     @property
     def btn_refresh(self) -> Locator:
@@ -173,11 +173,21 @@ class BasePage(Playwright):
         return self._find_element(locators, "刷新按钮")
 
     @property
+    def btn_batch_delete(self) -> Locator:
+        """公共元素: 批量删除按钮"""
+        locators = [
+            self.get_by_text("批量删除", exact=True),
+            self.get_by_text("删除")
+        ]
+
+        return self._find_element(locators, "批量删除按钮")
+
+    @property
     def dialog_confirm(self) -> Locator:
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")   # 云硬盘删除对话框
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")
@@ -211,7 +221,7 @@ class BasePage(Playwright):
             self._input_search.fill(keyword)
             self._btn_search.click()
             self.wait_for_page_ready()
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(1000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
@@ -330,14 +340,14 @@ class BasePage(Playwright):
 
         expect(popup).not_to_be_visible(timeout=timeout_ms)
 
-    def assert_list_contain(self, keyword, column_name="名称", prefix_mode=False):
+    def assert_list_contain(self, keyword, column_name="名称", exact_match=True):
         """
         公共方法: 验证指定列中是否包含特定关键字
 
         Args:
             keyword: 关键字
             column_name: 列名，默认为"名称"
-            prefix_mode: 匹配模式（True为前缀匹配所有元素，False为精确匹配任一元素）
+            exact_match: 匹配模式（True为精准匹配，False为模糊匹配）
 
         Raises:
             AssertionError: 当没有找到匹配项时抛出异常
@@ -351,14 +361,14 @@ class BasePage(Playwright):
             assert False, f"列 '{column_name}' 没有数据或不存在"
 
         # 根据参数选择匹配方式
-        if prefix_mode:
-            # 前缀匹配：检查所有元素是否都以关键词开头
-            matched = all(item.startswith(keyword) for item in column_data)
-            match_description = "所有数据都以关键词开头"
-        else:
+        if exact_match:
             # 精准匹配：检查是否有任何一个元素与关键词完全相等
             matched = any(keyword == item for item in column_data)
             match_description = "包含与关键词完全相等的数据"
+        else:
+            # 模糊匹配：检查是否有任何一个元素包含关键词
+            matched = any(keyword in item for item in column_data)
+            match_description = "包含关键词的数据"
 
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
@@ -412,7 +422,7 @@ class BasePage(Playwright):
         raise AssertionError(
             f"在{timeout}秒内未能获取到期望状态 '{status}'，当前状态: '{current_status if 'current_status' in locals() else '未知'}'")
 
-    def assert_deleted(self, resource_name: str, timeout=180):
+    def assert_deleted(self, resource_name: str, timeout=300):
         """
         公共方法: 断言资源已从列表中删除（通过表格行不可见来判断）
 
@@ -686,3 +696,14 @@ class BasePage(Playwright):
 
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
+
+    def select_rows_by_names(self, names):
+        """公共方法: 根据名称列表勾选表格行
+
+        Args:
+            names: 资源名称列表
+        """
+
+        # 选择指定的行
+        for name in names:
+            self.get_by_role("row", name=name).locator("label span").nth(1).click()

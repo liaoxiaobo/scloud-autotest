@@ -86,29 +86,53 @@ class EvsPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("云硬盘")
-    def evs_remove(self, name):
-        """回收云硬盘资源
-        
+    def evs_remove(self, names):
+        """回收云硬盘资源，支持单个和批量操作
+
         Args:
-            name: 云硬盘名称
+            names: 云硬盘名称（字符串）或云硬盘名称列表（列表）
         """
-        self.click_dropdown_option(name, "删除")
-        self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击更多操作按钮
+            self.get_by_role("button", name="更多操作 ").click()
+
+            # 点击批量删除选项
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(names, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
 
     @submenu("回收站")
-    def evs_delete(self, name, secure=False):
-        """删除指定名称的云硬盘资源
+    def evs_delete(self, names, secure=False):
+        """删除回收站中的云硬盘资源，支持单个和批量操作
 
         Args:
-            name: 云硬盘名称
+            names: 云硬盘名称（字符串）或云硬盘名称列表（列表）
             secure: 是否安全删除（彻底删除），默认为False（普通删除）
         """
-        # 根据参数选择删除类型
-        delete_option = "安全删除" if secure else "删除"
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
 
-        # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, delete_option)
-        
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 根据参数选择删除类型
+            delete_option = "安全删除" if secure else "删除"
+
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, delete_option)
+
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
 
@@ -405,14 +429,27 @@ class EvsPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("快照")
-    def evss_delete(self, name):
-        """删除指定名称的云硬盘快照资源
+    def evss_delete(self, names):
+        """删除云硬盘快照资源，支持单个和批量操作
 
         Args:
-            name: 快照名称
+            names: 快照名称（字符串）或快照名称列表（列表）
         """
-        self.click_dropdown_option(name, "删除")
-        self.get_by_text("确定", exact=True).nth(1).click()
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(names, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
 
     @submenu("快照")
     def evss_edit(self, name, new_name, new_desc):
@@ -485,14 +522,22 @@ class EvsPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("快照策略")
-    def evss_policy_delete(self, name):
-        """删除快照策略
+    def evss_policy_delete(self, names):
+        """删除快照策略，支持单个和批量操作
 
         Args:
-            name: 策略名称
+            names: 策略名称（字符串）或策略名称列表（列表）
         """
-        # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, "删除")
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -563,16 +608,26 @@ class EvsPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("快照任务")
-    def evss_task_delete(self, volume_name):
-        """删除云硬盘的快照任务
+    def evss_task_delete(self, names):
+        """删除云硬盘的快照任务，支持单个和批量操作
 
         Args:
-            volume_name: 云硬盘名称
+            names: 快照任务名称（字符串）或名称列表（列表）
         """
-        # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(volume_name, "删除")
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
 
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, "删除")
+
+        # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
 
         # 等待操作完成
         self.wait_for_page_ready()
+
