@@ -1,3 +1,4 @@
+from time import sleep
 import pytest
 import allure
 from sugon_web.utils.util import random_data, load_data
@@ -154,7 +155,7 @@ class TestEVS:
             evs_page.goto_submenu("镜像服务")
             evs_page.assert_list_contain(image_name)
 
-        with allure.step("步骤3: 清理测试数据"):
+        with allure.step("清理测试数据"):
             # 删除创建的镜像
             ecs_page.ecs_image_delete(image_name)
             ecs_page.assert_deleted(image_name)
@@ -306,7 +307,7 @@ class TestEVS:
             evs_page.assert_list_contain(name)
             evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 清理测试数据"):
+        with allure.step("清理测试数据"):
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
@@ -382,3 +383,201 @@ class TestEVS:
             evs_page.evss_task_delete(volume_name=volume["name"])
             evs_page.assert_deleted(volume["name"])
 
+    @allure.title("云硬盘快照-数据一致性验证")
+    def test_volume_snapshot_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
+        """测试云硬盘快照数据一致性
+
+        测试场景：
+        1. 虚机内挂载一块云硬盘A，并且往云硬盘分区写测试文件
+        2. 基于该云硬盘创建快照，接着使用快照创建一块新的云硬盘B
+        3. 虚机内继续挂载云硬盘B
+        4. MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
+        """
+
+        # 步骤1: 挂载云硬盘A并写入测试文件
+        with allure.step("步骤1: 挂载云硬盘A并写入测试文件"):
+            # 挂载云硬盘A到虚机
+            evs_page.evs_mount(volume["name"], vm["name"])
+            evs_page.assert_popup_success()
+            evs_page.assert_status(volume["name"], status="正在使用")
+
+            # 获取云硬盘A在虚机中的设备名
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+
+            # 连接虚机并操作云硬盘
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+
+            # 格式化云硬盘并挂载
+            ssh_vm.mount("/data", disk_name)
+            # ssh_vm.run(f"mkfs.ext4 /dev/{disk_name}")
+            # ssh_vm.run("mkdir -p /mnt/test_volume_a")
+            # ssh_vm.run(f"mount /dev/{disk_name} /mnt/test_volume_a")
+
+            # 创建测试文件并计算MD5值
+            md5_value_a = ssh_vm.create_file('/data/test.log')
+            # test_file_content = "This is a test file for snapshot data consistency verification."
+            # ssh_vm.run(f"echo '{test_file_content}' > /mnt/test_volume_a/test_file.txt")
+            # md5_value_a = ssh_vm.run("md5sum /mnt/test_volume_a/test_file.txt | awk '{print $1}'")
+
+        # 步骤2: 创建快照并基于快照创建云硬盘B
+        with allure.step("步骤2: 创建快照并基于快照创建云硬盘B"):
+            # 注意：这里不卸载云硬盘A，将卸载操作移到最后的清理步骤
+
+            # 创建云硬盘A的快照
+            snapshot_name = "snapshot_" + random_data()
+            evs_page.evss_create(volume["name"], snapshot_name, "用于数据一致性验证的快照")
+            evs_page.assert_popup_success("创建快照成功")
+            evs_page.goto_submenu("快照")
+            evs_page.assert_status(snapshot_name, status="可用")
+
+            # 基于快照创建云硬盘B
+            volume_b_name = "volume_b_" + random_data()
+            evs_page.evs_create_from_snapshot(
+                snapshot_name=snapshot_name,
+                volume_name=volume_b_name,
+                desc="基于快照创建的云硬盘B"
+            )
+            evs_page.assert_popup_success("创建云硬盘成功")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(volume_b_name, status="可用")
+
+        # 步骤3: 挂载云硬盘B到虚机
+        with allure.step("步骤3: 挂载云硬盘B到虚机"):
+            # 挂载云硬盘B到虚机
+            evs_page.evs_mount(volume_b_name, vm["name"])
+            evs_page.assert_popup_success()
+            evs_page.assert_status(volume_b_name, status="正在使用")
+
+            # 获取云硬盘B在虚机中的设备名
+            disk_name_b = evs_page.get_row_data(volume_b_name).get("挂载信息").split("上的")[-1]
+
+            # 连接虚机并操作云硬盘B
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+
+            # 挂载云硬盘B
+            ssh_vm.mount("/data2", disk_name_b, partition=False)
+            # ssh_vm.run("mkdir -p /mnt/test_volume_b")
+            # ssh_vm.run(f"mount /dev/{disk_name_b} /mnt/test_volume_b")
+
+        # 步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
+        with allure.step("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
+            assert md5_value_a == ssh_vm.run('md5sum /data2/test.log').split(' ')[0]
+            # # 验证测试文件存在
+            # file_exists = ssh_vm.run("ls -la /mnt/test_volume_b/test_file.txt")
+            # assert "test_file.txt" in file_exists, "测试文件不存在于云硬盘B中"
+            #
+            # # 计算云硬盘B中测试文件的MD5值
+            # md5_value_b = ssh_vm.run("md5sum /mnt/test_volume_b/test_file.txt | awk '{print $1}'")
+            #
+            # # 验证两个MD5值相同
+            # assert md5_value_a == md5_value_b, f"云硬盘A和B的测试文件MD5值不一致: {md5_value_a} != {md5_value_b}"
+
+        # 清理测试数据
+        with allure.step("清理测试数据"):
+            # 卸载云硬盘B
+            evs_page.evs_unmount(volume_b_name, vm["name"])
+            evs_page.assert_popup_success()
+
+            # 删除云硬盘B
+            evs_page.evs_remove(volume_b_name)
+            evs_page.evs_delete(volume_b_name)
+            evs_page.assert_deleted(volume_b_name)
+            assert ssh_host.run(f"cinder list| grep {volume_b_name}") == ""
+
+            # 删除快照
+            evs_page.goto_submenu("快照")
+            evs_page.evss_delete(snapshot_name)
+            evs_page.assert_deleted(snapshot_name)
+
+            # 卸载云硬盘A
+            evs_page.evs_unmount(volume["name"], vm["name"])
+            evs_page.assert_popup_success()
+
+    @allure.title("云硬盘克隆-数据一致性验证")
+    def test_volume_clone_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
+        """测试云硬盘克隆数据一致性
+
+        测试场景：
+        1. 虚机内挂载一块云硬盘A（使用现有volume fixture），并且往云硬盘分区写测试文件
+        2. 基于该云硬盘进行克隆一块新的云硬盘B
+        3. 虚机内继续挂载云硬盘B
+        4. MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
+        """
+
+        # 步骤1: 挂载云硬盘A并写入测试文件
+        with allure.step("步骤1: 挂载云硬盘A并写入测试文件"):
+            # 挂载云硬盘A到虚机
+            evs_page.evs_mount(volume["name"], vm["name"])
+            evs_page.assert_popup_success()
+            evs_page.assert_status(volume["name"], status="正在使用")
+
+            # 获取云硬盘A在虚机中的设备名
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+
+            # 连接虚机并操作云硬盘
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+
+            # 格式化云硬盘并挂载
+            ssh_vm.run(f"mkfs.ext4 /dev/{disk_name}")
+            ssh_vm.run("mkdir -p /mnt/test_volume_a")
+            ssh_vm.run(f"mount /dev/{disk_name} /mnt/test_volume_a")
+
+            # 创建测试文件并计算MD5值
+            test_file_content = "This is a test file for clone data consistency verification."
+            ssh_vm.run(f"echo '{test_file_content}' > /mnt/test_volume_a/test_file.txt")
+            ssh_vm.run("sync")
+            # sleep(5)
+            md5_value_a = ssh_vm.run("md5sum /mnt/test_volume_a/test_file.txt | awk '{print $1}'")
+
+        # 步骤2: 克隆云硬盘A创建云硬盘B
+        with allure.step("步骤2: 克隆云硬盘A创建云硬盘B"):
+            # 克隆云硬盘A创建云硬盘B
+            volume_b_name = "clone_" + volume["name"]
+            evs_page.evs_clone(volume["name"], volume_b_name)
+            evs_page.assert_popup_success("克隆云硬盘成功")
+            evs_page.assert_status(volume_b_name, status="可用")
+
+        # 步骤3: 挂载云硬盘B到虚机
+        with allure.step("步骤3: 挂载云硬盘B到虚机"):
+            # 挂载云硬盘B到虚机
+            evs_page.evs_mount(volume_b_name, vm["name"])
+            evs_page.assert_popup_success()
+            evs_page.assert_status(volume_b_name, status="正在使用")
+
+            # 获取云硬盘B在虚机中的设备名
+            disk_name_b = evs_page.get_row_data(volume_b_name).get("挂载信息").split("上的")[-1]
+
+            # 连接虚机并操作云硬盘B
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+
+            # 挂载云硬盘B
+            ssh_vm.run("mkdir -p /mnt/test_volume_b")
+            ssh_vm.run(f"mount /dev/{disk_name_b} /mnt/test_volume_b")
+
+        # 步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
+        with allure.step("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
+            # 验证测试文件存在
+            file_exists = ssh_vm.run("ls -la /mnt/test_volume_b/test_file.txt")
+            assert "test_file.txt" in file_exists, "测试文件不存在于云硬盘B中"
+
+            # 计算云硬盘B中测试文件的MD5值
+            md5_value_b = ssh_vm.run("md5sum /mnt/test_volume_b/test_file.txt | awk '{print $1}'")
+
+            # 验证两个MD5值相同
+            assert md5_value_a == md5_value_b, f"云硬盘A和B的测试文件MD5值不一致: {md5_value_a} != {md5_value_b}"
+
+        # 清理测试数据
+        with allure.step("清理测试数据"):
+            # 卸载云硬盘B
+            evs_page.evs_unmount(volume_b_name, vm["name"])
+            evs_page.assert_popup_success()
+
+            # 删除云硬盘B
+            evs_page.evs_remove(volume_b_name)
+            evs_page.evs_delete(volume_b_name)
+            evs_page.assert_deleted(volume_b_name)
+            assert ssh_host.run(f"cinder list| grep {volume_b_name}") == ""
+
+            # 卸载云硬盘A
+            evs_page.evs_unmount(volume["name"], vm["name"])
+            evs_page.assert_popup_success()
