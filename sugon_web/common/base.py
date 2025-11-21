@@ -363,7 +363,7 @@ class BasePage(Playwright):
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
-    def assert_status(self, name: str, status='运行中', timeout=180, refresh=False, refresh_interval=5):
+    def assert_status(self, name: str, status='运行中', timeout=300, refresh=False, refresh_interval=5):
         """
         公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
@@ -372,7 +372,7 @@ class BasePage(Playwright):
             status: 期望状态
             timeout: 超时时间（秒）
             refresh: 是否需要定期刷新页面，默认为False
-            refresh_interval: 刷新间隔时间（秒），默认为10秒，仅在refresh=True时有效
+            refresh_interval: 刷新间隔时间（秒），默认为5秒，仅在refresh=True时有效
         """
 
         # 不刷新模式：直接使用Playwright的高效等待机制

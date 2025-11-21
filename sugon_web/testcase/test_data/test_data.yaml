@@ -20,7 +20,7 @@ evs:
     - name_suffix: "-modified"
       new_desc: "Updated description for testing"
     - name_suffix: "_v2"
-      new_desc: "这是一个很长的描述信息，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+      new_desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
 
   test_volume_expand:
     - new_size: 100
@@ -36,3 +36,12 @@ evs:
       desc: "Daily backup snapshot for testing purposes with long description"
     - snapshot_name_prefix: "test-"
       desc: "包含特殊字符的快照描述！@#￥%……&*（）测试"
+
+  test_volume_modify_snapshot:
+    - name_suffix: "-modified"
+      new_desc: "修改后的快照描述"
+    - name_suffix: "_v2"
+      new_desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+    - name_suffix: "_backup"
+      new_desc: "Backup snapshot with updated description"
+

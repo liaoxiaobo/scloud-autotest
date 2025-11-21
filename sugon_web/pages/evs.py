@@ -323,7 +323,37 @@ class EvsPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("云硬盘")
-    def evs_bind_snapshot_policy(self, volume_name, policy_name, enable_auto_snapshot=True):
+    def evs_reset_status(self, volume_name):
+        """重置云硬盘状态
+
+        Args:
+            volume_name: 云硬盘名称
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(volume_name, "重置状态")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    @submenu("云硬盘")
+    def evs_view_snapshots(self, volume_name):
+        """查看指定云硬盘的快照列表
+
+        Args:
+            volume_name: 云硬盘名称
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(volume_name, "查看快照")
+
+        # 等待快照列表加载完成
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(1000)
+
+    @submenu("云硬盘")
+    def evs_bind_snapshot_policy(self, volume_name, policy_name, enable_auto_snapshot=False):
         """云硬盘绑定快照策略
 
         Args:
@@ -383,6 +413,33 @@ class EvsPage(BasePage):
         """
         self.click_dropdown_option(name, "删除")
         self.get_by_text("确定", exact=True).nth(1).click()
+
+    @submenu("快照")
+    def evss_edit(self, name, new_name, new_desc):
+        """修改指定云硬盘快照的名称和描述
+
+        Args:
+            name: 原快照名称
+            new_name: 新的快照名称
+            new_desc: 新的描述信息
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(name, "修改")
+
+        # 定位对话框中的输入框
+        dialog = self.get_by_role("dialog")
+        name_input = dialog.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox")
+        desc_input = dialog.locator("textarea")
+
+        # 填写新的名称和描述
+        name_input.fill(new_name)
+        desc_input.fill(new_desc)
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
 
     @submenu("快照策略")
     def evss_policy_create(self, name, hours, enabled=False, cycle_days=1, retention_type="按数量", retention_value=1):
@@ -486,14 +543,18 @@ class EvsPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("快照任务")
-    def evs_disable_auto_snapshot(self, volume_name):
-        """禁用云硬盘的自动快照
+    def evss_task_set_auto_snapshot(self, volume_name, enable=True):
+        """设置自动快照
 
         Args:
+            enable: 是否启用自动快照，默认为True
             volume_name: 云硬盘名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(volume_name, "禁用自动快照")
+        if enable:
+            self.click_dropdown_option(volume_name, "开启自动快照")
+        else:
+            self.click_dropdown_option(volume_name, "禁用自动快照")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
