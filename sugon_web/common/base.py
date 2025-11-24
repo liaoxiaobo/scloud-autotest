@@ -160,7 +160,7 @@ class BasePage(Playwright):
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置")
+        return self.get_by_text("重置", exact=True)
 
     @property
     def btn_refresh(self) -> Locator:
@@ -173,11 +173,21 @@ class BasePage(Playwright):
         return self._find_element(locators, "刷新按钮")
 
     @property
+    def btn_batch_delete(self) -> Locator:
+        """公共元素: 批量删除按钮"""
+        locators = [
+            self.get_by_text("批量删除", exact=True),
+            self.get_by_text("删除")
+        ]
+
+        return self._find_element(locators, "批量删除按钮")
+
+    @property
     def dialog_confirm(self) -> Locator:
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")   # 云硬盘删除对话框
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")
@@ -211,6 +221,7 @@ class BasePage(Playwright):
             self._input_search.fill(keyword)
             self._btn_search.click()
             self.wait_for_page_ready()
+            self.page.wait_for_timeout(1000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
@@ -329,24 +340,40 @@ class BasePage(Playwright):
 
         expect(popup).not_to_be_visible(timeout=timeout_ms)
 
-    def assert_list_contain(self, keyword, name_column_index=2):
-        """公共方法: 断言页面表格列表中某一列至少有一个元素包含指定关键字"""
+    def assert_list_contain(self, keyword, column_name="名称", exact_match=True):
+        """
+        公共方法: 验证指定列中是否包含特定关键字
 
-        # 先获取所有行
-        rows = self.locator("tbody tr")
+        Args:
+            keyword: 关键字
+            column_name: 列名，默认为"名称"
+            exact_match: 匹配模式（True为精准匹配，False为模糊匹配）
 
-        # 获取每行的资源名称
-        actual_names = []
-        if rows.count() > 0:
-            for row in rows.all():
-                name_cell = row.locator(f"td:nth-child({name_column_index})")
-                name = name_cell.inner_text().strip()
-                actual_names.append(name)
+        Raises:
+            AssertionError: 当没有找到匹配项时抛出异常
+        """
+        self.logger.info(f"检查列 '{column_name}' 中是否包含关键字 '{keyword}'")
 
-        matched = any(keyword in name for name in actual_names)
-        assert matched, f"未找到包含关键字 '{keyword}' 的名称，实际名称列表: {actual_names}"
+        column_data = self.get_column_data(column_name)
 
-    def assert_status(self, name: str, status='运行中', timeout=180, refresh=False, refresh_interval=5):
+        if not column_data:
+            self.logger.warning(f"列 '{column_name}' 没有数据或不存在")
+            assert False, f"列 '{column_name}' 没有数据或不存在"
+
+        # 根据参数选择匹配方式
+        if exact_match:
+            # 精准匹配：检查是否有任何一个元素与关键词完全相等
+            matched = any(keyword == item for item in column_data)
+            match_description = "包含与关键词完全相等的数据"
+        else:
+            # 模糊匹配：检查是否有任何一个元素包含关键词
+            matched = any(keyword in item for item in column_data)
+            match_description = "包含关键词的数据"
+
+        # 断言
+        assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
+
+    def assert_status(self, name: str, status='运行中', timeout=300, refresh=False, refresh_interval=5):
         """
         公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
@@ -355,13 +382,13 @@ class BasePage(Playwright):
             status: 期望状态
             timeout: 超时时间（秒）
             refresh: 是否需要定期刷新页面，默认为False
-            refresh_interval: 刷新间隔时间（秒），默认为10秒，仅在refresh=True时有效
+            refresh_interval: 刷新间隔时间（秒），默认为5秒，仅在refresh=True时有效
         """
 
         # 不刷新模式：直接使用Playwright的高效等待机制
         if not refresh:
             timeout_ms = timeout * 1000  # 转换为毫秒
-            target_row = self._find_target_row(name)
+            target_row = self.get_row_by_name(name)
             expect(target_row).to_contain_text(status, timeout=timeout_ms)
             self.logger.info(f"资源状态验证成功: {name} -> {status}")
             return
@@ -377,7 +404,7 @@ class BasePage(Playwright):
                     self.wait_for_page_ready()
 
                 # 定位目标行并检查状态
-                target_row = self._find_target_row(name)
+                target_row = self.get_row_by_name(name)
                 current_status = target_row.inner_text()
 
                 # 如果状态匹配，则返回
@@ -395,7 +422,7 @@ class BasePage(Playwright):
         raise AssertionError(
             f"在{timeout}秒内未能获取到期望状态 '{status}'，当前状态: '{current_status if 'current_status' in locals() else '未知'}'")
 
-    def assert_deleted(self, resource_name: str, timeout=180):
+    def assert_deleted(self, resource_name: str, timeout=300):
         """
         公共方法: 断言资源已从列表中删除（通过表格行不可见来判断）
 
@@ -501,6 +528,7 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
+        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
 
     def wait_for_operation_complete(self, timeout=30):
         """等待操作完成
@@ -531,104 +559,134 @@ class BasePage(Playwright):
         # 超时后抛出异常
         raise AssertionError(f"等待操作完成超时，超过 {timeout} 秒")
 
-    def _get_table_headers(self, target_row=None):
-        """获取表头信息，支持多种定位策略"""
+    @property
+    def table_headers(self):
+        """获取表头信息，返回表头列表"""
+
         headers = []
+        # 使用更精确的定位器，只获取可见表头
+        header_wrapper = self.locator(".el-table__header-wrapper")  # 页面存在多个表格或弹窗表格，该定位器也会获取到重复表头
 
-        # 策略1：通过<thead>定位
-        if self.locator("thead").count() > 0:
-            headers = self.locator("thead th").all_text_contents()
+        if header_wrapper.count() > 0:
+            headers = header_wrapper.locator("th").all_text_contents()
+            self.logger.info(f"表头信息: {headers}, 共{len(headers)}个")
+        else:
+            self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
+            # 备用方案：如果找不到特定class的表头，使用原有方式
+            if self.locator("thead").count() > 0:
+                headers = self.locator("thead th").all_text_contents()
+                self.logger.info(f"使用备用方式获取表头信息: {headers}, 共{len(headers)}个")
+            else:
+                self.logger.error(f"未找到任何表头信息")
 
-        # 策略2：通过第一行定位
-        elif self.locator("tr:first-child th").count() > 0:
-            headers = self.locator("tr:first-child th").all_text_contents()
-
-        self.logger.info(f"获取到的表头: {headers}")
         return headers
 
-    def _find_target_row(self, name: str):
-        """定位目标行，支持多种定位策略"""
-        # 策略1：通过角色定位
+    @property
+    def table_rows(self)-> Locator:
+        """获取表格中的数据行，返回行定位器列表"""
+
+        locator = self.locator(".el-table__body-wrapper tr")   # 解决tbody tr选择器可能会获取到重复表格的问题
+        if locator.count() > 0:
+            rows = locator.all()
+            self.logger.info(f"成功获取表格行，共{len(rows)}行")
+        else:
+            self.logger.info(f"未找到表格行")
+            rows = []
+        return rows
+
+    def get_row_by_name(self, name: str) -> Locator:
+        """公共方法：根据名称查找数据行，用于获取单个或第一个匹配的行（前缀匹配优先）"""
         target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
 
-        # 策略2：通过文本内容定位
         if target_row.count() == 0:
-            self.logger.info(f"未找到资源行，尝试使用 tr:has-text 定位方式")
-            target_row = self.locator(f"tr:has-text('{name}')")
-
-        # 检查行是否存在，避免后续长时间等待
-        try:
-            expect(target_row).to_be_visible(timeout=5000)  # 短超时检查存在性
-        except Exception:
-            raise AssertionError(f"未找到名称为 '{name}' 的资源行")
+            raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
         return target_row
 
+    def get_rows_by_text(self, text: str) -> Locator:
+        """公共方法：根据文本查找数据行，用于获取所有匹配的行（包含匹配）"""
+        target_rows = self.locator(f"tr:has-text('{text}')")  # 多行匹配：只要行内容包含 text
+
+        if target_rows.count() == 0:
+            raise AssertionError(f"未找到包含'{text}' 的数据行")
+
+        self.logger.info(f"找到 {target_rows.count()} 个包含 '{text}' 的数据行")
+        return target_rows
+
     def _get_cell_contents(self, target_row):
-        """获取单元格内容并进行清洗"""
+        """公共方法：获取单元格内容并进行清洗"""
         cells = target_row.get_by_role("cell").all()
         cell_contents = [cell.text_content() for cell in cells]
         cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]
-        self.logger.info(f"获取到的单元格内容: {cell_contents}")
+        self.logger.info(f"获取到的单元格内容: {cell_contents}, 共{len(cell_contents)}个")
         return cell_contents
 
-    def get_row_data(self, name: str):
-        """公共方法：根据名称获取目标行数据"""
+    def get_row_data(self, name: str) -> dict:
+        """
+        根据名称获取目标行数据，返回表头与单元格内容的键值对字典
+
+        Args:
+            name: 行名称，用于定位特定行
+
+        Returns:
+            dict: 表头与单元格内容的键值对字典，已移除空表头和"操作"列
+
+        Raises:
+            AssertionError: 当找不到指定名称的行时
+        """
         self.logger.info(f"开始获取行数据: {name}")
 
-        # 定位目标行
-        target_row = self._find_target_row(name)
-        if not target_row:
-            self.logger.warning(f"未找到包含 '{name}' 的行")
-            return {}
+        try:
+            # 定位目标行
+            target_row = self.get_row_by_name(name)
+        except AssertionError as e:
+            self.logger.error(f"获取行数据失败: {str(e)}")
+            raise
 
         # 获取表头和单元格内容
-        headers = self._get_table_headers()
+        headers = self.table_headers
         cell_contents = self._get_cell_contents(target_row)
 
         # 组合数据，将表头和单元格内容对应起来
         result = dict(zip(headers, cell_contents))
+        self.logger.debug(f"原始行数据: {result}")
 
         # 移除不需要的键
         exclude_headers = ["", "操作"]
         for key in exclude_headers:
             if key in result:
                 del result[key]
+
+        self.logger.info(f"处理后的行数据: {result}")
         return result
 
     def get_column_data(self, header_name: str):
         """根据表头名称获取该列的所有数据"""
-        self.logger.info(f"开始获取列数据: {header_name}")
+        self.logger.info(f"获取列数据: {header_name}")
 
-        # 复用已有的方法获取表头信息
-        headers = self._get_table_headers()
-        if not headers:
-            self.logger.warning("未找到表头信息")
-            return []
+        # 获取表头信息
+        headers = self.table_headers
 
         # 检查目标表头是否存在
         if header_name not in headers:
             self.logger.warning(f"表头 '{header_name}' 不存在")
             return []
 
-        # 获取目标列的索引
+        # 获取目标表头的列索引
         header_index = headers.index(header_name)
         self.logger.info(f"表头 '{header_name}' 的索引位置: {header_index}")
 
         # 获取所有数据行
-        all_rows = self._get_all_data_rows()
-        if not all_rows:
-            self.logger.warning("未找到数据行")
-            return []
+        all_rows = self.table_rows
 
-        # 提取目标列的数据
+        # 提取列数据
         column_data = []
         for i, row in enumerate(all_rows):
             try:
                 cells = row.get_by_role("cell").all()
                 if len(cells) > header_index:
                     cell_content = cells[header_index].text_content()
-                    # 清洗数据
+                    # 清洗数据，处理HTML中的空白字符、换行符等
                     cleaned_content = re.sub(r'\s+', ' ', cell_content).strip()
                     if cleaned_content:  # 只添加非空内容
                         column_data.append(cleaned_content)
@@ -639,23 +697,13 @@ class BasePage(Playwright):
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
-    def _get_all_data_rows(self):
-        """获取所有数据行（排除表头行）"""
-        # 策略1：通过tbody定位数据行
-        if self.locator("tbody tr").count() > 0:
-            return self.locator("tbody tr").all()
+    def select_rows_by_names(self, names):
+        """公共方法: 根据名称列表勾选表格行
 
-        # 策略2：通过排除表头行的方式定位数据行
-        # 先获取所有行
-        all_rows = self.locator("tr").all()
+        Args:
+            names: 资源名称列表
+        """
 
-        # 获取表头行数（可能有多个表头行）
-        header_rows = 0
-        for row in all_rows:
-            if row.locator("th").count() > 0:
-                header_rows += 1
-            else:
-                break
-
-        # 返回非表头行
-        return all_rows[header_rows:] if header_rows > 0 else all_rows
+        # 选择指定的行
+        for name in names:
+            self.get_by_role("row", name=name).locator("label span").nth(1).click()

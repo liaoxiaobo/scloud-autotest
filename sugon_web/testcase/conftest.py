@@ -40,7 +40,7 @@ def evs_page(page, env):
     return page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def volume(evs_page, request):
     """初始化云硬盘数据
 
@@ -183,7 +183,7 @@ def vm(_ecs, ops_page):
     yield _ecs
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def evss_policy(evs_page):
     """创建并返回一个快照策略，测试结束后自动清理"""
     policy_name = random_data()
@@ -210,7 +210,7 @@ def evss_policy(evs_page):
         evs_page.assert_deleted(policy_name)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture()
 def evss(evs_page, volume):
     """创建并返回一个快照，测试结束后自动清理"""
     snapshot_name = random_data()
