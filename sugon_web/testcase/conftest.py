@@ -146,7 +146,7 @@ def _ecs(ecs_page):
     name = random_data()
     ecs_page.ecs_create(name)
     ecs_page.assert_popup_success("创建实例命令下发成功")
-    ecs_page.assert_status(name, status="当前无任务", timeout=300)
+    ecs_page.assert_status(name)
     row_data = ecs_page.get_row_data(name)
     metadata = {
         "name": name,
