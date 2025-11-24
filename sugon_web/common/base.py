@@ -366,14 +366,14 @@ class BasePage(Playwright):
             matched = any(keyword == item for item in column_data)
             match_description = "包含与关键词完全相等的数据"
         else:
-            # 模糊匹配：检查是否有任何一个元素包含关键词
-            matched = any(keyword in item for item in column_data)
+            # 模糊匹配：检查是否所有元素包含关键词，适用于搜索结果页面
+            matched = all(keyword in item for item in column_data)
             match_description = "包含关键词的数据"
 
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
-    def assert_status(self, name: str, status='运行中', timeout=300, refresh=False, refresh_interval=5):
+    def assert_status(self, name: str, status='运行', timeout=300, refresh=False, refresh_interval=5):
         """
         公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
 
@@ -389,7 +389,7 @@ class BasePage(Playwright):
         if not refresh:
             timeout_ms = timeout * 1000  # 转换为毫秒
             target_row = self.get_row_by_name(name)
-            expect(target_row).to_contain_text(status, timeout=timeout_ms)
+            expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
             self.logger.info(f"资源状态验证成功: {name} -> {status}")
             return
 
