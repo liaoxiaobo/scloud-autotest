@@ -1,10 +1,12 @@
 import allure
 import pytest
+from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.mysql import MySQLPage
+from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data, random_string
 
@@ -228,3 +230,59 @@ def evss(evs_page, volume):
         evs_page.goto_submenu("快照")
         evs_page.evss_delete(snapshot_name)
         evs_page.assert_deleted(snapshot_name)
+
+
+@pytest.fixture
+def kms_page(page, env):
+    """创建密钥管理页面对象并导航到密钥管理页面"""
+    kms = KmsPage(page, env)
+    kms.goto_service("可信密码模块")
+
+    # 检查是否已授权
+    try:
+        text_locator = kms.get_by_text("您已成功授权")
+        expect(text_locator).to_be_visible()
+        # kms.page.wait_for_selector('text="您已成功授权"', state='visible', timeout=5000)
+    except:
+        pytest.skip("当前环境可信密码模块未授权，跳过测试")
+
+    return kms
+
+
+@pytest.fixture
+def kms_key(kms_page, request):
+    """创建密钥管理页面对象并创建一个测试密钥
+
+    Args:
+        kms_page: 密钥管理页面对象
+        request: pytest的request对象，用于获取参数
+
+    Returns:
+        str: 创建的密钥名称
+    """
+    # 获取加密引擎参数，默认为"HCT"
+    engine = getattr(request, 'param', 'HCT')
+
+    # 生成随机密钥名称
+    key_name = random_data()
+
+    # 创建密钥
+    kms_page.kms_create(
+        name=key_name,
+        engine=engine,
+        key_type="SM4 (用途：加解密，包括系统盘、数据盘、网卡等)",
+        desc="测试密钥"
+    )
+
+    # 验证创建成功
+    kms_page.assert_popup_success("执行成功")
+
+    # 获取密钥数据行的字典对象
+    key_data = kms_page.get_row_data(key_name)
+
+    yield key_data
+
+    # 清理测试数据
+    kms_page.goto_service("可信密码模块")
+    kms_page.kms_delete(key_name)
+    kms_page.assert_deleted(key_name)

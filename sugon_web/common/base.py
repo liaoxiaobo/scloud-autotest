@@ -59,6 +59,11 @@ SERVICE_MAP = {
     '智能搜索': ('运维',),
     '一键巡检': ('运维',),
     '平台升级': ('运维',),
+
+    # 其它
+    '可信密码模块': ('资源中心',),
+    '大数据计算': ('资源中心',),
+    '备份': ('资源中心',),
 }
 
 def submenu(name: str) -> Callable:
@@ -616,7 +621,7 @@ class BasePage(Playwright):
     def _get_cell_contents(self, target_row):
         """公共方法：获取单元格内容并进行清洗"""
         cells = target_row.get_by_role("cell").all()
-        cell_contents = [cell.text_content() for cell in cells]
+        cell_contents = [cell.inner_text() for cell in cells]
         cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]
         self.logger.info(f"获取到的单元格内容: {cell_contents}, 共{len(cell_contents)}个")
         return cell_contents
@@ -685,7 +690,7 @@ class BasePage(Playwright):
             try:
                 cells = row.get_by_role("cell").all()
                 if len(cells) > header_index:
-                    cell_content = cells[header_index].text_content()
+                    cell_content = cells[header_index].inner_text()
                     # 清洗数据，处理HTML中的空白字符、换行符等
                     cleaned_content = re.sub(r'\s+', ' ', cell_content).strip()
                     if cleaned_content:  # 只添加非空内容
