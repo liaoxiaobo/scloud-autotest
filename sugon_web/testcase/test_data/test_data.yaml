@@ -1,18 +1,25 @@
 # 测试数据配置
 evs:
   test_volume_create:
+    # 普通云硬盘测试
+    - empty: true
+      size: 100
+      desc: "中等容量空白云硬盘"
+      shared: false
     - empty: false
-      size: 30
-      desc: "小容量空盘，用于基础功能验证"
+      size: 500
+      desc: "大容量镜像云硬盘"
+      shared: false
+
+    # 共享云硬盘测试
+    - empty: true
+      size: 500
+      desc: "大容量共享空白云硬盘"
+      shared: true
     - empty: false
       size: 100
-      desc: "从空盘创建的中等容量云硬盘"
-    - empty: true
-      size: 50
-      desc: "从镜像创建的中等容量云硬盘"
-    - empty: true
-      size: 999
-      desc: "大容量空盘测试场景"
+      desc: "中等容量共享镜像云硬盘"
+      shared: true
 
   test_volume_modify:
     - name_suffix: "222"

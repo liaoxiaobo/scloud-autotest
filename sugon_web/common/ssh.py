@@ -362,24 +362,37 @@ class SSH:
         r = self.run(cmd, return_stderr=True)
         return r
 
-    def mount(self, mount_point, disk=None, partition=True, fstab=False):
+    def mount_disk(self, disk_name, mount_point=None, format_disk=True):
+        """在虚拟机中挂载磁盘
+
+        Args:
+            disk_name: 磁盘设备名，如 "sdb"
+            mount_point: 挂载点，默认为 /mnt/{disk_name}
+            format_disk: 是否格式化磁盘，默认为True
+
+        Returns:
+            str: 实际使用的挂载点
         """
-        对云硬盘进行操作:分区、格式化、挂载
-        :param mount_point: 挂载点
-        :param disk: 默认自动查找最新挂载的磁盘设备，如vdb
-        :param partition: 是否分区数据盘
-        :param fstab: 是否设置启动时自动挂盘
-        """
-        self.run('lsblk')
-        if disk is None:
-            cmd = "lsblk -nr -o NAME,TYPE | awk '$2 == \"disk\" {print $1}' | while read device; do if ! lsblk /dev/$device | grep -q '/'; then echo $device; fi; done | tail -n 1"
-            disk = self.run(cmd)
-        self.put_file(get_file_abspath("mount.sh"), './mount.sh')
-        self.run('chmod +x ./mount.sh')
-        self.run(f'./mount.sh /dev/{disk} {mount_point} {partition} {fstab}')
-        self.run('lsblk')
-        stdout = self.run("lsblk | grep {0} | awk '{1}'".format(disk+'1', "{print $7}"))
-        assert stdout == mount_point, f"云盘{disk}分区挂载出现异常，请排查日志"
+        # 设置默认挂载点
+        if not mount_point:
+            mount_point = f"/mnt/{disk_name}"
+
+        # 查看磁盘信息
+        self.run("lsblk")
+
+        # 格式化磁盘（如果需要）
+        if format_disk:
+            self.run(f"mkfs.ext4 /dev/{disk_name}")
+
+        # 创建挂载点并挂载
+        self.run(f"mkdir -p {mount_point}")
+        self.run(f"mount /dev/{disk_name} {mount_point}")
+
+        # 检查挂载点是否正确
+        mount_check = self.run(f"df -h | grep '/dev/{disk_name}' | awk '{{print $6}}'")
+        assert mount_point in mount_check, f"磁盘 {disk_name} 未正确挂载到 {mount_point}，实际挂载点: {mount_check}"
+
+        return mount_point
 
     def ping_in_thread(self, ip, connected=True, count=4, retries=3, retry_delay=2):
         """

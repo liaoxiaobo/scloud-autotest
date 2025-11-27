@@ -22,10 +22,6 @@ class EvsPage(BasePage):
         """输入云硬盘大小"""
         return self.get_by_label("slider between 1 and").get_by_role("spinbutton")
 
-    def _set_count(self, count):
-        """设置云硬盘数量"""
-        self.get_by_label("数量").fill(str(count))
-
     def _select_image_source(self):
         """选择云硬盘来源为镜像"""
         self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择", exact=True).click()
@@ -46,6 +42,27 @@ class EvsPage(BasePage):
         self.get_by_placeholder("请选择模式").click()
         self.locator("li").filter(has_text=re.compile(fr"^{mode}$")).click()
 
+    def _enable_encryption(self, encryption_key):
+        """启用加密并选择密钥
+
+        Args:
+            encryption_key: 加密密钥ID
+        """
+        # 打开加密开关
+        self.page.locator("form div").filter(has_text="加密").get_by_role("switch").locator("span").click()
+
+        # 选择密钥
+        self.get_by_text("选择密钥").first.click()
+
+        # 选择指定的密钥
+        self.get_by_role("radio", name=encryption_key).click()
+
+        # 确认密钥选择
+        self.page.locator("section").get_by_text("确定").first.click()
+
+        # 等待页面加载完成
+        self.page.wait_for_timeout(1000)
+
     @submenu("云硬盘")
     def evs_create(
             self,
@@ -55,7 +72,10 @@ class EvsPage(BasePage):
             empty=True,
             image_name="",
             volume_type="",
-            desc=""
+            desc="",
+            shared=False,
+            encrypted=False,
+            encryption_key=""
     ):
         """创建云硬盘
 
@@ -67,22 +87,64 @@ class EvsPage(BasePage):
             image_name: 镜像名称
             volume_type: 云硬盘类型
             desc: 云硬盘描述信息，默认为空
+            shared: 是否创建共享云硬盘，默认False
+            encrypted: 是否创建加密云硬盘，默认False
+            encryption_key: 加密密钥ID，当encrypted为True时使用
         """
-        image_name = image_name or self.storage_pool
-        volume_type = volume_type or self.volume_type
-        self.btn_create.click()
-        self._input_name.fill(name)
+        current_storage = self.env['stor']
 
+        # 存储类型支持映射
+        STORAGE_SUPPORT = {
+            'encrypted': ['xstor', 'usan'],  # 支持加密的存储类型
+            'shared': ['xstor', 'xbd', 'xsky', 'ustor', 'zbs']  # 支持共享的存储类型
+        }
+
+        # 验证存储类型支持
+        if encrypted and current_storage not in STORAGE_SUPPORT['encrypted']:
+            raise ValueError(
+                f"当前存储类型 {current_storage} 不支持创建加密云硬盘，支持的存储类型: {', '.join(STORAGE_SUPPORT['encrypted'])}")
+
+        if shared and current_storage not in STORAGE_SUPPORT['shared']:
+            raise ValueError(
+                f"当前存储类型 {current_storage} 不支持创建共享云硬盘，支持的存储类型: {', '.join(STORAGE_SUPPORT['shared'])}")
+
+        # 加密盘不能是共享盘
+        if encrypted and shared:
+            raise ValueError("加密云硬盘不支持共享模式，请将shared参数设置为False")
+
+        # 打开创建页面
+        self.btn_create.click()
+
+        # 填写基本信息
+        self._input_name.fill(name)
+        self._input_desc.fill(desc)
+
+        # 设置数量
         if count != 1:
-            self._set_count(count)
+            self.get_by_label("数量").fill(str(count))
+
+        # 如果不是空盘，选择镜像
         if not empty:
             self._select_image_source()
+
+        # 选择云硬盘类型
+        volume_type = volume_type or self.volume_type
         self._select_volume_type(volume_type)
+
         if not empty:
+            image_name = image_name or self.storage_pool
             self._select_image(image_name)
 
+        # 设置加密
+        if encrypted:
+            self._enable_encryption(encryption_key)
+
+        # 设置共享盘
+        if shared:
+            self.page.locator("form div").filter(has_text="共享盘").get_by_role("switch").locator("span").click()
+
+        # 设置云硬盘大小
         self._input_size.fill(str(size))
-        self._input_desc.fill(desc)
         self.dialog_confirm.click()
 
     @submenu("云硬盘")
