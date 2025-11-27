@@ -1,6 +1,8 @@
 import re
+from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
+from sugon_web.utils import db_util
 
 
 class MySQLPage(BasePage):
@@ -28,19 +30,19 @@ class MySQLPage(BasePage):
 
         # --- 类型设置 ---
         self.get_by_role("radio", name=instance_type).click()
-        self.input_name.fill(name)
+        db_util.input_name(self).fill(name)
 
         # 版本选择
         self.locator("div").filter(has_text=re.compile(r"^版本8\.05\.75\.6$")).get_by_placeholder("请选择").click()
         self.locator(".el-select-dropdown__item").filter(has_text=version).click()
 
         # --- 基本设置 ---
-        self.project_dropdown.click()
-        self.project_autotest.click()
+        db_util.project_dropdown(self).click()
+        db_util.project_autotest(self).click()
 
         # 密码
-        self.input_password.fill(password)
-        self.input_confirm_password.fill(password)
+        db_util.input_password(self).fill(password)
+        db_util.input_confirm_password(self).fill(password)
 
         # 端口
         self.locator("input[type=\"number\"]").click()
@@ -50,10 +52,10 @@ class MySQLPage(BasePage):
         self.locator(f':text-is("{case_sensitivity}")').click()
 
         # --- 网络设置 ---
-        self._select_network(network, subnet)
+        db_util.select_network(self, network, subnet)
 
         # --- 存储设置 ---
-        self.disk_type_dropdown.click()
+        db_util.disk_type_dropdown(self).click()
         self.page.locator("li").filter(has_text=disk_type).click()
 
         # 数据盘大小
@@ -68,6 +70,18 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.click_dropdown_option(name, "删除")
+        self.dialog_confirm.click()
+
+    @submenu("实例管理")
+    def batch_delete_instances(self, names: list):
+        """
+        批量删除MySQL实例
+        :param names: 实例名称列表
+        """
+        for name in names:
+            self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
+
+        self.get_by_text("批量删除").click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -117,7 +131,8 @@ class MySQLPage(BasePage):
         :param new_size: 新磁盘大小
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
-        self.click_dropdown_option(name + "-0", "修改云硬盘大小")
+        self.wait_for_page_ready()
+        self.click_dropdown_option(f"{name}-0", "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
         # 定位到步进器输入框并填充新大小
@@ -135,7 +150,8 @@ class MySQLPage(BasePage):
         :param specification_name: 新规格名称
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
-        self.click_dropdown_option(name + "-0", "修改规格")
+        self.wait_for_page_ready()
+        self.click_dropdown_option(f"{name}-0", "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
@@ -147,11 +163,19 @@ class MySQLPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
         self.get_by_text("绑定公网IP").first.click()
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.page.locator("tr.el-table__row:first-child td label[role='radio']").click()
+
+        # 选择第一个状态为“关闭”的IP
+        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        ip_address = ip_row.locator("td").nth(1).inner_text()
+        ip_row.locator("label[role='radio']").click()
+
         self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+
+        return ip_address
 
     @submenu("实例管理")
     def instance_ip_unbinding(self, name: str):
@@ -160,6 +184,7 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("解绑公网IP").click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
@@ -171,11 +196,19 @@ class MySQLPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
-        self.click_dropdown_option(name + "-0", "绑定公网IP")
+        self.wait_for_page_ready()
+        self.click_dropdown_option(f"{name}-0", "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.page.locator("tr.el-table__row:first-child td label[role='radio']").click()
+
+        # 选择第一个状态为“关闭”的IP
+        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        ip_address = ip_row.locator("td").nth(1).inner_text()
+        ip_row.locator("label[role='radio']").click()
+
         self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+
+        return ip_address
 
     @submenu("实例管理")
     def node_ip_unbinding(self, name: str):
@@ -184,8 +217,35 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
-        self.click_dropdown_option(name + "-0", "解绑公网IP")
+        self.wait_for_page_ready()
+        self.click_dropdown_option(f"{name}-0", "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def add_node(self, name: str):
+        """
+        为MySQL实例添加只读节点
+        :param name: 实例名称
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
+
+
+    @submenu("实例管理")
+    def delete_node(self, name: str, node_name: str):
+        """
+        删除MySQL实例的节点
+        :param name: 实例名称
+        :param node_name: 节点名称
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        sleep(30)
+        self.wait_for_page_ready()
+        self.locator(".el-icon-refresh").click()
+        self.click_dropdown_option(node_name, "删除")
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def create_database(self, name: str, db_name: str):
@@ -195,12 +255,51 @@ class MySQLPage(BasePage):
         :param db_name: 数据库名称
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(3)
         self.wait_for_page_ready()
         self.btn_create.click()
         dialog = self.get_by_label("新建数据库")
         dialog.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(db_name)
         dialog.get_by_text("确定").click()
+
+    @submenu("实例管理")
+    def delete_database(self, name: str, db_name: str):
+        """
+        在指定实例下删除数据库
+        :param name: 实例名称
+        :param db_name: 数据库名称
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(3)
+        self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(5)
+        self.wait_for_page_ready()
+        self.get_by_role("row", name=f"{db_name} utf8mb4").locator("i").click()
+        self.dialog_confirm.click()
+
+    @submenu("实例管理")
+    def batch_delete_databases(self, name: str, db_names: list):
+        """
+        在指定实例下批量删除数据库
+        :param name: 实例名称
+        :param db_names: 数据库名称列表
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(3)
+        self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(5)
+        self.wait_for_page_ready()
+
+        for db_name in db_names:
+            self.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
+
+        self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def create_user(self, name: str, user_name: str, password: str, db_name: str, privileges: str):
@@ -236,6 +335,7 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
         self.get_by_role("tab", name="用户").click()
+        self.wait_for_page_ready()
         self.click_dropdown_option(user_name, "修改用户")
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
@@ -252,13 +352,48 @@ class MySQLPage(BasePage):
         :param privileges: 权限 (e.g., "读写")
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(2)
         self.get_by_role("tab", name="用户").click()
+        sleep(2)
+        self.wait_for_page_ready()
         self.click_dropdown_option(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
+        sleep(2)
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=privileges).click()
         dialog.get_by_text("确定").click()
+
+    @submenu("实例管理")
+    def delete_user(self, name: str, user_name: str):
+        """
+        在指定实例下删除用户
+        :param name: 实例名称
+        :param user_name: 用户名
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.get_by_role("tab", name="用户").click()
+        self.wait_for_page_ready()
+        self.click_dropdown_option(user_name, "删除")
+        self.dialog_confirm.click()
+
+    @submenu("实例管理")
+    def batch_delete_users(self, name: str, user_names: list):
+        """
+        在指定实例下批量删除用户
+        :param name: 实例名称
+        :param user_names: 用户名列表
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.get_by_role("tab", name="用户").click()
+        self.wait_for_page_ready()
+
+        for user_name in user_names:
+            self.get_by_role("row", name=re.compile(user_name)).locator("span").nth(1).click()
+
+        self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def deauthorize_user(self, name: str, user_name: str, db_name: str):
@@ -270,6 +405,7 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).click()
         self.get_by_role("tab", name="用户").click()
+        self.wait_for_page_ready()
         self.click_dropdown_option(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
@@ -284,6 +420,7 @@ class MySQLPage(BasePage):
         """
         self.locator(f"#cloud-container-content").get_by_text(name).click()
         self.get_by_role("tab", name="读写分离").click()
+        self.wait_for_page_ready()
         self.get_by_text("开通读写分离", exact=True).click()
 
     @submenu("实例管理")
@@ -294,6 +431,7 @@ class MySQLPage(BasePage):
         """
         self.locator(f"#cloud-container-content").get_by_text(name).click()
         self.get_by_role("tab", name="读写分离").click()
+        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="关闭读写分离").click()
         self.get_by_label("关闭读写分离").get_by_text("确定", exact=True).click()
 
@@ -367,6 +505,7 @@ class MySQLPage(BasePage):
         """
         self.locator(f"#cloud-container-content").get_by_text(name).click()
         self.get_by_role("tab", name="白名单").click()
+        sleep(2)
         self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
@@ -385,46 +524,115 @@ class MySQLPage(BasePage):
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
 
-    # --- 定位器属性 ---
-    @property
-    def input_name(self):
-        return self.locator("form").filter(has_text="基本设置").get_by_role("textbox").first
+    @submenu("参数管理")
+    def create_parameter_model(self, model_name: str, version: str = "8.0"):
+        """
+        创建参数模板
+        :param model_name: 模板名称
+        :param version: 数据库版本
+        """
+        self.get_by_text("新建", exact=True).click()
+        dialog = self.get_by_label("新建模板")
+        dialog.locator("div").filter(has_text=re.compile(r"^模板名称$")).get_by_role("textbox").fill(model_name)
+        dialog.get_by_placeholder("请选择").click()
+        self.page.locator("li").filter(has_text=version).click()
+        self.get_by_text("下一步").click()
+        # 添加一个默认参数以完成创建
+        self.get_by_text("添加参数").click()
+        self.get_by_role("row", name="参数名称 运行值", exact=True).locator("span").first.click()
+        self.get_by_label("选择参数").get_by_text("确定").click()
+        self.get_by_text("立即创建").click()
 
-    @property
-    def input_password(self):
-        return self.get_by_placeholder("请输入管理员用户密码")
+    @submenu("参数管理")
+    def delete_parameter_model(self, model_name: str):
+        """
+        删除参数模板
+        :param model_name: 模板名称
+        """
+        self.click_dropdown_option(model_name, "删除")
+        self.dialog_confirm.click()
+        # self.get_by_label("删除模板").get_by_text("确定", exact=True).click()
 
-    @property
-    def input_confirm_password(self):
-        return self.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox")
+    @submenu("参数管理")
+    def edit_parameter_model(self, model_name: str, param_name: str):
+        """
+        编辑参数模板，为其添加新参数
+        :param model_name: 模板名称
+        :param param_name: 要添加的参数名称
+        """
+        self.get_by_text(model_name).click()
+        sleep(3)
+        self.wait_for_page_ready()
+        self.locator("div.cloud-button-btn").filter(has_text="编辑").click()
+        sleep(3)
+        self.wait_for_page_ready()
+        self.get_by_role("row", name=f"{param_name}").get_by_role("checkbox").check()
+        self.get_by_label("选择参数").get_by_text("确定").click()
 
-    @property
-    def project_dropdown(self):
-        return self.locator("form").filter(has_text="基本设置").get_by_placeholder("请选择").nth(1)
+    @submenu("参数管理")
+    def apply_parameter_model(self, model_name: str, name: str):
+        """
+        将参数模板应用到实例
+        :param model_name: 模板名称
+        :param instance_name: 实例名称
+        """
+        self.get_by_text(model_name).click()
+        self.wait_for_page_ready()
+        self.locator("div.cloud-button-btn").filter(has_text="应用").click()
+        # 选择实例
+        # self.locator("input[type=\"text\"]").filter(has_text="请选择").click()
+        # self.locator("input[type=\"text\"]").filter(has_text="请选择").fill(name)
+        # self.locator("div.cloud-button-btn").filter(has_text="前选择").click()
+        # self.filter(has_text=instance_name+"0").click()
+        self.locator("td").filter(has_text=name).get_by_placeholder("请选择").click()
+        self.locator("li").filter(has_text=name).click()
+        self.locator("td").filter(has_text=f"{name}-0").get_by_placeholder("请选择").click()
+        # self.locator("li").filter(has_text=name+"-0").click()
+        items = self.locator("li").filter(has_text=name + "-").all()
+        for item in items:
+            item.click()
 
-    @property
-    def project_autotest(self):
-        return self.locator("li").filter(has_text="Autotest").nth(2)
+        # 确认应用
+        self.dialog_confirm.click()
 
-    def _select_network(self, network, subnet):
-        """选择网络和子网（使用可靠的等待机制）"""
-        # --- 选择网络 ---
-        self.get_by_role("textbox", name="请选择网络").click()
-        # 等待下拉列表出现
-        network_list_locator = self.page.locator("body > div.el-select-dropdown:visible").last
-        network_list_locator.wait_for(state="visible", timeout=5000)
-        # 点击选项
-        network_list_locator.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$")).click()
+    @submenu("实例管理")
+    def edit_instance_parameter(self, name: str, param_name: str, param_value: str):
+        """
+        编辑实例的参数值并应用
+        :param name: 实例名称
+        :param param_name: 参数名称
+        :param param_value: 参数新值
+        """
+        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(3)
+        self.get_by_role("tab", name="参数设置").click()
+        # 定位到参数行并点击编辑图标
+        sleep(3)
+        self.wait_for_page_ready()
+        row = self.page.locator("tr", has_text=param_name).first
+        row.locator("i").first.click()
+        # 在弹窗中修改值
+        dialog = self.get_by_label("编辑参数")
+        spinbutton = dialog.get_by_role("spinbutton")
+        spinbutton.click()
+        spinbutton.fill(param_value)
+        dialog.get_by_text("确定").click()
+        # 应用更改
+        self.get_by_text("应用", exact=True).click()
 
-        # --- 选择子网 ---
-        self.get_by_role("textbox", name="请选择子网").click()
-        # 等待下拉列表出现
-        subnet_list_locator = self.page.locator("body > div.el-select-dropdown:visible").last
-        subnet_list_locator.wait_for(state="visible", timeout=5000)
-        # 点击选项
-        subnet_list_locator.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(subnet)}$")).locator(
-            "span").click()
+    @submenu("实例管理")
+    def export_instance_parameters(self, name: str):
+        """
+        导出实例的参数
+        :param name: 实例名称
+        """
+        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        sleep(3)
+        self.get_by_role("tab", name="参数设置").click()
+        self.wait_for_page_ready()
+        sleep(3)
+        self.get_by_text("导出", exact=True).click()
 
-    @property
-    def disk_type_dropdown(self):
-        return self.locator("div").filter(has_text=re.compile(r"^数据盘类型")).get_by_placeholder("请选择")
+

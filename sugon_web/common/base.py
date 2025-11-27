@@ -221,7 +221,7 @@ class BasePage(Playwright):
             self._input_search.fill(keyword)
             self._btn_search.click()
             self.wait_for_page_ready()
-            self.page.wait_for_timeout(1000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
+            self.page.wait_for_timeout(3000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")

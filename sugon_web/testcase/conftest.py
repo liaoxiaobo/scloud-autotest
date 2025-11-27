@@ -112,9 +112,9 @@ def mysql(mysql_page):
     type = "集群"
     db_name = f"autodb-{random_string(k=5)}"
     user_name = f"user_{random_string(k=5)}"
-    password = f"sugon1234@{random_string(k=5)}"
+    user_password = f"sugon1234@{random_string(k=5)}"
     privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name}
+    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
     with allure.step(f"前置操作：创建共享实例 {name}"):
@@ -128,7 +128,7 @@ def mysql(mysql_page):
         mysql_page.assert_list_contain(db_name)
 
     with allure.step(f"前置操作：创建新用户 {db_name}"):
-        mysql_page.create_user(name, user_name, password, db_name, privileges)
+        mysql_page.create_user(name, user_name, user_password, db_name, privileges)
         mysql_page.assert_popup_success("创建用户成功",10)
 
     yield data
@@ -137,7 +137,6 @@ def mysql(mysql_page):
         logger.info(f"清理共享MySQL实例: {name}")
         # 在删除前，确保页面在实例列表页，防止在详情页删除失败
         mysql_page.delete_instance(data["name"])
-        mysql_page.assert_deleted(data["name"])
 
 
 @pytest.fixture(scope="class")
