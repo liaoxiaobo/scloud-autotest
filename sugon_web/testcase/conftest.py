@@ -205,6 +205,7 @@ def vm(ecs_page, request):
             ecs_page.assert_popup_success()
             ecs_page.mfip_search(vm_data["ip"])
             vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+        ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
 
     # 根据虚机数量返回不同类型的数据
     if count == 1:

@@ -203,3 +203,73 @@ class TestECS:
             ecs_page.ecs_bind_unbind_group(name, operation, group_name)
         with allure.step(f"验证{operation}结果"):
             ecs_page.assert_popup_success(f"{name}实例{operation}成功")
+
+
+@allure.epic('计算服务')
+@allure.feature('弹性云服务器 ECS')
+@allure.story('快照功能验证')
+class TestECSSnapshot:
+
+    @allure.title("弹性云服务器-创建和删除系统盘快照")
+    def test_ecs_system_snapshot(self, ecs_page, vm, ssh_host):
+        """测试创建云服务器系统盘快照"""
+        name = vm.get("name")
+        snapshot_name = f"sys_snapshot_{random_data()}"
+
+        with allure.step("步骤1: 创建系统盘快照"):
+            ecs_page.ecss_create(
+                server_name=name,
+                snapshot_name=snapshot_name,
+                desc="系统盘快照测试"
+            )
+            ecs_page.assert_popup_success("创建实例快照成功")
+            ecs_page.assert_status(name, status="当前无任务")
+
+        with allure.step("步骤2: 验证快照创建成功"):
+            # 切换到快照页面
+            ecs_page.goto_submenu("快照")
+            ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+
+            # 验证快照属性
+            snapshot_data = ecs_page.get_row_data(snapshot_name)
+            assert snapshot_data["是否快照数据卷"] == "否"
+            assert snapshot_data["是否启动源"] == "是"
+
+        with allure.step("步骤3: 删除系统盘快照"):
+            # 删除快照
+            ecs_page.ecss_delete(snapshot_name)
+            ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
+            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+
+    @allure.title("弹性云服务器-批量删除快照")
+    def test_ecs_batch_snapshot(self, ecs_page, vm, ssh_host):
+        """测试批量创建和删除云服务器快照"""
+        name = vm.get("name")
+        snapshot_names = []
+
+        with allure.step("步骤1: 批量创建快照"):
+            # 创建多个系统盘快照
+            for i in range(3):
+                snapshot_name = f"batch_snapshot_{random_data()}"
+                snapshot_names.append(snapshot_name)
+
+                ecs_page.ecss_create(
+                    server_name=name,
+                    snapshot_name=snapshot_name,
+                )
+                ecs_page.assert_popup_success("创建实例快照成功")
+                ecs_page.assert_status(name, status="当前无任务")
+
+        with allure.step("步骤2: 验证所有快照创建成功"):
+            # 切换到快照页面
+            ecs_page.goto_submenu("快照")
+            ecs_page.assert_status(snapshot_names, status="可用", refresh=True)
+
+        with allure.step("步骤3: 批量删除快照"):
+            # 批量删除快照
+            ecs_page.ecss_delete(snapshot_names)
+
+        with allure.step("步骤4: 验证所有快照已删除"):
+            ecs_page.assert_deleted(snapshot_names, refresh=True)
+            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+

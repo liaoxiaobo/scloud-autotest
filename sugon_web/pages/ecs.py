@@ -593,3 +593,62 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_page_ready()
+
+    @submenu("弹性云服务器")
+    def ecss_create(self, server_name, snapshot_name, desc="", data_disk=False):
+        """为指定弹性云服务器创建快照
+
+        Args:
+            server_name: 云服务器名称
+            snapshot_name: 快照名称
+            desc: 快照描述，默认为空
+            data_disk: 是否快照数据盘
+        """
+        # 点击云服务器操作按钮
+        self.click_dropdown_option(server_name, "新建快照")
+
+        # 定位快照创建对话框
+        dialog = self.get_by_role("dialog")
+
+        # 填写快照名称
+        name_input = dialog.locator("div").filter(has_text=re.compile(r"^快照名称$")).get_by_role("textbox")
+        name_input.fill(snapshot_name)
+
+        # 填写描述
+        desc_input = dialog.locator("textarea")
+        desc_input.fill(desc)
+
+        if data_disk:
+            # 选择快照数据盘
+            self.page.locator("form span").nth(3).click()
+
+        # 点击确定按钮创建快照
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    @submenu("快照")
+    def ecss_delete(self, snapshot_names):
+        """删除弹性云服务器快照，支持单个和批量操作
+
+        Args:
+            snapshot_names: 快照名称（字符串）或快照名称列表（列表）
+        """
+        if isinstance(snapshot_names, list):
+            # 批量操作模式
+            self.select_rows_by_names(snapshot_names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(snapshot_names, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+        self.logger.info(f"云服务器快照删除请求已提交: {snapshot_names}")
