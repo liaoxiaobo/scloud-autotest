@@ -1,4 +1,5 @@
 import re
+import time
 from time import sleep
 from playwright.sync_api import expect
 from sugon_web.pages.ops import OpsPage
@@ -378,7 +379,7 @@ class EcsPage(OpsPage):
             # 选择子网
             logger.info(f"云服务器{name}：选择子网{subnet}")
             self.get_by_role("textbox", name="请选择子网").click()
-            self.get_by_role("listitem").filter(has_text=f"{net}({subnet}").click()
+            self.get_by_role("listitem").filter(has_text=f"{subnet}(").click()
             # 选择网络加速模式
             if mode:
                 logger.info(f"云服务器{name}：选择网络加速模式{mode}")
@@ -408,7 +409,7 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
-    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public_net(基础版)"):
+    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public"):
         """绑定公网IP
         Args:
             name: 云服务器名称
@@ -561,6 +562,7 @@ class EcsPage(OpsPage):
         logger.info(f"弹性云服务器{name}时钟同步")
         self.click_dropdown_option(name, "时间同步服务器")
         self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
+        logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
         self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").fill(interval)
         self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
 
@@ -587,6 +589,236 @@ class EcsPage(OpsPage):
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
         self.click_dropdown_option(image_name, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    def bind_mfip(self, ip: str, project="默认项目"):
+        """虚机绑定mfip
+        Args:
+            project: 项目名称
+            ip: 公网ip地址
+
+        """
+        self.goto_service("网络设施")
+        self.mfip_create(project, "Autotest", ip)
+        self.assert_popup_success("执行成功")
+        self.mfip_search(ip)
+        return self.get_column_data("Mfip 地址")[0]
+
+    def stout_to_dict(self, strs):
+        """将gova show字输出的符串转为字典
+        Args:
+            strs: 字符串
+        Returns:
+            字典
+        """
+        result = {}
+        strs = strs.replace("+", "")
+        strs = strs.strip()
+        l = strs.split("|")
+        for i, v in enumerate(l):
+            if i % 3 == 1:
+                result[v.strip()] = l[i + 1].strip()
+            else:
+                continue
+        return result
+
+    def assert_ecs_enable(self, name: str, ssh_vm, timeout=60):
+        """验证云服务器可用性
+        Args:
+            name: 云服务器名称
+            ssh_vm: 云服务器ssh对象
+            """
+
+        logger.info(f"验证{name}云服务器可用性")
+        logger.info(f"验证云服务器{name} fs-agent状态为active (running)")
+        self.wait_for_update(ssh_vm.run("systemctl status fs-agent", return_rc=True), "active (running)", timeout=timeout)
+        stdout = ssh_vm.run("systemctl status fs-agent", return_rc=True)
+        assert stdout.get("stdout").count("active (running)")\
+               and stdout.get("rc") == 0, "fs-agent未启动"
+
+        logger.info(f"验证云服务器{name} ding-agent服务状态为启动")
+        self.wait_for_update(ssh_vm.run("ps -ef | grep ding", return_rc=True), "ding-agent")
+        stdout = ssh_vm.run("ps -ef | grep ding", return_rc=True)
+        assert stdout.get("stdout").count("ding-agent") \
+               and stdout.get("rc") == 0, "ding-agent未启动"
+
+        logger.info(f"验证云服务器{name}能ping通 100.126.255.250")
+        stdout = ssh_vm.run("ping -c 3 100.126.255.250", return_rc=True)
+        assert stdout.get("stdout").count("3 received, 0% packet loss") \
+               and stdout.get("rc") == 0, "ping 100.126.255.250失败"
+
+        logger.info(f"验证云服务器{name}能curl通http://169.254.169.254:80/openstack")
+        stdout = ssh_vm.run("curl http://169.254.169.254:80/openstack", return_rc=True)
+        assert stdout.get("stdout").count("latest") \
+               and stdout.get("rc") == 0, "curl失败"
+
+    @submenu("弹性云服务器")
+    def ecs_batch_operations(self, names: list, operation: str):
+        """批量操作云服务器
+
+        Args:
+            names: 云服务器名称列表
+            operation: 操作类型，支持"批量重启"、"批量关机"、"批量启动"、"批量强制重启"等
+        """
+        logger.info(f"开始批量操作云服务器: {names}, 操作类型: {operation}")
+
+        try:
+            # 选择指定的云服务器
+            self.select_rows_by_names(names)
+
+            # 点击更多操作按钮
+            self.get_by_role("button", name="更多操作").click()
+            self.page.wait_for_timeout(1000)
+
+            # 根据操作类型点击相应的选项
+            self._click_batch_operation_option(operation)
+
+            # 确认操作
+            self._confirm_batch_operation(operation)
+
+            # 等待操作完成
+            self.wait_for_operation_complete()
+            logger.info(f"批量操作完成: {operation}, 云服务器: {names}")
+
+        except Exception as e:
+            logger.error(f"批量操作失败: {operation}, 云服务器: {names}, 错误: {e}")
+            raise
+
+    def _click_batch_operation_option(self, operation: str):
+        """点击批量操作选项
+
+        Args:
+            operation: 操作类型
+        """
+        # 方法1: 通过aria-controls属性精确定位下拉菜单，然后查找选项
+        try:
+            operation_btn = self.get_by_role("button", name="更多操作")
+            dropdown_id = operation_btn.evaluate("element => element.getAttribute('aria-controls')")
+            if dropdown_id:
+                specific_dropdown = self.page.locator(f"#{dropdown_id}")
+                batch_option = specific_dropdown.get_by_text(operation, exact=True)
+                if batch_option.is_visible() and batch_option.is_enabled():
+                    batch_option.click()
+                    return
+                else:
+                    raise Exception(f"{operation}选项不可见或不可用")
+            else:
+                raise Exception("未找到aria-controls属性")
+        except Exception as e:
+            # 方法2: 备用方案 - 找到最后一个可见的下拉菜单
+            logger.warning(f"主要方法失败，使用备用方案: {e}")
+            dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
+
+            # 从后往前遍历，找到最后一个可见的下拉菜单
+            for i in range(dropdown_menus.count() - 1, -1, -1):
+                menu = dropdown_menus.nth(i)
+                if menu.is_visible():
+                    option = menu.get_by_text(operation, exact=True)
+                    if option.count() > 0 and option.is_visible() and option.is_enabled():
+                        option.click()
+                        return
+            raise Exception(f"所有方法都失败，未找到可用的{operation}选项")
+
+    def _confirm_batch_operation(self, operation: str):
+        """确认批量操作
+
+        Args:
+            operation: 操作类型
+        """
+        # 根据不同的操作类型，使用不同的确认方式
+        if operation == "批量重启":
+            self.get_by_label("批量重启").locator("div").filter(has_text="确定").nth(3).click()
+        elif operation == "批量关机":
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
+        elif operation == "批量启动":
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
+        elif operation == "批量强制重启":
+            self.get_by_label("批量强制重启").get_by_text("确定").click()
+        else:
+            # 默认使用通用确认按钮
+            self.dialog_confirm.click()
+
+    def wait_for_update(self, ssh_vm, expection, timeout=30, check_interval=15):
+        """等待主机更新完成
+        Args:
+            ssh_vm: ssh对象及run的命令
+            expection: 期望值
+            timeout: 超时时间
+            check_interval: 检查间隔
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if ssh_vm.get("stdout").count(expection):
+                break  # 主机名已更新，退出轮询
+            time.sleep(check_interval)
+
+    def ecs_recover(self, name: str):
+        """恢复弹性云服务器
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"恢复弹性云服务器: {name}")
+        self.click_dropdown_option(name, "恢复")
+        self.get_by_label("恢复实例").get_by_text("确定", exact=True).click()
+
+    @submenu("回收站")
+    def ecs_recover_delete(self, name: str, delete_volume: bool = False, release_ip: bool = False):
+        """安全删除云服务器，可选择是否删除数据盘和释放公网IP
+
+        Args:
+            name: 云服务器名称
+            delete_volume: 是否删除云服务器挂载的数据盘，默认为True
+            release_ip: 是否释放云服务器绑定的公网IP，默认为True
+        """
+        logger.info(f"开始安全删除云服务器: {name}")
+
+        # 点击指定云服务器的操作按钮
+        self.click_dropdown_option(name, "删除")
+
+        # 根据参数选择删除选项
+        if delete_volume:
+            # 选择删除云服务器挂载的数据盘
+            self.locator("label").filter(has_text="删除云服务器挂载的数据盘").locator("span").nth(1).click()
+            logger.info(f"已选择删除云服务器{name}挂载的数据盘")
+
+        if release_ip:
+            # 选择释放云服务器绑定的公网IP
+            self.locator("label").filter(has_text="释放云服务器绑定的公网IP").locator("span").nth(1).click()
+            logger.info(f"已选择释放云服务器{name}绑定的公网IP")
+
+        # 确认删除
+        self.get_by_label("删除", exact=True).get_by_text("确定").click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+        logger.info(f"云服务器安全删除请求已提交: {name}")
+        
+    @submenu("回收站")
+    def ecs_recover_batch_delete(self, names, secure=False):
+        """删除回收站中的弹性云服务器资源，支持单个和批量操作
+
+        Args:
+            names: 弹性云服务器名称（字符串）或弹性云服务器名称列表（列表）
+            secure: 是否安全删除（彻底删除），默认为False（普通删除）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 根据参数选择删除类型
+            delete_option = "安全删除" if secure else "删除"
+
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, delete_option)
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
