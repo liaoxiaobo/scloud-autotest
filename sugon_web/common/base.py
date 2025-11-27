@@ -182,7 +182,7 @@ class BasePage(Playwright):
         """公共元素: 批量删除按钮"""
         locators = [
             self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除")
+            self.get_by_text("删除", exact=True).first
         ]
 
         return self._find_element(locators, "批量删除按钮")
@@ -226,7 +226,7 @@ class BasePage(Playwright):
             self._input_search.fill(keyword)
             self._btn_search.click()
             self.wait_for_page_ready()
-            self.page.wait_for_timeout(3000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
+            self.page.wait_for_timeout(1000)    # 等待1秒，确保搜索结果加载完成，解决搜索用例断言不稳定的问题
             self.logger.info(f"搜索操作完成: {keyword}")
         except Exception as e:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
@@ -378,76 +378,107 @@ class BasePage(Playwright):
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
-    def assert_status(self, name: str, status='运行', timeout=300, refresh=False, refresh_interval=5):
+    def assert_status(self, names, status='运行', timeout=300, refresh=False, refresh_interval=5):
         """
-        公共方法: 验证页面表格中指定资源的状态是否符合预期，支持定期刷新页面。
+        公共方法：验证页面表格中指定资源的状态是否符合预期，支持单个和批量资源
 
         Args:
-            name: 资源名称
-            status: 期望状态
+            names: 资源名称（字符串）或资源名称列表（列表）
+            status: 期望状态（字符串），所有资源都将使用此状态进行验证
             timeout: 超时时间（秒）
             refresh: 是否需要定期刷新页面，默认为False
             refresh_interval: 刷新间隔时间（秒），默认为5秒，仅在refresh=True时有效
         """
+        # 处理单个资源的情况（保持向后兼容）
+        if isinstance(names, str):
+            names = [names]
 
-        # 不刷新模式：直接使用Playwright的高效等待机制
-        if not refresh:
-            timeout_ms = timeout * 1000  # 转换为毫秒
-            target_row = self.get_row_by_name(name)
-            expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
-            self.logger.info(f"资源状态验证成功: {name} -> {status}")
-            return
+        # 收集验证失败的资源
+        failed_resources = []
 
-        # 刷新模式：定期刷新页面并检查状态
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
+        # 逐个验证资源状态
+        for name in names:
             try:
-                # 刷新页面
-                if time.time() - start_time > 0:
-                    self.btn_refresh.click()
-                    self.wait_for_page_ready()
-
-                # 定位目标行并检查状态
-                target_row = self.get_row_by_name(name)
-                current_status = target_row.inner_text()
-
-                # 如果状态匹配，则返回
-                if status in current_status:
+                if not refresh:
+                    # 不刷新模式：直接使用Playwright的高效等待机制
+                    timeout_ms = timeout * 1000  # 转换为毫秒
+                    target_row = self.get_row_by_name(name)
+                    expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
                     self.logger.info(f"资源状态验证成功: {name} -> {status}")
-                    return
+                else:
+                    # 刷新模式：定期刷新页面并检查状态
+                    start_time = time.time()
+
+                    while time.time() - start_time < timeout:
+                        try:
+                            # 刷新页面（避免在循环开始时立即刷新）
+                            if time.time() - start_time > 0:
+                                self.btn_refresh.click()
+                                self.wait_for_page_ready()
+
+                            # 定位目标行并检查状态
+                            target_row = self.get_row_by_name(name)
+                            current_status = target_row.inner_text()
+
+                            # 如果状态匹配，则跳出循环继续下一个资源
+                            if status in current_status:
+                                self.logger.info(f"资源状态验证成功: {name} -> {status}")
+                                break
+
+                        except Exception as e:
+                            self.logger.debug(f"检查状态时出错: {e}")
+
+                        # 等待下一次刷新
+                        time.sleep(refresh_interval)
+                    else:
+                        # 超时后记录失败
+                        failed_resources.append(
+                            f"{name} (期望状态: {status}, 当前状态: {current_status if 'current_status' in locals() else '未知'})")
 
             except Exception as e:
-                self.logger.debug(f"检查状态时出错: {e}")
+                self.logger.error(f"资源状态验证失败: {name} -> {status}, 错误: {e}")
+                failed_resources.append(f"{name} (期望状态: {status}, 错误: {str(e)})")
 
-            # 等待下一次刷新
-            time.sleep(refresh_interval)
+        # 如果有任何资源验证失败，抛出异常
+        if failed_resources:
+            raise AssertionError(f"以下资源状态验证失败: {'; '.join(failed_resources)}")
 
-        # 超时后抛出异常
-        raise AssertionError(
-            f"在{timeout}秒内未能获取到期望状态 '{status}'，当前状态: '{current_status if 'current_status' in locals() else '未知'}'")
-
-    def assert_deleted(self, resource_name: str, timeout=300):
+    def assert_deleted(self, resource_names, timeout=300):
         """
-        公共方法: 断言资源已从列表中删除（通过表格行不可见来判断）
+        公共方法：断言资源已从列表中删除（通过表格行不可见来判断），支持单个和批量资源
 
         Args:
-            resource_name: 资源名称
+            resource_names: 资源名称（字符串）或资源名称列表（列表）
             timeout: 超时时间（秒）
         """
         timeout_ms = timeout * 1000  # 转换为毫秒
-        try:
-            # 定位包含资源名称的表格行
-            resource_row = self.get_by_role("row", name=resource_name)
 
-            # 断言行不可见（即删除成功）
-            expect(resource_row).not_to_be_visible(timeout=timeout_ms)
+        # 处理单个资源的情况
+        if isinstance(resource_names, str):
+            resource_names = [resource_names]
 
-            self.logger.info(f"资源从列表中删除成功: {resource_name}")
+        # 批量验证所有资源都已删除
+        failed_resources = []
 
-        except Exception as e:
-            self.logger.error(f"资源删除验证失败: {resource_name}, 错误: {e}")
-            raise AssertionError(f"资源 '{resource_name}' 仍在列表中，删除失败")
+        for resource_name in resource_names:
+            try:
+                # 定位包含资源名称的表格行
+                resource_row = self.get_by_role("row", name=resource_name)
+
+                # 断言行不可见（即删除成功）
+                expect(resource_row).not_to_be_visible(timeout=timeout_ms)
+
+                self.logger.info(f"资源从列表中删除成功: {resource_name}")
+
+            except Exception as e:
+                self.logger.error(f"资源删除验证失败: {resource_name}, 错误: {e}")
+                failed_resources.append(resource_name)
+
+        # 如果有任何资源验证失败，抛出异常
+        if failed_resources:
+            raise AssertionError(
+                f"以下资源删除验证失败（可能仍然存在于列表中）: {', '.join(failed_resources)}"
+            )
 
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
@@ -574,7 +605,7 @@ class BasePage(Playwright):
 
         if header_wrapper.count() > 0:
             headers = header_wrapper.locator("th").all_text_contents()
-            self.logger.info(f"表头信息: {headers}, 共{len(headers)}个")
+            self.logger.info(f"页面表头信息: {headers}, 共{len(headers)}个")
         else:
             self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
             # 备用方案：如果找不到特定class的表头，使用原有方式
@@ -623,7 +654,7 @@ class BasePage(Playwright):
         cells = target_row.get_by_role("cell").all()
         cell_contents = [cell.inner_text() for cell in cells]
         cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]
-        self.logger.info(f"获取到的单元格内容: {cell_contents}, 共{len(cell_contents)}个")
+        self.logger.info(f"页面数据行信息: {cell_contents}, 共{len(cell_contents)}个")
         return cell_contents
 
     def get_row_data(self, name: str) -> dict:
@@ -639,13 +670,13 @@ class BasePage(Playwright):
         Raises:
             AssertionError: 当找不到指定名称的行时
         """
-        self.logger.info(f"开始获取行数据: {name}")
+        self.logger.info(f"开始获取资源({name})的数据")
 
         try:
             # 定位目标行
             target_row = self.get_row_by_name(name)
         except AssertionError as e:
-            self.logger.error(f"获取行数据失败: {str(e)}")
+            self.logger.error(f"获取数据行失败: {str(e)}")
             raise
 
         # 获取表头和单元格内容
@@ -654,7 +685,7 @@ class BasePage(Playwright):
 
         # 组合数据，将表头和单元格内容对应起来
         result = dict(zip(headers, cell_contents))
-        self.logger.debug(f"原始行数据: {result}")
+        self.logger.debug(f"原始数据行: {result}")
 
         # 移除不需要的键
         exclude_headers = ["", "操作"]
@@ -662,7 +693,7 @@ class BasePage(Playwright):
             if key in result:
                 del result[key]
 
-        self.logger.info(f"处理后的行数据: {result}")
+        self.logger.info(f"处理后的数据: {result}")
         return result
 
     def get_column_data(self, header_name: str):

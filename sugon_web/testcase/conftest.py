@@ -142,47 +142,78 @@ def mysql(mysql_page):
 
 
 @pytest.fixture(scope="class")
-def _ecs(ecs_page):
-    """初始化弹性云服务器数据"""
+def vm(ecs_page, request):
+    """初始化弹性云服务器数据
+
+    支持参数化配置，可通过pytest.mark.parametrize传入参数：
+    - count: 创建虚机数量，默认为1
+    - root_gb: 系统盘大小，默认为100GB
+    - bind_mfip: 是否绑定mfip，默认为False
+
+
+    返回值:
+    - 如果创建一台虚机：返回字典类型的虚机信息
+    - 如果创建多台虚机：返回字典列表，每个字典包含一台虚机的信息
+    """
+    # 获取参数，如果没有提供则使用默认值
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)
+    root_gb = params.get('root_gb', 100)
+    bind_mfip = params.get('bind_mfip', True)
+
     name = random_data()
-    ecs_page.ecs_create(name)
+
+    # 创建指定数量的虚机
+    ecs_page.ecs_create(name, count=count, sys_size=root_gb)
     ecs_page.assert_popup_success("创建实例命令下发成功")
-    ecs_page.assert_status(name)
-    row_data = ecs_page.get_row_data(name)
-    metadata = {
-        "name": name,
-        "id": row_data["名称/ID"],
-        "ip": row_data["IP地址"].split(":")[1].strip(),
-        'host': row_data["物理机"],
-        "flavor": row_data["规格"],
-        "image": row_data["镜像名称"],
-        "project": row_data["项目名称"]
-    }
 
-    # 临时方案：跨服务页面直接跳转，给虚机绑定mfip
-    # ecs_page.goto_service("网络设施")
-    # ecs_page.mfip_create(row_data["项目名称"], "Autotest",metadata["ip"])
-    # ecs_page.assert_popup_success()
-    # ecs_page.mfip_search(metadata["ip"])
-    # metadata["mfip"] = ecs_page.get_row_data(metadata["ip"]).get("Mfip 地址")
+    # 等待虚机创建完成并收集信息
+    metadata_list = []
 
-    yield metadata
+    # 根据创建数量处理虚机名称
+    if count == 1:
+        vm_names = [name]
+    else:
+        # 多台虚机时，名称会自动添加序号后缀
+        vm_names = [f"{name}-{i}" for i in range(0, count)]
 
-    ecs_page.goto_service("弹性云服务器") # 保证在同一服务页面
-    ecs_page.ecs_remove(metadata["name"])
-    ecs_page.ecs_delete(metadata["name"])
-    ecs_page.assert_deleted(metadata["name"])
+    # 等待虚机创建完成
+    ecs_page.assert_status(vm_names)
 
-@pytest.fixture(scope="class")
-def vm(_ecs, ops_page):
-    """虚机绑定mfip"""
-    ops_page.mfip_create(_ecs["project"], "Autotest", _ecs["ip"])
-    ops_page.assert_popup_success()
-    ops_page.mfip_search(_ecs["ip"])
-    _ecs["mfip"] = ops_page.get_column_data("Mfip 地址")[0]   # 更新metadata
+    # 收集每台虚机的信息
+    for vm_name in vm_names:
+        row_data = ecs_page.get_row_data(vm_name)
+        vm_metadata = {
+            "name": vm_name,
+            "id": row_data["名称/ID"],
+            "ip": row_data["IP地址"].split(":")[1].strip(),
+            'host': row_data["物理机"],
+            "flavor": row_data["规格"],
+            "image": row_data["镜像名称"],
+            "project": row_data["项目名称"]
+        }
+        metadata_list.append(vm_metadata)
 
-    yield _ecs
+    # 如果需要绑定mfip
+    if bind_mfip:
+        for vm_data in metadata_list:
+            ecs_page.goto_service("网络设施")
+            ecs_page.mfip_create(vm_data["project"], "Autotest", vm_data["ip"])
+            ecs_page.assert_popup_success()
+            ecs_page.mfip_search(vm_data["ip"])
+            vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
 
+    # 根据虚机数量返回不同类型的数据
+    if count == 1:
+        yield metadata_list[0]  # 单台虚机返回字典
+    else:
+        yield metadata_list  # 多台虚机返回列表
+
+    # 清理虚机
+    ecs_page.goto_service("弹性云服务器")  # 保证在同一服务页面
+    ecs_page.ecs_remove(vm_names)
+    ecs_page.ecs_delete(vm_names)
+    ecs_page.assert_deleted(vm_names)
 
 @pytest.fixture()
 def evss_policy(evs_page):

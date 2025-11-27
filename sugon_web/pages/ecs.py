@@ -1,11 +1,12 @@
 import re
 from time import sleep
 from playwright.sync_api import expect
-from sugon_web.common.base import BasePage, submenu
+from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu
 from sugon_web.utils.logger import logger
 
 
-class EcsPage(BasePage):
+class EcsPage(OpsPage):
     def __init__(self, page, env):
         super().__init__(page, env)
 
@@ -13,48 +14,67 @@ class EcsPage(BasePage):
     def ecs_create(
             self,
             name,
-            network= "Autotest",
-            subnet= "Autotest(10",
+            count=1,
+            network="Autotest",
+            subnet="Autotest(10",
             cluster="Autotest",
             flavor="ecs.c6.large",
             image_name="",
             os_version="centos7.9",
             login_password="sugon@20",
             vnc_password="sugon@20",
-            sys_size = 100,
+            sys_size=100,
             **kwargs
     ):
-        """创建云服务器"""
-        logger.info(f"开始创建云服务器: {name}")
+        """创建云服务器
+
+        Args:
+            name: 云服务器名称
+            count: 创建数量，默认为1
+            network: 网络，默认为"Autotest"
+            subnet: 子网，默认为"Autotest(10"
+            cluster: 集群，默认为"Autotest"
+            flavor: 规格，默认为"ecs.c6.large"
+            image_name: 镜像名称，默认为空（使用storage_pool）
+            os_version: 操作系统版本，默认为"centos7.9"
+            login_password: 登录密码，默认为"sugon@20"
+            vnc_password: VNC密码，默认为"sugon@20"
+            sys_size: 系统盘大小，默认为100
+        """
+        logger.info(f"开始创建云服务器: {name}，数量: {count}")
 
         # 点击新建按钮
         self.btn_create.click()
-        
+
         # 填写基本信息
         self.get_by_role("textbox", name="请输入名称").first.fill(name)
-        
+
+        # 设置创建数量（如果大于1）
+        if count > 1:
+            self.get_by_role("spinbutton").first.fill(str(count))
+
         # 选择集群
         self._select_cluster(cluster)
-        
+
         # 选择规格
         self._select_flavor(flavor)
-        
+
         # 选择镜像
         self._select_image(image_name, os_version)
 
         # 配置系统盘
         self._set_sys_volume(sys_size)
-        
+
         # 选择网络
         self._select_network(network, subnet)
-        
+
         # 设置密码
         self._set_passwords(login_password, vnc_password)
-        
+
         # 提交创建
         self.get_by_text("立即创建").click()
         self.wait_for_operation_complete()
-        logger.info(f"云服务器创建请求已提交: {name}")
+        logger.info(f"云服务器创建请求已提交: {name}，数量: {count}")
 
     def _select_cluster(self, cluster):
         """选择集群"""
@@ -117,18 +137,58 @@ class EcsPage(BasePage):
         self.locator("div").filter(has_text=re.compile(r"^确认VNC密码$")).get_by_role("textbox").fill(vnc_password)
 
     @submenu("弹性云服务器")
-    def ecs_remove(self, name):
-        """回收云服务器"""
-        self.click_dropdown_option(name, "删除")
+    def ecs_remove(self, names):
+        """回收云服务器资源，支持单个和批量操作
+
+        Args:
+            names: 云服务器名称（字符串）或云服务器名称列表（列表）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击更多操作按钮
+            self.get_by_role("button", name="更多操作 ").click()
+
+            # 点击批量删除选项
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(names, "删除")
+
+        # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
 
+        # 等待操作完成
+        self.wait_for_page_ready()
+
     @submenu("回收站")
-    def ecs_delete(self, name):
-        """删除云服务器"""
-        logger.info(f"开始删除云服务器: {name}")
-        self.click_dropdown_option(name, "删除")
+    def ecs_delete(self, names, secure=False):
+        """删除回收站中的云服务器资源，支持单个和批量操作
+
+        Args:
+            names: 云服务器名称（字符串）或云服务器名称列表（列表）
+            secure: 是否安全删除（彻底删除），默认为False（普通删除）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 根据参数选择删除类型
+            delete_option = "安全删除" if secure else "删除"
+
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, delete_option)
+
+        # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
-        logger.info(f"云服务器删除请求已提交: {name}")
+
+        # 等待操作完成
+        self.wait_for_page_ready()
         sleep(6)    # 临时方案: 等待删除弹窗自动关闭，规避元素未消失导致的定位异常
 
     def assert_ecs_info(self, name: str, row_name: str, exception: str):
