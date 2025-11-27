@@ -53,7 +53,8 @@ def volume(evs_page, request):
                 "empty": True,  # 是否创建空白云硬盘，默认为True
                 "image_name": "",  # 镜像名称，当empty=False时使用
                 "size": 30,  # 云硬盘大小，默认为30GB
-                "desc": ""  # 云硬盘描述，默认为空
+                "desc": "",  # 云硬盘描述，默认为空
+                "shared": False,  # 是否创建共享云硬盘，默认为False
             }
     """
     # 获取参数，如果没有提供则使用默认值
@@ -62,6 +63,7 @@ def volume(evs_page, request):
     image_name = params.get('image_name', '')
     size = params.get('size', 30)
     desc = params.get('desc', '')
+    shared = params.get('shared', False)
 
     name = random_data()
     evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
@@ -70,7 +72,8 @@ def volume(evs_page, request):
         empty=empty,
         image_name=image_name,
         size=size,
-        desc=desc
+        desc=desc,
+        shared=shared
     )
     evs_page.assert_popup_success()
     evs_page.assert_status(name, status="可用")

@@ -96,7 +96,7 @@ class EvsPage(BasePage):
         # 存储类型支持映射
         STORAGE_SUPPORT = {
             'encrypted': ['xstor', 'usan'],  # 支持加密的存储类型
-            'shared': ['xstor', 'xbd', 'xsky', 'ustor', 'zbs']  # 支持共享的存储类型
+            'shared': ['xstor', 'xbd', 'ceph', 'ustor', 'zbs']  # 支持共享的存储类型
         }
 
         # 验证存储类型支持

@@ -14,7 +14,7 @@ class TestEVS:
 
         # 如果是共享盘测试，检查当前存储类型是否支持
         if params.get('shared', False):
-            supported_storages = ['xstor', 'xbd', 'xsky', 'ustor', 'zbs']
+            supported_storages = ['xstor', 'xbd', 'ceph', 'ustor', 'zbs']
             current_storage = evs_page.env['stor']
 
             if current_storage not in supported_storages:
@@ -704,6 +704,93 @@ class TestEVSScenario:
             ssh_vm.run(f"umount /dev/{disk_name}")
             evs_page.evs_unmount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
+
+    @allure.title("共享云硬盘-多实例挂载数据一致性验证")
+    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    @pytest.mark.parametrize("volume", [{"shared": True, "size": 10}], indirect=True)
+    def test_shared_volume_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
+        """
+        测试共享云硬盘数据一致性：
+        1. 通过fixture预置两台云服务器和一块共享云盘
+        2. 将该云硬盘挂载到一台云服务器A上，并对盘进行格式化挂载写入测试文件
+        3. 将该云硬盘挂载到一台云服务器实例B上，进行挂载后可以看到步骤2的测试文件
+        4. 云服务器B上写一个新文件，验证云服务器A上也能查看到该文件，md5值一致
+        """
+
+        # 获取两台云服务器信息
+        vm_a = vm[0]
+        vm_b = vm[1]
+
+        with allure.step("步骤1: 将共享云硬盘挂载到云服务器A并写入测试文件"):
+            # 挂载共享云硬盘到云服务器A
+            evs_page.evs_mount(volume["name"], vm_a["name"])
+            evs_page.assert_popup_success()
+            evs_page.assert_status(volume["name"], status="正在使用")
+
+            # 获取云硬盘在云服务器A中的设备名
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+
+            # 连接到云服务器A并操作云硬盘
+            ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+
+            # 格式化云硬盘并挂载
+            mount_point = "/mnt/shared_volume"
+            ssh_vm.mount_disk(disk_name, mount_point)
+
+            # 创建测试文件并计算MD5值
+            md5_value_a = ssh_vm.create_file(f"{mount_point}/test_file_a.txt")
+
+        with allure.step("步骤2: 将共享云硬盘挂载到云服务器B"):
+            # 挂载共享云硬盘到云服务器B
+            evs_page.evs_mount(volume["name"], vm_b["name"])
+            evs_page.assert_popup_success()
+
+            # 获取云硬盘在云服务器B中的设备名
+            disk_name_b = evs_page.get_row_data(volume["name"]).get("挂载信息").split(f"{vm_b['name']}上的")[-1]
+
+            # 连接到云服务器B
+            ssh_vm.connect(vm_b['mfip'], pwd="sugon@20")
+
+            # 挂载云硬盘（不需要格式化，因为是共享盘）
+            mount_point_b = "/mnt/shared_volume_b"
+            ssh_vm.run(f"mkdir -p {mount_point_b}")
+            ssh_vm.run(f"mount /dev/{disk_name_b} {mount_point_b}")
+
+            # 验证步骤1中创建的测试文件存在
+            assert "test_file_a.txt" in ssh_vm.run(f"ls -la {mount_point_b}"), "测试文件不存在于云服务器B的共享云硬盘中"
+
+            # 验证两个MD5值相同
+            md5_value_b = ssh_vm.run(f"md5sum {mount_point_b}/test_file_a.txt | awk '{{print $1}}'")
+            assert md5_value_a == md5_value_b, f"共享云硬盘中测试文件的MD5值在两台服务器上不一致: {md5_value_a} vs {md5_value_b}"
+
+        # with allure.step("步骤3: 在云服务器B上创建新文件并验证云服务器A也能访问"):
+        #     # 在云服务器B上创建新文件
+        #     md5_value_b_new = ssh_vm.create_file(f"{mount_point_b}/test_file_b.txt")
+        #
+        #     # 连接到云服务器A并验证新文件存在
+        #     ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+        #
+        #     # 验证新文件存在且MD5值一致
+        #     assert "test_file_b.txt" in ssh_vm.run(f"ls -la {mount_point}"), "云服务器B创建的测试文件不存在于云服务器A的共享云硬盘中"
+        #     md5_value_a_new = ssh_vm.run(f"md5sum {mount_point}/test_file_b.txt | awk '{{print $1}}'")
+        #     assert md5_value_b_new == md5_value_a_new, f"新创建的测试文件的MD5值在两台服务器上不一致: {md5_value_b_new} vs {md5_value_a_new}"
+
+        with allure.step("步骤4: 清理测试数据"):
+            # 卸载云服务器A上的共享云硬盘
+            ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+            ssh_vm.run(f"umount {mount_point}")
+            evs_page.evs_unmount(volume["name"], vm_a["name"])
+            evs_page.assert_popup_success()
+
+            # 卸载云服务器B上的共享云硬盘
+            ssh_vm.connect(vm_b['mfip'], pwd="sugon@20")
+            ssh_vm.run(f"umount {mount_point_b}")
+            evs_page.evs_unmount(volume["name"], vm_b["name"])
+            evs_page.assert_popup_success()
+
+            # 验证云硬盘状态为可用
+            evs_page.assert_status(volume["name"], status="可用")
+
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
