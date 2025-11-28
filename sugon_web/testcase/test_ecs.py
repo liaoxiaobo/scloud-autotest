@@ -261,7 +261,7 @@ class TestECS:
         with allure.step(f"步骤2: 验证{operation}结果"):
             ecs_page.assert_popup_success(f"{name}实例{operation}成功")
 
-    @allure.title("弹性云服务器-列表页搜索")
+    @allure.title("弹性云服务器-列表页搜索&重置")
     def test_ecs_search(self, ecs_page, vm):
 
         with allure.step("步骤1: 输入名称进行搜索"):
@@ -309,7 +309,7 @@ class TestEcsRecycle:
             assert ssh_vm.run(f"md5sum {name}").count(md5), "恢复后系统盘数据MD5不一致"
             assert ssh_vm.create_file(name) is not None, "恢复后系统盘数据不能写入"
 
-    @allure.title("回收站-列表页搜索")
+    @allure.title("回收站-列表页搜索&重置")
     def test_ecs_recycle_search(self, ecs_page, vm):
         name = vm.get("name")
         with allure.step(f"步骤1: 删除云服务器{name}"):
@@ -398,3 +398,148 @@ class TestEcsRecycle:
             for name, ecs_id in zip(ecs_names, ids):
                 ecs_page.assert_deleted(name)
                 assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
+
+@allure.epic('计算服务')
+@allure.feature('弹性云服务器 ECS')
+@allure.story('快照功能验证')
+class TestECSS:
+
+    @allure.title("弹性云服务器-创建&删除快照")
+    def test_ecs_system_snapshot(self, ecs_page, vm, ssh_host):
+        """测试创建云服务器快照"""
+        snapshot_name = f"snapshot_{vm['name']}"
+
+        with allure.step("步骤1: 创建系统盘快照"):
+            ecs_page.ecss_create(
+                name=vm['name'],
+                snapshot_name=snapshot_name,
+                desc="系统盘快照测试"
+            )
+            ecs_page.assert_popup_success("创建实例快照成功")
+            ecs_page.assert_status(vm['name'], status="当前无任务")
+
+        with allure.step("步骤2: 验证快照创建成功"):
+            # 切换到快照页面
+            ecs_page.goto_submenu("快照")
+            ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+
+            # 验证快照属性
+            snapshot_data = ecs_page.get_row_data(snapshot_name)
+            assert snapshot_data["是否快照数据卷"] == "否"
+            assert snapshot_data["是否启动源"] == "是"
+
+        with allure.step("步骤3: 删除系统盘快照"):
+            # 删除快照
+            ecs_page.ecss_delete(snapshot_name)
+
+        with allure.step("步骤4: 验证快照已删除"):
+            ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
+            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+
+    @allure.title("弹性云服务器-批量删除快照")
+    def test_ecs_batch_snapshot(self, ecs_page, vm, ssh_host):
+        """测试批量删除云服务器快照"""
+        snapshot_names = []
+
+        with allure.step("步骤1: 批量创建快照"):
+            # 创建多个快照
+            for i in range(3):
+                snapshot_name = f"snapshot_{random_data()}"
+                snapshot_names.append(snapshot_name)
+
+                ecs_page.ecss_create(
+                    name=vm["name"],
+                    snapshot_name=snapshot_name,
+                )
+                ecs_page.assert_popup_success("创建实例快照成功")
+                ecs_page.assert_status(vm["name"], status="当前无任务")
+
+        with allure.step("步骤2: 验证所有快照创建成功"):
+            # 切换到快照页面
+            ecs_page.goto_submenu("快照")
+            ecs_page.assert_status(snapshot_names, status="可用", refresh=True)
+
+        with allure.step("步骤3: 批量删除快照"):
+            # 批量删除快照
+            ecs_page.ecss_delete(snapshot_names)
+
+        with allure.step("步骤4: 验证所有快照已删除"):
+            ecs_page.assert_deleted(snapshot_names, refresh=True)
+            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+
+    @allure.title("云服务器快照-修改")
+    @pytest.mark.parametrize("params", load_data('test_modify'))
+    def test_ecss_modify(self, ecs_page, ecss: dict, params):
+        """测试云服务器快照修改功能"""
+
+        new_name = ecss["name"] + params["name_suffix"]
+        new_desc = params["new_desc"]
+
+        with allure.step("步骤1: 修改云服务器快照的名称和描述"):
+            ecs_page.ecss_edit(ecss["name"], new_name, new_desc)
+            ecs_page.assert_popup_success("修改快照成功")
+
+        with allure.step("步骤2: 验证修改结果"):
+            ecs_page.assert_list_contain(new_name)
+            # 获取修改后的快照数据并验证
+            snapshot_data = ecs_page.get_row_data(new_name)
+            assert snapshot_data["描述"] == new_desc
+
+    @allure.title("弹性云服务器-还原快照")
+    def test_ecss_restore(self, ecs_page, vm, ecss: dict, ssh_vm):
+        """测试云服务器快照还原功能"""
+
+        with allure.step("步骤1: 虚机打快照后，在root目录下写测试文件"):
+            # 连接虚拟机
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+
+            # 在root目录下创建测试文件
+            test_file = "/root/test_restore_file.txt"
+            ssh_vm.create_file(test_file)
+            ssh_vm.file_exist(test_file)
+
+        with allure.step("步骤2: 虚机还原快照"):
+
+            # 还原快照
+            ecs_page.ecss_restore(ecss["name"])
+            ecs_page.assert_popup_success(f"{vm['name']}实例还原快照成功")
+
+        with allure.step("步骤3: 页面验证快照还原结果"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.assert_status(vm['name'], status="快照还原中")
+            ecs_page.assert_status(vm['name'], status="当前无任务")
+            data = ecs_page.get_row_data(vm['name'])
+            assert data["镜像名称"] == ecss["name"]
+
+        with allure.step("步骤4: 验证虚机内测试文件已不存在"):
+            # 重新连接虚拟机
+            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.file_not_exist(test_file)
+
+        with allure.step("步骤5: 重建虚机并删除快照"):
+            image = ecs_page.storage_pool  # 获取存储池同名镜像
+            if ecs_page.env["stor"] not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
+                ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
+                ecs_page.assert_status(vm['name'], status="当前无任务")
+                ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据
+
+    @allure.title("云硬盘快照-列表页搜索&重置")
+    def test_ecss_search(self, ecs_page, ecss: dict):
+
+        with allure.step("步骤1: 输入名称进行搜索"):
+            keyword = ecss['name'][:-2]
+            ecs_page.search(keyword)
+
+        with allure.step("步骤2: 验证搜索结果"):
+            ecs_page.assert_list_contain(keyword, exact_match=False)
+
+        with allure.step("步骤3: 重置搜索条件"):
+            ecs_page.search(random_data())
+            ecs_page.btn_reset.click()
+            ecs_page.wait_for_page_ready()
+
+        with allure.step("步骤4: 验证重置结果"):
+            assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+            assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
+
+

@@ -96,7 +96,7 @@ class TestEVS:
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘-修改")
-    @pytest.mark.parametrize("params", load_data('test_volume_modify'))
+    @pytest.mark.parametrize("params", load_data('test_modify'))
     def test_volume_edit(self, evs_page, volume, params):
 
         new_name = volume["name"] + params["name_suffix"]
@@ -351,7 +351,7 @@ class TestEVSS:
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘快照-修改")
-    @pytest.mark.parametrize("params", load_data('test_volume_modify_snapshot'))
+    @pytest.mark.parametrize("params", load_data('test_modify'))
     def test_volume_modify_snapshot(self, evs_page, evss, params):
 
         new_name = evss["name"] + params["name_suffix"]

@@ -321,3 +321,37 @@ def kms_key(kms_page, request):
     kms_page.goto_service("可信密码模块")
     kms_page.kms_delete(key_name)
     kms_page.assert_deleted(key_name)
+
+
+@pytest.fixture()
+def ecss(ecs_page, vm):
+    """创建并返回一个ECS快照名称，测试结束后自动清理
+
+    Args:
+        ecs_page: ECS页面对象
+        vm: 虚拟机fixture
+
+    Returns:
+        str: 快照名称
+    """
+    vm_name = vm.get("name")
+    snapshot_name = f"snapshot_{vm_name}"
+
+    # 创建系统盘快照
+    ecs_page.ecss_create(
+        name=vm_name,
+        snapshot_name=snapshot_name,
+    )
+    ecs_page.assert_popup_success("创建实例快照成功")
+    ecs_page.assert_status(vm_name, status="当前无任务")
+
+    # 切换到快照页面并验证
+    ecs_page.goto_submenu("快照")
+    ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+
+    # 返回快照名称
+    yield {"name": snapshot_name, "vm_name": vm_name}
+
+    # 测试结束后清理快照
+    ecs_page.ecss_delete(snapshot_name)
+    ecs_page.assert_deleted(snapshot_name, refresh=True)
