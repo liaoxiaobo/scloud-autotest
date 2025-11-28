@@ -443,32 +443,60 @@ class BasePage(Playwright):
         if failed_resources:
             raise AssertionError(f"以下资源状态验证失败: {'; '.join(failed_resources)}")
 
-    def assert_deleted(self, resource_names, timeout=300):
+    def assert_deleted(self, resource_names, timeout=300, refresh=False, refresh_interval=5):
         """
         公共方法：断言资源已从列表中删除（通过表格行不可见来判断），支持单个和批量资源
 
         Args:
             resource_names: 资源名称（字符串）或资源名称列表（列表）
             timeout: 超时时间（秒）
+            refresh: 是否需要定期刷新页面，默认为False
+            refresh_interval: 刷新间隔时间（秒），默认为5秒，仅在refresh=True时有效
         """
-        timeout_ms = timeout * 1000  # 转换为毫秒
-
         # 处理单个资源的情况
         if isinstance(resource_names, str):
             resource_names = [resource_names]
 
-        # 批量验证所有资源都已删除
+        # 收集验证失败的资源
         failed_resources = []
 
         for resource_name in resource_names:
             try:
-                # 定位包含资源名称的表格行
-                resource_row = self.get_by_role("row", name=resource_name)
+                if not refresh:
+                    # 不刷新模式：直接使用Playwright的高效等待机制
+                    timeout_ms = timeout * 1000  # 转换为毫秒
+                    resource_row = self.get_by_role("row", name=resource_name)
+                    expect(resource_row).not_to_be_visible(timeout=timeout_ms)
+                    self.logger.info(f"资源从列表中删除成功: {resource_name}")
+                else:
+                    # 刷新模式：定期刷新页面并检查资源是否已删除
+                    start_time = time.time()
 
-                # 断言行不可见（即删除成功）
-                expect(resource_row).not_to_be_visible(timeout=timeout_ms)
+                    while time.time() - start_time < timeout:
+                        try:
+                            # 刷新页面（避免在循环开始时立即刷新）
+                            if time.time() - start_time > 0:
+                                self.btn_refresh.click()
+                                self.wait_for_page_ready()
 
-                self.logger.info(f"资源从列表中删除成功: {resource_name}")
+                            # 定位包含资源名称的表格行
+                            resource_row = self.get_by_role("row", name=resource_name)
+
+                            # 检查行是否不可见（即已删除）
+                            if not resource_row.is_visible():
+                                self.logger.info(f"资源从列表中删除成功: {resource_name}")
+                                break
+
+                        except Exception as e:
+                            # 如果定位不到资源行，则认为已删除
+                            self.logger.info(f"资源从列表中删除成功: {resource_name}")
+                            break
+
+                        # 等待下一次刷新
+                        time.sleep(refresh_interval)
+                    else:
+                        # 超时后记录失败
+                        failed_resources.append(resource_name)
 
             except Exception as e:
                 self.logger.error(f"资源删除验证失败: {resource_name}, 错误: {e}")

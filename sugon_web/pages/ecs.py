@@ -22,7 +22,7 @@ class EcsPage(OpsPage):
             flavor="ecs.c6.large",
             image_name="",
             os_version="centos7.9",
-            login_password="sugon@20",
+            login_password="admin1234@sugon",
             vnc_password="sugon@20",
             sys_size=100,
             **kwargs
@@ -38,7 +38,7 @@ class EcsPage(OpsPage):
             flavor: 规格，默认为"ecs.c6.large"
             image_name: 镜像名称，默认为空（使用storage_pool）
             os_version: 操作系统版本，默认为"centos7.9"
-            login_password: 登录密码，默认为"sugon@20"
+            login_password: 登录密码，默认为"admin1234@sugon"
             vnc_password: VNC密码，默认为"sugon@20"
             sys_size: 系统盘大小，默认为100
         """
@@ -797,7 +797,7 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
         logger.info(f"云服务器安全删除请求已提交: {name}")
-        
+
     @submenu("回收站")
     def ecs_recover_batch_delete(self, names, secure=False):
         """删除回收站中的弹性云服务器资源，支持单个和批量操作
@@ -825,3 +825,106 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_page_ready()
+
+    @submenu("弹性云服务器")
+    def ecss_create(self, name, snapshot_name, desc="", data_disk=False):
+        """为指定弹性云服务器创建快照
+
+        Args:
+            name: 云服务器名称
+            snapshot_name: 快照名称
+            desc: 快照描述，默认为空
+            data_disk: 是否快照数据盘
+        """
+        # 点击云服务器操作按钮
+        self.click_dropdown_option(name, "新建快照")
+
+        # 定位快照创建对话框
+        dialog = self.get_by_role("dialog")
+
+        # 填写快照名称
+        name_input = dialog.locator("div").filter(has_text=re.compile(r"^快照名称$")).get_by_role("textbox")
+        name_input.fill(snapshot_name)
+
+        # 填写描述
+        desc_input = dialog.locator("textarea")
+        desc_input.fill(desc)
+
+        if data_disk:
+            # 选择快照数据盘
+            self.page.locator("form span").nth(3).click()
+
+        # 点击确定按钮创建快照
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    @submenu("快照")
+    def ecss_delete(self, snapshot_names):
+        """删除弹性云服务器快照，支持单个和批量操作
+
+        Args:
+            snapshot_names: 快照名称（字符串）或快照名称列表（列表）
+        """
+        if isinstance(snapshot_names, list):
+            # 批量操作模式
+            self.select_rows_by_names(snapshot_names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(snapshot_names, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+        self.logger.info(f"云服务器快照删除请求已提交: {snapshot_names}")
+
+    @submenu("快照")
+    def ecss_edit(self, name, new_name, new_desc):
+        """修改指定云服务器快照的名称和描述
+
+        Args:
+            name: 原快照名称
+            new_name: 新的快照名称
+            new_desc: 新的描述信息
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(name, "修改")
+
+        # 定位对话框中的输入框
+        dialog = self.get_by_role("dialog")
+        name_input = dialog.locator("div").filter(has_text=re.compile(r"^快照名称$")).get_by_role("textbox")
+        desc_input = dialog.locator("textarea")
+
+        # 填写新的名称和描述
+        name_input.fill(new_name)
+        desc_input.fill(new_desc)
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    @submenu("快照")
+    def ecss_restore(self, snapshot_name):
+        """使用指定快照还原云服务器
+
+        Args:
+            snapshot_name: 快照名称
+        """
+        # 使用BasePage中的通用下拉菜单选项点击方法
+        self.click_dropdown_option(snapshot_name, "还原快照")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+

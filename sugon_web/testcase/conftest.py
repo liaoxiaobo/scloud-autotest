@@ -53,7 +53,8 @@ def volume(evs_page, request):
                 "empty": True,  # 是否创建空白云硬盘，默认为True
                 "image_name": "",  # 镜像名称，当empty=False时使用
                 "size": 30,  # 云硬盘大小，默认为30GB
-                "desc": ""  # 云硬盘描述，默认为空
+                "desc": "",  # 云硬盘描述，默认为空
+                "shared": False,  # 是否创建共享云硬盘，默认为False
             }
     """
     # 获取参数，如果没有提供则使用默认值
@@ -62,6 +63,7 @@ def volume(evs_page, request):
     image_name = params.get('image_name', '')
     size = params.get('size', 30)
     desc = params.get('desc', '')
+    shared = params.get('shared', False)
 
     name = random_data()
     evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
@@ -70,7 +72,8 @@ def volume(evs_page, request):
         empty=empty,
         image_name=image_name,
         size=size,
-        desc=desc
+        desc=desc,
+        shared=shared
     )
     evs_page.assert_popup_success()
     evs_page.assert_status(name, status="可用")
@@ -202,6 +205,7 @@ def vm(ecs_page, request):
             ecs_page.assert_popup_success()
             ecs_page.mfip_search(vm_data["ip"])
             vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+        ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
 
     # 根据虚机数量返回不同类型的数据
     if count == 1:
@@ -317,3 +321,37 @@ def kms_key(kms_page, request):
     kms_page.goto_service("可信密码模块")
     kms_page.kms_delete(key_name)
     kms_page.assert_deleted(key_name)
+
+
+@pytest.fixture()
+def ecss(ecs_page, vm):
+    """创建并返回一个ECS快照名称，测试结束后自动清理
+
+    Args:
+        ecs_page: ECS页面对象
+        vm: 虚拟机fixture
+
+    Returns:
+        str: 快照名称
+    """
+    vm_name = vm.get("name")
+    snapshot_name = f"snapshot_{vm_name}"
+
+    # 创建系统盘快照
+    ecs_page.ecss_create(
+        name=vm_name,
+        snapshot_name=snapshot_name,
+    )
+    ecs_page.assert_popup_success("创建实例快照成功")
+    ecs_page.assert_status(vm_name, status="当前无任务")
+
+    # 切换到快照页面并验证
+    ecs_page.goto_submenu("快照")
+    ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+
+    # 返回快照名称
+    yield {"name": snapshot_name, "vm_name": vm_name}
+
+    # 测试结束后清理快照
+    ecs_page.ecss_delete(snapshot_name)
+    ecs_page.assert_deleted(snapshot_name, refresh=True)
