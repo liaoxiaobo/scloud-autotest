@@ -44,7 +44,7 @@ class TestECS:
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == vm_state, f"{name}状态变更失败"
             if vm_state == "active":
-                ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+                ssh_vm.connect(vm['mfip'])
                 ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("弹性云服务器-编辑功能验证")
@@ -57,7 +57,7 @@ class TestECS:
 
         with allure.step("步骤2: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
 
         with allure.step("步骤3: 清理测试数据"):
@@ -74,7 +74,7 @@ class TestECS:
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
         with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.run("dd if=/dev/zero of=/home/test1 bs=4k count=1048576")
             md5 = ssh_vm.run("md5sum /home/test1")
 
@@ -89,7 +89,7 @@ class TestECS:
             ecs_page.assert_image_name(clone_name, image_name)
             clone_ip = ecs_page.get_row_data(clone_name).get("IP地址").split(':')[1]
             mfip = ecs_page.bind_mfip(clone_ip.strip())
-            ssh_vm.connect(mfip, pwd="sugon@20")
+            ssh_vm.connect(mfip)
             md5_new = ssh_vm.run("md5sum /home/test1")
             assert md5 == md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
 
@@ -105,7 +105,7 @@ class TestECS:
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
         with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.run("dd if=/dev/zero of=/home/test1 bs=4k count=1048576")
         with allure.step(f"步骤2: 重建云服务器{name}"):
             ecs_page.ecs_rebuild(name, 'centos7.9', '64位', image)
@@ -114,7 +114,7 @@ class TestECS:
             ecs_page.assert_popup_success(f"{name}实例重建成功")
             ecs_page.assert_status(name, status="重建中")
             ecs_page.assert_status(name)
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             md5_new = ssh_vm.run("md5sum /home/test1")
             assert md5_new.find("No such file or directory"), f"重建后系统盘数据MD5仍然存在，重建后数据:{md5_new}"
 
@@ -151,7 +151,7 @@ class TestECS:
             ecs_page.assert_popup_success(f"{name}实例，连接{subnet}子网成功", timeout=30)
             ips = ecs_page.get_row_data(name).get("IP地址").split(':')
             ip = [item.strip() for item in ips if re.search(r'10\.228\.43\.\d', item)][0].split(' ')[0].strip()
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.ping(ip)
 
         with allure.step(f"步骤3: {name}卸载网卡:{ip}"):
@@ -159,7 +159,7 @@ class TestECS:
         with allure.step("步骤4: 验证加载网卡结果"):
             ecs_page.assert_popup_success(f"断开网络成功", timeout=60)
             ecs_page.assert_ecs_info(name, "IP地址", "")
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.ping(ip, connected=False)
 
     @allure.title("弹性云服务器-绑定/解绑公网IP功能验证")
@@ -171,7 +171,7 @@ class TestECS:
         with (allure.step("步骤2: 验证绑定公网IP结果")):
             ecs_page.assert_popup_success(f"执行成功")
             ecs_page.assert_ecs_info(name, "IP地址", pub_ip)
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"ping -c 3 {pub_ip}").count(
                 "3 received, 0% packet loss"), f"加载公网IP后，无法ping通IP:{pub_ip}"
 
@@ -180,7 +180,7 @@ class TestECS:
             ecs_page.assert_popup_success(f"执行成功")
         with allure.step("步骤4: 验证解绑公网IP结果"):
             ecs_page.assert_ecs_info_not_contains(name, "IP地址", pub_ip)
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"ping -c 3 {pub_ip}").count(
                 "0 received, 100% packet loss"), f"卸载公网IP后，仍可ping通IP:{pub_ip}"
 
@@ -194,7 +194,7 @@ class TestECS:
             ecs_page.assert_popup_success(f"修改密码成功")
 
         with allure.step(f"云服务器{name}还原密码"):
-            ecs_page.ecs_modify_pwd(name, "sugon@20", "sugon@20")
+            ecs_page.ecs_modify_pwd(name, "admin1234@sugon", "admin1234@sugon")
         with allure.step("验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
 
@@ -221,7 +221,7 @@ class TestECS:
             ecs_page.ecs_modify_hostname(name, hostname)
         with (allure.step("步骤2: 验证修改主机名结果")):
             ecs_page.assert_popup_success(f"更新实例成功")
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ecs_page.wait_for_update(ssh_vm.run("hostname",return_rc=True), hostname, timeout=120)
             assert ssh_vm.run("hostname") == hostname,\
             f"主机名未变更，修改后期望主机名:{hostname},实际主机名:{ssh_vm.run('hostname')}"
@@ -233,7 +233,7 @@ class TestECS:
         interval = "30"
         ecs_page.goto_service('弹性云服务器')
         with allure.step(f"步骤1: 验证时间同步服务器功能"):
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             # 修改系统时间为一个错误的时间
             ssh_vm.run('date -s "2010-01-01"')
             assert ssh_vm.run("date").count("2010")
@@ -243,7 +243,7 @@ class TestECS:
             ecs_page.assert_popup_success("修改时间同步服务器成功")
             ecs_page.logger.info(f"等待{interval}秒，等待时间同步完成")
             time.sleep(int(interval))  # 等待时间同步完成
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             expection = time.strftime("%Y", time.localtime())
             ecs_page.wait_for_update(ssh_vm.run("date", return_rc=True), expection, timeout=30)
             actual = ssh_vm.run("date")
@@ -286,7 +286,7 @@ class TestEcsRecycle:
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
         with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             md5 = ssh_vm.create_file(name)
 
         with allure.step(f"步骤2: 删除云服务器{name}"):
@@ -304,7 +304,7 @@ class TestEcsRecycle:
             ecs_page.goto_service('弹性云服务器')
             ecs_page.wait_for_operation_complete()
             ecs_page.assert_status(name, refresh=True)
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm, timeout=90)
             assert ssh_vm.run(f"md5sum {name}").count(md5), "恢复后系统盘数据MD5不一致"
             assert ssh_vm.create_file(name) is not None, "恢复后系统盘数据不能写入"
@@ -400,7 +400,7 @@ class TestEcsRecycle:
                 assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
 
 @allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
+@allure.feature('弹性云服务器')
 @allure.story('快照功能验证')
 class TestECSS:
 
@@ -491,7 +491,7 @@ class TestECSS:
 
         with allure.step("步骤1: 虚机打快照后，在root目录下写测试文件"):
             # 连接虚拟机
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
 
             # 在root目录下创建测试文件
             test_file = "/root/test_restore_file.txt"
@@ -513,7 +513,7 @@ class TestECSS:
 
         with allure.step("步骤4: 验证虚机内测试文件已不存在"):
             # 重新连接虚拟机
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.file_not_exist(test_file)
 
         with allure.step("步骤5: 重建虚机并删除快照"):

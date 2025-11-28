@@ -166,7 +166,7 @@ class TestEVS:
             evs_page.assert_popup_success()
             evs_page.assert_status(volume["name"], status="正在使用")
             disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"lsblk | grep {disk_name}") != ""
 
         with allure.step("步骤2: 卸载云硬盘"):
@@ -564,7 +564,7 @@ class TestEVSScenario:
             disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
 
             # 连接虚机并操作云硬盘
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
 
             # 格式化云硬盘并挂载
             mount_point = "/mnt/test_volume_a"
@@ -603,7 +603,7 @@ class TestEVSScenario:
             disk_name_b = evs_page.get_row_data(volume_b_name).get("挂载信息").split("上的")[-1]
 
             # 连接虚机并操作云硬盘B
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
 
             # 挂载云硬盘B
             mount_point_b = "/mnt/test_volume_b"
@@ -650,7 +650,7 @@ class TestEVSScenario:
             disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
 
             # 连接虚机并操作云硬盘
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
 
             # 格式化云硬盘并挂载
             mount_point = "/mnt/test_volume_a"
@@ -676,7 +676,7 @@ class TestEVSScenario:
             disk_name_b = evs_page.get_row_data(volume_b_name).get("挂载信息").split("上的")[-1]
 
             # 连接虚机并操作云硬盘B
-            ssh_vm.connect(vm['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm['mfip'])
 
             # 挂载云硬盘B
             mount_point_b = "/mnt/test_volume_b"
@@ -731,7 +731,7 @@ class TestEVSScenario:
             disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
 
             # 连接到云服务器A并操作云硬盘
-            ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm_a['mfip'])
 
             # 格式化云硬盘并挂载
             mount_point = "/mnt/shared_volume"
@@ -749,7 +749,7 @@ class TestEVSScenario:
             disk_name_b = evs_page.get_row_data(volume["name"]).get("挂载信息").split(f"{vm_b['name']}上的")[-1]
 
             # 连接到云服务器B
-            ssh_vm.connect(vm_b['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm_b['mfip'])
 
             # 挂载云硬盘（不需要格式化，因为是共享盘）
             mount_point_b = "/mnt/shared_volume_b"
@@ -768,7 +768,7 @@ class TestEVSScenario:
         #     md5_value_b_new = ssh_vm.create_file(f"{mount_point_b}/test_file_b.txt")
         #
         #     # 连接到云服务器A并验证新文件存在
-        #     ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+        #     ssh_vm.connect(vm_a['mfip'])
         #
         #     # 验证新文件存在且MD5值一致
         #     assert "test_file_b.txt" in ssh_vm.run(f"ls -la {mount_point}"), "云服务器B创建的测试文件不存在于云服务器A的共享云硬盘中"
@@ -777,13 +777,13 @@ class TestEVSScenario:
 
         with allure.step("步骤4: 清理测试数据"):
             # 卸载云服务器A上的共享云硬盘
-            ssh_vm.connect(vm_a['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm_a['mfip'])
             ssh_vm.run(f"umount {mount_point}")
             evs_page.evs_unmount(volume["name"], vm_a["name"])
             evs_page.assert_popup_success()
 
             # 卸载云服务器B上的共享云硬盘
-            ssh_vm.connect(vm_b['mfip'], pwd="sugon@20")
+            ssh_vm.connect(vm_b['mfip'])
             ssh_vm.run(f"umount {mount_point_b}")
             evs_page.evs_unmount(volume["name"], vm_b["name"])
             evs_page.assert_popup_success()

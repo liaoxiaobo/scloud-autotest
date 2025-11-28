@@ -22,7 +22,7 @@ class EcsPage(OpsPage):
             flavor="ecs.c6.large",
             image_name="",
             os_version="centos7.9",
-            login_password="sugon@20",
+            login_password="admin1234@sugon",
             vnc_password="sugon@20",
             sys_size=100,
             **kwargs
@@ -38,7 +38,7 @@ class EcsPage(OpsPage):
             flavor: 规格，默认为"ecs.c6.large"
             image_name: 镜像名称，默认为空（使用storage_pool）
             os_version: 操作系统版本，默认为"centos7.9"
-            login_password: 登录密码，默认为"sugon@20"
+            login_password: 登录密码，默认为"admin1234@sugon"
             vnc_password: VNC密码，默认为"sugon@20"
             sys_size: 系统盘大小，默认为100
         """
