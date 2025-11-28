@@ -1,11 +1,11 @@
 import allure
 import pytest
-from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.mysql import MySQLPage
+from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data, random_string
@@ -108,6 +108,34 @@ def mysql_page(page, env):
     mysql_page = MySQLPage(page, env)
     mysql_page.goto_service('AnhanDB(for MySQL)')
     return mysql_page
+
+
+@pytest.fixture(scope="class")
+def doris_page(page, env):
+    """初始化Doris实例管理页面"""
+    doris_page = DorisPage(page, env)
+    doris_page.goto_service('数据仓库 Doris')
+    return doris_page
+
+
+@pytest.fixture(scope="class")
+def doris(doris_page):
+    """创建一个供整个测试类使用的Doris实例对象"""
+    name = f"doris-{random_data()}"
+    admin_password = "admin1234@sugon"  # Doris默认密码
+    data = {"name": name, "admin_password": admin_password}
+    logger.info(f"为测试类创建共享Doris实例: {name}")
+
+    with allure.step(f"前置操作：创建共享实例 {name}"):
+        doris_page.create_instance(name, password=admin_password)
+        doris_page.assert_popup_success("Doris创建任务提交成功")
+        doris_page.assert_status(name, status="运行中", timeout=1800)
+
+    yield data
+
+    with allure.step(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享Doris实例: {name}")
+        doris_page.delete_instance(data["name"])
 
 
 @pytest.fixture(scope="class")

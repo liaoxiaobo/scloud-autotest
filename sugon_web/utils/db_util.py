@@ -10,6 +10,8 @@
 import re
 import random
 import string
+from time import sleep
+
 from faker import Faker
 
 
@@ -75,29 +77,20 @@ def project_autotest(self):
     return dropdown_locator.locator("li").filter(has_text="Autotest").first
 
 
-def select_network(self, network, subnet):
+def select_network(self, placeholder_name, option_name):
     """
     选择网络和子网（使用可靠的等待机制）
     :param self: 页面对象实例
-    :param network: 网络名称
-    :param subnet: 子网名称
+    :param placeholder_name: placeholder名称
+    :param option_name: 下拉框选项
     """
-    # --- 选择网络 ---
-    self.get_by_role("textbox", name="请选择网络").click()
-    # 等待下拉列表出现
-    network_list_locator = self.page.locator("body > div.el-select-dropdown:visible").last
-    network_list_locator.wait_for(state="visible", timeout=5000)
-    # 点击选项
-    network_list_locator.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$")).click()
-
-    # --- 选择子网 ---
-    self.get_by_role("textbox", name="请选择子网").click()
-    # 等待下拉列表出现
-    subnet_list_locator = self.page.locator("body > div.el-select-dropdown:visible").last
-    subnet_list_locator.wait_for(state="visible", timeout=5000)
-    # 点击选项
-    subnet_list_locator.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(subnet)}$")).locator(
-        "span").click()
+    self.get_by_role("textbox", name=placeholder_name).click()
+    sleep(1)
+    dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+    dropdown.wait_for(state="visible")
+    target = dropdown.get_by_role("listitem").filter(has_text=option_name)
+    target.scroll_into_view_if_needed()
+    target.click()
 
 
 def random_string(k: int) -> str:

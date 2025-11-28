@@ -36,3 +36,17 @@ mysql:
           version: "5.6"
           port: 3314
           disk_size: 100
+doris:
+    test_create_and_delete_doris:
+        - ha_type: "非高可用"
+          fe_disk_size: 55
+          be_disk_size: 105
+          case_sensitivity: "区分大小写"
+        - ha_type: "读高可用"
+          fe_disk_size: 60
+          be_disk_size: 110
+          case_sensitivity: "不区分大小写（按指定大小写存储，以小写形式比较）"
+        - ha_type: "读写高可用"
+          fe_disk_size: 65
+          be_disk_size: 115
+          case_sensitivity: "不区分大小写（将所有表名转换为小写存储）"

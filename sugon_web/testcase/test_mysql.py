@@ -1,4 +1,6 @@
 import time
+from time import sleep
+
 import allure
 import pytest
 
@@ -214,7 +216,7 @@ class TestMySQL:
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = mysql["name"]
         db_name = f"autodb-{random_string(k=5)}"
-        admin_password = mysql["admin_password"] #前置操作已经修改过admin用户的密码
+        admin_password = mysql["admin_password"]  # 前置操作已经修改过admin用户的密码
         password = "admin1234@sugon"  # 创建实例时的默认密码
 
         with allure.step(f"步骤一：在实例 {instance_name} 下创建数据库 {db_name}"):
@@ -571,7 +573,12 @@ class TestMySQL:
             mysql_page.apply_parameter_model(model_name, instance_name)
             mysql_page.assert_popup_success("模板应用任务提交成功")
             mysql_page.goto_submenu("实例管理")
-            mysql_page.assert_status(instance_name, status="运行中", timeout=1200)
+            mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+            mysql_page.locator(f"#cloud-container-content").get_by_text(instance_name).click()
+            mysql_page.assert_status(f"{instance_name}-0", status="运行中", timeout=1200, refresh=True)
+            mysql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=1200, refresh=True)
+            mysql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=1200, refresh=True)
 
         with allure.step(f"步骤四：删除参数模板 {model_name}"):
             mysql_page.delete_parameter_model(model_name)
@@ -585,9 +592,11 @@ class TestMySQL:
         param_value = "10"
 
         with allure.step(f"步骤一：编辑实例 {instance_name} 的参数 {param_name} 值为 {param_value}"):
+            mysql_page.goto_submenu("实例管理")
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
             mysql_page.edit_instance_parameter(instance_name, param_name, param_value)
             mysql_page.assert_popup_success("修改实例参数任务提交成功")
-            mysql_page.assert_status(instance_name, status="运行中", timeout=300)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure.step(f"步骤二：导出实例 {instance_name} 的参数"):
             mysql_page.export_instance_parameters(instance_name)
@@ -665,7 +674,9 @@ class TestMySQL:
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).click()
             mysql_page.wait_for_page_ready()
+            sleep(2)
             mysql_page.get_by_role("tab", name="参数设置").click()
+            sleep(2)
             mysql_page.wait_for_page_ready()
             mysql_page.search(param_keyword)
             mysql_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
