@@ -355,3 +355,29 @@ def ecss(ecs_page, vm):
     # 测试结束后清理快照
     ecs_page.ecss_delete(snapshot_name)
     ecs_page.assert_deleted(snapshot_name, refresh=True)
+
+@pytest.fixture()
+def ecss_policy(ecs_page):
+    """创建并返回一个云服务器快照策略，测试结束后自动清理"""
+    policy_name = random_data()
+
+    # 创建快照策略
+    ecs_page.ecss_policy_create(
+        name=policy_name,
+        hours=[0, 1, 2],
+        enabled=True,
+        cycle_days=1,
+        retention_type="按数量",
+        retention_value=1
+    )
+
+    # 验证创建成功
+    ecs_page.assert_popup_success("执行成功")
+
+    # 返回策略名称供测试使用
+    yield {"name": policy_name}
+
+    # 测试结束后清理
+    with allure.step("清理测试数据"):
+        ecs_page.ecss_policy_delete(policy_name)
+        ecs_page.assert_deleted(policy_name)

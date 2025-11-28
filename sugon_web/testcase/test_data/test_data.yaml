@@ -43,4 +43,25 @@ evs:
       desc: "Daily backup snapshot for testing purposes with long description"
     - snapshot_name_prefix: "test-"
       desc: "包含特殊字符的快照描述！@#￥%……&*（）测试"
-
+  test_create_policies:
+    - name: "最小值测试"
+      enabled: false
+      hours: [0]  # 最小小时
+      cycle_days: 1  # 最小周期
+      retention_type: "按数量"
+      retention_value: 1  # 最小保留值
+      snapshot_data_disk: false
+    - name: "最大值测试-按时间"
+      enabled: true
+      hours: [23]  # 最大小时
+      cycle_days: 365  # 最大周期（假设）
+      retention_type: "按时间"
+      retention_value: 365  # 最大保留值
+      snapshot_data_disk: true
+    - name: "多执行时间测试"
+      enabled: true
+      hours: [0, 6, 12, 18, 23]  # 多个执行时间
+      cycle_days: 1
+      retention_type: "永久保存"
+#      retention_value: 10
+      snapshot_data_disk: false

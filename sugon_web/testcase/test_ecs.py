@@ -1,5 +1,4 @@
 import re
-from tokenize import group
 import time
 import pytest
 import allure
@@ -277,7 +276,7 @@ class TestECS:
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
 @allure.epic('计算服务')
-@allure.feature('弹性云服务器')
+@allure.feature('弹性云服务器 ECS')
 @allure.story('回收站功能验证')
 class TestEcsRecycle:
 
@@ -400,8 +399,8 @@ class TestEcsRecycle:
                 assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
 
 @allure.epic('计算服务')
-@allure.feature('弹性云服务器')
-@allure.story('快照功能验证')
+@allure.feature('弹性云服务器 ECS')
+@allure.story('快照基本功能验证')
 class TestECSS:
 
     @allure.title("弹性云服务器-创建&删除快照")
@@ -467,7 +466,7 @@ class TestECSS:
             ecs_page.assert_deleted(snapshot_names, refresh=True)
             assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
 
-    @allure.title("云服务器快照-修改")
+    @allure.title("弹性云服务器-修改快照")
     @pytest.mark.parametrize("params", load_data('test_modify'))
     def test_ecss_modify(self, ecs_page, ecss: dict, params):
         """测试云服务器快照修改功能"""
@@ -523,7 +522,7 @@ class TestECSS:
                 ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据
 
-    @allure.title("云硬盘快照-列表页搜索&重置")
+    @allure.title("云服务器快照-列表页搜索&重置")
     def test_ecss_search(self, ecs_page, ecss: dict):
 
         with allure.step("步骤1: 输入名称进行搜索"):
@@ -541,5 +540,77 @@ class TestECSS:
         with allure.step("步骤4: 验证重置结果"):
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
+
+    @allure.title("快照策略-创建&删除")
+    @pytest.mark.parametrize("params", load_data('test_create_policies'))
+    def test_ecss_policy_create(self, ecs_page, params):
+        """测试云服务器快照策略创建功能"""
+        # 提取参数
+        name = params.get("name")
+        enabled = params.get("enabled")
+        hours = params.get("hours")
+        cycle_days = params.get("cycle_days")
+        retention_type = params.get("retention_type")
+        retention_value = params.get("retention_value", 1)
+        snapshot_data_disk = params.get("snapshot_data_disk")
+
+        # 创建快照策略
+        with allure.step("步骤1: 创建快照策略"):
+            ecs_page.ecss_policy_create(
+                name=name,
+                enabled=enabled,
+                hours=hours,
+                cycle_days=cycle_days,
+                retention_type=retention_type,
+                retention_value=retention_value,
+                snapshot_data_disk=snapshot_data_disk
+            )
+
+            # 验证创建结果
+            ecs_page.assert_popup_success("执行成功")
+
+        with allure.step("步骤2: 删除快照策略"):
+            ecs_page.ecss_policy_delete([name])
+            ecs_page.assert_popup_success("删除策略成功")
+            ecs_page.assert_deleted(name)
+
+    @allure.title("快照策略-批量删除")
+    def test_ecss_policy_batch_delete(self, ecs_page):
+
+        policy_names = []
+        with allure.step("步骤1: 创建多个快照策略"):
+            for i in range(3):
+                name = random_data()
+                policy_names.append(name)
+                ecs_page.ecss_policy_create(
+                    name=name,
+                    hours=[0, 1, 2],
+                    enabled=True,
+                    cycle_days=1,
+                    retention_type="按数量",
+                    retention_value=5
+                )
+                ecs_page.assert_popup_success("执行成功")
+
+        with allure.step("步骤2: 批量删除快照策略"):
+            ecs_page.ecss_policy_delete(policy_names)
+            # evs_page.assert_popup_success()
+
+        with allure.step("步骤3: 验证快照策略已删除"):
+            ecs_page.assert_deleted(policy_names)
+
+    @allure.title("快照策略-列表页搜索&重置")
+    def test_ecss_policy_search(self, ecs_page, ecss_policy):
+        """测试云服务器快照策略搜索功能"""
+
+        with allure.step("步骤1: 输入名称进行搜索"):
+            keyword = ecss_policy["name"][:-2]  # 取策略名称的前几个字符作为关键词
+            ecs_page.search(keyword)
+            ecs_page.assert_list_contain(keyword, exact_match=False, column_name="名称/ID")
+
+        with allure.step("步骤2: 重置搜索条件"):
+            ecs_page.btn_reset.click()
+            ecs_page.wait_for_page_ready()
+            assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
 
