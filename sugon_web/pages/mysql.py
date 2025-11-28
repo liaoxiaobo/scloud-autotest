@@ -52,7 +52,8 @@ class MySQLPage(BasePage):
         self.locator(f':text-is("{case_sensitivity}")').click()
 
         # --- 网络设置 ---
-        db_util.select_network(self, network, subnet)
+        db_util.select_network(self, "请选择网络", network)
+        db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
         db_util.disk_type_dropdown(self).click()
