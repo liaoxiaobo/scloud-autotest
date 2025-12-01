@@ -5,7 +5,7 @@ from sugon_web.utils.util import random_data, load_data
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
-@allure.story('基本功能验证')
+@allure.story('云硬盘-基本功能操作验证')
 class TestEVS:
 
     @allure.title("云硬盘-创建&删除")
@@ -81,7 +81,7 @@ class TestEVS:
             evs_page.assert_deleted(name)
         assert ssh_host.run(f"cinder list| grep {base_name}") == ""
 
-    @allure.title("云硬盘-列表页搜索")
+    @allure.title("云硬盘-列表页搜索&重置")
     def test_volume_search(self, evs_page, volume):
 
         with allure.step("步骤1: 输入名称进行搜索"):
@@ -238,12 +238,7 @@ class TestEVS:
             assert snapshot_data["名称"] == evss["name"]
             assert snapshot_data["云硬盘名称"] == volume["name"]
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
-@allure.story('回收站功能验证')
-class TestGarbage:
-
-    @allure.title("回收站-移入&移出云硬盘")
+    @allure.title("云硬盘-移入&移出回收站")
     def test_volume_restore(self, evs_page, volume):
 
         with allure.step("步骤1: 云硬盘移入回收站"):
@@ -254,7 +249,7 @@ class TestGarbage:
             evs_page.goto_submenu("云硬盘")
             evs_page.assert_status(volume["name"], status="可用")
 
-    @allure.title("回收站-列表页搜索")
+    @allure.title("回收站-列表页搜索&重置")
     def test_garbage_search(self, evs_page, volume):
 
         with allure.step("步骤1: 云硬盘移入回收站"):
@@ -275,7 +270,7 @@ class TestGarbage:
             evs_page.evs_restore(volume["name"])
             evs_page.assert_popup_success(f"云硬盘{volume['name']}移出回收站成功")
 
-    @allure.title("回收站-安全删除")
+    @allure.title("云硬盘-安全删除")
     def test_volume_secure_delete(self, evs_page, ssh_host):
 
         name=random_data()
@@ -294,7 +289,7 @@ class TestGarbage:
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
-@allure.story('云硬盘快照功能验证')
+@allure.story('云硬盘-快照基本功能验证')
 class TestEVSS:
 
     @allure.title("云硬盘快照-创建&删除")
@@ -337,7 +332,7 @@ class TestEVSS:
             for name in snapshot_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("云硬盘快照-列表页搜索")
+    @allure.title("云硬盘快照-列表页搜索&重置")
     def test_evss_search(self, evs_page, evss):
 
         with allure.step("步骤1: 输入名称进行搜索"):
@@ -391,18 +386,33 @@ class TestEVSS:
             assert ssh_host.run(f"cinder list| grep {name}") == ""
 
     @allure.title("快照策略-创建&删除")
-    def test_evss_policy_create(self, evs_page):
+    @pytest.mark.parametrize("params", load_data('test_create_policies'))
+    def test_evss_policy_create(self, evs_page, params):
+        """测试云服务器快照策略创建功能"""
+        # 提取参数
+        name = params.get("name")
+        enabled = params.get("enabled")
+        hours = params.get("hours")
+        cycle_days = params.get("cycle_days")
+        retention_type = params.get("retention_type")
+        retention_value = params.get("retention_value", 1)
 
-        name = random_data()
+        # 创建快照策略
         with allure.step("步骤1: 创建快照策略"):
             evs_page.evss_policy_create(
                 name=name,
-                hours=[0, 1, 2],
+                enabled=enabled,
+                hours=hours,
+                cycle_days=cycle_days,
+                retention_type=retention_type,
+                retention_value=retention_value
             )
+
+            # 验证创建结果
             evs_page.assert_popup_success("添加策略成功")
 
         with allure.step("步骤2: 删除快照策略"):
-            evs_page.evss_policy_delete(name)
+            evs_page.evss_policy_delete([name])
             evs_page.assert_deleted(name)
 
     @allure.title("快照策略-批量删除")
@@ -431,7 +441,7 @@ class TestEVSS:
             for name in policy_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("快照策略-列表页搜索")
+    @allure.title("快照策略-列表页搜索&重置")
     def test_evss_policy_search(self, evs_page, evss_policy):
 
         with allure.step("步骤1: 输入名称进行搜索"):
@@ -540,7 +550,7 @@ class TestEVSS:
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
-@allure.story('业务特性场景验证')
+@allure.story('云硬盘-业务场景覆盖验证')
 class TestEVSScenario:
 
     @allure.title("云硬盘快照-数据一致性验证")
@@ -794,7 +804,7 @@ class TestEVSScenario:
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
-@allure.story('加密云硬盘功能验证')
+@allure.story('云硬盘-加密功能验证')
 class TestEncrypted:
 
     @allure.title("创建HCT加密类型的云硬盘")

@@ -928,3 +928,81 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_page_ready()
 
+    @submenu("快照策略")
+    def ecss_policy_create(self, name, hours, enabled=False, cycle_days=1, retention_type="按数量", retention_value=1,
+                           snapshot_data_disk=False):
+        """创建云服务器快照策略
+
+        Args:
+            name: 策略名称
+            enabled: 是否启用策略，默认为False
+            hours: 执行时间的小时列表，如[1, 2]表示01:00和02:00执行
+            cycle_days: 快照周期（天），默认为1
+            retention_type: 保留规则类型，"按数量"、"按时间"或"永久保存"，默认为"按数量"
+            retention_value: 保留值，数量或天数，默认为1
+            snapshot_data_disk: 是否快照数据盘，默认为False
+        """
+        # 使用BasePage中的通用创建按钮
+        self.btn_create.click()
+
+        # 填写策略名称
+        self.get_by_label("新建策略").get_by_role("textbox").fill(name)
+
+        # 设置启用状态
+        if enabled:
+            self.get_by_role("switch").locator("span").click()
+
+        # 设置执行时间
+        if hours:
+            for hour in hours:
+                self.get_by_text(f"{hour:02d}:00", exact=True).click()
+
+        # 设置快照周期（天）
+        self.locator("form div").filter(has_text="快照周期 天").get_by_role("spinbutton").fill(str(cycle_days))
+
+        # 设置是否快照数据盘
+        if snapshot_data_disk:
+            self.locator("form div").filter(has_text="是否快照数据卷").locator("span").nth(2).click()
+
+        # 设置保留规则
+        self.get_by_role("radio", name=retention_type).click()
+
+        if retention_type != "永久保存":
+            # 设置保留值
+            self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+        self.logger.info(f"云服务器快照策略创建请求已提交: {name}")
+
+    @submenu("快照策略")
+    def ecss_policy_delete(self, names):
+        """删除云服务器快照策略，支持单个和批量操作
+
+        Args:
+            names: 策略名称（字符串）或策略名称列表（列表）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # 使用BasePage中的通用下拉菜单选项点击方法
+            self.click_dropdown_option(names, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+        self.logger.info(f"云服务器快照策略删除请求已提交: {names}")
+
+
