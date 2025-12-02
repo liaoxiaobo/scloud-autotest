@@ -1,3 +1,4 @@
+import re
 import pytest
 import allure
 from sugon_web.utils.util import random_data, load_data
@@ -756,7 +757,13 @@ class TestEVSScenario:
             evs_page.assert_popup_success()
 
             # 获取云硬盘在云服务器B中的设备名
-            disk_name_b = evs_page.get_row_data(volume["name"]).get("挂载信息").split(f"{vm_b['name']}上的")[-1]
+            mount_info = evs_page.get_row_data(volume["name"]).get("挂载信息")
+            pattern = f'{re.escape(vm_b["name"])}上的([^\\s]+)'
+            match = re.search(pattern, mount_info)
+            if match:
+                disk_name_b = match.group(1)
+            else:
+                raise Exception(f"未找到云服务器B上的设备名: {mount_info}")
 
             # 连接到云服务器B
             ssh_vm.connect(vm_b['mfip'])
