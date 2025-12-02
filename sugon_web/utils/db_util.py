@@ -77,18 +77,26 @@ def project_autotest(self):
     return dropdown_locator.locator("li").filter(has_text="Autotest").first
 
 
-def select_network(self, placeholder_name, option_name):
+def select_network(self, placeholder_name, option_name, fuzzy_match=False):
     """
     选择网络和子网（使用可靠的等待机制）
     :param self: 页面对象实例
     :param placeholder_name: placeholder名称
-    :param option_name: 下拉框选项
+    :param option_name: 下拉框选项（支持精确匹配或模糊匹配）
+    :param fuzzy_match: 是否使用模糊匹配，默认False为精确匹配
     """
     self.get_by_role("textbox", name=placeholder_name).click()
     sleep(1)
     dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
     dropdown.wait_for(state="visible")
-    target = dropdown.get_by_role("listitem").filter(has_text=option_name)
+    
+    if fuzzy_match:
+        # 模糊匹配：选择第一个包含指定文本的选项
+        target = dropdown.get_by_role("listitem").filter(has_text=option_name).first
+    else:
+        # 精确匹配：使用完整文本
+        target = dropdown.get_by_role("listitem").filter(has_text=option_name)
+    
     target.scroll_into_view_if_needed()
     target.click()
 

@@ -11,8 +11,8 @@ class MySQLPage(BasePage):
     @submenu("实例管理")
     def create_instance(self, name: str, instance_type: str = "单机", version: str = "8.0",
                         password: str = "admin1234@sugon", port: int = 3306, case_sensitivity: str = "区分大小写",
-                        network: str = "Autotest", subnet: str = "Autotest:10.25.248.0/24",
-                        disk_type: str = "xstor-type", disk_size: int = 20):
+                        network: str = "Autotest", subnet: str = "Autotest:10.",
+                        disk_type: str = None, disk_size: int = 20):
         """
         创建MySQL实例（支持多种参数）
         :param name: 实例名称
@@ -22,7 +22,7 @@ class MySQLPage(BasePage):
         :param port: 端口
         :param case_sensitivity: 大小写策略
         :param network: 网络
-        :param subnet: 子网
+        :param subnet: 子网（支持模糊匹配，如"Autotest:"）
         :param disk_type: 磁盘类型
         :param disk_size: 磁盘大小
         """
@@ -53,11 +53,13 @@ class MySQLPage(BasePage):
 
         # --- 网络设置 ---
         db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        db_util.select_network(self, "请选择子网", subnet, fuzzy_match=True)
 
         # --- 存储设置 ---
         db_util.disk_type_dropdown(self).click()
-        self.page.locator("li").filter(has_text=disk_type).click()
+        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
+        selected_disk_type = disk_type if disk_type else self.volume_type
+        self.page.locator("li").filter(has_text=selected_disk_type).click()
 
         # 数据盘大小
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))

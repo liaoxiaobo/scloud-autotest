@@ -11,10 +11,10 @@ class DorisPage(BasePage):
     @submenu("实例管理")
     def create_instance(self, name: str, version: str = "2.1.9", ha_type: str = "读高可用",
                         password: str = "admin1234@sugon", network: str = "Autotest",
-                        subnet: str = "Autotest:10.25.248.0/24", os_type: str = "AnolisOS 7.9",
+                        subnet: str = "Autotest:10.", os_type: str = "AnolisOS 7.9",
                         case_sensitivity: str = "不区分大小写（将所有表名转换为小写存储）",
-                        fe_disk_type: str = "xstor-type", fe_disk_size: int = 50,
-                        be_disk_type: str = "xstor-type", be_disk_size: int = 100):
+                        fe_disk_type: str = None, fe_disk_size: int = 50,
+                        be_disk_type: str = None, be_disk_size: int = 100):
         """
         创建Doris实例（支持多种参数）
         :param name: 实例名称
@@ -22,7 +22,7 @@ class DorisPage(BasePage):
         :param ha_type: 高可用类型（非高可用/读高可用/读写高可用）
         :param password: 管理员密码
         :param network: 网络
-        :param subnet: 子网
+        :param subnet: 子网（支持模糊匹配，如"Autotest:"）
         :param os_type: 操作系统
         :param case_sensitivity: 大小写策略
         :param fe_disk_type: FE节点磁盘类型
@@ -46,7 +46,7 @@ class DorisPage(BasePage):
 
         # --- 网络设置 ---
         db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        db_util.select_network(self, "请选择子网", subnet, fuzzy_match=True)
 
         # --- 配置设置 ---
         # 操作系统
@@ -76,16 +76,21 @@ class DorisPage(BasePage):
             has_text="FE节点配置 高可用"
         ).get_by_placeholder("请选择", exact=True).nth(3)
         fe_disk_dropdown.click()
-        self.locator("li").filter(has_text=fe_disk_type).nth(1).click()
+        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
+        selected_fe_disk_type = fe_disk_type if fe_disk_type else self.volume_type
+        self.locator("li").filter(has_text=selected_fe_disk_type).nth(1).click()
 
         # FE节点数据盘大小
         self.get_by_role("spinbutton").first.fill(str(fe_disk_size))
 
         # BE节点配置 - 数据盘类型
-        self.locator("div").filter(
-            has_text=re.compile(r"^数据盘类型usan-typexstor-typeceph-type$")
-        ).get_by_placeholder("请选择").click()
-        self.locator("li").filter(has_text=be_disk_type).nth(2).click()
+        be_disk_dropdown = self.locator("form").filter(
+            has_text="BE节点配置"
+        ).get_by_placeholder("请选择", exact=True).nth(4)
+        be_disk_dropdown.click()
+        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
+        selected_be_disk_type = be_disk_type if be_disk_type else self.volume_type
+        self.locator("li").filter(has_text=selected_be_disk_type).nth(2).click()
 
         # BE节点数据盘大小
         self.get_by_role("spinbutton").nth(2).fill(str(be_disk_size))
