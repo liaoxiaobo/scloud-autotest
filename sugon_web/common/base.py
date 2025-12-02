@@ -593,6 +593,7 @@ class BasePage(Playwright):
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
         # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
+        self.page.wait_for_selector(".el-loading-spinner", state='hidden')
 
     def wait_for_operation_complete(self, timeout=30):
         """等待操作完成
@@ -770,4 +771,7 @@ class BasePage(Playwright):
 
         # 选择指定的行
         for name in names:
-            self.get_by_role("row", name=name).locator("label span").nth(1).click()
+            loc = self.get_by_role("row", name=name).locator("label span").nth(1)
+            if not loc.is_checked():
+                loc.click()
+                self.logger.info(f"勾选资源 '{name}'")

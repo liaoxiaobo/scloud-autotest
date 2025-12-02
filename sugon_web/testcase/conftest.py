@@ -195,6 +195,7 @@ def vm(ecs_page, request):
     name = random_data()
 
     # 创建指定数量的虚机
+    ecs_page.goto_service('弹性云服务器') # 临时方案：保证在同一服务页面,满足云盘挂载测试
     ecs_page.ecs_create(name, count=count, sys_size=root_gb)
     ecs_page.assert_popup_success("创建实例命令下发成功")
 

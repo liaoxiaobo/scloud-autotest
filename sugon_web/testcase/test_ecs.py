@@ -2,6 +2,7 @@ import re
 import time
 import pytest
 import allure
+from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
 
@@ -13,14 +14,14 @@ class TestECS:
     def test_ecs_create(self, ecs_page):
         name = random_data()
 
-        with allure.step("创建云服务器"):
+        with allure_step_log("创建云服务器"):
             ecs_page.ecs_create(name=name)
 
-        with allure.step("验证创建结果"):
+        with allure_step_log("验证创建结果"):
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
 
-        with allure.step("清理测试数据"):
+        with allure_step_log("清理测试数据"):
             ecs_page.ecs_remove(name)
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)
@@ -35,9 +36,9 @@ class TestECS:
         operation = params.get("operation")
         desc = params.get("desc")
         staus = params.get("status")
-        with allure.step(f"步骤1: {name}{operation}"):
+        with allure_step_log(f"步骤1: {name}{operation}"):
             ecs_page.ecs_operations(name, operation)
-        with allure.step(f"步骤2: 验证{name}{operation}结果"):
+        with allure_step_log(f"步骤2: 验证{name}{operation}结果"):
             ecs_page.assert_popup_success(f"{name}{desc}", timeout=60)
             ecs_page.assert_status(name, status=staus)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
@@ -51,37 +52,37 @@ class TestECS:
         name = vm.get("name")
         new_name = random_data()
         ecs_page.goto_service('弹性云服务器')
-        with allure.step("步骤1: 编辑弹性云服务器"):
+        with allure_step_log("步骤1: 编辑弹性云服务器"):
             ecs_page.ecs_edit(name, new_name)
 
-        with allure.step("步骤2: 验证编辑结果"):
+        with allure_step_log("步骤2: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
 
-        with allure.step("步骤3: 清理测试数据"):
+        with allure_step_log("步骤3: 清理测试数据"):
             ecs_page.ecs_edit(new_name, name)
 
     @allure.title("弹性云服务器-登录VNC功能验证")
     def _test_ecs_vnc(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
-        with allure.step("步骤1: 登录VNC"):
+        with allure_step_log("步骤1: 登录VNC"):
             ecs_page.ecs_vnc(name, "sugon@20")
 
     @allure.title("弹性云服务器-克隆功能验证")
     def test_ecs_clone(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
+        with allure_step_log(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run("dd if=/dev/zero of=/home/test1 bs=4k count=1048576")
             md5 = ssh_vm.run("md5sum /home/test1")
 
-        with allure.step(f"步骤2: 克隆弹性云服务器{name}"):
+        with allure_step_log(f"步骤2: 克隆弹性云服务器{name}"):
             clone_name = random_data()
             ecs_page.ecs_clone(name, clone_name, 'Autotest', 'Autotest', {})
 
-        with allure.step(f"步骤3: 验证克隆结果{clone_name}"):
+        with allure_step_log(f"步骤3: 验证克隆结果{clone_name}"):
             ecs_page.assert_popup_success(f"{name}实例克隆成功")
             image_name = ecs_page.get_row_data(name).get("镜像名称")
             ecs_page.assert_status(clone_name)
@@ -92,7 +93,7 @@ class TestECS:
             md5_new = ssh_vm.run("md5sum /home/test1")
             assert md5 == md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
 
-        with allure.step(f"步骤4: 清理测试数据{clone_name}"):
+        with allure_step_log(f"步骤4: 清理测试数据{clone_name}"):
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_remove(clone_name)
             ecs_page.ecs_delete(clone_name)
@@ -103,13 +104,13 @@ class TestECS:
         image = ecs_page.storage_pool   # 获取存储池同名镜像
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
+        with allure_step_log(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run("dd if=/dev/zero of=/home/test1 bs=4k count=1048576")
-        with allure.step(f"步骤2: 重建云服务器{name}"):
+        with allure_step_log(f"步骤2: 重建云服务器{name}"):
             ecs_page.ecs_rebuild(name, 'centos7.9', '64位', image)
 
-        with allure.step("步骤3: 验证重建结果"):
+        with allure_step_log("步骤3: 验证重建结果"):
             ecs_page.assert_popup_success(f"{name}实例重建成功")
             ecs_page.assert_status(name, status="重建中")
             ecs_page.assert_status(name)
@@ -125,9 +126,9 @@ class TestECS:
         mem = spec.get("Mem", "4")
         ecs_id = vm.get("id").split(':')[1]
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: {name}修改规格:{spec.get('desc')}"):
+        with allure_step_log(f"步骤1: {name}修改规格:{spec.get('desc')}"):
             ecs_page.ecs_modify_spec(name, spec)
-        with allure.step("步骤2: 验证重建结果"):
+        with allure_step_log("步骤2: 验证重建结果"):
             ecs_page.assert_popup_success("调整实例资源配置成功")
             ecs_page.assert_ecs_info(name, "规格", f"{cpu} 核 {mem}.00 GiB")
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
@@ -144,18 +145,18 @@ class TestECS:
         ipv4 = network_info.get("ipv4")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure.step(f"步骤1: {name}加载网卡: 网络{net}，子网{subnet}"):
-            ecs_page.ecs_load_network(name, net, subnet, mode, ipv4)
-        with allure.step("步骤2: 验证加载网卡结果"):
+        with allure_step_log(f"步骤1: {name}加载网卡: 网络{net}，子网{subnet}"):
+            checked_subnet =  ecs_page.ecs_load_network(name, net, subnet, mode, ipv4)
+        with allure_step_log("步骤2: 验证加载网卡结果"):
             ecs_page.assert_popup_success(f"{name}实例，连接{subnet}子网成功", timeout=30)
             ips = ecs_page.get_row_data(name).get("IP地址").split(':')
-            ip = [item.strip() for item in ips if re.search(r'10\.228\.43\.\d', item)][0].split(' ')[0].strip()
+            ip = [item.strip() for item in ips if re.search(fr'{checked_subnet}.\d', item)][0].split(' ')[0].strip()
             ssh_vm.connect(vm['mfip'])
             ssh_vm.ping(ip)
 
-        with allure.step(f"步骤3: {name}卸载网卡:{ip}"):
+        with allure_step_log(f"步骤3: {name}卸载网卡:{ip}"):
             ecs_page.ecs_uninstall_network(name, ip)
-        with allure.step("步骤4: 验证加载网卡结果"):
+        with allure_step_log("步骤4: 验证加载网卡结果"):
             ecs_page.assert_popup_success(f"断开网络成功", timeout=60)
             ecs_page.assert_ecs_info(name, "IP地址", "")
             ssh_vm.connect(vm['mfip'])
@@ -165,50 +166,53 @@ class TestECS:
     def test_ecs_pub_ip(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 云服务器{name}绑定公网IP"):
+        with allure_step_log(f"步骤1: 云服务器{name}绑定公网IP"):
             pub_ip = ecs_page.ecs_bind_pub_ip(name)
-        with (allure.step("步骤2: 验证绑定公网IP结果")):
+        with (allure_step_log("步骤2: 验证绑定公网IP结果")):
             ecs_page.assert_popup_success(f"执行成功")
             ecs_page.assert_ecs_info(name, "IP地址", pub_ip)
             ssh_vm.connect(vm['mfip'])
-            assert ssh_vm.run(f"ping -c 3 {pub_ip}").count(
-                "3 received, 0% packet loss"), f"加载公网IP后，无法ping通IP:{pub_ip}"
+            ssh_vm.ping(pub_ip)
 
-        with allure.step(f"步骤3: 云服务器{name}解绑公网IP{pub_ip}"):
+        with allure_step_log(f"步骤3: 云服务器{name}解绑公网IP{pub_ip}"):
             ecs_page.ecs_unbind_pub_ip(name, pub_ip)
             ecs_page.assert_popup_success(f"执行成功")
-        with allure.step("步骤4: 验证解绑公网IP结果"):
+        with allure_step_log("步骤4: 验证解绑公网IP结果"):
             ecs_page.assert_ecs_info_not_contains(name, "IP地址", pub_ip)
             ssh_vm.connect(vm['mfip'])
-            assert ssh_vm.run(f"ping -c 3 {pub_ip}").count(
-                "0 received, 100% packet loss"), f"卸载公网IP后，仍可ping通IP:{pub_ip}"
+            ssh_vm.ping(pub_ip, connected=False)
 
     @allure.title("弹性云服务器-修改密码功能验证")
-    def test_ecs_modifypwd(self, ecs_page, vm):
+    def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
-        with allure.step(f"云服务器{name}修改密码"):
-            ecs_page.assert_status(name)
+        with allure_step_log(f"步骤1: 云服务器{name}修改密码"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.assert_status(name, refresh=True)
             ecs_page.ecs_modify_pwd(name, "sugon@21", "sugon@21")
-        with allure.step("验证修改密码结果"):
+        with allure_step_log("步骤2: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
+            ssh_vm.connect(vm['mfip'], pwd="sugon@21")
+            assert ssh_vm.run("hostname") == name, f"修改密码后，无法登录虚拟机"
 
-        with allure.step(f"云服务器{name}还原密码"):
+        with allure_step_log(f"步骤3: 云服务器{name}还原密码"):
             ecs_page.ecs_modify_pwd(name, "admin1234@sugon", "admin1234@sugon")
-        with allure.step("验证修改密码结果"):
+        with allure_step_log("步骤4: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
+            ssh_vm.connect(vm['mfip'])
+            assert ssh_vm.run("hostname") == name, f"还原密码后，无法登录虚拟机"
 
     @allure.title("弹性云服务器-修改密码功能验证")
     def test_ecs_modify_vncpwd(self, ecs_page, vm):
         name = vm.get("name")
-        with allure.step(f"云服务器{name}修改VNC密码"):
+        with allure_step_log(f"步骤1: 云服务器{name}修改VNC密码"):
             ecs_page.assert_status(name)
             ecs_page.ecs_modify_vnc_pwd(name, "sugon@21", "sugon@21")
-        with allure.step("验证修改密码结果"):
+        with allure_step_log("步骤2: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改vnc密码成功")
 
-        with allure.step(f"云服务器{name}还原VNC密码"):
+        with allure_step_log(f"步骤3: 云服务器{name}还原VNC密码"):
             ecs_page.ecs_modify_vnc_pwd(name, "sugon@20", "sugon@20")
-        with allure.step("验证还原密码结果"):
+        with allure_step_log("步骤4: 验证还原密码结果"):
             ecs_page.assert_popup_success(f"修改vnc密码成功")
 
     @allure.title("弹性云服务器-修改主机名功能验证")
@@ -216,12 +220,14 @@ class TestECS:
         name = vm.get("name")
         hostname = random_data()
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 云服务器{name}修改主机名"):
+        with allure_step_log(f"步骤1: 云服务器{name}修改主机名"):
             ecs_page.ecs_modify_hostname(name, hostname)
-        with (allure.step("步骤2: 验证修改主机名结果")):
+        with (allure_step_log("步骤2: 验证修改主机名结果")):
             ecs_page.assert_popup_success(f"更新实例成功")
+            ecs_page.ecs_operations(name, "重启")
+            ecs_page.assert_status(name)
             ssh_vm.connect(vm['mfip'])
-            ecs_page.wait_for_update(ssh_vm.run("hostname",return_rc=True), hostname, timeout=120)
+            ecs_page.wait_for_update(ssh_vm, "hostname", hostname, timeout=90)
             assert ssh_vm.run("hostname") == hostname,\
             f"主机名未变更，修改后期望主机名:{hostname},实际主机名:{ssh_vm.run('hostname')}"
 
@@ -231,49 +237,244 @@ class TestECS:
         time_server = "100.126.255.250"
         interval = "30"
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 验证时间同步服务器功能"):
+        with allure_step_log(f"步骤1: 验证时间同步服务器功能"):
             ssh_vm.connect(vm['mfip'])
             # 修改系统时间为一个错误的时间
             ssh_vm.run('date -s "2010-01-01"')
             assert ssh_vm.run("date").count("2010")
-        with allure.step(f"步骤2: 弹性云服务器{name}配置时间同步服务器"):
+        with allure_step_log(f"步骤2: 弹性云服务器{name}配置时间同步服务器"):
             ecs_page.ecs_time_synchronize(name, time_server, interval)
-        with allure.step("步骤3: 验证时间同步服务器结果"):
+        with allure_step_log("步骤3: 验证时间同步服务器结果"):
             ecs_page.assert_popup_success("修改时间同步服务器成功")
             ecs_page.logger.info(f"等待{interval}秒，等待时间同步完成")
             time.sleep(int(interval))  # 等待时间同步完成
             ssh_vm.connect(vm['mfip'])
             expection = time.strftime("%Y", time.localtime())
-            ecs_page.wait_for_update(ssh_vm.run("date", return_rc=True), expection, timeout=30)
+            ecs_page.wait_for_update(ssh_vm, "date", expection, timeout=150)
             actual = ssh_vm.run("date")
             assert actual.count(expection), f"同步时间服务器失败，期望时间:{expection},实际时间:{actual}"
 
     @allure.title("弹性云服务器-绑定/解绑亲和组功能验证")
-    @pytest.mark.parametrize("params", load_data('test_ecs_bind_unbind_group', "test_ecs.yaml"))
-    def test_ecs_bind_unbind_group(self, ecs_page, vm, params):
-        name = vm.get("name")
-        operation = params.get("operation")
-        group_name = params.get("group_name")
-        with allure.step(f"步骤1: 云服务器{name}{operation}"):
-            ecs_page.assert_status(name)
-            ecs_page.ecs_bind_unbind_group(name, operation, group_name)
-        with allure.step(f"步骤2: 验证{operation}结果"):
-            ecs_page.assert_popup_success(f"{name}实例{operation}成功")
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    def test_ecs_bind_unbind_group(self, ecs_page, vm, ssh_host):
+        policy = "亲和"
+        if isinstance(vm, list) and len(vm) > 1:
+            names = [vm[i].get("name") for i in range(len(vm))]
+            ecs_ids = [vm[i].get("id").split(':')[1] for i in range(len(vm))]
+        else:
+            names = [vm.get("name")]
+            ecs_ids = vm.get("id").split(':')[1]
+        group_name = f"{random_data(length=2)}-{policy}"
+        with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_create_affinity_group(group_name, policy)
+
+        with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
+            ecs_page.assert_popup_success("执行成功")
+            assert ecs_page.get_row_data(group_name).get("策略") == policy, \
+                f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(group_name).get('策略')}"
+
+        with allure_step_log(f"步骤3: 云服务器{names}绑定{policy}组并验证绑定结果"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.wait_for_page_ready()
+            ecs_page.ecs_bind_unbind_group(names, "绑定亲和组", group_name)
+
+        with allure_step_log(f"步骤4: 云服务器{names}批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+
+        with allure_step_log(f"步骤5: 验证批量迁移结果"):
+            nodes = []
+            for name in names:
+                ecs_page.assert_status(name, status="迁移中", refresh=True)
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务")
+                nodes.append(ecs_page.get_row_data(names[0]).get("物理机"))
+            if policy == "亲和":
+                assert len(set(nodes)) == 1, f"云服务器{name}未迁移到同一节点"
+            else:
+                assert len(set(nodes)) > 1, f"云服务器{name}未迁移到不同节点"
+
+        with allure_step_log(f"步骤6: 云服务器{names}解绑{policy}组"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.ecs_bind_unbind_group(names, "解绑亲和组", group_name)
+
+        with allure_step_log(f"步骤7: 云服务器{names}批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+
+        with allure_step_log(f"步骤8: 验证批量迁移结果"):
+            nodes = []
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务", refresh=True)
+                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
+            assert len(set(nodes)) >= 1
+
+        with allure_step_log(f"步骤9: 删除{policy}组: {group_name}"):
+            ecs_page.ecs_delete_affinity_group(group_name)
+            ecs_page.assert_deleted(group_name, refresh= True)
 
     @allure.title("弹性云服务器-列表页搜索&重置")
     def test_ecs_search(self, ecs_page, vm):
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             ecs_page.goto_submenu("弹性云服务器")
             keyword = vm['name'][:-2]
             ecs_page.search(keyword)
             ecs_page.assert_list_contain(keyword, column_name="名称/ID", exact_match=False)
 
-        with allure.step("步骤2: 重置搜索条件"):
+        with allure_step_log("步骤2: 重置搜索条件"):
             ecs_page.btn_reset.click()
             ecs_page.wait_for_page_ready()
             # 断言重置后搜索输入框已清空
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("弹性云服务器-镜像创建功能验证")
+    def test_ecs_create_image(self, ecs_page, vm, ssh_vm):
+        """测试从现有云服务器创建镜像"""
+        name = vm.get("name")
+        image_name = random_data(length=10)
+
+        with allure_step_log(f"步骤1: 弹性云服务器{name}新建镜像{image_name}"):
+            ssh_vm.connect(vm['mfip'])
+            ecs_page.goto_service("弹性云服务器")
+            md5 = ssh_vm.create_file(name)
+            ecs_page.ecs_create_image(name, image_name)
+
+        with allure_step_log("步骤2: 验证创建结果"):
+            ecs_page.assert_popup_success("创建实例镜像成功")
+            ecs_page.assert_status(name, "创建镜像中")
+            ecs_page.assert_status(name, "当前无任务")
+            ecs_page.goto_submenu("镜像服务")
+            ecs_page.assert_status(image_name, status="可用", refresh=True)
+
+        with allure_step_log(f"步骤3: 使用镜像{image_name}创建弹性云服务器{name}-1"):
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.wait_for_operation_complete()
+            ecs_page.ecs_create(f"{name}-1", image_name=image_name)
+            ecs_page.assert_popup_success("创建实例命令下发成功")
+            ecs_page.assert_status(f"{name}-1")
+
+        with allure_step_log(f"步骤4: 验证{name}-1 md5值是否一致"):
+            ip = ecs_page.get_row_data(f"{name}-1").get("IP地址").split(":")[1].strip()
+            mfip_new = ecs_page.bind_mfip(ip)
+            ssh_vm.connect(mfip_new)
+            assert ssh_vm.run(f"md5sum {name}").count(md5), \
+                f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
+
+        with allure_step_log("步骤5: 清理测试数据"):
+            # 删除测试镜像
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.wait_for_operation_complete()
+            ecs_page.ecs_remove(f"{name}-1")
+            ecs_page.ecs_delete(name)
+            ecs_page.assert_deleted(f"{name}-1")
+            ecs_page.goto_submenu("镜像服务")
+            ecs_page.ecs_image_delete(image_name)
+            ecs_page.assert_deleted(image_name, refresh=True)
+
+    @allure.title("弹性云服务器-创建亲和组功能验证")
+    def test_ecs_create_affinity_group(self, ecs_page):
+        policy = "亲和"
+        name = f"{random_data(length=2)}-{policy}"
+        with allure_step_log(f"步骤1: 创建亲和组: {name}"):
+            ecs_page.ecs_create_affinity_group(name, policy)
+
+        with allure_step_log("步骤2: 验证创建结果"):
+            ecs_page.assert_popup_success("执行成功")
+            assert ecs_page.get_row_data(name).get("策略") == policy, \
+                f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(name).get('策略')}"
+
+        with allure_step_log(f"步骤3: 删除亲和组: {name}"):
+            ecs_page.ecs_delete_affinity_group(name)
+            ecs_page.assert_deleted(name, refresh=True)
+
+
+    @allure.title("弹性云服务器-批量操作功能验证")
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("operations", load_data("test_ecs_batch_operations", "test_ecs.yaml"))
+    def test_ecs_batch_operations(self, ecs_page, vm, ssh_host, operations):
+        names = [vm[i].get("name") for i in range(len(vm))]
+        ecs_ids = [vm[i].get("id").split(":")[1].strip() for i in range(len(vm))]
+        operation = operations.get("operation")
+        status = operations.get("status")
+        vm_state = operations.get("vm_state")
+        with allure_step_log(f"步骤1: 弹性云服务器{names}{operation}"):
+            ecs_page.ecs_batch_operations(names,
+                operation=operation
+            )
+        with allure_step_log(f"步骤2: 验证{operation}结果"):
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status=status)
+                stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+                assert stdout.get("vm_state") == vm_state, f"批量操作{operation}失败，期望vm_state:{vm_state},实际vm_state:{stdout.get('vm_state')}"
+
+    @allure.title("弹性云服务器-批量迁移功能验证")
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
+        """
+        测试弹性云服务器的批量热迁移和冷迁移功能
+        """
+        ecs_page.wait_for_page_ready()
+        names = [vm[i].get("name") for i in range(len(vm))]
+        ecs_ids = [vm[i].get("id").split(":")[-1] for i in range(len(vm))]
+
+        with allure_step_log("步骤1: 批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+
+        with allure_step_log("步骤2: 验证迁移结果"):
+            for name in names:
+                ecs_page.assert_status(name, status="迁移中", refresh=True)
+            for name,ecs_id in zip(names,ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务")
+                expect_node = ecs_page.get_row_data(name).get("物理机")
+                assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
+
+    @allure.title("弹性云服务器-系统盘扩容功能验证")
+    def test_ecs_expand_system_disk(self, ecs_page, vm, ssh_host):
+        """测试弹性云服务器系统盘扩容功能"""
+        name = vm.get("name")
+        ecs_id  = vm.get("id").split(":")[-1]
+        new_size = "110"
+
+        with allure_step_log(f"步骤1: 扩容云服务器{name}系统盘至{new_size}GiB"):
+            ecs_page.ecs_expand_system_disk(name, new_size)
+
+        with allure_step_log("步骤2: 验证扩容结果"):
+            ecs_page.assert_ecs_info(name, "系统盘", f"容量(GiB):{new_size}")
+            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+            assert stdout.get("root_gb") == new_size, \
+                f"扩容系统盘失败，期望系统盘大小:{new_size}GiB,实际系统盘大小:{stdout.get('root_gb')}GiB"
+
+
+    @allure.title("弹性云服务器-挂载/卸载云硬盘功能验证")
+    def test_ecs_mount_unmount_volume(self, ecs_page, vm, volume, ssh_vm):
+        """测试云硬盘的挂载和卸载功能"""
+
+        ecs_page.goto_service('弹性云服务器')
+        vm_name = vm.get("name")
+        volume_name = volume.get("name")
+
+        with allure_step_log(f"步骤1: 挂载云硬盘{volume_name}到服务器{vm_name}"):
+            ecs_page.ecs_mount_to_server(volume_name, vm_name)
+
+        with allure_step_log(f"步骤2: 验证挂载结果"):
+            assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == volume_name
+            assert ecs_page.get_row_data(vm["name"]).get("挂载云硬盘").split(" ")[-1] == volume_name
+            ssh_vm.connect(vm['mfip'])
+            ssh_vm.run("mkfs.ext4 /dev/vdb")
+            ssh_vm.run("mkdir /data")
+            ssh_vm.run("mount /dev/vdb /data")
+            ssh_vm.run('echo "hellodata" > /data/test')
+            assert ssh_vm.run('cat /data/test') == "hellodata"
+
+        with allure_step_log(f"步骤3: 从服务器{vm_name}卸载云硬盘{volume_name}"):
+            ecs_page.ecs_unmount_from_server(volume_name, vm_name)
+
+        with allure_step_log(f"步骤4: 验证卸载结果"):
+            assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == "--"
+            ssh_vm.connect(vm['mfip'])
+            ecs_page.wait_for_update(ssh_vm, "df -h", "/dev/vdd", timeout=120) # 临时方案，等待云硬盘卸载完成
+            stdout = ssh_vm.run("df -h")
+            assert stdout.count("/dev/vdb") == 0, f"卸载云硬盘失败，云硬盘{volume_name}仍挂载在服务器{vm_name}上"
 
 @allure.epic('计算服务')
 @allure.feature('弹性云服务器 ECS')
@@ -284,22 +485,22 @@ class TestEcsRecycle:
     def test_ecs_recycle_recover(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
-        with allure.step(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
+        with allure_step_log(f"步骤1: 虚拟机{name}系统盘写入数据，记录MD5"):
             ssh_vm.connect(vm['mfip'])
             md5 = ssh_vm.create_file(name)
 
-        with allure.step(f"步骤2: 删除云服务器{name}"):
+        with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
             time.sleep(3)
             ecs_page.assert_deleted(name)
 
-        with allure.step("步骤3: 恢复弹性云服务器"):
+        with allure_step_log("步骤3: 恢复弹性云服务器"):
             ecs_page.goto_submenu("回收站")
             ecs_page.ecs_recover(name)
             ecs_page.assert_popup_success(f"移出回收站成功")
             ecs_page.assert_deleted(name)
 
-        with allure.step("步骤4: 验证恢复结果"):
+        with allure_step_log("步骤4: 验证恢复结果"):
             ecs_page.goto_service('弹性云服务器')
             ecs_page.wait_for_operation_complete()
             ecs_page.assert_status(name, refresh=True)
@@ -311,24 +512,24 @@ class TestEcsRecycle:
     @allure.title("回收站-列表页搜索&重置")
     def test_ecs_recycle_search(self, ecs_page, vm):
         name = vm.get("name")
-        with allure.step(f"步骤1: 删除云服务器{name}"):
+        with allure_step_log(f"步骤1: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
             time.sleep(1)
             ecs_page.assert_deleted(name)
 
-        with allure.step("步骤2: 输入名称进行搜索"):
+        with allure_step_log("步骤2: 输入名称进行搜索"):
             ecs_page.goto_submenu("回收站")
             keyword = vm['name'][:-2]
             ecs_page.search(keyword)
             ecs_page.assert_list_contain(keyword, exact_match=False)
 
-        with allure.step("步骤3: 重置搜索条件"):
+        with allure_step_log("步骤3: 重置搜索条件"):
             ecs_page.btn_reset.click()
             ecs_page.wait_for_page_ready()
             # 断言重置后搜索输入框已清空
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-        with allure.step("步骤4: 恢复弹性云服务器"):
+        with allure_step_log("步骤4: 恢复弹性云服务器"):
             ecs_page.goto_submenu("回收站")
             ecs_page.ecs_recover(name)
             ecs_page.assert_popup_success(f"移出回收站成功")
@@ -339,18 +540,18 @@ class TestEcsRecycle:
     @allure.title("回收站-删除弹性云服务器")
     def test_ecs_recycle_remove(self, ecs_page, ssh_host):
         name = random_data()
-        with allure.step("步骤1: 创建云服务器并验证创建结果"):
+        with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
             ecs_page.ecs_create(name=name)
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
             ecs_id = ecs_page.get_row_data(name).get("名称/ID").split(':')[1]
 
-        with allure.step(f"步骤2: 删除云服务器{name}"):
+        with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
             ecs_page.wait_for_operation_complete()
             ecs_page.assert_deleted(name)
 
-        with allure.step("步骤2: 验证删除结果"):
+        with allure_step_log("步骤3: 验证删除结果"):
             ecs_page.ecs_recover_delete(name)
             ecs_page.assert_deleted(name)
             assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
@@ -363,7 +564,7 @@ class TestEcsRecycle:
         # 批量创建弹性云服务器用于测试
         ecs_names = []
         ids = []
-        with allure.step("步骤1: 批量创建弹性云服务器"):
+        with allure_step_log("步骤1: 批量创建弹性云服务器"):
             base_name = random_data()
             ecs_page.ecs_create(
                 base_name,
@@ -384,14 +585,14 @@ class TestEcsRecycle:
                 assert stdout.get("vm_state") == "active", f"{name}后台状态不是active，状态为:{stdout.get('vm_state')}"
 
         # 批量回收弹性云服务器
-        with allure.step("步骤2: 批量回收弹性云服务器"):
+        with allure_step_log("步骤2: 批量回收弹性云服务器"):
             ecs_page.ecs_batch_operations(ecs_names, "批量删除")
 
         # 批量删除回收站中的弹性云服务器
-        with allure.step("步骤3: 批量删除回收站中的弹性云服务器"):
+        with allure_step_log("步骤3: 批量删除回收站中的弹性云服务器"):
             ecs_page.ecs_recover_batch_delete(ecs_names)
 
-        with allure.step("步骤4: 验证删除结果"):
+        with allure_step_log("步骤4: 验证删除结果"):
             ecs_page.wait_for_operation_complete()
             # 验证弹性云服务器已彻底删除
             for name, ecs_id in zip(ecs_names, ids):
@@ -408,7 +609,7 @@ class TestECSS:
         """测试创建云服务器快照"""
         snapshot_name = f"snapshot_{vm['name']}"
 
-        with allure.step("步骤1: 创建系统盘快照"):
+        with allure_step_log("步骤1: 创建系统盘快照"):
             ecs_page.ecss_create(
                 name=vm['name'],
                 snapshot_name=snapshot_name,
@@ -417,7 +618,7 @@ class TestECSS:
             ecs_page.assert_popup_success("创建实例快照成功")
             ecs_page.assert_status(vm['name'], status="当前无任务")
 
-        with allure.step("步骤2: 验证快照创建成功"):
+        with allure_step_log("步骤2: 验证快照创建成功"):
             # 切换到快照页面
             ecs_page.goto_submenu("快照")
             ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
@@ -427,11 +628,11 @@ class TestECSS:
             assert snapshot_data["是否快照数据卷"] == "否"
             assert snapshot_data["是否启动源"] == "是"
 
-        with allure.step("步骤3: 删除系统盘快照"):
+        with allure_step_log("步骤3: 删除系统盘快照"):
             # 删除快照
             ecs_page.ecss_delete(snapshot_name)
 
-        with allure.step("步骤4: 验证快照已删除"):
+        with allure_step_log("步骤4: 验证快照已删除"):
             ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
             assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
 
@@ -440,7 +641,7 @@ class TestECSS:
         """测试批量删除云服务器快照"""
         snapshot_names = []
 
-        with allure.step("步骤1: 批量创建快照"):
+        with allure_step_log("步骤1: 批量创建快照"):
             # 创建多个快照
             for i in range(3):
                 snapshot_name = f"snapshot_{random_data()}"
@@ -453,16 +654,16 @@ class TestECSS:
                 ecs_page.assert_popup_success("创建实例快照成功")
                 ecs_page.assert_status(vm["name"], status="当前无任务")
 
-        with allure.step("步骤2: 验证所有快照创建成功"):
+        with allure_step_log("步骤2: 验证所有快照创建成功"):
             # 切换到快照页面
             ecs_page.goto_submenu("快照")
             ecs_page.assert_status(snapshot_names, status="可用", refresh=True)
 
-        with allure.step("步骤3: 批量删除快照"):
+        with allure_step_log("步骤3: 批量删除快照"):
             # 批量删除快照
             ecs_page.ecss_delete(snapshot_names)
 
-        with allure.step("步骤4: 验证所有快照已删除"):
+        with allure_step_log("步骤4: 验证所有快照已删除"):
             ecs_page.assert_deleted(snapshot_names, refresh=True)
             assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
 
@@ -474,11 +675,11 @@ class TestECSS:
         new_name = ecss["name"] + params["name_suffix"]
         new_desc = params["new_desc"]
 
-        with allure.step("步骤1: 修改云服务器快照的名称和描述"):
+        with allure_step_log("步骤1: 修改云服务器快照的名称和描述"):
             ecs_page.ecss_edit(ecss["name"], new_name, new_desc)
             ecs_page.assert_popup_success("修改快照成功")
 
-        with allure.step("步骤2: 验证修改结果"):
+        with allure_step_log("步骤2: 验证修改结果"):
             ecs_page.assert_list_contain(new_name)
             # 获取修改后的快照数据并验证
             snapshot_data = ecs_page.get_row_data(new_name)
@@ -488,7 +689,7 @@ class TestECSS:
     def test_ecss_restore(self, ecs_page, vm, ecss: dict, ssh_vm):
         """测试云服务器快照还原功能"""
 
-        with allure.step("步骤1: 虚机打快照后，在root目录下写测试文件"):
+        with allure_step_log("步骤1: 虚机打快照后，在root目录下写测试文件"):
             # 连接虚拟机
             ssh_vm.connect(vm['mfip'])
 
@@ -497,25 +698,25 @@ class TestECSS:
             ssh_vm.create_file(test_file)
             ssh_vm.file_exist(test_file)
 
-        with allure.step("步骤2: 虚机还原快照"):
+        with allure_step_log("步骤2: 虚机还原快照"):
 
             # 还原快照
             ecs_page.ecss_restore(ecss["name"])
             ecs_page.assert_popup_success(f"{vm['name']}实例还原快照成功")
 
-        with allure.step("步骤3: 页面验证快照还原结果"):
+        with allure_step_log("步骤3: 页面验证快照还原结果"):
             ecs_page.goto_submenu("弹性云服务器")
             ecs_page.assert_status(vm['name'], status="快照还原中")
             ecs_page.assert_status(vm['name'], status="当前无任务")
             data = ecs_page.get_row_data(vm['name'])
             assert data["镜像名称"] == ecss["name"]
 
-        with allure.step("步骤4: 验证虚机内测试文件已不存在"):
+        with allure_step_log("步骤4: 验证虚机内测试文件已不存在"):
             # 重新连接虚拟机
             ssh_vm.connect(vm['mfip'])
             ssh_vm.file_not_exist(test_file)
 
-        with allure.step("步骤5: 重建虚机并删除快照"):
+        with allure_step_log("步骤5: 重建虚机并删除快照"):
             image = ecs_page.storage_pool  # 获取存储池同名镜像
             if ecs_page.env["stor"] not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
                 ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
@@ -525,19 +726,19 @@ class TestECSS:
     @allure.title("云服务器快照-列表页搜索&重置")
     def test_ecss_search(self, ecs_page, ecss: dict):
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = ecss['name'][:-2]
             ecs_page.search(keyword)
 
-        with allure.step("步骤2: 验证搜索结果"):
+        with allure_step_log("步骤2: 验证搜索结果"):
             ecs_page.assert_list_contain(keyword, exact_match=False)
 
-        with allure.step("步骤3: 重置搜索条件"):
+        with allure_step_log("步骤3: 重置搜索条件"):
             ecs_page.search(random_data())
             ecs_page.btn_reset.click()
             ecs_page.wait_for_page_ready()
 
-        with allure.step("步骤4: 验证重置结果"):
+        with allure_step_log("步骤4: 验证重置结果"):
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
 

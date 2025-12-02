@@ -36,26 +36,6 @@ evs:
       status: "运行"
       vm_state: "active"
     - param:
-      operation: "重启"
-      desc: "实例重启成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
-      operation: "强制重启"
-      desc: "实例强制重启成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
-      operation: "强制关机"
-      desc: "实例强制关机成功"
-      status: "关机"
-      vm_state: "stopped"
-    - param:
-      operation: "启动"
-      desc: "实例启动成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
       operation: "挂起"
       desc: "实例挂起成功"
       status: "挂起"
@@ -75,6 +55,26 @@ evs:
       desc: "实例恢复运行成功"
       status: "运行"
       vm_state: "active"
+    - param:
+      operation: "重启"
+      desc: "实例重启成功"
+      status: "运行"
+      vm_state: "active"
+    - param:
+      operation: "强制重启"
+      desc: "实例强制重启成功"
+      status: "运行"
+      vm_state: "active"
+    - param:
+      operation: "强制关机"
+      desc: "实例强制关机成功"
+      status: "关机"
+      vm_state: "stopped"
+    - param:
+      operation: "启动"
+      desc: "实例启动成功"
+      status: "运行"
+      vm_state: "active"
   test_ecs_network:
     - network_info:
       net: "Autotest"
@@ -86,8 +86,35 @@ evs:
     - param:
       operation: "解绑亲和组"
       group_name: "caowl-反亲和"
-  test_ecs_batch_operation:
+  test_ecs_batch_operations:
+    - param:
+      operation: "批量关机"
+      status: "关机"
+      vm_state: "stopped"
+    - param:
+      operation: "批量启动"
+      status: "运行"
+      vm_state: "active"
     - param:
       operation: "批量重启"
-      desc: "批量重启成功"
       status: "运行"
+      vm_state: "active"
+    - param:
+      operation: "批量强制重启"
+      status: "运行"
+      vm_state: "active"
+  test_ecs_cpu_qos:
+    - param:
+      priority: "低"
+      ceiling: "0.2"
+      expection:
+        quota:cpu_quota: "200000.0"
+        quota:cpu_shares: "256"
+        quota:cpu_period: "1000000"
+    - param:
+      priority: "高"
+      ceiling: "1"
+      expection:
+        quota:cpu_quota: "1000000.0"
+        quota:cpu_shares: "4096"
+        quota:cpu_period: "1000000"

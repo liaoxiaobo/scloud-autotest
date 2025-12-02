@@ -370,6 +370,7 @@ class EcsPage(OpsPage):
             TODO: 加速模式、分配方式不同场景加载网卡的用例
         """
         logger.info(f"云服务器{name}：加载网卡")
+        checked_subnet = ""
         try:
             self.click_dropdown_option(name, "加载网卡")
             # 选择网络
@@ -380,6 +381,7 @@ class EcsPage(OpsPage):
             logger.info(f"云服务器{name}：选择子网{subnet}")
             self.get_by_role("textbox", name="请选择子网").click()
             self.get_by_role("listitem").filter(has_text=f"{subnet}(").click()
+            checked_subnet = self.get_by_role("listitem").filter(has_text=f"{subnet}(").inner_text().split("(")[1].split(".0/")[0]
             # 选择网络加速模式
             if mode:
                 logger.info(f"云服务器{name}：选择网络加速模式{mode}")
@@ -390,6 +392,7 @@ class EcsPage(OpsPage):
                     self.get_by_role("radio").filter(has_text=key).click()
                     self.get_by_text(value).click()
             self.get_by_label("加载网卡").get_by_text("确定").click()
+            return checked_subnet
         except Exception as e:
             logger.error(f"云服务器{name}：加载网卡失败:{e}")
             raise e
@@ -567,18 +570,23 @@ class EcsPage(OpsPage):
         self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
 
     @submenu("弹性云服务器")
-    def ecs_bind_unbind_group(self, name: str, operation: str, group_name: str):
+    def ecs_bind_unbind_group(self, names, operation: str, group_name: str):
         """解绑/解绑亲和组
         Args:
             name: 云服务器名称
             group_name: 亲和组名称
         """
-        logger.info(f"云服务器{name}绑定亲和组{group_name}")
+        logger.info(f"云服务器{names}{operation}{group_name}")
+        for name in names:
+            self.ecs_bind_unbind_affinity_group(name, operation, group_name)
+            self.assert_popup_success(f"{name}实例{operation}成功")
+
+    def ecs_bind_unbind_affinity_group(self, name, operation: str, group_name: str):
         self.click_dropdown_option(name, operation)
         self.get_by_role("dialog", name=operation).get_by_placeholder("请选择").click()
         self.get_by_role("listitem").filter(has_text=group_name).click()
-        # self.dialog_confirm()
-        self.get_by_label(operation).get_by_text("确定").click()
+        self.dialog_confirm.click()
+        # self.get_by_label(operation).get_by_text("确定").click()
 
     @submenu("镜像服务")
     def ecs_image_delete(self, image_name):
@@ -627,7 +635,7 @@ class EcsPage(OpsPage):
                 continue
         return result
 
-    def assert_ecs_enable(self, name: str, ssh_vm, timeout=60):
+    def assert_ecs_enable(self, name: str, ssh_vm, timeout=120):
         """验证云服务器可用性
         Args:
             name: 云服务器名称
@@ -636,23 +644,21 @@ class EcsPage(OpsPage):
 
         logger.info(f"验证{name}云服务器可用性")
         logger.info(f"验证云服务器{name} fs-agent状态为active (running)")
-        self.wait_for_update(ssh_vm.run("systemctl status fs-agent", return_rc=True), "active (running)", timeout=timeout)
+        self.wait_for_update(ssh_vm, "systemctl status fs-agent", "active (running)", timeout=timeout)
         stdout = ssh_vm.run("systemctl status fs-agent", return_rc=True)
         assert stdout.get("stdout").count("active (running)")\
                and stdout.get("rc") == 0, "fs-agent未启动"
 
         logger.info(f"验证云服务器{name} ding-agent服务状态为启动")
-        self.wait_for_update(ssh_vm.run("ps -ef | grep ding", return_rc=True), "ding-agent")
+        self.wait_for_update(ssh_vm, "ps -ef | grep ding", "ding-agent", timeout=timeout)
         stdout = ssh_vm.run("ps -ef | grep ding", return_rc=True)
         assert stdout.get("stdout").count("ding-agent") \
                and stdout.get("rc") == 0, "ding-agent未启动"
 
         logger.info(f"验证云服务器{name}能ping通 100.126.255.250")
-        stdout = ssh_vm.run("ping -c 3 100.126.255.250", return_rc=True)
-        assert stdout.get("stdout").count("3 received, 0% packet loss") \
-               and stdout.get("rc") == 0, "ping 100.126.255.250失败"
+        ssh_vm.ping("100.126.255.250")
 
-        logger.info(f"验证云服务器{name}能curl通http://169.254.169.254:80/openstack")
+        logger.info(f"验证云服务器{name}能 curl通http://169.254.169.254:80/openstack")
         stdout = ssh_vm.run("curl http://169.254.169.254:80/openstack", return_rc=True)
         assert stdout.get("stdout").count("latest") \
                and stdout.get("rc") == 0, "curl失败"
@@ -743,7 +749,7 @@ class EcsPage(OpsPage):
             # 默认使用通用确认按钮
             self.dialog_confirm.click()
 
-    def wait_for_update(self, ssh_vm, expection, timeout=30, check_interval=15):
+    def wait_for_update(self, ssh_vm, cmd, expection, timeout=30, check_interval=15):
         """等待主机更新完成
         Args:
             ssh_vm: ssh对象及run的命令
@@ -753,8 +759,8 @@ class EcsPage(OpsPage):
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if ssh_vm.get("stdout").count(expection):
-                break  # 主机名已更新，退出轮询
+            if ssh_vm.run(cmd, return_rc=True).get('stdout').count(expection):
+                break  # 已更新，退出轮询
             time.sleep(check_interval)
 
     def ecs_recover(self, name: str):
@@ -819,6 +825,79 @@ class EcsPage(OpsPage):
 
             # 使用BasePage中的通用下拉菜单选项点击方法
             self.click_dropdown_option(names, delete_option)
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+    @submenu("弹性云服务器")
+    def ecs_create_image(self, name: str, imnage_name: str):
+        """弹性云服务器新建镜像
+
+        Args:
+            name: 弹性云服务器
+            imnage_name: 镜像名称
+        """
+        logger.info(f"开始创建云服务器镜像: {imnage_name}")
+        # 点击新建镜像
+        self.click_dropdown_option(name, "新建镜像")
+
+        # 填写镜像名称
+        self.locator("div").filter(has_text=re.compile(r"^镜像名称$")).get_by_role("textbox").fill(imnage_name)
+
+        # 提交创建
+        self.dialog_confirm.click()
+
+        logger.info(f"云服务器镜像创建请求已提交: {imnage_name}")
+
+    @submenu("亲和组")
+    def ecs_create_affinity_group(
+            self,
+            name: str,
+            policy="亲和"
+    ):
+        """创建亲和组
+
+        Args:
+            name: 亲和组名称
+            policy: 亲和策略，默认为"亲和"，可选"反亲和"
+        """
+        logger.info(f"开始创建亲和组: {name}, 策略: {policy}")
+
+        # 点击新建按钮
+        self.btn_create.click()
+
+        # 填写亲和组名称
+        self.get_by_placeholder("请输入亲和组名称").fill(name)
+
+        # 选择策略
+        self.get_by_placeholder("请选择策略").click()
+        self.locator("li").filter(has_text=re.compile(rf"^{re.escape(policy)}$")).click()
+
+        # 提交创建
+        self.dialog_confirm.click()
+
+        logger.info(f"亲和组创建请求已提交: {name}, 策略: {policy}")
+
+    @submenu("亲和组")
+    def ecs_delete_affinity_group(self, names):
+        """删除亲和组，支持单个和批量操作
+
+        Args:
+            names: 亲和组名称列表（列表）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            # self.click_dropdown_option(names, "删除")
+            self.get_by_role("row").filter(has_text=names).locator("i").click()
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1006,3 +1085,190 @@ class EcsPage(OpsPage):
         self.logger.info(f"云服务器快照策略删除请求已提交: {names}")
 
 
+
+    @submenu("弹性云服务器")
+    def ecs_batch_migration(self, names, migration_type="热迁移", bandwidth="全速", cpu_auto=False):
+        """批量迁移云服务器
+
+        Args:
+            names: 云服务器名称列表
+            migration_type: 迁移方式，默认为"热迁移"，可选"冷迁移"
+            bandwidth: 带宽设置，默认为"全速"
+            cpu_auto: CPU自动收敛
+        """
+        logger.info(f"开始批量迁移云服务器: {names}, 迁移方式: {migration_type}, 带宽: {bandwidth}")
+
+        # 选择指定的云服务器并点击批量迁移
+        self.ecs_batch_operations(names, "批量迁移")
+
+        # 选择迁移方式
+        self.get_by_placeholder("请选择迁移方式").click()
+        self.locator("li").filter(has_text=re.compile(rf"^{migration_type}$")).click()
+
+        # 选择带宽
+        if migration_type == "热迁移":
+            self.get_by_placeholder("请选择带宽").click()
+            self.locator("li").filter(has_text=bandwidth).click()
+        if cpu_auto and migration_type == "热迁移":
+            # 设置开关
+            loc = self.get_by_role("switch").locator("span")
+            if not loc.is_enabled():
+                loc.click()
+
+        # 确认迁移
+        # self.get_by_label("批量迁移").get_by_text("确定").click()
+        self.dialog_confirm.click()
+        # 等待操作完成
+        self.wait_for_operation_complete()
+
+        # 验证成功提示
+        self.assert_popup_success(f"批量{migration_type}命令下发成功")
+
+        logger.info(f"批量迁移操作完成: {names}, 迁移方式: {migration_type}")
+
+
+    @submenu("弹性云服务器")
+    def ecs_hot_migration(self, name, target_host=None, bandwidth="全速", cpu_auto=False):
+        """云服务器热迁移
+
+        Args:
+            name: 云服务器名称
+            target_host: 目标物理机，如"master03.cloud.local"
+            bandwidth: 迁移速率，默认为"全速"
+            cpu_auto: 是否启用CPU自动收敛，默认为False
+        """
+        logger.info(f"开始热迁移云服务器: {name}, 目标主机: {target_host}, 带宽: {bandwidth}")
+        checked_host = None
+        # 点击云服务器操作按钮，选择热迁移
+        self.click_dropdown_option(name, "热迁移")
+
+        # 选择目标物理机
+        self.get_by_placeholder("请选择目标物理机").click()
+
+        # 等待下拉列表加载完成
+        self.wait_for_operation_complete()
+
+        # 尝试选择指定的目标物理机
+        if target_host:
+            try:
+                # 尝试选择目标物理机
+                option = self.page.locator("li").filter(has_text=target_host).filter(has_not_text="当前节点").first
+                if option.is_visible() and not option.is_disabled():
+                    option.click()
+                    logger.info(f"已选择指定的目标物理机: {option.inner_text()}")
+                    checked_host = option.inner_text()
+
+            except Exception as e:
+                logger.error(f"选择目标物理机{target_host}失败: {e}")
+                # 如果以上方法都失败，则选择第一个可点击的物理机
+                clickable_found = False
+                if not clickable_found:
+                    logger.warning(f"无法选择指定的目标物理机 {target_host}，尝试选择第一个可用的物理机")
+                    all_host_options = self.locator("li").filter(has_not_text="当前节点")
+                    for i in range(all_host_options.count()):
+                        option = all_host_options.nth(i)
+                        if option.is_visible() and option.is_enabled():
+                            option.click()
+                            clickable_found = True
+                            logger.info(f"已选择第一个可用的物理机: {option.text_content()}")
+                            checked_host = option.inner_text()
+
+                    # 如果没有找到可点击的选项，则抛出异常
+                    if not clickable_found:
+                        error_msg = "没有可用的物理机可供选择"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
+
+        # 选择迁移速率
+        self.get_by_placeholder("请选择迁移速率").click()
+        self.locator("li").filter(has_text=bandwidth).click()
+
+        # 设置CPU自动收敛选项
+        if cpu_auto:
+            switch_locator = self.get_by_role("switch").locator("span")
+            if not switch_locator.is_enabled():
+                switch_locator.click()
+
+        # 确认热迁移
+        self.dialog_confirm.click()
+
+        # 验证成功提示
+        self.assert_popup_success("热迁移命令下发成功")
+
+        logger.info(f"云服务器热迁移请求已提交: {name}")
+        return checked_host
+
+    @submenu("弹性云服务器")
+    def ecs_mount_to_server(self, volume_name, vm_name):
+        """将云硬盘挂载到指定服务器
+
+        Args:
+            volume_name: 云硬盘名称
+            vm_name: 服务器名称
+        """
+        # 点击挂载云硬盘选项
+        self.click_dropdown_option(vm_name, "挂载云硬盘")
+
+        # 搜索云硬盘
+        self.get_by_placeholder("搜索(云硬盘名称）").fill(volume_name)
+        self.get_by_label("挂载云硬盘").get_by_text("搜索").click()
+
+        # 选择云硬盘
+        self.get_by_role("row").filter(has_text=volume_name).get_by_role("radio").click()
+
+        # 确认挂载
+        self.get_by_label("挂载云硬盘").get_by_text("挂载", exact=True).click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+
+        self.assert_popup_success(f"挂载云硬盘到虚拟机{vm_name}成功")
+
+
+    @submenu("弹性云服务器")
+    def ecs_unmount_from_server(self, volume_name, vm_name):
+        """从指定服务器卸载云硬盘
+
+        Args:
+            volume_name: 云硬盘名称
+            vm_name: 服务器名称
+        """
+
+        # 点击卸载云硬盘选项
+        self.click_dropdown_option(vm_name, "卸载云硬盘")
+
+        # 选择云硬盘
+        self.get_by_placeholder("请选择云硬盘").click()
+        self.locator("span").filter(has_text=re.compile(rf"^{volume_name}$")).click()
+
+        # 确认卸载
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+
+        self.assert_popup_success(f"从虚拟机{vm_name}分离云硬盘")
+
+    @submenu("弹性云服务器")
+    def ecs_expand_system_disk(self, name: str, new_size: str):
+        """扩容弹性云服务器系统盘
+
+        Args:
+            name: 云服务器名称
+            new_size: 新的系统盘大小（GiB）
+        """
+        logger.info(f"开始扩容云服务器系统盘: {name}，扩容至: {new_size}GiB")
+
+        # 点击下拉菜单中的"系统盘扩容"选项
+        self.click_dropdown_option(name, "系统盘扩容")
+
+        # 设置新的系统盘大小
+        self.get_by_label("系统盘扩容").get_by_role("spinbutton").fill(new_size)
+
+        # 确认扩容
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+        self.assert_popup_success(f"{name}实例扩容成功")
+        logger.info(f"云服务器系统盘扩容成功: {name}")

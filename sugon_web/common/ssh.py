@@ -89,16 +89,44 @@ class SSH:
         self.jumphost_client = _create_ssh_client(host, port, username, pwd, pkey)
         logger.info(f"Connected successfully to jumphost {host}")
 
-    def _check_connection(self) -> bool:
+    def _check_connection(self, poll_count=5, poll_interval=2) -> bool:
         """
-        检查 SSH 连接是否仍然有效。
+        轮询检查 SSH 连接是否仍然有效，以最后一次检查结果为准。
+
+        :param poll_count: 轮询检查的次数，默认为5次
+        :param poll_interval: 每次轮询之间的间隔时间（秒），默认为2秒
+        :return: 最后一次检查的结果，True表示连接有效，False表示连接无效
         """
-        try:
-            # 使用 run 方法执行简单命令来测试连接
-            output = self.run('hostname')
-            return bool(output)
-        except (SSHException, EOFError):
+        if not self.ssh_client:
+            logger.warning("SSH客户端未初始化，无法检查连接")
             return False
+
+        last_result = False
+        for i in range(poll_count):
+            try:
+                # 使用 transport 的 is_active() 方法进行基本检查
+                if not self.ssh_client.get_transport().is_active():
+                    logger.debug(f"第{i + 1}次检查: SSH传输层不活跃")
+                    last_result = False
+                else:
+                    # 尝试执行简单命令来测试连接
+                    output = self.run('echo "connection_test"', timeout=5)
+                    if output == "connection_test":
+                        logger.debug(f"第{i + 1}次检查: SSH连接正常")
+                        last_result = True
+                    else:
+                        logger.debug(f"第{i + 1}次检查: SSH连接响应异常")
+                        last_result = False
+            except (SSHException, EOFError, AttributeError) as e:
+                logger.debug(f"第{i + 1}次检查: SSH连接检查异常: {str(e)}")
+                last_result = False
+
+            # 如果不是最后一次检查，等待指定间隔时间
+            if i < poll_count - 1:
+                time.sleep(poll_interval)
+
+        logger.info(f"SSH连接检查完成，最终结果: {'有效' if last_result else '无效'}")
+        return last_result
 
     def connect(self, host, port=22, username='root', pwd="admin1234@sugon", pkey=None, use_jumphost=True):
         """
