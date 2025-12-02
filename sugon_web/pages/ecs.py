@@ -95,7 +95,7 @@ class EcsPage(OpsPage):
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
-        self.get_by_text(self.storage_pool).click()
+        self.get_by_text(self.storage_pool, exact=True).click()
         
         # 选择操作系统版本
         self.get_by_role("textbox", name="请选择操作系统版本").click()
