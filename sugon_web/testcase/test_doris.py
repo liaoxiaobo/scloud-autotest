@@ -45,7 +45,7 @@ class TestDoris:
         for instance_name in instance_names:
             with allure.step(f"步骤一：创建实例: {instance_name}"):
                 doris_page.create_instance(name=instance_name)
-                doris_page.assert_popup_success("创建Doris资源成功")
+                doris_page.assert_popup_success("Doris创建任务提交成功")
                 doris_page.assert_list_contain(instance_name)
                 doris_page.assert_status(instance_name, status="就绪", timeout=1800)
 
