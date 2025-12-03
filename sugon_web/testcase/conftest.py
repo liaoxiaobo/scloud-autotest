@@ -129,7 +129,7 @@ def doris(doris_page):
     with allure.step(f"前置操作：创建共享实例 {name}"):
         doris_page.create_instance(name, password=admin_password)
         doris_page.assert_popup_success("Doris创建任务提交成功")
-        doris_page.assert_status(name, status="运行中", timeout=1800)
+        doris_page.assert_status(name, status="就绪", timeout=1800)
 
     yield data
 
