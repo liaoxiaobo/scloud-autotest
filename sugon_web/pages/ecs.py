@@ -229,18 +229,21 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
-    def ecs_vnc(self, name: str, vncpwd: str, pwd: str=None):
+    def ecs_vnc(self, name: str, vncpwd: str):
         """修改VNC密码
         Args：
             name: 云服务器名称
             password: VNC登录密码
-            pwd: 登录密码（预留）
         """
         logger.info(f"云服务器{name}：登录VNC")
         self.click_dropdown_option(name, "登录VNC")
         self.switch_to_new_tab()
+        self.wait_for_page_ready()
         self.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
         self.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
+        self.wait_for_operation_complete()
+        assert self.locator("#app iframe").content_frame.locator("canvas").is_visible()
+        self.switch_to_tab(0)
 
     @submenu("弹性云服务器")
     def ecs_rebuild(self, name: str, version: str, bit: str, image: str):
@@ -567,6 +570,7 @@ class EcsPage(OpsPage):
         self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
         logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
         self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").fill(interval)
+        self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").screenshot(path=f"./screenshots/{time.strftime('%Y%m%d%H%M%S')}.png")
         self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
 
     @submenu("弹性云服务器")
@@ -1148,36 +1152,44 @@ class EcsPage(OpsPage):
         # 等待下拉列表加载完成
         self.wait_for_operation_complete()
 
+        # 获取所有下拉选项
+        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
+        options_count = all_host_options.count()
+        available_hosts = []
+
+        # 遍历所有选项，获取文本并排除包含"当前节点"的选项
+        for i in range(options_count):
+            option = all_host_options.nth(i)
+            option_text = option.inner_text()
+            if "当前节点" not in option_text:
+                available_hosts.append({"element": option, "text": option_text})
+        logger.info(f"可操作下拉选项: {[x.get('text') for x in available_hosts]}")
+        # 如果没有可用物理机，抛出异常
+        if not available_hosts:
+            error_msg = "没有可用的物理机可供选择"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
         # 尝试选择指定的目标物理机
         if target_host:
-            try:
-                # 尝试选择目标物理机
-                option = self.page.locator("li").filter(has_text=target_host).filter(has_not_text="当前节点").first
-                if option.is_visible() and not option.is_disabled():
-                    option.click()
-                    logger.info(f"已选择指定的目标物理机: {option.inner_text()}")
-                    checked_host = option.inner_text()
+            for host in available_hosts:
+                if target_host in host["text"]:
+                    host["element"].click()
+                    logger.info(f"已选择指定的目标物理机: {host['text']}")
+                    checked_host = host["text"]
+                    break
 
-            except Exception as e:
-                logger.error(f"选择目标物理机{target_host}失败: {e}")
-                # 如果以上方法都失败，则选择第一个可点击的物理机
-                clickable_found = False
-                if not clickable_found:
-                    logger.warning(f"无法选择指定的目标物理机 {target_host}，尝试选择第一个可用的物理机")
-                    all_host_options = self.locator("li").filter(has_not_text="当前节点")
-                    for i in range(all_host_options.count()):
-                        option = all_host_options.nth(i)
-                        if option.is_visible() and option.is_enabled():
-                            option.click()
-                            clickable_found = True
-                            logger.info(f"已选择第一个可用的物理机: {option.text_content()}")
-                            checked_host = option.inner_text()
-
-                    # 如果没有找到可点击的选项，则抛出异常
-                    if not clickable_found:
-                        error_msg = "没有可用的物理机可供选择"
-                        logger.error(error_msg)
-                        raise Exception(error_msg)
+            # 如果指定的目标物理机不可用，选择第一个可用的
+            if not checked_host:
+                logger.warning(f"指定的目标物理机 {target_host} 不可用，选择第一个可用物理机")
+                available_hosts[0]["element"].click()
+                logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
+                checked_host = available_hosts[0]["text"]
+        else:
+            # 如果没有指定目标物理机，选择第一个可用的
+            available_hosts[0]["element"].click()
+            logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
+            checked_host = available_hosts[0]["text"]
 
         # 选择迁移速率
         self.get_by_placeholder("请选择迁移速率").click()
@@ -1195,8 +1207,76 @@ class EcsPage(OpsPage):
         # 验证成功提示
         self.assert_popup_success("热迁移命令下发成功")
 
-        logger.info(f"云服务器热迁移请求已提交: {name}")
-        return checked_host
+        logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
+        return checked_host.split("CPU剩余量")[0].strip()
+
+    @submenu("弹性云服务器")
+    def ecs_cold_migration(self, name, target_host=None):
+        """云服务器冷迁移
+
+        Args:
+            name: 云服务器名称
+            target_host: 目标物理机，如"master01.cloud.local"
+        """
+        logger.info(f"开始热迁移云服务器: {name}, 目标主机: {target_host}")
+        checked_host = None
+        # 点击云服务器操作按钮，选择热迁移
+        self.click_dropdown_option(name, "冷迁移")
+
+        # 选择目标物理机
+        self.get_by_placeholder("请选择物理机").click()
+
+        # 等待下拉列表加载完成
+        self.wait_for_operation_complete()
+
+        # 获取所有下拉选项
+        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
+        options_count = all_host_options.count()
+        available_hosts = []
+
+        # 遍历所有选项，获取文本并排除包含"当前节点"的选项
+        for i in range(options_count):
+            option = all_host_options.nth(i)
+            option_text = option.inner_text()
+            if not option.get_attribute("class").count("is-disabled"):
+                logger.info(f"可操作下拉选项class属性: {option.get_attribute('class')}")
+                available_hosts.append({"element": option, "text": option_text})
+        logger.info(f"可操作下拉选项: {[x.get('text') for x in available_hosts]}")
+        # 如果没有可用物理机，抛出异常
+        if not available_hosts:
+            error_msg = "没有可用的物理机可供选择"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+        # 尝试选择指定的目标物理机
+        if target_host:
+            for host in available_hosts:
+                if target_host in host["text"]:
+                    host["element"].click()
+                    logger.info(f"已选择指定的目标物理机: {host['text']}")
+                    checked_host = host["text"]
+                    break
+
+            # 如果指定的目标物理机不可用，选择第一个可用的
+            if not checked_host:
+                logger.warning(f"指定的目标物理机 {target_host} 不可用，选择第一个可用物理机")
+                available_hosts[0]["element"].click()
+                logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
+                checked_host = available_hosts[0]["text"]
+        else:
+            # 如果没有指定目标物理机，选择第一个可用的
+            available_hosts[0]["element"].click()
+            logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
+            checked_host = available_hosts[0]["text"]
+
+        # 确认冷迁移
+        self.dialog_confirm.click()
+
+        # 验证成功提示
+        self.assert_popup_success("冷迁移命令下发成功")
+
+        logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
+        return checked_host.split("CPU剩余量")[0].strip()
 
     @submenu("弹性云服务器")
     def ecs_mount_to_server(self, volume_name, vm_name):
@@ -1272,3 +1352,89 @@ class EcsPage(OpsPage):
         self.wait_for_operation_complete()
         self.assert_popup_success(f"{name}实例扩容成功")
         logger.info(f"云服务器系统盘扩容成功: {name}")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_cpu_qos(self, name: str, priority: str = "低", ceiling: str = "0.2"):
+        """修改云服务器CPU QoS
+
+        Args:
+            name: 云服务器名称
+            level: CPU QoS级别，默认为"低"
+            weight: CPU权重值，默认为0.2
+        """
+        logger.info(f"开始修改云服务器{name}的CPU QoS: 级别={priority}, 权重={ceiling}")
+
+        # 点击指定云服务器的操作按钮
+        self.click_dropdown_option(name, "修改CPU QoS")
+
+        # 选择CPU QoS级别
+        self.get_by_label("修改CPU QoS").get_by_placeholder("请选择").click()
+        self.get_by_text(priority, exact=True).click()
+
+        # 设置CPU权重
+        self.get_by_label("修改CPU QoS").get_by_role("spinbutton").fill(ceiling)
+
+        # 确认修改
+        self.dialog_confirm.click()
+        logger.info(f"云服务器{name}的CPU QoS修改请求已提交")
+
+        self.wait_for_operation_complete()
+        self.assert_popup_success(f"设置cpu-qos成功")
+
+    @submenu("弹性云服务器")
+    def ecs_batch_set_boot_order(self, names: list, order: str, delay):
+        """批量设置云服务器启动顺序
+
+        Args:
+            names: 云服务器名称列表
+            boot_configs: 启动顺序配置列表，格式为 [{"order": "3", "delay": "20"}, ...]
+                         order: 启动顺序
+                         delay: 启动延迟时间(秒)
+        """
+        logger.info(f"云服务器{names}开始批量设置启动顺序: {order}, 启动延迟时间:{delay}")
+
+        # 选择指定的云服务器
+        self.select_rows_by_names(names)
+
+        # 点击设置启动顺序按钮
+        self.locator("div:nth-child(3) > .cloud-button-btn").first.click()
+
+        # 设置每台服务器的启动顺序
+        self.get_by_role("dialog", name="设置启动顺序").get_by_role("textbox").first.fill(order)
+
+        # 设置启动延迟时间
+        self.locator("form div").filter(has_text="启动延迟时间(秒)").get_by_role("textbox").fill(delay)
+
+        # 确认设置
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+        self.assert_popup_success("执行成功")
+
+        logger.info(f"批量设置云服务器启动顺序完成: {names}")
+
+    @submenu("弹性云服务器")
+    def ecs_details(self, name: str, order: str, delay: str):
+        """进入云服务器详情页面
+
+        Args:
+            name: 云服务器名称
+            order: 启动顺序
+            delay: 启动延迟时间(秒)
+        """
+        logger.info(f"进入云服务器详情页面: {name}")
+
+        # 点击指定云服务器的详情链接
+        self.get_by_role("cell", name=name).locator("a").click()
+
+        # 等待详情页面加载完成
+        self.wait_for_page_ready()
+
+        # 验证详情页面元素
+        logger.info(f"验证详情页面元素: {self.get_by_text('启动顺序 ').inner_text()}")
+        logger.info(f"验证详情页面元素: {self.get_by_text('启动延迟时间(秒) ').inner_text()}")
+        assert self.get_by_text("启动顺序 ").inner_text() == order
+        assert self.get_by_text("启动延迟时间(秒) ").inner_text() == delay
+
+        logger.info(f"成功进入云服务器详情页面: {name}")
