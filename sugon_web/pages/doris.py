@@ -177,3 +177,41 @@ class DorisPage(BasePage):
         :param name: 实例名称
         """
         self.click_dropdown_option(name, "状态重置")
+
+    @submenu("实例管理")
+    def instance_ip_binding(self, name: str, network: str = None):
+        """
+        为Doris实例绑定弹性IP
+        :param name: 实例名称
+        :param network: 网络名称 (仅绑定时需要)
+        :return: 绑定的IP地址
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        self.get_by_text("绑定公网IP").first.click()
+
+        # 使用更精确的dialog定位
+        dialog = self.get_by_label("绑定公网IP", exact=True)
+        dialog.get_by_placeholder("请选择").click()
+        self.get_by_text(network).click()
+
+        # 选择第一个状态为"关闭"的IP
+        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        ip_address = ip_row.locator("td").nth(1).inner_text()
+        ip_row.locator("label[role='radio']").click()
+
+        # 使用dialog内的确定按钮，避免多个匹配
+        self.dialog_confirm.click()
+
+        return ip_address
+
+    @submenu("实例管理")
+    def instance_ip_unbinding(self, name: str):
+        """
+        为Doris实例解绑弹性IP
+        :param name: 实例名称
+        """
+        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.wait_for_page_ready()
+        self.get_by_label("详情").get_by_text("解绑公网IP").first.click()
+        self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
