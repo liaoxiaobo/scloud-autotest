@@ -570,7 +570,6 @@ class EcsPage(OpsPage):
         self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
         logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
         self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").fill(interval)
-        self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").screenshot(path=f"./screenshots/{time.strftime('%Y%m%d%H%M%S')}.png")
         self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
 
     @submenu("弹性云服务器")
@@ -1382,16 +1381,15 @@ class EcsPage(OpsPage):
         self.assert_popup_success(f"设置cpu-qos成功")
 
     @submenu("弹性云服务器")
-    def ecs_batch_set_boot_order(self, names: list, order: str, delay):
+    def ecs_batch_set_boot_order(self, names: list, order: int, delay):
         """批量设置云服务器启动顺序
 
         Args:
             names: 云服务器名称列表
-            boot_configs: 启动顺序配置列表，格式为 [{"order": "3", "delay": "20"}, ...]
-                         order: 启动顺序
-                         delay: 启动延迟时间(秒)
+            order: 启动顺序
+            delay: 启动延迟时间(秒)
         """
-        logger.info(f"云服务器{names}开始批量设置启动顺序: {order}, 启动延迟时间:{delay}")
+        logger.info(f"云服务器{names}开始批量设置启动顺序: {str(order)}, 启动延迟时间:{delay}")
 
         # 选择指定的云服务器
         self.select_rows_by_names(names)
@@ -1400,7 +1398,7 @@ class EcsPage(OpsPage):
         self.locator("div:nth-child(3) > .cloud-button-btn").first.click()
 
         # 设置每台服务器的启动顺序
-        self.get_by_role("dialog", name="设置启动顺序").get_by_role("textbox").first.fill(order)
+        self.get_by_role("dialog", name="设置启动顺序").get_by_role("textbox").first.fill(str(order))
 
         # 设置启动延迟时间
         self.locator("form div").filter(has_text="启动延迟时间(秒)").get_by_role("textbox").fill(delay)
@@ -1415,13 +1413,11 @@ class EcsPage(OpsPage):
         logger.info(f"批量设置云服务器启动顺序完成: {names}")
 
     @submenu("弹性云服务器")
-    def ecs_details(self, name: str, order: str, delay: str):
+    def ecs_to_details(self, name: str):
         """进入云服务器详情页面
 
         Args:
             name: 云服务器名称
-            order: 启动顺序
-            delay: 启动延迟时间(秒)
         """
         logger.info(f"进入云服务器详情页面: {name}")
 
@@ -1431,10 +1427,134 @@ class EcsPage(OpsPage):
         # 等待详情页面加载完成
         self.wait_for_page_ready()
 
-        # 验证详情页面元素
-        logger.info(f"验证详情页面元素: {self.get_by_text('启动顺序 ').inner_text()}")
-        logger.info(f"验证详情页面元素: {self.get_by_text('启动延迟时间(秒) ').inner_text()}")
-        assert self.get_by_text("启动顺序 ").inner_text() == order
-        assert self.get_by_text("启动延迟时间(秒) ").inner_text() == delay
+        logger.info(f"成功进入云服务器{name}详情页")
+    def ecs_back_to_list(self):
+        """返回云服务器列表页
+        """
+        logger.info(f"返回云服务器列表页面")
+        # 点击指定云服务器的详情链接
+        self.locator(".el-icon-back").click()
+        # 等待详情页面加载完成
+        self.wait_for_page_ready()
 
-        logger.info(f"成功进入云服务器详情页面: {name}")
+    @submenu("弹性云服务器")
+    def ecs_mount_cdrom(self, name: str, iso_name: str = None):
+        """
+        为指定弹性云服务器挂载CD-ROM
+
+        Args:
+            name: 云服务器名称
+            iso_name: CD-ROM名称，如果为None则使用自动生成的名称
+        """
+        logger.info(f"开始为云服务器{name}挂载CD-ROM: {iso_name}")
+        # 点击云服务器操作按钮
+        self.click_dropdown_option(name, "挂载CD-ROM")
+
+        # 等待挂载CD-ROM对话框出现
+        self.wait_for_page_ready()
+
+        # 选择CD-ROM类型（如果需要选择）
+        try:
+            # 根据类型iso名称选择对应的单选按钮
+            self.get_by_placeholder("搜索(镜像名称)").fill(iso_name)
+            self.get_by_label("挂载CD-ROM").get_by_text("搜索").click()
+            self.get_by_label("挂载CD-ROM").get_by_role("radio").first.click()
+        except:
+            logger.warning(f"未找到CD-ROM '{iso_name}' ，默认选择第一个CD-ROM")
+            self.get_by_label("挂载CD-ROM").get_by_text("重置").click()
+            self.get_by_label("挂载CD-ROM").get_by_role("row").filter(has_text="autotest").get_by_role("radio").first.click()
+
+        # 点击挂载按钮
+        self.get_by_label("挂载CD-ROM").get_by_text("挂载", exact=True).click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+
+    @submenu("弹性云服务器")
+    def ecs_unmount_cdrom(self, name: str, cdrom_name: str = None):
+        """
+        为指定弹性云服务器挂载CD-ROM
+
+        Args:
+            name: 云服务器名称
+            cdrom_name: CD-ROM名称
+        """
+        logger.info(f"开始为云服务器{name}卸载CD-ROM: {cdrom_name}")
+        # 点击云服务器操作按钮
+        self.click_dropdown_option(name, "卸载CD-ROM")
+
+        # 等待挂载CD-ROM对话框出现
+        self.wait_for_page_ready()
+
+        # 选择CD-ROM
+        self.get_by_placeholder("请选择CD-ROM").click()
+        self.locator("li").filter(has_text=cdrom_name).click()
+
+        # 点击挂载按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+
+    def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情"):
+        """验证云服务器详情页面中的信息
+
+        Args:
+            name: 云服务器名称
+            tab: 页签名称
+            info_items: 需要验证的信息项字典，格式为 {"信息项名称": "期望内容"}
+                       例如: {"启动顺序": "3", "启动延迟时间(秒)": "20"}
+        """
+        logger.info(f"验证云服务器 {names} 的 {tab} 页签信息")
+        for name in names:
+            self.ecs_to_details(name)
+
+            logger.info(f"点击 {tab} 页签")
+            self.get_by_role("tab", name=tab).click()
+            self.wait_for_page_ready()
+            sleep(1)
+            # 逐个验证信息项
+            for item_name, expected_content in info_items.items():
+                logger.info(f"验证 {tab} 页签的 {item_name}: {str(expected_content)}")
+                # 定位信息项
+                info_item = self.get_by_text(item_name)
+                # 获取信息项的值
+                info_value = info_item.locator("xpath=./following-sibling::*").first
+
+                # 验证信息项的值是否包含期望内容
+                assert info_value.inner_text().__contains__(str(expected_content)), \
+                    f"验证失败: {tab} 的 {item_name} 不包含 {str(expected_content)}, 实际内容: {info_value.inner_text()}"
+
+        logger.info(f"云服务器 {tab} 详情页面信息验证成功")
+
+    @submenu("弹性云服务器")
+    def ecs_batch_set_shutdown_order(self, names: list, order: int, delay):
+        """批量设置云服务器关机顺序
+
+        Args:
+            names: 云服务器名称列表
+            order: 关机顺序
+            delay: 启动延迟时间(秒)
+        """
+        logger.info(f"云服务器{names}开始批量设置关机顺序: {str(order)}, 关机延迟时间:{delay}")
+
+        # 选择指定的云服务器
+        self.select_rows_by_names(names)
+
+        # 点击设置启动顺序按钮
+        self.get_by_text("设置关机顺序").first.click()
+
+        # 设置每台服务器的启动顺序
+        self.get_by_label("设置关机顺序").get_by_role("textbox").first.fill(str(order))
+
+        # 设置启动延迟时间
+        self.locator("form div").filter(has_text="关机延迟时间(秒)").get_by_role("textbox").fill(delay)
+
+        # 确认设置
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_operation_complete()
+        self.assert_popup_success("执行成功")
+
+        logger.info(f"批量设置云服务器关机顺序完成: {names}")
