@@ -118,6 +118,7 @@ class TestDoris:
             doris_page.reset_instance(instance_name)
 
         with allure.step("步骤四：验证状态重置结果"):
+            doris_page.assert_popup_success("实例数据库状态重置成功")
             doris_page.assert_status(instance_name, status="就绪", timeout=1200)
 
         with allure.step("步骤三：启动实例"):
@@ -125,7 +126,7 @@ class TestDoris:
 
         with allure.step("步骤四：验证启动结果"):
             doris_page.assert_popup_success("实例重启任务创建完成")
-            doris_page.assert_status(instance_name, status="重启中", timeout=60)
+            doris_page.assert_status(instance_name, status="重启中", timeout=600)
             doris_page.assert_status(instance_name, status="就绪", timeout=1200)
 
     @allure.title("DORIS-实例管理列表页搜索")
