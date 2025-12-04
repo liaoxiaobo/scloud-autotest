@@ -534,6 +534,74 @@ class TestECS:
             for k, v in qos_data.get("expection").items():
                 assert v == stdout.get(k), f"修改云服务器CPU QoS失败，期望{k}:{v},实际{k}:{stdout.get(k)}"
 
+    @allure.title("弹性云服务器-挂载CD-ROM功能验证")
+    def test_ecs_mount_cdrom(self, ecs_page, vm, ssh_vm):
+        """测试弹性云服务器挂载CD-ROM功能"""
+        name = vm.get("name")
+        with allure_step_log("步骤1: 为云服务器挂载CD-ROM"):
+            ecs_page.ecs_mount_cdrom(name)
+
+        with allure_step_log(f"步骤2: 验证虚机{name}挂载CD-ROM结果"):
+            ecs_page.assert_popup_success(f"挂载CD-ROM到虚拟机{name}成功")
+            ecs_page.assert_status(name, status="挂载CD-ROM中")
+            ecs_page.assert_status(name, status="当前无任务")
+            # 验证CD-ROM已成功挂载
+            cdrom_name = ecs_page.get_row_data(name).get("挂载云硬盘")
+            assert cdrom_name.startswith("cdrom-")
+            # 验证云硬盘状态
+            ecs_page.goto_service("云硬盘")
+            ecs_page.goto_submenu("云硬盘")
+            ecs_page.assert_status(cdrom_name, status="正在使用", refresh=True)
+
+        with allure_step_log(f"步骤3: 后台验证虚机{name}挂载CD-ROM结果"):
+            ssh_vm.connect(vm['mfip'])
+            assert ssh_vm.run(f"lsblk | grep sr | awk '{{print $4}}'").count("20G")
+            ssh_vm.run(f"mkdir /mnt/{name}")
+            ssh_vm.run(f"mount /dev/sr0 /mnt/{name}")
+            assert ssh_vm.run(f"ls /mnt/{name}") != ""
+
+        with allure_step_log(f"步骤4: 卸载CD-ROM"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_unmount_cdrom(name, cdrom_name)
+
+        with allure_step_log(f"步骤5: 验证虚机{name}卸载CD-ROM结果"):
+            ecs_page.assert_popup_success(f"从虚拟机{name}卸载CD-ROM成功")
+            assert ecs_page.get_row_data(name).get("挂载云硬盘") == "--"
+            ssh_vm.connect(vm['mfip'])
+            assert ssh_vm.run(f"ls /mnt/{name}") == ""
+
+    @allure.title("弹性云服务器-批量设置启动顺序功能验证")
+    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("operation",["关机","启动"])
+    def test_ecs_batch_set_boot_order(self, ecs_page, vm, operation):
+        names = [[vm[i].get("name")] for i in range(len(vm))]
+        delay = "10"
+        with allure_step_log(f"步骤1: 批量设置{operation}顺序"):
+            for i, name in enumerate(names, start=1):
+                ecs_page.ecs_batch_set_shutdown_order(name, i, delay)
+
+        with allure_step_log(f"步骤2: 进入云服务器详情页面验证顺序及{operation}延迟"):
+            for i, name in enumerate(names, start=1):
+                ecs_page.assert_ecs_details_info(name, {f"{operation}顺序": str(i), f"{operation}延迟时间(秒)": delay})
+                ecs_page.ecs_back_to_list()
+        with allure_step_log(f"步骤3: 批量{operation}"):
+            names = [name[0] for name in names]
+            ecs_page.ecs_batch_operations(names, f"批量{operation}")
+            ecs_page.assert_popup_success(f"执行成功")
+
+        with allure_step_log(f"步骤4: 验证{operation}结果"):
+            for name in names:
+                if operation == "关机":
+                    ecs_page.assert_status(name, status="电源关闭中", refresh=True)
+                else:
+                    ecs_page.assert_status(name, status="电源打开中", refresh=True)
+                time.sleep(int(delay))
+            for name in names:
+                if operation == "关机":
+                    ecs_page.assert_status(name, status="关机")
+                else:
+                    ecs_page.assert_status(name)
+
 @allure.epic('计算服务')
 @allure.feature('弹性云服务器 ECS')
 @allure.story('回收站功能验证')
