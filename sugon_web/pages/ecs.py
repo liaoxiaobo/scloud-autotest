@@ -241,7 +241,7 @@ class EcsPage(OpsPage):
         self.wait_for_page_ready()
         self.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
         self.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
-        self.wait_for_operation_complete()
+        self.wait_for_page_ready()
         assert self.locator("#app iframe").content_frame.locator("canvas").is_visible()
         self.switch_to_tab(0)
 
@@ -569,7 +569,9 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(name, "时间同步服务器")
         self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
         logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
-        self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox").fill(interval)
+        loc = self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox")
+        loc.clear() # 清空输入框默认数据
+        loc.fill(interval)
         self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
 
     @submenu("弹性云服务器")
@@ -682,7 +684,7 @@ class EcsPage(OpsPage):
 
             # 点击更多操作按钮
             self.get_by_role("button", name="更多操作").click()
-            self.page.wait_for_timeout(1000)
+            self.wait_for_operation_complete()
 
             # 根据操作类型点击相应的选项
             self._click_batch_operation_option(operation)
@@ -1381,7 +1383,7 @@ class EcsPage(OpsPage):
         self.assert_popup_success(f"设置cpu-qos成功")
 
     @submenu("弹性云服务器")
-    def ecs_batch_set_boot_order(self, names: list, order: int, delay):
+    def ecs_batch_set_startup_order(self, names: list, order: int, delay):
         """批量设置云服务器启动顺序
 
         Args:

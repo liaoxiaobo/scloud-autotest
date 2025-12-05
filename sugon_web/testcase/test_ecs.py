@@ -33,7 +33,7 @@ class TestECS:
     def test_ecs_operations(self, ecs_page, vm, ssh_host,ssh_vm, params):
         ecs_page.goto_service('弹性云服务器')
         name = vm.get("name")
-        ecs_id = vm.get("id").split(':')[1]
+        ecs_id = vm.get("id")
         vm_state = params.get("vm_state")
         operation = params.get("operation")
         desc = params.get("desc")
@@ -121,7 +121,7 @@ class TestECS:
         name = vm.get("name")
         cpu = spec.get("CPU", "2")
         mem = spec.get("Mem", "4")
-        ecs_id = vm.get("id").split(':')[1]
+        ecs_id = vm.get("id")
         ecs_page.goto_service('弹性云服务器')
         with allure_step_log(f"步骤1: {name}修改规格:{spec.get('desc')}"):
             ecs_page.ecs_modify_spec(name, spec)
@@ -198,21 +198,6 @@ class TestECS:
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run("hostname") == name, f"还原密码后，无法登录虚拟机"
 
-    @allure.title("弹性云服务器-修改密码及登录VNC功能验证")
-    def test_ecs_modify_vncpwd(self, ecs_page, vm):
-        ecs_page.goto_service('弹性云服务器')
-        name = vm.get("name")
-        with allure_step_log(f"步骤1: 云服务器{name}修改VNC密码"):
-            ecs_page.ecs_modify_vnc_pwd(name, "sugon@21", "sugon@21")
-        with allure_step_log("步骤2: 验证修改密码结果"):
-            ecs_page.assert_popup_success(f"修改vnc密码成功")
-            ecs_page.ecs_vnc(name, "sugon@21")
-
-        with allure_step_log(f"步骤3: 云服务器{name}还原VNC密码"):
-            ecs_page.ecs_modify_vnc_pwd(name, "sugon@20", "sugon@20")
-        with allure_step_log("步骤4: 验证还原密码结果"):
-            ecs_page.assert_popup_success(f"修改vnc密码成功")
-
     @allure.title("弹性云服务器-修改主机名功能验证")
     def test_ecs_modify_hostname(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
@@ -235,15 +220,14 @@ class TestECS:
         time_server = "100.126.255.250"
         interval = "30"
         ecs_page.goto_service('弹性云服务器')
-        with allure_step_log(f"步骤1: 验证时间同步服务器功能"):
+        with allure_step_log(f"步骤1: 弹性云服务器{name}配置时间同步服务器"):
+            ecs_page.ecs_time_synchronize(name, time_server, interval)
+            ecs_page.assert_popup_success("修改时间同步服务器成功")
+        with allure_step_log(f"步骤2: 修改系统时间为一个错误的时间"):
             ssh_vm.connect(vm['mfip'])
-            # 修改系统时间为一个错误的时间
             ssh_vm.run('date -s "2010-01-01"')
             assert ssh_vm.run("date").count("2010")
-        with allure_step_log(f"步骤2: 弹性云服务器{name}配置时间同步服务器"):
-            ecs_page.ecs_time_synchronize(name, time_server, interval)
         with allure_step_log("步骤3: 验证时间同步服务器结果"):
-            ecs_page.assert_popup_success("修改时间同步服务器成功")
             ecs_page.logger.info(f"等待{interval}秒，等待时间同步完成")
             time.sleep(int(interval))  # 等待时间同步完成
             ssh_vm.connect(vm['mfip'])
@@ -258,10 +242,10 @@ class TestECS:
         policy = "亲和"
         if isinstance(vm, list) and len(vm) > 1:
             names = [vm[i].get("name") for i in range(len(vm))]
-            ecs_ids = [vm[i].get("id").split(':')[1] for i in range(len(vm))]
+            ecs_ids = [vm[i].get("id") for i in range(len(vm))]
         else:
             names = [vm.get("name")]
-            ecs_ids = vm.get("id").split(':')[1]
+            ecs_ids = [vm.get("id")]
         group_name = f"{random_data(length=2)}-{policy}"
         with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
             ecs_page.goto_service('弹性云服务器')
@@ -391,7 +375,7 @@ class TestECS:
     @pytest.mark.parametrize("operations", load_data("test_ecs_batch_operations", "test_ecs.yaml"))
     def test_ecs_batch_operations(self, ecs_page, vm, ssh_host, operations):
         names = [vm[i].get("name") for i in range(len(vm))]
-        ecs_ids = [vm[i].get("id").split(":")[1].strip() for i in range(len(vm))]
+        ecs_ids = [vm[i].get("id") for i in range(len(vm))]
         operation = operations.get("operation")
         status = operations.get("status")
         vm_state = operations.get("vm_state")
@@ -413,7 +397,7 @@ class TestECS:
         """
         ecs_page.wait_for_page_ready()
         names = [vm[i].get("name") for i in range(len(vm))]
-        ecs_ids = [vm[i].get("id").split(":")[-1] for i in range(len(vm))]
+        ecs_ids = [vm[i].get("id") for i in range(len(vm))]
 
         with allure_step_log("步骤1: 批量迁移"):
             ecs_page.ecs_batch_migration(names)
@@ -427,10 +411,10 @@ class TestECS:
                 assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
 
     @allure.title("弹性云服务器-系统盘扩容功能验证")
-    def test_ecs_expand_system_disk(self, ecs_page, vm, ssh_host):
+    def test_ecs_expand_system_disk(self, ecs_page, vm, ssh_host, ssh_vm):
         """测试弹性云服务器系统盘扩容功能"""
         name = vm.get("name")
-        ecs_id  = vm.get("id").split(":")[-1]
+        ecs_id  = vm.get("id")
         new_size = "110"
 
         with allure_step_log(f"步骤1: 扩容云服务器{name}系统盘至{new_size}GiB"):
@@ -441,7 +425,9 @@ class TestECS:
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("root_gb") == new_size, \
                 f"扩容系统盘失败，期望系统盘大小:{new_size}GiB,实际系统盘大小:{stdout.get('root_gb')}GiB"
-
+            ssh_vm.connect(vm['mfip'])
+            assert ssh_vm.run(f"lsblk | grep '^vda' | awk '{{print $4}}'").count(new_size), \
+                f"扩容系统盘失败，云服务器{name}系统盘大小不一致"
 
     @allure.title("弹性云服务器-挂载/卸载云硬盘功能验证")
     def test_ecs_mount_unmount_volume(self, ecs_page, vm, volume, ssh_vm):
@@ -482,7 +468,7 @@ class TestECS:
         ecs_page.goto_service('弹性云服务器')
         ecs_page.wait_for_page_ready()
         name = vm.get("name")
-        ecs_id = vm.get("id").split(":")[-1]
+        ecs_id = vm.get("id")
         with allure_step_log("步骤1: 热迁移"):
             check_node = ecs_page.ecs_hot_migration(name, "master01")
 
@@ -503,7 +489,7 @@ class TestECS:
         ecs_page.goto_service('弹性云服务器')
         ecs_page.wait_for_page_ready()
         name = vm.get("name")
-        ecs_id = vm.get("id").split(":")[-1]
+        ecs_id = vm.get("id")
         with allure_step_log("步骤1: 冷迁移"):
             check_node = ecs_page.ecs_cold_migration(name, "master01")
 
@@ -522,7 +508,7 @@ class TestECS:
     def test_ecs_cpu_qos(self, ecs_page, vm, ssh_host, qos_data):
         """测试云服务器CPU QoS修改功能"""
         name = vm.get("name")
-        ecs_id = vm.get("id").split(":")[-1]
+        ecs_id = vm.get("id")
         priority = qos_data.get("priority")
         ceiling = qos_data.get("ceiling")
 
@@ -578,8 +564,10 @@ class TestECS:
         delay = "10"
         with allure_step_log(f"步骤1: 批量设置{operation}顺序"):
             for i, name in enumerate(names, start=1):
-                ecs_page.ecs_batch_set_shutdown_order(name, i, delay)
-
+                if operation == "关机":
+                    ecs_page.ecs_batch_set_shutdown_order(name, i, delay)
+                else:
+                    ecs_page.ecs_batch_set_startup_order(name, i, delay)
         with allure_step_log(f"步骤2: 进入云服务器详情页面验证顺序及{operation}延迟"):
             for i, name in enumerate(names, start=1):
                 ecs_page.assert_ecs_details_info(name, {f"{operation}顺序": str(i), f"{operation}延迟时间(秒)": delay})
@@ -595,12 +583,28 @@ class TestECS:
                     ecs_page.assert_status(name, status="电源关闭中", refresh=True)
                 else:
                     ecs_page.assert_status(name, status="电源打开中", refresh=True)
-                time.sleep(int(delay))
+                time.sleep(int(delay)/2)
             for name in names:
                 if operation == "关机":
                     ecs_page.assert_status(name, status="关机")
                 else:
                     ecs_page.assert_status(name)
+
+    @allure.title("弹性云服务器-修改密码及登录VNC功能验证")
+    @pytest.mark.smoke
+    def test_ecs_modify_vncpwd(self, ecs_page, vm):
+        ecs_page.goto_service('弹性云服务器')
+        name = vm.get("name")
+        with allure_step_log(f"步骤1: 云服务器{name}修改VNC密码"):
+            ecs_page.ecs_modify_vnc_pwd(name, "sugon@21", "sugon@21")
+        with allure_step_log("步骤2: 验证修改密码结果"):
+            ecs_page.assert_popup_success(f"修改vnc密码成功")
+            ecs_page.ecs_vnc(name, "sugon@21")
+
+        with allure_step_log(f"步骤3: 云服务器{name}还原VNC密码"):
+            ecs_page.ecs_modify_vnc_pwd(name, "sugon@20", "sugon@20")
+        with allure_step_log("步骤4: 验证还原密码结果"):
+            ecs_page.assert_popup_success(f"修改vnc密码成功")
 
 @allure.epic('计算服务')
 @allure.feature('弹性云服务器 ECS')
