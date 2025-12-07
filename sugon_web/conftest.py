@@ -50,15 +50,19 @@ def env(pytestconfig):
     username = pytestconfig.getoption("--username")
     password = pytestconfig.getoption("--password")
     stor = pytestconfig.getoption("--stor")
+
+    # 根据host值设置不同的端口号
+    port = "30008" if host == "172.22.1.190" else "30000"
+
     env = {
         'host': host,
-        'url': f"https://{host}:30000",
+        'url': f"https://{host}:{port}",
         "username": username,
         "password": password,
         "stor": stor,
         "pkey": "pkey_scloudadmin"  # 默认使用scloudadmin用户的私钥
     }
-    logger.info(f"测试环境配置加载完成")
+    logger.info(f"测试环境配置加载完成，URL: {env['url']}")
     yield env
 
 
