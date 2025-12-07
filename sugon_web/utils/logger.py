@@ -50,7 +50,7 @@ class StepLogCollector:
 
         # 设置日志格式
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s.%(msecs)03d [%(levelname)s] %(filename)s:%(lineno)d %(message)s"
         )
         self.buffer_handler.setFormatter(formatter)
 

@@ -1,6 +1,7 @@
 import re
 import pytest
 import allure
+from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
 
@@ -22,7 +23,7 @@ class TestEVS:
                 pytest.skip(f"当前存储类型 {current_storage} 不支持创建共享云硬盘，跳过测试")
 
         name = random_data()
-        with allure.step("步骤1: 创建单个云硬盘"):
+        with allure_step_log("步骤1: 创建单个云硬盘"):
             evs_page.evs_create(
                 name,
                 empty=params['empty'],
@@ -41,7 +42,7 @@ class TestEVS:
             assert data['共享盘'] == ('是' if params.get('shared', False) else '否')
             assert data['加密'] == "未加密"
 
-        with allure.step("步骤2: 删除单个云硬盘"):
+        with allure_step_log("步骤2: 删除单个云硬盘"):
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
@@ -51,7 +52,7 @@ class TestEVS:
     def test_volume_batch_delete(self, evs_page, ssh_host):
 
         volume_names = []
-        with allure.step("步骤1: 批量创建云硬盘"):
+        with allure_step_log("步骤1: 批量创建云硬盘"):
             base_name = random_data()
             evs_page.evs_create(
                 name=base_name,
@@ -69,11 +70,11 @@ class TestEVS:
             for name in volume_names:
                 evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 批量回收云硬盘"):
+        with allure_step_log("步骤2: 批量回收云硬盘"):
             evs_page.evs_remove(volume_names)
             # evs_page.assert_popup_success()
 
-        with allure.step("步骤3: 批量删除回收站中的云硬盘"):
+        with allure_step_log("步骤3: 批量删除回收站中的云硬盘"):
             evs_page.evs_delete(volume_names)
             # evs_page.assert_popup_success()
 
@@ -85,13 +86,13 @@ class TestEVS:
     @allure.title("云硬盘-列表页搜索&重置")
     def test_volume_search(self, evs_page, volume):
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             evs_page.goto_submenu("云硬盘")  # TODO: 连跑时会处于回收站页，加跳转解决
             keyword = volume['name'][:-2]
             evs_page.search(keyword)
             evs_page.assert_list_contain(keyword, exact_match=False)
 
-        with allure.step("步骤2: 重置搜索条件"):
+        with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
             evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
@@ -103,7 +104,7 @@ class TestEVS:
         new_name = volume["name"] + params["name_suffix"]
         new_desc = params["new_desc"]
         
-        with allure.step("步骤1: 修改云硬盘的名称和描述"):
+        with allure_step_log("步骤1: 修改云硬盘的名称和描述"):
             evs_page.evs_edit(volume["name"], new_name, new_desc)
             evs_page.assert_popup_success("执行成功")
             evs_page.assert_list_contain(new_name)
@@ -113,12 +114,12 @@ class TestEVS:
 
         clone_name = "clone_" + volume["name"]
         
-        with allure.step("步骤1: 克隆云硬盘"):
+        with allure_step_log("步骤1: 克隆云硬盘"):
             evs_page.evs_clone(volume["name"], clone_name)
             evs_page.assert_popup_success("克隆云硬盘成功")
             evs_page.assert_status(clone_name, status="可用")
 
-        with allure.step("步骤2: 清理克隆的云硬盘"):
+        with allure_step_log("步骤2: 清理克隆的云硬盘"):
             evs_page.evs_remove(clone_name)
             evs_page.evs_delete(clone_name)
             evs_page.assert_deleted(clone_name)
@@ -131,7 +132,7 @@ class TestEVS:
         name = volume["name"]
         new_size = params["new_size"]
         
-        with allure.step("步骤1: 扩容云硬盘"):
+        with allure_step_log("步骤1: 扩容云硬盘"):
             evs_page.evs_expand(name, new_size)
             evs_page.assert_popup_success("执行成功")
             evs_page.assert_status(name, status="可用")
@@ -140,7 +141,7 @@ class TestEVS:
     @allure.title("云硬盘-启用QoS")
     def test_volume_enable_qos(self, evs_page, volume):
 
-        with allure.step("步骤1: 启用云硬盘QoS限制"):
+        with allure_step_log("步骤1: 启用云硬盘QoS限制"):
             evs_page.evs_enable_qos(
                 volume_name=volume["name"],
                 read_speed=100,
@@ -153,7 +154,7 @@ class TestEVS:
     @allure.title("云硬盘-关闭QoS")
     def test_volume_disable_qos(self, evs_page, volume):
 
-        with allure.step("步骤1: 关闭云硬盘QoS限制"):
+        with allure_step_log("步骤1: 关闭云硬盘QoS限制"):
             evs_page.evs_disable_qos(volume_name=volume["name"])
             evs_page.assert_popup_success("设置单卷QoS成功")
 
@@ -162,7 +163,7 @@ class TestEVS:
 
         evs_page.goto_service('云硬盘')    # TODO: 引入vm fixture导致evs_page定位不到云硬盘菜单，加跳转解决
 
-        with allure.step("步骤1: 挂载云硬盘"):
+        with allure_step_log("步骤1: 挂载云硬盘"):
             evs_page.evs_mount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
             evs_page.assert_status(volume["name"], status="正在使用")
@@ -170,7 +171,7 @@ class TestEVS:
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"lsblk | grep {disk_name}") != ""
 
-        with allure.step("步骤2: 卸载云硬盘"):
+        with allure_step_log("步骤2: 卸载云硬盘"):
             evs_page.evs_unmount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
             evs_page.assert_status(volume["name"], status="可用")
@@ -181,12 +182,12 @@ class TestEVS:
     def test_volume_convert_to_image(self, ecs_page, evs_page, ssh_host):
 
         name=random_data()
-        with allure.step("步骤1: 创建带镜像的云硬盘"):
+        with allure_step_log("步骤1: 创建带镜像的云硬盘"):
             evs_page.evs_create(name, empty=False)
             evs_page.assert_popup_success("创建云硬盘成功")
             evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 将云硬盘转换为镜像"):
+        with allure_step_log("步骤2: 将云硬盘转换为镜像"):
             image_name = "image_from_volume_" + name
             evs_page.evs_convert_to_image(
                 volume_name=name,
@@ -201,7 +202,7 @@ class TestEVS:
             evs_page.goto_submenu("镜像服务")
             evs_page.assert_list_contain(image_name)
 
-        with allure.step("步骤3：清理测试数据"):
+        with allure_step_log("步骤3：清理测试数据"):
             # 删除创建的镜像
             ecs_page.ecs_image_delete(image_name)
             ecs_page.assert_deleted(image_name)
@@ -215,24 +216,24 @@ class TestEVS:
     @allure.title("云硬盘-重置状态")
     def test_volume_reset_status(self, evs_page, volume, ssh_host):
 
-        with allure.step("步骤1: 构造删除中的云硬盘"):
+        with allure_step_log("步骤1: 构造删除中的云硬盘"):
             ssh_host.run(f'cinder reset-state --state deleting {volume["name"]}')
             evs_page.goto_submenu('云硬盘')
             evs_page.assert_status(volume["name"], status="删除中", refresh=True)
 
-        with allure.step("步骤2: 重置云硬盘状态"):
+        with allure_step_log("步骤2: 重置云硬盘状态"):
             evs_page.evs_reset_status(volume["name"])
             evs_page.assert_popup_success("重置状态成功")
             evs_page.assert_status(volume["name"], status="错误")
 
-        with allure.step("步骤3: 恢复云硬盘状态"):
+        with allure_step_log("步骤3: 恢复云硬盘状态"):
             ssh_host.run(f'cinder reset-state --state available {volume["name"]}')
             evs_page.assert_status(volume["name"], status="可用", refresh=True)
 
     @allure.title("云硬盘-查看快照")
     def test_volume_view_snapshots(self, evs_page, volume, evss):
 
-        with allure.step("步骤1: 查看快照"):
+        with allure_step_log("步骤1: 查看快照"):
             evs_page.evs_view_snapshots(volume["name"])
             evs_page.assert_list_contain(evss["name"])
             snapshot_data = evs_page.get_row_data(evss["name"])
@@ -242,10 +243,10 @@ class TestEVS:
     @allure.title("云硬盘-移入&移出回收站")
     def test_volume_restore(self, evs_page, volume):
 
-        with allure.step("步骤1: 云硬盘移入回收站"):
+        with allure_step_log("步骤1: 云硬盘移入回收站"):
             evs_page.evs_remove(volume["name"])
 
-        with allure.step("步骤2: 从回收站恢复云硬盘"):
+        with allure_step_log("步骤2: 从回收站恢复云硬盘"):
             evs_page.evs_restore(volume["name"])
             evs_page.goto_submenu("云硬盘")
             evs_page.assert_status(volume["name"], status="可用")
@@ -253,21 +254,21 @@ class TestEVS:
     @allure.title("回收站-列表页搜索&重置")
     def test_garbage_search(self, evs_page, volume):
 
-        with allure.step("步骤1: 云硬盘移入回收站"):
+        with allure_step_log("步骤1: 云硬盘移入回收站"):
             evs_page.evs_remove(volume["name"])
 
-        with allure.step("步骤2: 输入名称进行搜索"):
+        with allure_step_log("步骤2: 输入名称进行搜索"):
             evs_page.goto_submenu("回收站")
             keyword = volume['name'][:-2]
             evs_page.search(keyword)
             evs_page.assert_list_contain(keyword, exact_match=False)
 
-        with allure.step("步骤3: 重置搜索条件"):
+        with allure_step_log("步骤3: 重置搜索条件"):
             evs_page.btn_reset.click()
             evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-        with allure.step("步骤4: 从回收站恢复云硬盘"):
+        with allure_step_log("步骤4: 从回收站恢复云硬盘"):
             evs_page.evs_restore(volume["name"])
             evs_page.assert_popup_success(f"云硬盘{volume['name']}移出回收站成功")
 
@@ -275,15 +276,15 @@ class TestEVS:
     def test_volume_secure_delete(self, evs_page, ssh_host):
 
         name=random_data()
-        with allure.step("步骤1: 创建云硬盘"):
+        with allure_step_log("步骤1: 创建云硬盘"):
             evs_page.evs_create(name)
             evs_page.assert_popup_success("创建云硬盘成功")
             evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 云硬盘移入回收站"):
+        with allure_step_log("步骤2: 云硬盘移入回收站"):
             evs_page.evs_remove(name)
 
-        with allure.step("步骤3: 安全删除云硬盘"):
+        with allure_step_log("步骤3: 安全删除云硬盘"):
             evs_page.evs_delete(name, secure=True)
             evs_page.assert_deleted(name)
             assert ssh_host.run(f"cinder list| grep {name}") == ""
@@ -298,7 +299,7 @@ class TestEVSS:
     def test_volume_add_snapshot(self, evs_page, volume, params):
         snapshot_name = params["snapshot_name_prefix"] + random_data()
 
-        with allure.step("步骤1: 创建云硬盘快照"):
+        with allure_step_log("步骤1: 创建云硬盘快照"):
             evs_page.evss_create(volume["name"], snapshot_name, params["desc"])
             evs_page.assert_popup_success("创建快照成功")
             evs_page.goto_submenu("快照")
@@ -306,7 +307,7 @@ class TestEVSS:
             snapshot_data = evs_page.get_row_data(snapshot_name)
             assert snapshot_data["描述"] == params["desc"]
 
-        with allure.step("步骤3: 删除云硬盘快照"):
+        with allure_step_log("步骤3: 删除云硬盘快照"):
             evs_page.evss_delete(snapshot_name)
             evs_page.assert_deleted(snapshot_name)
 
@@ -314,7 +315,7 @@ class TestEVSS:
     def test_snapshot_batch_delete(self, evs_page, volume):
 
         snapshot_names = []
-        with allure.step("步骤1: 创建多个云硬盘快照"):
+        with allure_step_log("步骤1: 创建多个云硬盘快照"):
             for i in range(3):
                 name = random_data()
                 snapshot_names.append(name)
@@ -327,7 +328,7 @@ class TestEVSS:
                 evs_page.goto_submenu("快照")
                 evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 批量删除快照"):
+        with allure_step_log("步骤2: 批量删除快照"):
             evs_page.evss_delete(snapshot_names)
             # evs_page.assert_popup_success()
             for name in snapshot_names:
@@ -336,12 +337,12 @@ class TestEVSS:
     @allure.title("云硬盘快照-列表页搜索&重置")
     def test_evss_search(self, evs_page, evss):
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = evss['name'][:-2]
             evs_page.search(keyword)
             evs_page.assert_list_contain(keyword, exact_match=False)
 
-        with allure.step("步骤2: 重置搜索条件"):
+        with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
             evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
@@ -353,7 +354,7 @@ class TestEVSS:
         new_name = evss["name"] + params["name_suffix"]
         new_desc = params["new_desc"]
 
-        with allure.step("步骤1: 修改云硬盘快照的名称和描述"):
+        with allure_step_log("步骤1: 修改云硬盘快照的名称和描述"):
             evs_page.evss_edit(evss["name"], new_name, new_desc)
             evs_page.assert_popup_success("更新快照成功")
 
@@ -367,7 +368,7 @@ class TestEVSS:
     @allure.title("云硬盘快照-创建云硬盘")
     def test_create_volume_from_snapshot(self, evs_page, evss, ssh_host):
 
-        with allure.step("步骤1: 从快照创建云硬盘"):
+        with allure_step_log("步骤1: 从快照创建云硬盘"):
             name = "volume_from_snapshot_" + evss["volume_name"]
             evs_page.evs_create_from_snapshot(
                 snapshot_name=evss["name"],
@@ -380,7 +381,7 @@ class TestEVSS:
             evs_page.assert_list_contain(name)
             evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2：清理测试数据"):
+        with allure_step_log("步骤2：清理测试数据"):
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
@@ -399,7 +400,7 @@ class TestEVSS:
         retention_value = params.get("retention_value", 1)
 
         # 创建快照策略
-        with allure.step("步骤1: 创建快照策略"):
+        with allure_step_log("步骤1: 创建快照策略"):
             evs_page.evss_policy_create(
                 name=name,
                 enabled=enabled,
@@ -412,7 +413,7 @@ class TestEVSS:
             # 验证创建结果
             evs_page.assert_popup_success("添加策略成功")
 
-        with allure.step("步骤2: 删除快照策略"):
+        with allure_step_log("步骤2: 删除快照策略"):
             evs_page.evss_policy_delete([name])
             evs_page.assert_deleted(name)
 
@@ -420,7 +421,7 @@ class TestEVSS:
     def test_evss_policy_batch_delete(self, evs_page):
 
         policy_names = []
-        with allure.step("步骤1: 创建多个快照策略"):
+        with allure_step_log("步骤1: 创建多个快照策略"):
             for i in range(3):
                 name = random_data()
                 policy_names.append(name)
@@ -434,23 +435,23 @@ class TestEVSS:
                 )
                 evs_page.assert_popup_success("添加策略成功")
 
-        with allure.step("步骤2: 批量删除快照策略"):
+        with allure_step_log("步骤2: 批量删除快照策略"):
             evs_page.evss_policy_delete(policy_names)
             # evs_page.assert_popup_success()
 
-        with allure.step("步骤3: 验证快照策略已删除"):
+        with allure_step_log("步骤3: 验证快照策略已删除"):
             for name in policy_names:
                 evs_page.assert_deleted(name)
 
     @allure.title("快照策略-列表页搜索&重置")
     def test_evss_policy_search(self, evs_page, evss_policy):
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = evss_policy[:-2]
             evs_page.search(keyword)
             evs_page.assert_list_contain(keyword, column_name="名称/ID", exact_match=False)
 
-        with allure.step("步骤2: 重置搜索条件"):
+        with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
             evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
@@ -458,14 +459,14 @@ class TestEVSS:
     @allure.title("快照策略-修改")
     def test_evss_policy_edit(self, evs_page, evss_policy):
 
-        with allure.step("步骤1: 修改快照策略"):
+        with allure_step_log("步骤1: 修改快照策略"):
             evs_page.evss_policy_edit(name=evss_policy, hours=[7,8,9])
             evs_page.assert_popup_success("修改策略成功")
 
     @allure.title("快照策略-云硬盘绑定&解绑快照策略")
     def test_volume_bind_evss_policy(self, evs_page, volume, evss_policy):
 
-        with allure.step("步骤1: 绑定快照策略"):
+        with allure_step_log("步骤1: 绑定快照策略"):
             evs_page.evs_bind_snapshot_policy(
                 volume_name=volume["name"],
                 policy_name=evss_policy,
@@ -476,7 +477,7 @@ class TestEVSS:
             evs_page.goto_submenu("快照任务")
             evs_page.assert_list_contain(volume["name"], column_name="云硬盘名称")
 
-        with allure.step("步骤2: 删除快照任务（解绑）"):
+        with allure_step_log("步骤2: 删除快照任务（解绑）"):
             evs_page.evss_task_delete(volume["name"])
             evs_page.assert_deleted(volume["name"])
 
@@ -484,7 +485,7 @@ class TestEVSS:
     def test_snapshot_task_batch_delete(self, evs_page, evss_policy):
 
         volume_names = []
-        with allure.step("步骤1: 批量创建云硬盘"):
+        with allure_step_log("步骤1: 批量创建云硬盘"):
             base_name = random_data()
             evs_page.evs_create(
                 name=base_name,
@@ -500,7 +501,7 @@ class TestEVSS:
             for name in volume_names:
                 evs_page.assert_status(name, status="可用")
 
-        with allure.step("步骤2: 为云硬盘绑定快照策略"):
+        with allure_step_log("步骤2: 为云硬盘绑定快照策略"):
             for name in volume_names:
                 evs_page.evs_bind_snapshot_policy(
                     volume_name=name,
@@ -513,15 +514,15 @@ class TestEVSS:
             for name in volume_names:
                 evs_page.assert_list_contain(name, column_name="云硬盘名称")
 
-        with allure.step("步骤3: 批量删除快照任务"):
+        with allure_step_log("步骤3: 批量删除快照任务"):
             evs_page.evss_task_delete(volume_names)
             # evs_page.assert_popup_success()
 
-        with allure.step("步骤4: 验证快照任务已删除"):
+        with allure_step_log("步骤4: 验证快照任务已删除"):
             for name in volume_names:
                 evs_page.assert_deleted(name)
 
-        with allure.step("步骤5: 清理测试数据"):
+        with allure_step_log("步骤5: 清理测试数据"):
             evs_page.evs_remove(volume_names)
             evs_page.evs_delete(volume_names)
             for name in volume_names:
@@ -530,22 +531,22 @@ class TestEVSS:
     @allure.title("快照任务-禁用&开启自动快照")
     def test_volume_auto_snapshot(self, evs_page, volume, evss_policy):
 
-        with allure.step("步骤1: 绑定快照策略"):
+        with allure_step_log("步骤1: 绑定快照策略"):
             evs_page.evs_bind_snapshot_policy(
                 volume_name=volume["name"],
                 policy_name=evss_policy,
             )
             evs_page.assert_popup_success("执行成功")
 
-        with allure.step("步骤2: 开启自动快照"):
+        with allure_step_log("步骤2: 开启自动快照"):
             evs_page.evss_task_set_auto_snapshot(volume["name"])
             evs_page.assert_popup_success("执行成功")
 
-        with allure.step("步骤3: 禁用自动快照"):
+        with allure_step_log("步骤3: 禁用自动快照"):
             evs_page.evss_task_set_auto_snapshot(volume["name"], enable=False)
             evs_page.assert_popup_success("执行成功")
 
-        with allure.step("步骤4: 删除快照任务（解绑）"):
+        with allure_step_log("步骤4: 删除快照任务（解绑）"):
             evs_page.evss_task_delete(volume["name"])
             evs_page.assert_deleted(volume["name"])
 
@@ -565,7 +566,7 @@ class TestEVSScenario:
         4. MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
         """
 
-        with allure.step("步骤1: 虚机内挂载云硬盘A并写入测试文件"):
+        with allure_step_log("步骤1: 虚机内挂载云硬盘A并写入测试文件"):
             # 挂载云硬盘A到虚机
             evs_page.evs_mount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
@@ -584,7 +585,7 @@ class TestEVSScenario:
             # 创建测试文件并计算MD5值
             md5_value_a = ssh_vm.create_file(f"{mount_point}/test_file.txt")
 
-        with allure.step("步骤2: 创建云硬盘A的快照并基于快照创建云硬盘B"):
+        with allure_step_log("步骤2: 创建云硬盘A的快照并基于快照创建云硬盘B"):
 
             # 创建云硬盘A的快照
             snapshot_name = "snapshot_" + random_data()
@@ -604,7 +605,7 @@ class TestEVSScenario:
             evs_page.goto_submenu("云硬盘")
             evs_page.assert_status(volume_b_name, status="可用")
 
-        with allure.step("步骤3: 挂载云硬盘B到虚机"):
+        with allure_step_log("步骤3: 挂载云硬盘B到虚机"):
             # 挂载云硬盘B到虚机
             evs_page.evs_mount(volume_b_name, vm["name"])
             evs_page.assert_popup_success()
@@ -620,13 +621,13 @@ class TestEVSScenario:
             mount_point_b = "/mnt/test_volume_b"
             ssh_vm.mount_disk(disk_name_b, mount_point_b, format_disk=False)
 
-        with allure.step("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
+        with allure_step_log("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
             # 验证测试文件存在
             assert "test_file.txt" in ssh_vm.run(f"ls -la {mount_point_b}"), "测试文件不存在于云硬盘B中"
             # 验证两个MD5值相同
             assert md5_value_a == ssh_vm.run(f"md5sum {mount_point_b}/test_file.txt | awk '{{print $1}}'"), f"云硬盘A和B的测试文件MD5值不一致"
 
-        with allure.step("步骤5：清理测试数据"):
+        with allure_step_log("步骤5：清理测试数据"):
             # 卸载云硬盘B
             ssh_vm.run(f"umount /dev/{disk_name_b}")
             evs_page.evs_unmount(volume_b_name, vm["name"])
@@ -651,7 +652,7 @@ class TestEVSScenario:
     @allure.title("云硬盘克隆-数据一致性验证")
     def test_volume_clone_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
 
-        with allure.step("步骤1: 虚机内挂载云硬盘A并写入测试文件"):
+        with allure_step_log("步骤1: 虚机内挂载云硬盘A并写入测试文件"):
             # 挂载云硬盘A到虚机
             evs_page.evs_mount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
@@ -670,14 +671,14 @@ class TestEVSScenario:
             # 创建测试文件并计算MD5值
             md5_value_a = ssh_vm.create_file(f"{mount_point}/test_file.txt")
 
-        with allure.step("步骤2: 基于云硬盘A克隆创建一块云硬盘B"):
+        with allure_step_log("步骤2: 基于云硬盘A克隆创建一块云硬盘B"):
             # 克隆云硬盘A创建云硬盘B
             volume_b_name = "clone_" + volume["name"]
             evs_page.evs_clone(volume["name"], volume_b_name)
             evs_page.assert_popup_success("克隆云硬盘成功")
             evs_page.assert_status(volume_b_name, status="可用")
 
-        with allure.step("步骤3: 挂载云硬盘B到虚机"):
+        with allure_step_log("步骤3: 挂载云硬盘B到虚机"):
             # 挂载云硬盘B到虚机
             evs_page.evs_mount(volume_b_name, vm["name"])
             evs_page.assert_popup_success()
@@ -693,13 +694,13 @@ class TestEVSScenario:
             mount_point_b = "/mnt/test_volume_b"
             ssh_vm.mount_disk(disk_name_b, mount_point_b, format_disk=False)
 
-        with allure.step("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
+        with allure_step_log("步骤4: MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致"):
             # 验证测试文件存在
             assert "test_file.txt" in ssh_vm.run(f"ls -la {mount_point_b}"), "测试文件不存在于云硬盘B中"
             # 验证两个MD5值相同
             assert md5_value_a == ssh_vm.run(f"md5sum {mount_point_b}/test_file.txt | awk '{{print $1}}'"), f"云硬盘A和B的测试文件MD5值不一致"
 
-        with allure.step("步骤5：清理测试数据"):
+        with allure_step_log("步骤5：清理测试数据"):
             # 卸载云硬盘B
             ssh_vm.run(f"umount /dev/{disk_name_b}")
             evs_page.evs_unmount(volume_b_name, vm["name"])
@@ -732,7 +733,7 @@ class TestEVSScenario:
         vm_a = vm[0]
         vm_b = vm[1]
 
-        with allure.step("步骤1: 将共享云硬盘挂载到云服务器A并写入测试文件"):
+        with allure_step_log("步骤1: 将共享云硬盘挂载到云服务器A并写入测试文件"):
             # 挂载共享云硬盘到云服务器A
             evs_page.evs_mount(volume["name"], vm_a["name"])
             evs_page.assert_popup_success()
@@ -751,7 +752,7 @@ class TestEVSScenario:
             # 创建测试文件并计算MD5值
             md5_value_a = ssh_vm.create_file(f"{mount_point}/test_file_a.txt")
 
-        with allure.step("步骤2: 将共享云硬盘挂载到云服务器B"):
+        with allure_step_log("步骤2: 将共享云硬盘挂载到云服务器B"):
             # 挂载共享云硬盘到云服务器B
             evs_page.evs_mount(volume["name"], vm_b["name"])
             evs_page.assert_popup_success()
@@ -780,7 +781,7 @@ class TestEVSScenario:
             md5_value_b = ssh_vm.run(f"md5sum {mount_point_b}/test_file_a.txt | awk '{{print $1}}'")
             assert md5_value_a == md5_value_b, f"共享云硬盘中测试文件的MD5值在两台服务器上不一致: {md5_value_a} vs {md5_value_b}"
 
-        # with allure.step("步骤3: 在云服务器B上创建新文件并验证云服务器A也能访问"):
+        # with allure_step_log("步骤3: 在云服务器B上创建新文件并验证云服务器A也能访问"):
         #     # 在云服务器B上创建新文件
         #     md5_value_b_new = ssh_vm.create_file(f"{mount_point_b}/test_file_b.txt")
         #
@@ -792,7 +793,7 @@ class TestEVSScenario:
         #     md5_value_a_new = ssh_vm.run(f"md5sum {mount_point}/test_file_b.txt | awk '{{print $1}}'")
         #     assert md5_value_b_new == md5_value_a_new, f"新创建的测试文件的MD5值在两台服务器上不一致: {md5_value_b_new} vs {md5_value_a_new}"
 
-        with allure.step("步骤4: 清理测试数据"):
+        with allure_step_log("步骤4: 清理测试数据"):
             # 卸载云服务器A上的共享云硬盘
             ssh_vm.connect(vm_a['mfip'])
             ssh_vm.run(f"umount {mount_point}")
@@ -829,7 +830,7 @@ class TestEncrypted:
         # 生成随机云硬盘名称
         volume_name = f"encrypted-{random_data()}"
 
-        with allure.step("步骤1: 创建加密云硬盘"):
+        with allure_step_log("步骤1: 创建加密云硬盘"):
             # 创建加密云硬盘
             evs_page.evs_create(
                 name=volume_name,
@@ -846,7 +847,7 @@ class TestEncrypted:
             assert data['共享盘'] == '否'
             assert data['加密'] == "已加密"
 
-        with allure.step("步骤2: 删除加密云硬盘"):
+        with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘
             evs_page.evs_remove(volume_name)
             evs_page.evs_delete(volume_name)
@@ -869,7 +870,7 @@ class TestEncrypted:
         # 生成随机云硬盘名称
         volume_name = f"encrypted-{random_data()}"
 
-        with allure.step("步骤1: 创建加密云硬盘"):
+        with allure_step_log("步骤1: 创建加密云硬盘"):
             # 创建加密云硬盘
             evs_page.evs_create(
                 name=volume_name,
@@ -886,7 +887,7 @@ class TestEncrypted:
             assert data['共享盘'] == '否'
             assert data['加密'] == "已加密"
 
-        with allure.step("步骤2: 删除加密云硬盘"):
+        with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘
             evs_page.evs_remove(volume_name)
             evs_page.evs_delete(volume_name)

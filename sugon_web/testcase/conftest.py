@@ -1,4 +1,3 @@
-import allure
 import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
@@ -8,7 +7,7 @@ from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.mysql import MySQLPage
 from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.kms import KmsPage
-from sugon_web.utils.logger import logger
+from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
 
@@ -127,14 +126,14 @@ def doris(doris_page):
     data = {"name": name, "admin_password": admin_password}
     logger.info(f"为测试类创建共享Doris实例: {name}")
 
-    with allure.step(f"前置操作：创建共享实例 {name}"):
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
         doris_page.create_instance(name, password=admin_password)
         doris_page.assert_popup_success("Doris创建任务提交成功")
         doris_page.assert_status(name, status="就绪", timeout=1800)
 
     yield data
 
-    with allure.step(f"后置操作：删除共享实例 {name}"):
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享Doris实例: {name}")
         doris_page.delete_instance(data["name"])
 
@@ -151,23 +150,23 @@ def mysql(mysql_page):
     data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
-    with allure.step(f"前置操作：创建共享实例 {name}"):
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
         mysql_page.create_instance(name, type)
         mysql_page.assert_popup_success("创建MySQL资源成功")
         mysql_page.assert_status(name, status="运行中", timeout=1200)
 
-    with allure.step(f"前置操作：创建新数据库 {db_name}"):
+    with allure_step_log(f"前置操作：创建新数据库 {db_name}"):
         mysql_page.create_database(name, db_name)
         mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
         mysql_page.assert_list_contain(db_name)
 
-    with allure.step(f"前置操作：创建新用户 {db_name}"):
+    with allure_step_log(f"前置操作：创建新用户 {db_name}"):
         mysql_page.create_user(name, user_name, user_password, db_name, privileges)
         mysql_page.assert_popup_success("创建用户成功",10)
 
     yield data
 
-    with allure.step(f"后置操作：删除共享实例 {name}"):
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享MySQL实例: {name}")
         # 在删除前，确保页面在实例列表页，防止在详情页删除失败
         mysql_page.delete_instance(data["name"])
@@ -271,7 +270,7 @@ def evss_policy(evs_page):
     yield policy_name
 
     # 测试结束后清理
-    with allure.step("清理测试数据"):
+    with allure_step_log("清理测试数据"):
         evs_page.evss_policy_delete(policy_name)    # TODO: 删除失败，云盘未解绑
         evs_page.assert_deleted(policy_name)
 
@@ -291,7 +290,7 @@ def evss(evs_page, volume):
     yield {"name": snapshot_name, "volume_name": volume["name"]}
 
     # 测试结束后清理
-    with allure.step("清理测试数据"):
+    with allure_step_log("清理测试数据"):
         evs_page.goto_submenu("快照")
         evs_page.evss_delete(snapshot_name)
         evs_page.assert_deleted(snapshot_name)
@@ -408,6 +407,6 @@ def ecss_policy(ecs_page):
     yield {"name": policy_name}
 
     # 测试结束后清理
-    with allure.step("清理测试数据"):
+    with allure_step_log("清理测试数据"):
         ecs_page.ecss_policy_delete(policy_name)
         ecs_page.assert_deleted(policy_name)

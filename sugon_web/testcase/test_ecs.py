@@ -882,7 +882,7 @@ class TestECSS:
         snapshot_data_disk = params.get("snapshot_data_disk")
 
         # 创建快照策略
-        with allure.step("步骤1: 创建快照策略"):
+        with allure_step_log("步骤1: 创建快照策略"):
             ecs_page.ecss_policy_create(
                 name=name,
                 enabled=enabled,
@@ -896,7 +896,7 @@ class TestECSS:
             # 验证创建结果
             ecs_page.assert_popup_success("执行成功")
 
-        with allure.step("步骤2: 删除快照策略"):
+        with allure_step_log("步骤2: 删除快照策略"):
             ecs_page.ecss_policy_delete([name])
             ecs_page.assert_popup_success("删除策略成功")
             ecs_page.assert_deleted(name)
@@ -905,7 +905,7 @@ class TestECSS:
     def test_ecss_policy_batch_delete(self, ecs_page):
 
         policy_names = []
-        with allure.step("步骤1: 创建多个快照策略"):
+        with allure_step_log("步骤1: 创建多个快照策略"):
             for i in range(3):
                 name = random_data()
                 policy_names.append(name)
@@ -919,23 +919,23 @@ class TestECSS:
                 )
                 ecs_page.assert_popup_success("执行成功")
 
-        with allure.step("步骤2: 批量删除快照策略"):
+        with allure_step_log("步骤2: 批量删除快照策略"):
             ecs_page.ecss_policy_delete(policy_names)
             # evs_page.assert_popup_success()
 
-        with allure.step("步骤3: 验证快照策略已删除"):
+        with allure_step_log("步骤3: 验证快照策略已删除"):
             ecs_page.assert_deleted(policy_names)
 
     @allure.title("快照策略-列表页搜索&重置")
     def test_ecss_policy_search(self, ecs_page, ecss_policy):
         """测试云服务器快照策略搜索功能"""
 
-        with allure.step("步骤1: 输入名称进行搜索"):
+        with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = ecss_policy["name"][:-2]  # 取策略名称的前几个字符作为关键词
             ecs_page.search(keyword)
             ecs_page.assert_list_contain(keyword, exact_match=False, column_name="名称/ID")
 
-        with allure.step("步骤2: 重置搜索条件"):
+        with allure_step_log("步骤2: 重置搜索条件"):
             ecs_page.btn_reset.click()
             ecs_page.wait_for_page_ready()
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
