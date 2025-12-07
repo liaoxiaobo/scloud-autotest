@@ -13,12 +13,12 @@ from sugon_web.common.base import BasePage
 
 def pytest_addoption(parser):
     """添加命令行参数"""
-    parser.addoption("--host", action="store", default='172.22.3.140', help="测试环境管理VIP")
+    parser.addoption("--host", action="store", default='172.22.1.190', help="测试环境管理VIP")
     parser.addoption("--headless", action="store", default="false", help="是否无头模式运行（true/false）")
     parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
     parser.addoption("--username", action="store", default="admin", help="登录用户名")
     parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
-    parser.addoption("--stor", action="store", default='xbd', help="storage backend")
+    parser.addoption("--stor", action="store", default='xstor', help="storage backend")
 
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
@@ -62,7 +62,7 @@ def env(pytestconfig):
     yield env
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def page(env, pytestconfig):
     """创建新页面，支持动态浏览器类型和 headless 模式"""
     browser_type = pytestconfig.getoption("--browser-type")
