@@ -30,17 +30,17 @@ def close_dialog_before_test(page):
 @pytest.fixture(scope="module")
 def login_page(page, env):
     """初始化登录页对象"""
-    page = LoginPage(page, env)
-    page.logout()   # 登录测试用例需要先退出登录状态
-    return page
+    login_page = LoginPage(page, env)
+    login_page.logout()   # 登录测试用例需要先退出登录状态
+    return login_page
 
 
 @pytest.fixture(scope="module")
 def evs_page(page, env):
     """初始化云硬盘页对象"""
-    page = EvsPage(page, env)
-    page.goto_service('云硬盘')
-    return page
+    evs_page = EvsPage(page, env)
+    evs_page.goto_service('云硬盘')
+    return evs_page
 
 
 @pytest.fixture()
@@ -91,16 +91,16 @@ def volume(evs_page, request):
 @pytest.fixture(scope="module")
 def ecs_page(page, env):
     """初始化弹性云服务器页对象"""
-    page = EcsPage(page, env)
-    page.goto_service('弹性云服务器')
-    return page
+    ecs_page = EcsPage(page, env)
+    ecs_page.goto_service('弹性云服务器')
+    return ecs_page
 
 @pytest.fixture(scope="class")
 def ops_page(page, env):
     """初始化运维管理页对象"""
-    page = OpsPage(page, env)
-    page.goto_service('网络设施')
-    return page
+    ops_page = OpsPage(page, env)
+    ops_page.goto_service('网络设施')
+    return ops_page
 
 
 @pytest.fixture(scope="class")
