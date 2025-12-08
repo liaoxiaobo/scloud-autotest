@@ -13,12 +13,12 @@ from sugon_web.common.base import BasePage
 
 def pytest_addoption(parser):
     """添加命令行参数"""
-    parser.addoption("--host", action="store", default='172.22.3.140', help="测试环境管理VIP")
+    parser.addoption("--host", action="store", default='172.22.1.190', help="测试环境管理VIP")
     parser.addoption("--headless", action="store", default="false", help="是否无头模式运行（true/false）")
     parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
     parser.addoption("--username", action="store", default="admin", help="登录用户名")
     parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
-    parser.addoption("--stor", action="store", default='xbd', help="storage backend")
+    parser.addoption("--stor", action="store", default='xstor', help="storage backend")
 
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
@@ -50,19 +50,23 @@ def env(pytestconfig):
     username = pytestconfig.getoption("--username")
     password = pytestconfig.getoption("--password")
     stor = pytestconfig.getoption("--stor")
+
+    # 根据host值设置不同的端口号
+    port = "30008" if host == "172.22.1.190" else "30000"
+
     env = {
         'host': host,
-        'url': f"https://{host}:30000",
+        'url': f"https://{host}:{port}",
         "username": username,
         "password": password,
         "stor": stor,
         "pkey": "pkey_scloudadmin"  # 默认使用scloudadmin用户的私钥
     }
-    logger.info(f"测试环境配置加载完成")
+    logger.info(f"测试环境配置加载完成，URL: {env['url']}")
     yield env
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def page(env, pytestconfig):
     """创建新页面，支持动态浏览器类型和 headless 模式"""
     browser_type = pytestconfig.getoption("--browser-type")
