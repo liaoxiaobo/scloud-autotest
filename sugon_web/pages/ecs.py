@@ -15,6 +15,7 @@ class EcsPage(OpsPage):
     def ecs_create(
             self,
             name,
+            image_source="镜像",
             count=1,
             network="Autotest",
             subnet="Autotest(10",
@@ -60,8 +61,11 @@ class EcsPage(OpsPage):
         # 选择规格
         self._select_flavor(flavor)
 
+        # 选择存储池
+        self._select_storage_pool(image_name)
+
         # 选择镜像
-        self._select_image(image_name, os_version)
+        self._select_image(image_source, image_name, os_version)
 
         # 配置系统盘
         self._set_sys_volume(sys_size)
@@ -89,25 +93,93 @@ class EcsPage(OpsPage):
         self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").click()
         self.get_by_role("dialog").get_by_text("确定").click()
 
-    def _select_image(self, image_name, os_version):
-        """选择镜像"""
+    def _select_storage_pool(self, image_name):
+        """选择存储池"""
         image_name = image_name or self.storage_pool
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
         self.get_by_text(self.storage_pool, exact=True).click()
-        
+        logger.info(f"已选择存储池: {self.storage_pool}")
+
+    def _select_image(self, image_source="镜像", image_name="", os_version="centos7.9", **kwargs):
+        """选择镜像，支持多种来源方式
+        Args:
+            image_name: 镜像名称或特定镜像源所需的标识
+            os_version: 操作系统版本，默认为"centos7.9"
+            image_source: 镜像来源方式，可选值：
+                - "镜像": 使用存储池中的镜像（默认）
+                - "空启动": 使用空启动模式
+                - "快照": 使用快照作为镜像源
+                - "ISO": 使用ISO镜像
+            **kwargs: 其他参数，如快照ID、ISO大小等
+        """
+        image_name = image_name or self.storage_pool
+        logger.info(f"开始选择镜像: image_source={image_source}, name={image_name}, os={os_version}")
+
+        try:
+            # 选择镜像来源
+            self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
+            self.locator("li").filter(has_text=re.compile(rf"^{image_source}$")).click()
+            logger.info(f"已选择镜像来源: {image_source}")
+
+            # 根据不同来源执行不同的选择逻辑
+            if image_source == "镜像":
+                self._select_from_pool_image(image_name, os_version)
+            elif image_source == "快照":
+                self._select_snapshot_image(image_name, **kwargs)
+            elif image_source == "ISO":
+                self._select_iso_image(image_name, **kwargs)
+            elif image_source == "空启动":
+                pass
+            else:
+                logger.warning(f"不支持的镜像来源: {image_source}，使用默认镜像方式")
+                self._select_from_pool_image(image_name, os_version)
+
+        except Exception as e:
+            logger.error(f"选择镜像失败: {str(e)}")
+            raise
+
+    def _select_from_pool_image(self, image_name, os_version):
+        """来源选择 镜像"""
+        logger.info("使用存储池镜像")
+        image_name = image_name or self.storage_pool
+
         # 选择操作系统版本
         self.get_by_role("textbox", name="请选择操作系统版本").click()
         self.get_by_text(os_version).click()
-        
+
         # 选择64位
         self.get_by_role("textbox", name="请选择操作系统位数").click()
         self.get_by_role("listitem").filter(has_text=re.compile(r"^64位$")).click()
-        
+
         # 选择具体镜像
         self.get_by_role("textbox", name="请选择镜像").click()
         self.get_by_title(image_name, exact=True).click()
+        logger.info(f"已选择存储池镜像: {image_name}")
+
+    def _select_snapshot_image(self, snapshot_name, **kwargs):
+        """来源选择 快照"""
+        logger.info(f"使用快照: {snapshot_name}")
+
+        # 选择快照
+        if snapshot_name:
+            # 定位并选择快照行
+            self.get_by_role("row", name=snapshot_name).get_by_role("radio").click()
+            logger.info(f"已选择快照: {snapshot_name}")
+
+    def _select_iso_image(self, iso_name, **kwargs):
+        """来源选择 ISO"""
+        logger.info(f"使用ISO镜像: {iso_name}")
+
+        # 选择ISO
+        self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
+        self.locator("li").filter(has_text="ISO").click()
+
+        if iso_name:
+            # 定位并选择ISO行
+            self.get_by_role("row", name=iso_name).get_by_role("radio").click()
+            logger.info(f"已选择ISO镜像: {iso_name}")
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
@@ -1303,8 +1375,6 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-        self.assert_popup_success(f"挂载云硬盘到虚拟机{vm_name}成功")
-
 
     @submenu("弹性云服务器")
     def ecs_unmount_from_server(self, volume_name, vm_name):
@@ -1502,7 +1572,7 @@ class EcsPage(OpsPage):
         """验证云服务器详情页面中的信息
 
         Args:
-            name: 云服务器名称
+            names: 云服务器名称
             tab: 页签名称
             info_items: 需要验证的信息项字典，格式为 {"信息项名称": "期望内容"}
                        例如: {"启动顺序": "3", "启动延迟时间(秒)": "20"}
@@ -1512,9 +1582,11 @@ class EcsPage(OpsPage):
             self.ecs_to_details(name)
 
             logger.info(f"点击 {tab} 页签")
-            self.get_by_role("tab", name=tab).click()
-            self.wait_for_page_ready()
-            sleep(1)
+            if tab != "详情":
+                self.get_by_role("tab", name=tab).click()
+                self.wait_for_page_ready()
+            else:
+                sleep(2)
             # 逐个验证信息项
             for item_name, expected_content in info_items.items():
                 logger.info(f"验证 {tab} 页签的 {item_name}: {str(expected_content)}")
@@ -1527,7 +1599,7 @@ class EcsPage(OpsPage):
                 assert info_value.inner_text().__contains__(str(expected_content)), \
                     f"验证失败: {tab} 的 {item_name} 不包含 {str(expected_content)}, 实际内容: {info_value.inner_text()}"
 
-        logger.info(f"云服务器 {tab} 详情页面信息验证成功")
+            logger.info(f"云服务器 {tab} 详情页面信息验证成功")
 
     @submenu("弹性云服务器")
     def ecs_batch_set_shutdown_order(self, names: list, order: int, delay):

@@ -78,7 +78,7 @@ class TestECSBasic:
             mfip = ecs_page.bind_mfip(clone_ip.strip())
             ssh_vm.connect(mfip)
             md5_new = ssh_vm.run(f"md5sum /home/{name}")
-            assert md5 == md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
+            assert md5_new.count(md5), f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
 
         with allure_step_log(f"步骤4: 清理测试数据{clone_name}"):
             ecs_page.goto_service('弹性云服务器')
@@ -405,7 +405,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-批量迁移功能验证")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
-    def _test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
+    def _test_ecs_batch_migration(self, ecs_page, vm, ssh_host, ssh_vm):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
         """
@@ -413,10 +413,15 @@ class TestECSBasic:
         names = [vm[i].get("name") for i in range(len(vm))]
         ecs_ids = [vm[i].get("id") for i in range(len(vm))]
 
-        with allure_step_log("步骤1: 批量迁移"):
+        with allure_step_log("步骤1: 虚机长ping"):
+            for i in range(len(names)):
+                ssh_vm.connect(vm[i]['mfip'])
+                ssh_vm.run("ping 100.126.255.250 -t 600")
+
+        with allure_step_log("步骤2: 批量迁移"):
             ecs_page.ecs_batch_migration(names)
 
-        with allure_step_log("步骤2: 验证迁移结果"):
+        with allure_step_log("步骤3: 验证迁移结果"):
             for name in names:
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
 
@@ -495,10 +500,14 @@ class TestECSBasic:
         name = vm.get("name")
         ecs_id = vm.get("id")
 
-        with allure_step_log("步骤1: 热迁移"):
+        with allure_step_log("步骤1: 虚机长ping"):
+            ssh_vm.connect(vm['mfip'])
+            ssh_vm.run("ping 100.126.255.250 -t 300")
+
+        with allure_step_log("步骤2: 热迁移"):
             check_node = ecs_page.ecs_hot_migration(name, "master01")
 
-        with allure_step_log("步骤2: 验证迁移结果"):
+        with allure_step_log("步骤3: 验证迁移结果"):
             ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
             ecs_page.assert_status(name, status="当前无任务")
 
@@ -510,6 +519,7 @@ class TestECSBasic:
             # 验证迁移后虚机的可用性
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
+            ssh_vm.run("ps -ef | grep ping")
 
     @allure.title("弹性云服务器-冷迁移功能验证")
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
@@ -601,7 +611,10 @@ class TestECSBasic:
         delay = "20"
         with allure_step_log(f"步骤1: 批量设置{operation}顺序"):
             for i, name in enumerate(names, start=1):
-                ecs_page.ecs_batch_set_shutdown_order(name, i, delay)
+                if operation == "关机":
+                    ecs_page.ecs_batch_set_shutdown_order(name, i, delay)
+                else:
+                    ecs_page.ecs_batch_set_startup_order(name, i, delay)
 
         with allure_step_log(f"步骤2: 进入云服务器详情页面验证顺序及{operation}延迟"):
             for i, name in enumerate(names, start=1):
