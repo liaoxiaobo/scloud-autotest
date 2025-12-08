@@ -217,7 +217,7 @@ def vm(ecs_page, request):
         row_data = ecs_page.get_row_data(vm_name)
         vm_metadata = {
             "name": vm_name,
-            "id": row_data["名称/ID"],
+            "id": row_data["名称/ID"].split(":")[1].strip(),
             "ip": row_data["IP地址"].split(":")[1].strip(),
             'host': row_data["物理机"],
             "flavor": row_data["规格"],
