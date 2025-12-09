@@ -1,37 +1,42 @@
 pipeline {
     agent any
     parameters {
-        // choice(name: 'BRANCH', choices: ["master"], description: '代码分支')
-        string(name: 'HOST', defaultValue: '172.22.1.190', description: '测试环境管理VIP')
-        choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '存储池')
+//         string(name: 'BRANCH', defaultValue: 'develop', description: '请输入正确Git分支名（如main、develop)', trim: true)
+        string(name: 'HOST', defaultValue: '172.22.1.190', description: '请输入环境的管理VIP')
+        choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        choice(name: 'MODULE', choices: ["all", "iaas", "paas"], description: '云服务类别（选择 all 运行所有用例）')
-        string(name: 'KEY', defaultValue: '', description: '可选的用例过滤关键字（ecs、evs、vpc等）')
+        string(name: 'KEY', defaultValue: '', description: '云服务模块、用例过滤关键字（如ecs、evs、vpc）')
+        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
     environment {
-        // branch = "${params.BRANCH}"
         START_TIME = new Date().format("yyyy.MM.dd HH:mm:ss")
     }
     stages {
-        // stage('Checkout') {
-        //     steps {
-        //         git branch: "${branch}",
-        //         url: "git@code.mysugoncloud.com:SugonCloud_Stack_V8.0/playwright-sugon.git"
-        //     }
-        // }
+//         stage('Checkout') {
+//             steps {
+//                 script {
+//                     def repoUrl = "git@code.mysugoncloud.com:full-stack-cloud/playwright-sugon.git"
+//                     def branchName = params.BRANCH
+//                     git(
+//                         url: repoUrl,
+//                         branch: branchName
+//                         // credentialsId: 'sugon-git-ssh-key'  // 无需显式指定，SSH Key已配置Jenkins服务器公钥
+//                         )
+//                 }
+//             }
+//         }
         stage('Build Docker Image'){
-          steps{
+          steps {
                 script{
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}"
-                    // stage间传递局部变量dir
-                    dir = "$workspace"
+                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    dir = "$workspace"  // 记录工作目录,供后续stage使用（容器内执行测试时需知道代码路径）
                     sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
-                    // sh  'printenv |sort'
+//                     sh  'printenv |sort'
                 }
           }
       }
@@ -44,14 +49,12 @@ pipeline {
             }
           steps{
                 script {
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n 2 --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    // 构建 pytest 命令（核心测试逻辑）
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n ${params.PARALLEL_COUNT} --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
 
                     // 用例筛选逻辑
                     if (params.KEY) {
-                        pytestCommand += " -k '${params.MODULE} and ${params.KEY}'"
-                    }
-                    else {
-                        pytestCommand += " -k '${params.MODULE}'"
+                        pytestCommand += " -k '${params.KEY}'"
                     }
 
                     // 添加 RUN_LAST_FAILED 参数
@@ -67,8 +70,8 @@ pipeline {
     }
     post('Send Report') {
         always {
-            // 生成测试历史数据和首页数据
-            sh "cp -r allure-report/history allure-result/ || true"
+            // 保留allure历史数据
+            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
             // 生成 Allure 报告
