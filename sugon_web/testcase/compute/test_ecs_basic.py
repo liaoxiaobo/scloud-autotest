@@ -404,19 +404,26 @@ class TestECSBasic:
                 assert stdout.get("vm_state") == vm_state, f"批量操作{operation}失败，期望vm_state:{vm_state},实际vm_state:{stdout.get('vm_state')}"
 
     @allure.title("弹性云服务器-批量迁移功能验证")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
-    def _test_ecs_batch_migration(self, ecs_page, vm, ssh_host, ssh_vm):
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": True}], indirect=True)
+    def test_ecs_batch_migration(self, ecs_page, vm, ssh_host, ssh_vm):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
         """
         ecs_page.wait_for_page_ready()
         names = [vm[i].get("name") for i in range(len(vm))]
         ecs_ids = [vm[i].get("id") for i in range(len(vm))]
+        pids = []
 
         with allure_step_log("步骤1: 虚机长ping"):
             for i in range(len(names)):
                 ssh_vm.connect(vm[i]['mfip'])
-                ssh_vm.run("ping 100.126.255.250 -t 600")
+                ssh_vm.run(r"nohup ping 100.126.255.250 -i 1 > /tmp/ping.log 2>&1 &")
+                # 然后获取进程ID
+                pid_output = ssh_vm.run(r"pgrep -f 'ping 100.126.255.250'")
+                # 验证是否成功获取PID
+                if not pid_output or not pid_output.strip():
+                    raise Exception("无法获取ping进程ID")
+                pids.append(pid_output.strip())
 
         with allure_step_log("步骤2: 批量迁移"):
             ecs_page.ecs_batch_migration(names)
@@ -430,6 +437,14 @@ class TestECSBasic:
                 # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
                 expect_node = ecs_page.get_row_data(name).get("物理机")
                 assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
+            # 验证虚机长ping 迁移丢包率
+            for i in range(len(names)):
+                ssh_vm.connect(vm[i]['mfip'])
+                ssh_vm.run(f"kill -2 {pids[i]}")
+                ping_output = ssh_vm.run("cat /tmp/ping.log")
+                loss = re.search(r"transmitted, (.*?) received", ping_output).group(1)
+                send = re.search(r"(.*?) packets transmitted,", ping_output).group(1)
+                assert int(send) - int(loss) <= 5
 
     @allure.title("弹性云服务器-系统盘扩容功能验证")
     def test_ecs_expand_system_disk(self, ecs_page, vm, ssh_host, ssh_vm):
@@ -496,13 +511,18 @@ class TestECSBasic:
         测试弹性云服务器的热迁移功能
         """
         ecs_page.goto_service('弹性云服务器')
-        ecs_page.wait_for_page_ready()
         name = vm.get("name")
         ecs_id = vm.get("id")
 
         with allure_step_log("步骤1: 虚机长ping"):
             ssh_vm.connect(vm['mfip'])
-            ssh_vm.run("ping 100.126.255.250 -t 300")
+            ssh_vm.run(r"nohup ping 100.126.255.250 -i 1 > /tmp/ping.log 2>&1 &")
+            # 然后获取进程ID
+            pid_output = ssh_vm.run(r"pgrep -f 'ping 100.126.255.250'")
+            # 验证是否成功获取PID
+            if not pid_output or not pid_output.strip():
+                raise Exception("无法获取ping进程ID")
+            pid = pid_output.strip()
 
         with allure_step_log("步骤2: 热迁移"):
             check_node = ecs_page.ecs_hot_migration(name, "master01")
@@ -516,10 +536,13 @@ class TestECSBasic:
             assert expect_node == check_node, f"热迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
             assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == check_node
 
-            # 验证迁移后虚机的可用性
+            # 验证长ping迁移丢包率
             ssh_vm.connect(vm['mfip'])
-            ecs_page.assert_ecs_enable(name, ssh_vm)
-            ssh_vm.run("ps -ef | grep ping")
+            ssh_vm.run(f"kill -2 {pid}")
+            ping_output = ssh_vm.run("cat /tmp/ping.log")
+            loss = re.search(r"transmitted, (.*?) received", ping_output).group(1)
+            send = re.search(r"(.*?) packets transmitted,", ping_output).group(1)
+            assert int(send) - int(loss) <= 5
 
     @allure.title("弹性云服务器-冷迁移功能验证")
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
@@ -652,3 +675,24 @@ class TestECSBasic:
 
         with allure_step_log("步骤4: 验证还原密码结果"):
             ecs_page.assert_popup_success(f"修改vnc密码成功")
+
+    @allure.title("弹性云服务器-设置启动顺序功能验证")
+    @pytest.mark.parametrize("volume", [{"count": 1, "empty": False}], indirect=True)
+    def test_ecs_set_boot_order(self, ecs_page, vm, volume):
+        """测试设置云服务器启动顺序功能"""
+        name = vm.get("name")
+        ecs_page.goto_service('弹性云服务器')
+        volume_name = volume.get("name")
+        with allure_step_log("步骤1: 挂载云硬盘到"):
+            ecs_page.ecs_mount_to_server(volume_name, name)
+
+        with allure_step_log("步骤2: 设置云服务器启动顺序"):
+            ecs_page.ecs_set_boot_order(name, [{"磁盘": "30G"}])
+
+        with allure_step_log("步骤3: 验证启动顺序设置结果"):
+            ecs_page.assert_popup_success("设置实例启动顺序成功")
+            ecs_page.ecs_operations(name, "强制重启")
+            ecs_page.assert_popup_success(f"{name}实例强制重启成功", timeout=60)
+
+        with allure_step_log("步骤4: 验证云服务器详情页中的启动顺序信息"):
+            ecs_page.ecs_vnc(name)

@@ -1,6 +1,9 @@
+import os
 import re
 import time
 from time import sleep
+
+import allure
 from playwright.sync_api import expect
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
@@ -301,7 +304,7 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
-    def ecs_vnc(self, name: str, vncpwd: str):
+    def ecs_vnc(self, name: str, vncpwd: str = "sugon@20"):
         """修改VNC密码
         Args：
             name: 云服务器名称
@@ -309,13 +312,29 @@ class EcsPage(OpsPage):
         """
         logger.info(f"云服务器{name}：登录VNC")
         self.click_dropdown_option(name, "登录VNC")
-        self.switch_to_new_tab()
-        self.wait_for_page_ready()
-        self.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
-        self.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
-        self.wait_for_page_ready()
-        assert self.locator("#app iframe").content_frame.locator("canvas").is_visible()
-        self.switch_to_tab(0)
+        with self.new_tab_context() as new_page:
+            # 输入VNC密码并登录
+            new_page.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
+            new_page.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
+            time.sleep(3)
+            loc = new_page.locator("#app iframe").content_frame.locator("canvas")
+            assert loc.is_visible()
+
+            screenshot_dir = "screenshots"
+            os.makedirs(screenshot_dir, exist_ok=True)
+            screenshot_path = os.path.join(screenshot_dir, f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png")
+            # 保存截图到文件
+            loc.screenshot(path=screenshot_path)
+            logger.info(f"截图保存成功: {screenshot_path}")
+
+            # 将截图添加到 Allure 报告
+            with open(screenshot_path, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"vnc截图_{name}",
+                    attachment_type=allure.attachment_type.PNG
+                )
+            logger.info(f"云服务器{name}：VNC登录成功")
 
     @submenu("弹性云服务器")
     def ecs_rebuild(self, name: str, version: str, bit: str, image: str):
@@ -1632,3 +1651,46 @@ class EcsPage(OpsPage):
         self.assert_popup_success("执行成功")
 
         logger.info(f"批量设置云服务器关机顺序完成: {names}")
+
+    @submenu("弹性云服务器")
+    def ecs_set_boot_order(self, name: str, boot_order: list):
+        """
+        设置云服务器启动顺序
+
+        Args:
+            name: 云服务器名称
+            boot_order: 启动顺序配置，格式为：
+                [  # 启动设备列表，按优先级排序
+                        {"磁盘": "hdc:20GB"},
+                        {"网络", "10.228.42.59/fa:16:3e:ae:bb:fa"}
+                    ]
+        """
+        logger.info(f"开始设置云服务器 {name} 的启动顺序")
+
+        # 点击云服务器的操作按钮
+        self.click_dropdown_option(name, "设置启动顺序")
+
+        # 添加启动项
+        if len(boot_order) > 1:
+            for i in range(len(boot_order) - 1):
+                self.get_by_role("button", name=" 添加启动项").click()
+                self.wait_for_operation_complete()
+
+        for i, boot_device in enumerate(boot_order):
+            # 选择启动类型
+            for boot_type, devices in boot_device.items():
+                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth(0 if i == 0 else i*2).click()
+
+                self.locator("li").filter(has_text=re.compile(fr"^{boot_type}$")).nth(1 if len(boot_order) > 1 else 0).click()
+
+                # 选择设备
+                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth((i*2+1)).click()
+                self.locator("li").filter(has_text=devices).click()
+
+        # 确认设置
+        self.dialog_confirm.click()
+        self.wait_for_operation_complete()
+        # self.assert_popup_success("设置启动顺序成功")
+
+        logger.info(f"云服务器 {name} 启动顺序设置完成")
+
