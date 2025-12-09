@@ -2,6 +2,7 @@ import time
 
 from playwright.sync_api import Page, expect, BrowserContext
 from sugon_web.utils.logger import logger
+from contextlib import contextmanager
 
 
 def _format_selector(selector):
@@ -235,112 +236,39 @@ class Playwright:
         self.logger.info(f"成功切换到标签页: 标题='{page_title}', URL='{page_url}'")
         return new_page
 
-    def switch_to_tab(self, page_index=None, url=None, title=None, timeout=30000):
+    @contextmanager
+    def new_tab_context(self, wait_for_selector=None, timeout=30000, wait_for_load_state="domcontentloaded"):
         """
-        切换到指定的标签页，支持通过索引、URL或标题来定位
+        上下文管理器，用于在新标签页中执行操作，并在操作完成后自动关闭标签页
+
         Args:
-            page_index (int): 可选，要切换到的标签页索引
-            url (str): 可选，要切换到的标签页URL（部分匹配）
-            title (str): 可选，要切换到的标签页标题（部分匹配）
+            wait_for_selector (str): 可选，等待特定选择器元素出现
             timeout (int): 等待超时时间（毫秒），默认为30秒
-        Returns:
-            Page: 新切换到的页面对象
-        Raises:
-            Exception: 切换失败或等待超时时抛出异常
-        Usage:
-            # 通过索引切换（0为第一个标签页）
-            self.switch_to_tab(page_index=0)  # 返回第一个标签页
-            # 通过URL部分匹配切换
-            self.switch_to_tab(url="example.com")  # 切换到URL包含example.com的标签页
-            # 通过标题部分匹配切换
-            self.switch_to_tab(title="管理页面")  # 切换到标题包含"管理页面"的标签页
-            # 简单返回上一标签页
-            self.switch_to_tab(page_index=-2)  # 切换到倒数第二个标签页（即上一标签页）
+            wait_for_load_state (str): 等待页面加载状态，默认为"domcontentloaded"
+
+        用法:
+            with page.new_tab_context() as new_page:
+                new_page.goto("https://example.com")
+                # 在新页面上执行操作
+                # 操作完成后，标签页会自动关闭
         """
+        # 记录原始页面
+        original_page = self.page
+
         try:
-            # 获取所有页面
-            pages = self.page.context.pages
-            total_pages = len(pages)
-
-            if total_pages <= 1:
-                self.logger.warning("只有一个标签页，无法切换")
-                return self.page
-
-            self.logger.info(f"当前标签页总数: {total_pages}")
-
-            # 目标页面
-            target_page = None
-
-            # 通过索引查找
-            if page_index is not None:
-                # 处理负数索引（从后往前计数）
-                if page_index < 0:
-                    page_index = total_pages + page_index
-
-                # 索引验证
-                if page_index < 0 or page_index >= total_pages:
-                    self.logger.error(f"无效的页面索引: {page_index}, 当前页面总数: {total_pages}")
-                    raise IndexError(f"页面索引超出范围: {page_index}")
-
-                target_page = pages[page_index]
-                self.logger.info(f"通过索引 {page_index} 找到目标页面")
-
-            # 通过URL查找
-            elif url is not None:
-                for i, page in enumerate(pages):
-                    if url in page.url:
-                        target_page = page
-                        self.logger.info(f"通过URL '{url}' 找到目标页面 (索引 {i})")
-                        break
-
-                if target_page is None:
-                    self.logger.error(f"未找到URL包含 '{url}' 的标签页")
-                    raise Exception(f"未找到URL包含 '{url}' 的标签页")
-
-            # 通过标题查找
-            elif title is not None:
-                for i, page in enumerate(pages):
-                    if title in page.title():
-                        target_page = page
-                        self.logger.info(f"通过标题 '{title}' 找到目标页面 (索引 {i})")
-                        break
-
-                if target_page is None:
-                    self.logger.error(f"未找到标题包含 '{title}' 的标签页")
-                    raise Exception(f"未找到标题包含 '{title}' 的标签页")
-
-            else:
-                # 如果没有提供任何参数，默认返回到上一个标签页
-                current_index = pages.index(self.page)
-                if current_index > 0:
-                    target_page = pages[current_index - 1]
-                    self.logger.info(f"未指定目标页面，返回到上一标签页 (索引 {current_index - 1})")
-                else:
-                    self.logger.warning("当前已是第一个标签页，无法返回上一标签页")
-                    return self.page
-
-            # 激活目标页面
+            # 切换到新标签页
+            new_page = self.switch_to_new_tab(wait_for_selector, timeout, wait_for_load_state)
+            yield new_page
+        finally:
+            # 确保返回原始页面并关闭新页面
             try:
-                target_page.bring_to_front()
+                # 切换回原始页面
+                original_page.bring_to_front()
+                self.page = original_page
+
+                # 关闭新页面
+                if new_page != original_page:
+                    new_page.close()
+                    self.logger.info("已自动关闭新标签页")
             except Exception as e:
-                self.logger.warning(f"激活页面失败: {str(e)}")
-
-            # 等待页面加载状态
-            target_page.wait_for_load_state("domcontentloaded", timeout=timeout)
-
-            # 更新当前页面对象引用
-            self.page = target_page
-
-            # 记录页面信息
-            page_title = target_page.title() or "无标题"
-            page_url = target_page.url or "无URL"
-            self.logger.info(f"成功切换到标签页: 标题='{page_title}', URL='{page_url}'")
-
-            return target_page
-
-        except IndexError as e:
-            self.logger.error(f"标签页索引错误: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"切换标签页失败: {str(e)}")
-            raise
+                self.logger.warning(f"关闭新标签页时出错: {str(e)}")
