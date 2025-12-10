@@ -410,3 +410,31 @@ def ecss_policy(ecs_page):
     with allure_step_log("清理测试数据"):
         ecs_page.ecss_policy_delete(policy_name)
         ecs_page.assert_deleted(policy_name)
+
+@pytest.fixture()
+def image(ssh_host, ecs_page, request):
+    """
+    动态创建镜像的fixture，支持从测试用例层传递参数
+
+    测试用例可以通过以下方式使用：
+    1. 直接使用：默认参数创建镜像
+    2. 传递参数：使用pytest.mark.parametrize或indirect参数
+
+    Args:
+        ssh_host: SSH连接fixture
+        ecs_page: ECS页面fixture
+        request: pytest的request对象，用于获取测试用例传递的参数
+
+    Returns:
+        str: 创建的镜像名称
+
+    Yields:
+        str: 镜像名称，测试用例执行后自动清理
+    """
+    params = getattr(request, 'param', {})
+    name = params.get('name', random_data())
+    backend = params.get('backend', ecs_page.storage_pool)
+    image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
+    ssh_host.glance_image_create(name, image=image_name, backend=backend)
+    yield {"name", name}
+    ssh_host.glance_image_delete(name)
