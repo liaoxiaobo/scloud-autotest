@@ -314,21 +314,24 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(name, "登录VNC")
         with self.new_tab_context() as new_page:
             # 输入VNC密码并登录
-            new_page.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
+            try:
+                new_page.locator("#app iframe").content_frame.get_by_label("Password:").fill(vncpwd)
+            except:
+                new_page.locator("#app iframe").content_frame.get_by_label("密码：").fill(vncpwd)
             new_page.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
-            time.sleep(3)
             loc = new_page.locator("#app iframe").content_frame.locator("canvas")
             assert loc.is_visible()
-
+            # 保存截图到文件
+            sleep(5)
             screenshot_dir = "screenshots"
             os.makedirs(screenshot_dir, exist_ok=True)
-            screenshot_path = os.path.join(screenshot_dir, f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png")
+            screenshot_vnc = os.path.join(screenshot_dir, f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png")
             # 保存截图到文件
-            loc.screenshot(path=screenshot_path)
-            logger.info(f"截图保存成功: {screenshot_path}")
+            loc.screenshot(path=screenshot_vnc)
+            logger.info(f"截图保存成功: {screenshot_vnc}")
 
             # 将截图添加到 Allure 报告
-            with open(screenshot_path, "rb") as f:
+            with open(screenshot_vnc, "rb") as f:
                 allure.attach(
                     body=f.read(),
                     name=f"vnc截图_{name}",
@@ -658,7 +661,9 @@ class EcsPage(OpsPage):
         """
         logger.info(f"弹性云服务器{name}时钟同步")
         self.click_dropdown_option(name, "时间同步服务器")
-        self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
+        server_loc = self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.")
+        server_loc.clear()
+        server_loc.fill(time_server)
         logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
         loc = self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox")
         loc.clear() # 清空输入框默认数据
@@ -1217,9 +1222,6 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-        # 验证成功提示
-        self.assert_popup_success(f"批量{migration_type}命令下发成功")
-
         logger.info(f"批量迁移操作完成: {names}, 迁移方式: {migration_type}")
 
 
@@ -1296,9 +1298,6 @@ class EcsPage(OpsPage):
         # 确认热迁移
         self.dialog_confirm.click()
 
-        # 验证成功提示
-        self.assert_popup_success("热迁移命令下发成功")
-
         logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
         return checked_host.split("CPU剩余量")[0].strip()
 
@@ -1364,9 +1363,6 @@ class EcsPage(OpsPage):
         # 确认冷迁移
         self.dialog_confirm.click()
 
-        # 验证成功提示
-        self.assert_popup_success("冷迁移命令下发成功")
-
         logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
         return checked_host.split("CPU剩余量")[0].strip()
 
@@ -1417,8 +1413,6 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-        self.assert_popup_success(f"从虚拟机{vm_name}分离云硬盘")
-
     @submenu("弹性云服务器")
     def ecs_expand_system_disk(self, name: str, new_size: str):
         """扩容弹性云服务器系统盘
@@ -1440,7 +1434,6 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success(f"{name}实例扩容成功")
         logger.info(f"云服务器系统盘扩容成功: {name}")
 
     @submenu("弹性云服务器")
@@ -1469,7 +1462,6 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器{name}的CPU QoS修改请求已提交")
 
         self.wait_for_operation_complete()
-        self.assert_popup_success(f"设置cpu-qos成功")
 
     @submenu("弹性云服务器")
     def ecs_batch_set_startup_order(self, names: list, order: int, delay):
@@ -1499,7 +1491,6 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success("执行成功")
 
         logger.info(f"批量设置云服务器启动顺序完成: {names}")
 
@@ -1648,7 +1639,6 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success("执行成功")
 
         logger.info(f"批量设置云服务器关机顺序完成: {names}")
 
@@ -1690,7 +1680,6 @@ class EcsPage(OpsPage):
         # 确认设置
         self.dialog_confirm.click()
         self.wait_for_operation_complete()
-        # self.assert_popup_success("设置启动顺序成功")
 
         logger.info(f"云服务器 {name} 启动顺序设置完成")
 
