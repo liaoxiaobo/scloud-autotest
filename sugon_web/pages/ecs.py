@@ -320,7 +320,7 @@ class EcsPage(OpsPage):
                 new_page.locator("#app iframe").content_frame.get_by_label("密码：").fill(vncpwd)
             new_page.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
             loc = new_page.locator("#app iframe").content_frame.locator("canvas")
-            assert loc.is_visible()
+            expect(loc).to_be_visible(timeout=30000)
             # 保存截图到文件
             sleep(5)
             screenshot_dir = "screenshots"
@@ -1754,7 +1754,7 @@ class EcsPage(OpsPage):
         # 点击云服务器操作按钮，选择修改CPU模式
         self.click_dropdown_option(name, "修改CPU模式")
 
-        self.get_by_placeholder("请选择CPU模式").click()
+        self.get_by_placeholder("请选择CPU模式").first.click()
         # 选择CPU模式
         if cpu_mode == "自定义":
             self.get_by_text("自定义").click()

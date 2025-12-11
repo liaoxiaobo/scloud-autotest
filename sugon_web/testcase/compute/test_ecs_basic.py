@@ -675,11 +675,12 @@ class TestECSBasic:
                 assert v == stdout.get(k), f"修改云服务器CPU QoS失败，期望{k}:{v},实际{k}:{stdout.get(k)}"
 
     @allure.title("弹性云服务器-挂载CD-ROM功能验证")
-    def test_ecs_mount_cdrom(self, ecs_page, vm, ssh_vm):
+    def test_ecs_mount_cdrom(self, ecs_page, image, vm, ssh_vm):
         """测试弹性云服务器挂载CD-ROM功能"""
         name = vm.get("name")
+        iso_name = image.get("name")
         with allure_step_log("步骤1: 为云服务器挂载CD-ROM"):
-            ecs_page.ecs_mount_cdrom(name)
+            ecs_page.ecs_mount_cdrom(name, iso_name)
 
         with allure_step_log(f"步骤2: 验证虚机{name}挂载CD-ROM结果"):
             ecs_page.assert_popup_success(f"挂载CD-ROM到虚拟机{name}成功")
@@ -738,11 +739,9 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"执行成功")
 
         with allure_step_log(f"步骤4: 验证{operation}结果"):
-            status_transition = "电源关闭中" if operation == "关机" else "电源打开中"
-            final_status = "关机" if operation == "关机" else None
+            final_status = "关机" if operation == "关机" else "运行"
             for name in names:
-                ecs_page.assert_status(name, status=status_transition, refresh=True, refresh_interval=1)
-                ecs_page.assert_status(name, status=final_status, refresh_interval=1)
+                ecs_page.assert_status(name, status=final_status, refresh=True, refresh_interval=1)
                 if name != names[-1]:  # 最后一个服务器不执行延迟
                     time.sleep(int(delay) / 2)
 
@@ -785,7 +784,7 @@ class TestECSBasic:
             ecs_page.ecs_vnc(name)
 
     @allure.title("弹性云服务器-安装工具&卸载工具功能验证")
-    def _test_ecs_install_uninstall_tools(self, ecs_page, vm, ssh_vm):
+    def _test_ecs_install_uninstall_tools(self, ecs_page, image, vm, ssh_vm):
         """云服务器安安装工具&卸载工具功能验证
 
         Args:
@@ -793,7 +792,6 @@ class TestECSBasic:
             vm: 虚拟机信息字典，包含name等信息
         """
         name = vm.get("name")
-        # name = "autotest-75uqs"
         # 导航到弹性云服务器页面
         ecs_page.goto_service('弹性云服务器')
 
@@ -822,15 +820,11 @@ class TestECSBasic:
     @allure.title("弹性云服务器-修改VNC显卡类型功能验证")
     @pytest.mark.parametrize("vnc_type", ["VGA", "QXL", "Virtio", "None"])
     def test_ecs_modify_vnc_type(self, ecs_page, vm, ssh_vm, ssh_host, vnc_type):
-    # def test_ecs_modify_vnc_type(self, ecs_page, ssh_vm, ssh_host, vnc_type):
         """测试修改云服务器的VNC显卡类型功能"""
         name = vm.get("name")
         ecs_id = vm.get("id")[:18]
+        node = vm.get("host").split(".")[0]
         ecs_page.goto_service('弹性云服务器')
-        # name = "autotest-00a8a"
-        # ecs_id = "0431b14b-6ba6-45bb-9eaf-4794559c172e"[:18]
-        # vnc_type = "QXL"
-        node = ecs_page.get_row_data(name).get("物理机").split(".")[0]
 
         with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
             ecs_page.ecs_modify_vnc_type(name, vnc_type)
@@ -855,10 +849,10 @@ class TestECSBasic:
         """
         测试弹性云服务器CPU模式修改功能
         """
-        ecs_page.goto_service('弹性云服务器')
         name = vm.get("name")
         ecs_id = vm.get("id")[:18]
-        node = ecs_page.get_row_data(name).get("物理机").split(".")[0]
+        node = vm.get("host").split(".")[0]
+        ecs_page.goto_service('弹性云服务器')
 
         with allure_step_log(f"步骤1: 修改云服务器{name}的CPU模式为{cpu_mode}"):
             ecs_page.ecs_modify_cpu_mode(name, cpu_mode, custom_value )
@@ -869,7 +863,7 @@ class TestECSBasic:
             ecs_page.assert_ecs_details_info([name], info_items={"CPU模式": cpu_mode})
             ssh_vm.connect(vm['mfip'])
 
-        with allure_step_log("步骤4: 验证虚机xml"):
+        with allure_step_log("步骤3: 验证虚机xml"):
             cmd = f"""ssh -o StrictHostKeyChecking=no {node} 'docker exec -i nova_libvirt virsh dumpxml {ecs_id} |grep "cpu mode="'"""
             expected_mode = "host-passthrough" if cpu_mode == "host-passthrough" else "custom"
             output = ssh_host.run(cmd)

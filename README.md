@@ -77,9 +77,14 @@ pytest -k "ecs" sugon_web/testcase/
 # 指定环境和浏览器
 pytest sugon_web/testcase/ --host=172.22.1.170 --browser-type=chromium
 
-# 生成 Allure 报告
+# 执行测试并收集测试数据
 pytest sugon_web/testcase/ --alluredir=allure-result
-allure serve allure-result
+
+# 生成静态报告
+allure generate allure-result/ -o ./allure-report -c
+
+# 本地查看报告
+allure open -h 127.0.0.1 -p 8888 ./allure-report
 ```
 
 ### 命令行参数
