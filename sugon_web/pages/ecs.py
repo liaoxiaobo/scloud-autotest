@@ -1683,3 +1683,89 @@ class EcsPage(OpsPage):
 
         logger.info(f"云服务器 {name} 启动顺序设置完成")
 
+    @submenu("弹性云服务器")
+    def ecs_install_tools(self, name: str):
+        """为云服务器安装工具
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"开始为云服务器 {name} 安装工具")
+
+        # 点击操作按钮
+        self.click_dropdown_option(name, "安装工具")
+
+        # 点击安装并进入下一步
+        self.get_by_text("安装并进入下一步").click()
+
+    @submenu("弹性云服务器")
+    def ecs_uninstall_tools(self, name: str):
+        """云服务器页面卸载工具
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"开始为云服务器 {name} 卸载工具")
+
+        # 点击操作按钮
+        self.click_dropdown_option(name, "卸载工具")
+
+        # 点击确定
+        self.dialog_confirm.click()
+
+    def assert_ecs_tools_installed(self, name: str):
+        """验证云服务器安装工具页面第一步操作是否完成"""
+        self.assert_popup_success(f"安装工具到虚拟机{name}成功")
+        # 等待安装工具第一步完成
+        expect(self.get_by_text("进入VNC控制台")).to_be_visible(timeout=30000)
+
+    @submenu("弹性云服务器")
+    def ecs_modify_vnc_type(self, name: str, vnc_type: str = "VGA"):
+        """修改云服务器VNC显卡类型
+
+        Args:
+            name: 云服务器名称
+            vnc_type: VNC显卡类型，默认为"VGA"
+        """
+        logger.info(f"开始修改云服务器 {name} 的VNC显卡类型为: {vnc_type}")
+
+        # 点击云服务器操作按钮，选择修改VNC显卡类型
+        self.click_dropdown_option(name, "修改VNC显卡类型")
+
+        # 选择VNC显卡类型
+        self.get_by_placeholder("请选择VNC显卡类型").click()
+        # self.locator("li").filter(has_text=vnc_type).click()
+        self.locator("li").filter(has_text=re.compile(fr"^{vnc_type}$")).click()
+
+        # 确认修改
+        self.dialog_confirm.click()
+
+        logger.info(f"云服务器 {name} 的VNC显卡类型修改成功")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_cpu_mode(self, name: str, cpu_mode: str, custom_value: str = None):
+        """修改云服务器CPU模式
+        Args:
+            name: 云服务器名称
+            cpu_mode: CPU模式，默认为"host-passthrough"
+        """
+        logger.info(f"开始修改云服务器{name}的CPU模式为: {cpu_mode}")
+
+        # 点击云服务器操作按钮，选择修改CPU模式
+        self.click_dropdown_option(name, "修改CPU模式")
+
+        self.get_by_placeholder("请选择CPU模式").click()
+        # 选择CPU模式
+        if cpu_mode == "自定义":
+            self.get_by_text("自定义").click()
+            # 如果提供了自定义值，则选择它
+            if custom_value:
+                self.get_by_placeholder("请选择CPU模式").nth(1).click()
+                self.locator("li").filter(has_text=custom_value).click()
+        else:
+            self.get_by_text(cpu_mode).click()
+
+        # 确认修改
+        self.dialog_confirm.click()
+
+        logger.info(f"云服务器{name}的CPU模式修改成功{cpu_mode}, {custom_value}")

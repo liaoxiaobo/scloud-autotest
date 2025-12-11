@@ -783,3 +783,94 @@ class TestECSBasic:
 
         with allure_step_log("步骤4: 云服务器登录vnc验证启动顺序"):
             ecs_page.ecs_vnc(name)
+
+    @allure.title("弹性云服务器-安装工具&卸载工具功能验证")
+    def _test_ecs_install_uninstall_tools(self, ecs_page, vm, ssh_vm):
+        """云服务器安安装工具&卸载工具功能验证
+
+        Args:
+            ecs_page: 云服务器页面对象
+            vm: 虚拟机信息字典，包含name等信息
+        """
+        name = vm.get("name")
+        # name = "autotest-75uqs"
+        # 导航到弹性云服务器页面
+        ecs_page.goto_service('弹性云服务器')
+
+        with allure_step_log(f"步骤1: 为云服务器{name}安装工具-页面ISO安装"):
+            # 调用安装工具方法
+            ecs_page.ecs_install_tools(name)
+            ecs_page.assert_ecs_tools_installed(name)
+
+        with allure_step_log(f"步骤2: 为云服务器{name}安装工具-虚机控制台安装"):
+            # 验证工具安装结果
+            ssh_vm.connect(vm['mfip'])
+            ssh_vm.run("mkdir /mnt/cdrom")
+            try:
+                ssh_vm.run("mount /dev/sr0 /mnt/cdrom")
+            except:
+                ssh_vm.run("mount /dev/sr1 /mnt/cdrom")
+            ssh_vm.run("cd /mnt/cdrom/linux")
+            ssh_vm.run("bash ./stools.sh")
+
+        with allure_step_log(f"步骤2: 为云服务器 {name} 卸载工具"):
+            # 调用卸载工具方法
+            ssh_vm.run("cd ~")
+            ssh_vm.run("umount /mnt/cdrom")
+            ecs_page.ecs_uninstall_tools(name)
+
+    @allure.title("弹性云服务器-修改VNC显卡类型功能验证")
+    @pytest.mark.parametrize("vnc_type", ["VGA", "QXL", "Virtio", "None"])
+    def test_ecs_modify_vnc_type(self, ecs_page, vm, ssh_vm, ssh_host, vnc_type):
+    # def test_ecs_modify_vnc_type(self, ecs_page, ssh_vm, ssh_host, vnc_type):
+        """测试修改云服务器的VNC显卡类型功能"""
+        name = vm.get("name")
+        ecs_id = vm.get("id")[:18]
+        ecs_page.goto_service('弹性云服务器')
+        # name = "autotest-00a8a"
+        # ecs_id = "0431b14b-6ba6-45bb-9eaf-4794559c172e"[:18]
+        # vnc_type = "QXL"
+        node = ecs_page.get_row_data(name).get("物理机").split(".")[0]
+
+        with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
+            ecs_page.ecs_modify_vnc_type(name, vnc_type)
+
+        with allure_step_log("步骤2: 验证修改结果"):
+            ecs_page.assert_popup_success("修改VNC显卡类型成功")
+
+        with allure_step_log("步骤3: 验证VNC登录"):
+            ecs_page.ecs_operations(name, "强制重启")
+            ecs_page.assert_popup_success(f"{name}实例强制重启成功", timeout=60)
+            ssh_vm.connect(vm['mfip'])
+            ecs_page.assert_ecs_enable(name, ssh_vm)
+            ecs_page.assert_ecs_details_info([name], info_items={"VNC显卡类型": vnc_type})
+
+        with allure_step_log("步骤4: 验证虚机xml"):
+            cmd = f"ssh -o StrictHostKeyChecking=no {node} 'docker exec -i nova_libvirt virsh dumpxml {ecs_id} |grep {vnc_type.lower()}'"
+            assert ssh_host.run(cmd)
+
+    @allure.title("弹性云服务器-CPU模式修改功能验证")
+    @pytest.mark.parametrize("cpu_mode,custom_value", [["host-passthrough",""], ["自定义", "custom_Dhyana"]])
+    def test_ecs_modify_cpu_mode(self, ecs_page, vm, ssh_vm, ssh_host, cpu_mode, custom_value):
+        """
+        测试弹性云服务器CPU模式修改功能
+        """
+        ecs_page.goto_service('弹性云服务器')
+        name = vm.get("name")
+        ecs_id = vm.get("id")[:18]
+        node = ecs_page.get_row_data(name).get("物理机").split(".")[0]
+
+        with allure_step_log(f"步骤1: 修改云服务器{name}的CPU模式为{cpu_mode}"):
+            ecs_page.ecs_modify_cpu_mode(name, cpu_mode, custom_value )
+
+        with allure_step_log(f"步骤2: 验证CPU模式修改结果"):
+            ecs_page.assert_status(name)
+            cpu_mode = "host-passthrough" if cpu_mode == "host-passthrough" else custom_value
+            ecs_page.assert_ecs_details_info([name], info_items={"CPU模式": cpu_mode})
+            ssh_vm.connect(vm['mfip'])
+
+        with allure_step_log("步骤4: 验证虚机xml"):
+            cmd = f"""ssh -o StrictHostKeyChecking=no {node} 'docker exec -i nova_libvirt virsh dumpxml {ecs_id} |grep "cpu mode="'"""
+            expected_mode = "host-passthrough" if cpu_mode == "host-passthrough" else "custom"
+            output = ssh_host.run(cmd)
+            assert expected_mode in output, f"CPU模式验证失败: 期望 '{expected_mode}', 实际 '{output}'"
