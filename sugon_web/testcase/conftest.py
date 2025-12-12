@@ -437,5 +437,68 @@ def image(ssh_host, ecs_page, request):
     backend = params.get('backend', ecs_page.storage_pool)
     image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
     ssh_host.glance_image_create(name, image=image_name, backend=backend)
-    yield {"name":name}
+    yield {"name": name}
     ssh_host.glance_image_delete(name)
+
+
+@pytest.fixture
+def pool(ops_page, vm, request):
+    """
+    动态创建存储池的fixture，支持从测试用例层传递参数
+    测试用例可以通过以下方式使用：
+    1. 直接使用：默认参数创建存储池
+    2. 传递参数：使用pytest.mark.parametrize或indirect参数
+    Args:
+        ops_page: Ops页面对象
+        request: pytest的request对象，用于获取测试用例传递的参数
+    Returns:
+        dict: 包含存储池名称的字典
+    Yields:
+        dict: 包含存储池名称的字典，测试用例执行后自动清理
+    """
+    params = getattr(request, 'param', {})
+
+    # 从参数中获取节点名称
+    node = params.get('node', vm.get("host"))
+
+    # 生成随机名称
+    pool_name = f"disk_{random_data()}"
+    ops_page.goto_service("计算设施")
+    # 启用磁盘并获取磁盘大小
+    ops_page.search_disk("所在物理机", node)
+    _disk_name, _disk_size = ops_page.enable_disk(node)
+    # ops_page.assert_status(_disk_name, status="启用")
+
+    # 创建存储池
+    device_type = f"DISK-SSD-{_disk_size}"
+    storage_type = params.get('storage_type', "本地磁盘")
+    ops_page.create_storage_pool(pool_name, device_type=device_type, storage_type=storage_type)
+
+    # 验证存储池创建成功
+    # ops_page.assert_popup_success("执行成功")
+    ops_page.sync_storage_pool_config()
+    ops_page.assert_status(pool_name, status="已同步")
+
+    pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
+    pool_data.update(vm)
+    logger.info(f"pool_data: {pool_data}")
+
+    yield pool_data
+
+    try:
+        # 检查存储池是否存在，如果存在则尝试删除
+        ops_page.goto_service("存储设施")
+        ops_page.search(pool_name)
+
+        # 如果找到存储池，则删除
+        ops_page.delete_storage_pool(pool_name)
+    except Exception as e:
+        logger.warning(f"清理存储池 {pool_name}时出错: {e}")
+
+        # 禁用磁盘
+    try:
+        ops_page.search_disk("所在物理机", node)
+        ops_page.disable_disk(node)
+
+    except Exception as e:
+        logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")

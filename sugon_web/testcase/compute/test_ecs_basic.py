@@ -156,7 +156,7 @@ class TestECSBasic:
             mfip = ecs_page.bind_mfip(clone_ip.strip())
             ssh_vm.connect(mfip)
             md5_new = ssh_vm.run(f"md5sum /home/{name}")
-            assert md5_new.count(md5), f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
+            assert md5 in md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
 
         with allure_step_log(f"步骤4: 清理测试数据{clone_name}"):
             ecs_page.goto_service('弹性云服务器')
@@ -308,7 +308,7 @@ class TestECSBasic:
             ssh_vm.connect(vm['mfip'])
             # 修改系统时间为一个错误的时间
             ssh_vm.run('date -s "2010-01-01"')
-            assert ssh_vm.run("date").count("2010")
+            assert "2010" in ssh_vm.run("date")
 
         with allure_step_log(f"步骤2: 弹性云服务器{name}配置时间同步服务器"):
             ecs_page.ecs_time_synchronize(name, time_server, interval)
@@ -322,7 +322,7 @@ class TestECSBasic:
             expection = time.strftime("%Y", time.localtime())
             ecs_page.wait_for_update(ssh_vm, "date", expection, timeout=150)
             actual = ssh_vm.run("date")
-            assert actual.count(expection), f"同步时间服务器失败，期望时间:{expection},实际时间:{actual}"
+            assert expection in actual, f"同步时间服务器失败，期望时间:{expection},实际时间:{actual}"
 
     @allure.title("弹性云服务器-绑定/解绑亲和组功能验证")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
@@ -431,8 +431,7 @@ class TestECSBasic:
             ip = ecs_page.get_row_data(f"{name}-1").get("IP地址").split(":")[1].strip()
             mfip_new = ecs_page.bind_mfip(ip)
             ssh_vm.connect(mfip_new)
-            assert ssh_vm.run(f"md5sum {name}").count(md5), \
-                f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
+            assert md5 in ssh_vm.run(f"md5sum {name}"), f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
 
         with allure_step_log("步骤5: 清理测试数据"):
             # 删除测试云服务器
@@ -548,7 +547,7 @@ class TestECSBasic:
 
             # 验证扩容后页面展示的系统盘大小 和 虚机中的系统盘大小是否一致
             ssh_vm.connect(vm['mfip'])
-            assert ssh_vm.run(f"lsblk | grep '^vda' | awk '{{print $4}}'").count(new_size), \
+            assert new_size in ssh_vm.run(f"lsblk | grep '^vda' | awk '{{print $4}}'"), \
                 f"扩容系统盘失败，云服务器{name}系统盘大小不一致"
 
     @allure.title("弹性云服务器-挂载/卸载云硬盘功能验证")
@@ -566,7 +565,6 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 验证挂载结果"):
             ecs_page.assert_popup_success(f"挂载云硬盘到虚拟机{vm_name}成功")
             assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == volume_name
-            assert ecs_page.get_row_data(vm["name"]).get("挂载云硬盘").split(" ")[-1] == volume_name
 
             # 云硬盘页面验证 云硬盘状态=正在使用
             ecs_page.goto_service("云硬盘")
@@ -698,7 +696,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤3: 后台验证虚机{name}挂载CD-ROM结果"):
             ssh_vm.connect(vm['mfip'])
-            assert ssh_vm.run(f"lsblk | grep sr | awk '{{print $4}}'").count("20G")
+            assert "20G" in ssh_vm.run(f"lsblk | grep sr | awk '{{print $4}}'")
             ssh_vm.run(f"mkdir /mnt/{name}")
             ssh_vm.run(f"mount /dev/sr0 /mnt/{name}")
             assert ssh_vm.run(f"ls /mnt/{name}") != ""
@@ -868,3 +866,49 @@ class TestECSBasic:
             expected_mode = "host-passthrough" if cpu_mode == "host-passthrough" else "custom"
             output = ssh_host.run(cmd)
             assert expected_mode in output, f"CPU模式验证失败: 期望 '{expected_mode}', 实际 '{output}'"
+
+    @allure.title("弹性云服务器- 重置状态功能验证")
+    def test_ecs_reset_status(self, ecs_page, vm, ssh_vm, ssh_host):
+        """弹性云服务器-重置状态功能验证"""
+        name = vm.get("name")
+        ecs_ip = vm.get("ip")
+        ecs_id = vm.get("id")[:18]
+        ecs_page.goto_service('弹性云服务器')
+
+        with allure_step_log(f"步骤1: 检查云服务器{name}状态"):
+            if "错误" in ecs_page.get_row_data(name).get("状态"):
+                ecs_page.ecs_operations(name, "重置状态")
+                ecs_page.assert_popup_success(f"{name}实例重置状态成功")
+            else:
+                pytest.skip("云服务器处于正常状态，无需重置")
+
+        with allure_step_log(f"步骤2: 验证重置状态结果"):
+            ecs_page.assert_status(name)
+            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+            assert stdout.get("vm_state") == "active", f"重置状态验证失败: 状态为 {stdout.get('status')}"
+
+            # 给虚机绑定mfip, 验证虚机可用性
+            mfip = ecs_page.bind_mfip(ecs_ip)
+            ssh_vm.connect(mfip)
+            ecs_page.assert_ecs_enable(name, ssh_vm)
+
+    @allure.title("弹性云服务器- 挂载&卸载裸磁盘 功能验证")
+    def test_ecs_mount_bare_disk(self, ecs_page, pool, ssh_vm):
+        vm_name = pool.get("name")
+        pool_name = pool.get("pool_name")
+
+        with allure_step_log(f"步骤1: {vm_name}挂载裸磁盘"):
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_mount_bare_disk(vm_name, pool_name)
+            ecs_page.assert_popup_success(f"{vm_name}实例挂载主机设备成功")
+
+        with allure_step_log(f"步骤2: 验证挂载裸磁盘结果"):
+            ssh_vm.connect(pool.get("mfip"))
+            assert ssh_vm.run(f"lsblk | grep sda | awk '{{print $4}}'") == pool.get("disk_size")
+
+        with allure_step_log(f"步骤3: {vm_name}卸载裸磁盘{pool_name}"):
+            ecs_page.ecs_unmount_bare_disk(vm_name)
+            ecs_page.assert_popup_success(f"{vm_name}实例卸载主机设备成功")
+
+        with allure_step_log(f"步骤4: 验证卸载裸磁盘结果"):
+            assert ssh_vm.run(f"lsblk | grep sda") == ""

@@ -1769,3 +1769,49 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
         logger.info(f"云服务器{name}的CPU模式修改成功{cpu_mode}, {custom_value}")
+
+    @submenu("弹性云服务器")
+    def ecs_mount_bare_disk(self, name: str, pool_name: str):
+        """为云服务器挂载裸磁盘
+
+        Args:
+            name: 云服务器名称
+            pool_name: 存储池名称
+            disk_name: 磁盘名称
+        """
+        logger.info(f"为云服务器{name}挂载裸磁盘: 存储池={pool_name}")
+
+        # 点击挂载裸磁盘选项
+        self.click_dropdown_option(name, "挂载裸磁盘")
+
+        # 选择存储池
+        self.get_by_placeholder("请选择存储池").click()
+        # 查找包含存储池名称和总量的选项
+        self.locator("li").filter(has_text=re.compile(rf"{pool_name}.*总量:")).click()
+
+        # 选择磁盘
+        self.get_by_placeholder("请输入名称").fill(pool_name)
+
+        # 选择挂载裸磁盘选项
+        self.get_by_label("挂载裸磁盘").get_by_role("radio").click()
+
+        # 确认挂载
+        self.get_by_label("挂载裸磁盘").get_by_text("挂载", exact=True).click()
+
+    @submenu("弹性云服务器")
+    def ecs_unmount_bare_disk(self, name: str, pool_name: str = None):
+        """为云服务器卸载裸磁盘
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"为云服务器{name}挂载裸磁盘: 裸磁盘={pool_name}")
+
+        # 点击挂载裸磁盘选项
+        self.click_dropdown_option(name, "卸载裸磁盘")
+
+        # 选择裸磁盘
+        self.get_by_label("卸载裸磁盘").get_by_role("radio").click()
+
+        # 确认卸载
+        self.dialog_confirm.click()

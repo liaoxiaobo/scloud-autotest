@@ -786,3 +786,20 @@ class BasePage(Playwright):
             if not loc.is_checked():
                 loc.click()
                 self.logger.info(f"勾选资源 '{name}'")
+
+    def get_row_data_by_locator(self, loc):
+        """获取指定行数据"""
+
+        # 获取表头和单元格内容
+        headers = self.table_headers
+        cell_contents = self._get_cell_contents(loc)
+        # 组合数据，将表头和单元格内容对应起来
+        result = dict(zip(headers, cell_contents))
+        self.logger.debug(f"原始数据行: {result}")
+
+        # 移除不需要的键
+        exclude_headers = ["", "操作"]
+        for key in exclude_headers:
+            if key in result:
+                del result[key]
+        return result
