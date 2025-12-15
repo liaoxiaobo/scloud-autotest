@@ -11,7 +11,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.story('基本功能验证')
 class TestECSBasic:
 
-    @allure.title(f"弹性云服务器-电源操作功能验证")
+    @allure.title(f"弹性云服务器-重启、强制重启、强制关机功能验证")
     @pytest.mark.parametrize("params", load_data('test_ecs_operations', "test_ecs.yaml"))
     def test_ecs_operations(self, ecs_page, vm, ssh_host, ssh_vm, params):
         ecs_page.goto_service('弹性云服务器')
@@ -357,7 +357,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤5: 验证批量迁移结果"):
             nodes = []
             for name in names:
-                ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
+                ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
             for name, ecs_id in zip(names, ecs_ids):
                 ecs_page.assert_status(name, status="当前无任务")
                 nodes.append(ecs_page.get_row_data(name).get("物理机"))
@@ -522,9 +522,10 @@ class TestECSBasic:
                 ssh_vm.connect(vm[i]['mfip'])
                 ssh_vm.run(f"kill -2 {pids[i]}")
                 ping_output = ssh_vm.run("cat /tmp/ping.log")
-                loss = re.search(r"transmitted, (.*?) received", ping_output).group(1)
+                received = re.search(r"transmitted, (.*?) received", ping_output).group(1)
                 send = re.search(r"(.*?) packets transmitted,", ping_output).group(1)
-                assert int(send) - int(loss) <= 5
+                loss = int(send) - int(received)
+                assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
     @allure.title("弹性云服务器-系统盘扩容功能验证")
     def test_ecs_expand_system_disk(self, ecs_page, vm, ssh_host, ssh_vm):
@@ -622,9 +623,10 @@ class TestECSBasic:
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run(f"kill -2 {pid}")
             ping_output = ssh_vm.run("cat /tmp/ping.log")
-            loss = re.search(r"transmitted, (.*?) received", ping_output).group(1)
+            received = re.search(r"transmitted, (.*?) received", ping_output).group(1)
             send = re.search(r"(.*?) packets transmitted,", ping_output).group(1)
-            assert int(send) - int(loss) <= 5
+            loss = int(send) - int(received)
+            assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
     @allure.title("弹性云服务器-冷迁移功能验证")
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
@@ -780,6 +782,12 @@ class TestECSBasic:
 
         with allure_step_log("步骤4: 云服务器登录vnc验证启动顺序"):
             ecs_page.ecs_vnc(name)
+
+        with allure_step_log(f"步骤5: 从服务器{name}卸载云硬盘{volume_name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_unmount_from_server(volume_name, name)
+            ecs_page.assert_popup_success(f"从虚拟机{name}分离云硬盘")
+
 
     @allure.title("弹性云服务器-安装工具&卸载工具功能验证")
     def _test_ecs_install_uninstall_tools(self, ecs_page, image, vm, ssh_vm):

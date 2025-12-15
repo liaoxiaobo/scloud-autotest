@@ -502,3 +502,33 @@ def pool(ops_page, vm, request):
 
     except Exception as e:
         logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
+
+@pytest.fixture(scope="module")
+def labels(ecs_page, request):
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)  # 默认创建1个标签
+
+    # 生成标签名称
+    label_names = []
+    prefix = params.get('prefix', 'label')  # 默认前缀为'label'
+
+    for i in range(count):
+        # 使用随机数据生成唯一标签名称
+        name = f"{prefix}_{random_data()}"
+        label_name = ecs_page.create_label(name)
+        ecs_page.assert_popup_success("新建标签成功")
+        label_names.append(label_name)
+        logger.info(f"已创建标签: {label_name}")
+
+    yield label_names
+
+    # 测试结束后清理标签
+    with allure_step_log("清理测试标签"):
+        logger.info(f"开始清理标签: {label_names}")
+        try:
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("标签")
+            ecs_page.batch_delete_label(label_names)
+            logger.info(f"标签清理完成: {label_names}")
+        except Exception as e:
+            logger.warning(f"清理标签时出错: {e}")

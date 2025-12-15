@@ -275,7 +275,7 @@ class EcsPage(OpsPage):
             exception: 验证内容
         """
         logger.info(f"验证{name}云服务器{row_name}: {exception}")
-        assert self.get_row_data(name).get(row_name).__contains__(exception)
+        assert exception in self.get_row_data(name).get(row_name)
 
     def assert_ecs_info_not_contains(self, name: str, row_name: str, exception: str):
         """验证云服务器信息
@@ -1588,6 +1588,8 @@ class EcsPage(OpsPage):
                        例如: {"启动顺序": "3", "启动延迟时间(秒)": "20"}
         """
         logger.info(f"验证云服务器 {names} 的 {tab} 页签信息")
+        if isinstance(names, str):
+            names = [names]
         for name in names:
             self.ecs_to_details(name)
 
@@ -1606,7 +1608,7 @@ class EcsPage(OpsPage):
                 info_value = info_item.locator("xpath=./following-sibling::*").first
 
                 # 验证信息项的值是否包含期望内容
-                assert info_value.inner_text().__contains__(str(expected_content)), \
+                assert str(expected_content) in info_value.inner_text(), \
                     f"验证失败: {tab} 的 {item_name} 不包含 {str(expected_content)}, 实际内容: {info_value.inner_text()}"
 
             logger.info(f"云服务器 {tab} 详情页面信息验证成功")
@@ -1815,3 +1817,181 @@ class EcsPage(OpsPage):
 
         # 确认卸载
         self.dialog_confirm.click()
+
+    @submenu("弹性云服务器")
+    def bind_labels(self, name: str, label_names: list, bind: bool = True):
+        """将标签绑定到云服务器
+
+        Args:
+            name: 云服务器名称
+            label_names: 标签名称
+        """
+        bind_text = "绑定" if bind else "解绑"
+        logger.info(f"{bind_text} 标签 {label_names} 到云服务器 '{name}'")
+
+        # 点击云服务器的操作按钮
+        self.click_dropdown_option(name, "标签设置")
+
+        # 选择标签
+        for label_name in label_names:
+            # self.get_by_text(label_name).click()
+            self.get_by_label("标签设置", exact=True).get_by_text(label_name).click()
+
+        if bind:
+            # 点击绑定按钮
+            self.get_by_role("button", name="绑定实例标签").click()
+        else:
+            # 点击解绑按钮
+            self.get_by_role("button", name="解绑实例标签").click()
+        self.assert_popup_success(f"实例{bind_text}标签成功,若数据未响应请刷新页面")
+
+        self.dialog_close.click()
+        logger.info(f"标签 {label_names} 成功绑定到云服务器 '{name}'")
+
+    @submenu("弹性云服务器")
+    def ecs_batch_bind_labels(self, names: list, label_names: list):
+        """将标签绑定到云服务器
+
+        Args:
+            names: 云服务器名称
+            label_names: 绑定的标签名称
+        """
+        logger.info(f"绑定标签{label_names}到云服务器 {names}")
+
+        self.select_rows_by_names(names)
+
+        self.get_by_role("button", name="更多操作").click()
+
+        self._click_batch_operation_option("批量标签设置")
+
+        self.get_by_placeholder("请选择标签").click()
+
+        for label_name in label_names:
+            self.locator("li").filter(has_text=label_name).click()
+
+        self.dialog_confirm.click()
+
+    @submenu("标签")
+    def create_label(self, name: str):
+        """创建新标签
+
+        Args:
+            name: 标签名称
+        """
+
+        logger.info(f"创建标签: 名称={name}, 描述={name}")
+
+        # 点击新建按钮
+        self.btn_create.click()
+
+        # 填写标签名称
+        self.get_by_label("新建标签").locator("input[type=\"text\"]").fill(name)
+
+        # 填写描述
+        self.get_by_role("textbox", name="请输入描述内容").fill(name)
+
+        # 点击确定按钮
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{name}请求提交成功")
+        return name
+
+    @submenu("标签")
+    def delete_label(self, name: str):
+        """删除标签
+
+        Args:
+            name: 删除的标签名称
+        """
+        logger.info(f"删除标签: {name}")
+        # 点击删除按钮
+        self.click_dropdown_option(name, "删除")
+        # 确认删除
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{name}删除请求提交成功")
+
+
+    @submenu("标签")
+    def batch_delete_label(self, names: list):
+        """批量删除标签
+
+        Args:
+            names: 删除的标签名称
+        """
+        logger.info(f"删除标签: {names}")
+
+        self.select_rows_by_names(names)
+
+        # 点击删除按钮
+        self.btn_batch_delete.click()
+
+        # 确认删除
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{names}删除成功")
+
+    @submenu("标签")
+    def edit_label(self, name: str, new_name: str):
+        """编辑标签
+
+        Args:
+            name: 标签名称
+            new_name: 新标签名称
+        """
+        logger.info(f"编辑{name}标签为{new_name}")
+
+        # 点击编辑按钮
+        self.click_dropdown_option(name, "编辑")
+
+        # 填写标签名称
+        self.get_by_label("修改标签").locator("input[type=\"text\"]").fill(new_name)
+
+        # 填写描述
+        self.get_by_role("textbox", name="请输入描述内容").fill(new_name)
+
+        # 确认编辑
+        self.dialog_confirm.click()
+
+        self.assert_popup_success("修改标签成功")
+
+        logger.info(f"标签{name}编辑修改为: {new_name}")
+
+
+    @submenu("标签")
+    def unbind_vm_from_label(self, vm_name: str, label_name: str):
+        """解绑云服务器标签
+
+        Args:
+            vm_name: 云服务器名称
+            label_name: 绑定的标签名称
+        """
+        logger.info(f"标签页{label_name}解绑实例: {vm_name}")
+        # 点击标签页的操作按钮
+        self.click_dropdown_option(label_name, "查看关联资源")
+        # 点击云服务器后的操作按钮
+        self.click_dropdown_option(vm_name, "解绑实例标签")
+        # 确认解绑
+        self.dialog_confirm.click()
+        # 验证解绑成功
+        self.assert_popup_success("实例解绑标签成功")
+        # 关闭弹窗
+        self.dialog_close.click()
+
+
+    @submenu("标签")
+    def delete_batch_unbind_label(self, names: list, label_names: str):
+        """批量解绑标签
+
+        Args:
+            names: 云服务器名称
+            label_names: 标签名称
+        """
+        logger.info(f"{label_names}批量解绑云服务器: {names}")
+        for label_name in label_names:
+            self.click_dropdown_option(label_name, "查看关联资源")
+            self.select_rows_by_names(names)
+            self.get_by_text("批量解绑").click()
+            self.dialog_confirm.click()
+            self.wait_for_operation_complete()
+            self.dialog_close.click()

@@ -25,7 +25,7 @@ class TestECSCreate:
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)
 
-    @allure.title("弹性云服务器-快照方式创建功能验证")
+    @allure.title("弹性云服务器-创建功能验证快照方式")
     def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")
@@ -50,6 +50,7 @@ class TestECSCreate:
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)
 
+    @allure.title("弹性云服务器-创建功能验证ISO")
     def test_ecs_create_with_iso(self, ecs_page, image, ssh_vm):
         name = random_data()
         iso_name = image.get("name")
@@ -72,6 +73,7 @@ class TestECSCreate:
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(name)
 
+    @allure.title("弹性云服务器-创建功能验证空启动")
     def test_ecs_create_with_empty(self, ecs_page, image, ssh_vm):
         name = random_data()
         iso_name = image.get("name")
