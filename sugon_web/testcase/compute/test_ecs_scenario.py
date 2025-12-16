@@ -1,14 +1,17 @@
+import random
 import re
 import pytest
 import allure
-from sugon_web.utils.logger import allure_step_log
+from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.utils.util import random_data
+
 
 @allure.epic('计算服务')
 @allure.feature('弹性云服务器 ECS')
-@allure.story('弹性云服务器-业务场景覆盖验证')
+@allure.story('业务场景覆盖验证')
 class TestECSScenario:
 
-    @allure.title("弹性云服务器-克隆已挂载云硬盘的虚机")
+    @allure.title("验证已挂载云硬盘的虚机, 克隆后系统盘和数据盘与源虚机数据一致")
     def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm):
         """测试克隆已挂载云硬盘的虚机"""
 
@@ -61,6 +64,7 @@ class TestECSScenario:
             new_md5d = ssh_vm.run(f"md5sum {mount_point}/test_file.txt")
             assert md5s in new_md5s, f"克隆后系统盘数据MD5不一致，原始数据:{md5s},克隆后数据:{new_md5s}"
             assert md5d in new_md5d, f"克隆后系统盘数据MD5不一致，原始数据:{md5d},克隆后数据:{new_md5d}"
+            ssh_vm.run(f"umount /dev/{disk_name}")
 
         with allure_step_log(f"步骤5: 从服务器{vm_name}卸载云硬盘{volume_name}"):
             ecs_page.goto_service('弹性云服务器')
@@ -78,7 +82,7 @@ class TestECSScenario:
             evs_page.evs_remove(clone_disk)
             evs_page.assert_deleted(clone_name)
 
-    @allure.title("弹性云服务器-快照创建的云服务器，恢复系统盘和数据盘成功")
+    @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     def test_ecs_snapshot_vm(self, ecs_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
@@ -136,6 +140,7 @@ class TestECSScenario:
 
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
             ecs_page.goto_service('弹性云服务器')
+            ecs_page.wait_for_page_ready()
             new_vm_ip = ecs_page.get_row_data(new_vm).get("IP地址").split(':')[1].strip()
             new_vm_mfip = ecs_page.bind_mfip(new_vm_ip)
             ssh_vm.connect(new_vm_mfip)
@@ -161,3 +166,136 @@ class TestECSScenario:
             ecs_page.goto_submenu("快照")
             ecs_page.ecss_delete(snapshot_name)
             ecs_page.assert_deleted(snapshot_name, refresh=True)
+
+    @allure.title("验证虚机绑定亲和组, 指定物理机节点批量迁移功能")
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    def test_ecs_batch_migration_node(self, ecs_page, vm, ssh_host):
+        policy = "亲和"
+        if isinstance(vm, list) and len(vm) > 1:
+            names = [vm[i].get("name") for i in range(len(vm))]
+            ecs_ids = [vm[i].get("id") for i in range(len(vm))]
+        else:
+            names = [vm.get("name")]
+            ecs_ids = vm.get("id")
+        group_name = f"{random_data(length=3)}-{policy}"
+
+        with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_create_affinity_group(group_name, policy)
+
+        with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
+            ecs_page.assert_popup_success("执行成功")
+            assert ecs_page.get_row_data(group_name).get("策略") == policy, \
+                f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(group_name).get('策略')}"
+
+        with allure_step_log(f"步骤3: 云服务器{names}绑定{policy}组并验证绑定结果"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.wait_for_page_ready()
+            ecs_page.ecs_bind_unbind_group(names, "绑定亲和组", group_name)
+
+        with allure_step_log(f"步骤4: 云服务器{names}批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
+
+        with allure_step_log(f"步骤5: 验证批量迁移结果"):
+            nodes = []
+            for name in names:
+                ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务")
+                nodes.append(ecs_page.get_row_data(name).get("物理机"))
+
+            if policy == "亲和":
+                assert len(set(nodes)) == 1, f"云服务器{names}未迁移到同一节点"
+            else:
+                assert len(set(nodes)) > 1, f"云服务器{names}未迁移到不同节点"
+
+        with allure_step_log(f"步骤6: 云服务器{names}解绑{policy}组"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.ecs_bind_unbind_group(names, "解绑亲和组", group_name)
+
+        with allure_step_log(f"步骤7: 云服务器{names}批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
+
+        with allure_step_log(f"步骤8: 验证批量迁移结果"):
+            nodes = []
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务", refresh=True)
+                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
+            assert len(set(nodes)) >= 1
+
+        with allure_step_log(f"步骤9: 删除{policy}组: {group_name}"):
+            ecs_page.ecs_delete_affinity_group(group_name)
+            ecs_page.assert_deleted(group_name, refresh=True)
+
+    @allure.title("验证虚机绑定亲和组, 系统调度批量迁移功能")
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
+        policy = "亲和"
+        if isinstance(vm, list) and len(vm) > 1:
+            names = [vm[i].get("name") for i in range(len(vm))]
+            ecs_ids = [vm[i].get("id") for i in range(len(vm))]
+            pre_nodes = [vm[i].get("host") for i in range(len(vm))]
+        else:
+            names = [vm.get("name")]
+            ecs_ids = vm.get("id")
+        group_name = f"{random_data(length=3)}-{policy}"
+
+        with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_create_affinity_group(group_name, policy)
+
+        with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
+            ecs_page.assert_popup_success("执行成功")
+            assert ecs_page.get_row_data(group_name).get("策略") == policy, \
+                f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(group_name).get('策略')}"
+
+        with allure_step_log(f"步骤3: 云服务器{names}绑定{policy}组并验证绑定结果"):
+            ecs_page.ecs_bind_unbind_group(names, "绑定亲和组", group_name)
+
+        with allure_step_log(f"步骤4: 迁移虚机到目标亲和节点"):
+            ecs_page.goto_service('弹性云服务器')
+            # 获取可热迁移的节点
+            available_hosts = ecs_page.ecs_hot_migration_options(names[0])
+            m_names, goal, final_node = ecs_page.ecs_batch_migration_names(names, pre_nodes, available_hosts)
+
+        with allure_step_log(f"步骤5: 云服务器{m_names}批量迁移"):
+            ecs_page.ecs_batch_migration(m_names)
+            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
+
+        with allure_step_log(f"步骤6: 验证批量迁移结果"):
+            nodes = []
+            for name in m_names:
+                ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
+            for name in m_names:
+                ecs_page.assert_status(name, status="当前无任务")
+                nodes.append(ecs_page.get_row_data(name).get("物理机"))
+
+            if policy == "亲和":
+                assert len(set(nodes)) == 1, f"云服务器{m_names}未迁移到同一节点"
+                assert nodes[0] == final_node, f"云服务器{m_names}未迁移到目标节点"
+            else:
+                assert len(set(nodes)) > 1, f"云服务器{m_names}未迁移到不同节点"
+
+        with allure_step_log(f"步骤7: 云服务器{names}解绑{policy}组"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.ecs_bind_unbind_group(goal, "解绑亲和组", group_name)
+            ecs_page.ecs_bind_unbind_group(m_names, "解绑亲和组", group_name)
+
+        with allure_step_log(f"步骤8: 云服务器{names}批量迁移"):
+            ecs_page.ecs_batch_migration(names)
+            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
+
+        with allure_step_log(f"步骤9: 验证批量迁移结果"):
+            nodes = []
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
+            for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.assert_status(name, status="当前无任务", refresh=True)
+                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
+            assert len(set(nodes)) >= 1
+
+        with allure_step_log(f"步骤10: 删除{policy}组: {group_name}"):
+            ecs_page.ecs_delete_affinity_group(group_name)
+            ecs_page.assert_deleted(group_name, refresh= True)

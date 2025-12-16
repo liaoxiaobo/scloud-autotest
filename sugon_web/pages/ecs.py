@@ -1,9 +1,11 @@
 import os
+import random
 import re
 import time
 from time import sleep
 
 import allure
+import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
@@ -305,7 +307,7 @@ class EcsPage(OpsPage):
 
     @submenu("弹性云服务器")
     def ecs_vnc(self, name: str, vncpwd: str = "sugon@20"):
-        """修改VNC密码
+        """登录VNC
         Args：
             name: 云服务器名称
             password: VNC登录密码
@@ -674,10 +676,12 @@ class EcsPage(OpsPage):
     def ecs_bind_unbind_group(self, names, operation: str, group_name: str):
         """解绑/解绑亲和组
         Args:
-            name: 云服务器名称
+            names: 云服务器名称
             group_name: 亲和组名称
         """
         logger.info(f"云服务器{names}{operation}{group_name}")
+        if isinstance(names, str):
+            names = [names]
         for name in names:
             self.ecs_bind_unbind_affinity_group(name, operation, group_name)
             self.assert_popup_success(f"{name}实例{operation}成功")
@@ -1209,7 +1213,8 @@ class EcsPage(OpsPage):
         # 选择带宽
         if migration_type == "热迁移":
             self.get_by_placeholder("请选择带宽").click()
-            self.locator("li").filter(has_text=bandwidth).click()
+            # self.locator("li").filter(has_text=bandwidth).click()
+            self.locator("//*[text()='半速']/../preceding-sibling::*[1]/span").click()
         if cpu_auto and migration_type == "热迁移":
             # 设置开关
             loc = self.get_by_role("switch").locator("span")
@@ -1442,8 +1447,8 @@ class EcsPage(OpsPage):
 
         Args:
             name: 云服务器名称
-            level: CPU QoS级别，默认为"低"
-            weight: CPU权重值，默认为0.2
+            priority: CPU QoS级别，默认为"低"
+            ceiling: CPU权重值，默认为0.2
         """
         logger.info(f"开始修改云服务器{name}的CPU QoS: 级别={priority}, 权重={ceiling}")
 
@@ -1578,12 +1583,13 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-    def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情"):
+    def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情", sub_tab: str=None):
         """验证云服务器详情页面中的信息
 
         Args:
             names: 云服务器名称
             tab: 页签名称
+            sub_tab: 子页签名称
             info_items: 需要验证的信息项字典，格式为 {"信息项名称": "期望内容"}
                        例如: {"启动顺序": "3", "启动延迟时间(秒)": "20"}
         """
@@ -1594,23 +1600,29 @@ class EcsPage(OpsPage):
             self.ecs_to_details(name)
 
             logger.info(f"点击 {tab} 页签")
-            if tab != "详情":
-                self.get_by_role("tab", name=tab).click()
-                self.wait_for_page_ready()
-            else:
+            exact = False if tab == "安全组" or tab =="事件列表" else True
+            if tab == "详情":
                 sleep(2)
+            else:
+                self.get_by_role("tab", name=tab, exact=exact).click()
+                if sub_tab:
+                    self.locator("label").filter(has_text=sub_tab).click()
+                self.wait_for_page_ready()
             # 逐个验证信息项
             for item_name, expected_content in info_items.items():
                 logger.info(f"验证 {tab} 页签的 {item_name}: {str(expected_content)}")
-                # 定位信息项
-                info_item = self.get_by_text(item_name)
-                # 获取信息项的值
-                info_value = info_item.locator("xpath=./following-sibling::*").first
-
-                # 验证信息项的值是否包含期望内容
-                assert str(expected_content) in info_value.inner_text(), \
-                    f"验证失败: {tab} 的 {item_name} 不包含 {str(expected_content)}, 实际内容: {info_value.inner_text()}"
-
+                if tab == "详情":
+                    # 定位信息项
+                    info_item = self.get_by_text(item_name)
+                    # 获取信息项的值
+                    info_value = info_item.locator("xpath=./following-sibling::*").first
+                    # 验证信息项的值是否包含期望内容
+                    assert str(expected_content) in info_value.inner_text(), \
+                        f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {info_value.inner_text()}"
+                    logger.info(f"验证成功: {tab}的{item_name}包含{str(expected_content)}, 实际内容: {info_value.inner_text()}")
+                else:
+                    assert expected_content in self.get_row_data(item_name).values(), \
+                        f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {self.get_row_data(item_name)}"
             logger.info(f"云服务器 {tab} 详情页面信息验证成功")
 
     @submenu("弹性云服务器")
@@ -1871,6 +1883,29 @@ class EcsPage(OpsPage):
 
         self.dialog_confirm.click()
 
+    @submenu("弹性云服务器")
+    def ecs_batch_agent_version(self, names: list, agent_conf: list):
+        """批量Agent版本设置
+        Args:
+            names: 云服务器名称
+            agent_conf: Agent版本设置
+        """
+        logger.info(f"云服务器 {names}批量设置Agent版本{agent_conf}")
+
+        self.select_rows_by_names(names)
+
+        self.get_by_role("button", name="更多操作").click()
+
+        self._click_batch_operation_option("批量Agent版本设置")
+        for conf in agent_conf:
+            for agent_type, agent_version in conf.items():
+                self.locator("label").filter(has_text=agent_type).click()
+                locator = self.get_by_role("row", name=f"默认{agent_type} {agent_version} 系统默认，禁止修改").get_by_role("radio")
+                if not locator.is_checked():
+                    locator.click()
+
+        self.dialog_confirm.click()
+
     @submenu("标签")
     def create_label(self, name: str):
         """创建新标签
@@ -1995,3 +2030,99 @@ class EcsPage(OpsPage):
             self.dialog_confirm.click()
             self.wait_for_operation_complete()
             self.dialog_close.click()
+
+    @submenu("弹性云服务器")
+    def ecs_hot_migration_options(self, name) -> list:
+        """云服务器热迁移节点选项
+
+        Args:
+            name: 云服务器名称
+        """
+        # 点击云服务器操作按钮，选择热迁移
+        self.click_dropdown_option(name, "热迁移")
+
+        # 选择目标物理机
+        self.get_by_placeholder("请选择目标物理机").click()
+
+        # 等待下拉列表加载完成
+        self.wait_for_operation_complete()
+
+        # 获取所有下拉选项
+        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
+        options_count = all_host_options.count()
+        available_hosts = []
+        for i in range(options_count):
+            option = all_host_options.nth(i)
+            option_text = option.inner_text().split(" CPU剩余量")[0]
+            available_hosts.append(option_text)
+        logger.info(f"热迁移可用节点: {available_hosts}")
+        self.dialog_close.click()
+        return available_hosts
+
+    def ecs_record_screen(self, name: str):
+        """云服务器录屏
+        Args:
+            name: 云服务器名称
+        """
+        self.click_dropdown_option(name, "开启录屏")
+        self.get_by_label("开启录屏").get_by_text("开启", exact=True).click()
+        self.assert_popup_success(f"{name}实例开启录屏成功")
+        logger.info(f"实例: {name}开启录屏")
+
+    def ecs_stop_record_screen(self, name: str):
+        """云服务器停止录屏
+        Args:
+            name: 云服务器名称
+        """
+        self.click_dropdown_option(name, "关闭录屏")
+        self.get_by_label("关闭录屏").get_by_text("关闭", exact=True).click()
+        self.assert_popup_success(f"{name}实例禁用录屏成功")
+        logger.info(f"实例: {name}实例关闭录屏成功")
+
+    def ecs_agent_version(self, name: str, agent_conf: list):
+        """云服务器获取代理版本
+        Args:
+            name: 云服务器名称
+            agent_conf: 代理类型, [{"FsAgent": "manual"}], [{"FsAgent": "manual"},{"DingAgent": "latest"}]
+        """
+        self.click_dropdown_option(name, "Agent版本设置")
+        for conf in agent_conf:
+            for agent_type, agent_version in conf.items():
+                self.locator("label").filter(has_text=agent_type).click()
+                locator = self.get_by_role("row", name=f"默认{agent_type} {agent_version} 系统默认，禁止修改").get_by_role("radio")
+                if not locator.is_checked():
+                    locator.click()
+                else:
+                    pytest.skip(f"当前{agent_type}版本已设置为: {agent_version}")
+        self.dialog_confirm.click()
+        logger.info(f"{name}实例修改Agent版本设置为: {agent_conf}")
+
+    def ecs_batch_migration_names(self, names: list, pre_nodes: list, available_hosts: list):
+        """批量云服务器热迁移节点检查
+
+        Args:
+            names: 云服务器名称
+            available_hosts: 可用节点
+        """
+        if len(set(pre_nodes)) == 1:
+            # 获取available_hosts和pre_nodes的差值
+            diff_hosts = [host for host in available_hosts if host not in pre_nodes]
+            goal = names[0]
+            if diff_hosts:
+                final_node = random.choice(diff_hosts)  # 选择差值节点作为迁移目标
+                self.ecs_hot_migration(goal, final_node)
+                self.assert_status(goal, status="迁移中", refresh=True, refresh_interval=2)
+                self.assert_status(goal, status="当前无任务")
+                goal = names.pop(0)
+                logger.info(f"需批量迁移的虚: {names}")
+                return names, goal, final_node
+            else:
+                pytest.skip("没有可用的节点满足亲和组迁移策略")
+        elif len(set(pre_nodes)) > 1 and len(set(pre_nodes)) < len(available_hosts):
+            for i, node in enumerate(pre_nodes):
+                if pre_nodes.count(node) == 1:
+                    goal = names.pop(i)
+                    logger.info(f"需批量迁移的虚: {names}")
+                    return names, goal, node
+        else:
+            pytest.skip("没有可用的节点满足亲和组迁移策略")

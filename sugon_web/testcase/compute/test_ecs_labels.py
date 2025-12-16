@@ -6,10 +6,10 @@ from sugon_web.utils.util import random_data
 
 
 @allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
+@allure.feature('标签')
 @allure.story('标签功能验证')
 class TestECSLbaels:
-    @allure.title("弹性云服务器-创建 & 搜索 & 删除标签 功能验证")
+    @allure.title("验证创建 & 搜索 & 删除标签功能")
     def test_ecs_create_label(self, ecs_page):
         """测试创建标签功能"""
         label_name = f"label-{random_data()}"
@@ -31,7 +31,7 @@ class TestECSLbaels:
             ecs_page.delete_label(label_name)
             ecs_page.assert_deleted(label_name)
 
-    @allure.title("弹性云服务器- 编辑标签 功能验证")
+    @allure.title("验证编辑标签功能")
     def test_ecs_edit_label(self, ecs_page, labels, vm):
         """测试编辑标签功能"""
         vm_name = vm.get("name")
@@ -61,7 +61,7 @@ class TestECSLbaels:
                 ecs_page.edit_label(new_name, label)
                 assert ecs_page.get_row_data(label).get("名称") == label
 
-    @allure.title("弹性云服务器- 标签设置 功能验证")
+    @allure.title("验证标签设置功能")
     @pytest.mark.parametrize("label_name", [
         [f"label-{random_data()}"],
         [f"label-{random_data()}", f"label-{random_data()}-1"]
@@ -93,7 +93,7 @@ class TestECSLbaels:
             for label_name in label_names:
                 ecs_page.delete_label(label_name)
 
-    @allure.title("弹性云服务器- 标签解绑实例 功能验证")
+    @allure.title("验证标签解绑实例功能")
     def test_ecs_unbind_vm_from_label(self, ecs_page, vm, labels):
         """标签解绑实例"""
         vm_name = vm.get("name")
@@ -110,11 +110,11 @@ class TestECSLbaels:
             assert ecs_page.get_row_data(labels[0]).get("绑定资源数量") == "0"
             ecs_page.assert_ecs_details_info([vm_name], info_items={"标签": "--"})
 
-    @allure.title("弹性云服务器- 批量标签设置 功能验证")
+    @allure.title("验证批量标签设置功能")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("labels", [{"count": 3}], indirect=True)
     def test_ecs_batch_bind_labels(self, ecs_page, vm, labels):
-        """测试标签管理功能：创建标签、绑定标签、解绑标签"""
+        """批量标签设置"""
 
         vm_names = [vm[i].get("name") for i in range(len(vm))]
 

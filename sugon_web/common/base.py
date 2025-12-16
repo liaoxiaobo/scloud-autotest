@@ -603,7 +603,7 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
-        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
+        self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
         self.page.wait_for_selector(".el-loading-spinner", state='hidden')
 
     def wait_for_operation_complete(self, timeout=30):

@@ -88,3 +88,13 @@ evs:
         quota:cpu_quota: "1000000.0"
         quota:cpu_shares: "4096"
         quota:cpu_period: "1000000"
+  test_ecs_batch_modify_agent:
+    - - FsAgent: "latest"
+    - - DingAgent: "manual"
+    - - FsAgent: "manual"
+        DingAgent: "manual"
+  test_ecs_agent_conf:
+    - - FsAgent: "manual"
+    - - DingAgent: "manual"
+    - - FsAgent: "latest"
+        DingAgent: "latest"
