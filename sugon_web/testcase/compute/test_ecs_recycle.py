@@ -1,5 +1,7 @@
 import time
 import allure
+import pytest
+
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
@@ -10,7 +12,7 @@ from sugon_web.utils.util import random_data
 @allure.story('回收站功能验证')
 class TestECSRecycle:
 
-    @allure.title("回收站-恢复弹性云服务器")
+    @allure.title("恢复弹性云服务器")
     def test_ecs_recycle_recover(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
@@ -35,10 +37,10 @@ class TestECSRecycle:
             ecs_page.assert_status(name, refresh=True)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm, timeout=90)
-            assert ssh_vm.run(f"md5sum {name}").count(md5), "恢复后系统盘数据MD5不一致"
+            assert md5 in ssh_vm.run(f"md5sum {name}"), "恢复后系统盘数据MD5不一致"
             assert ssh_vm.create_file(name) is not None, "恢复后系统盘数据不能写入"
 
-    @allure.title("回收站-列表页搜索&重置")
+    @allure.title("列表页搜索&重置")
     def test_ecs_recycle_search(self, ecs_page, vm):
         name = vm.get("name")
         with allure_step_log(f"步骤1: 删除云服务器{name}"):
@@ -66,7 +68,7 @@ class TestECSRecycle:
             ecs_page.goto_service('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
 
-    @allure.title("回收站-删除弹性云服务器")
+    @allure.title("删除弹性云服务器")
     def test_ecs_recycle_remove(self, ecs_page, ssh_host):
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
@@ -86,7 +88,7 @@ class TestECSRecycle:
             assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
 
 
-    @allure.title("回收站-批量删除弹性云服务器")
+    @allure.title("批量删除弹性云服务器")
     def test_ecs_recycle_batch_remove(self, ecs_page, ssh_host):
         """测试弹性云服务器批量删除功能"""
 
@@ -127,3 +129,38 @@ class TestECSRecycle:
             for name, ecs_id in zip(ecs_names, ids):
                 ecs_page.assert_deleted(name)
                 assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
+
+    @allure.title("安全删除功能验证")
+    def test_ecs_recycle_secure_delete(self, ecs_page, ssh_host):
+        """测试弹性云服务器删除功能，包括普通删除和安全删除"""
+        # 获取要删除的ECS实例名称
+        supported_storages = ['xstor']
+        current_storage = ecs_page.env['stor']
+
+        if current_storage not in supported_storages:
+            pytest.skip(f"当前存储类型 {current_storage} 不支持安全删除，跳过测试")
+
+        name = random_data()
+        with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
+            ecs_page.ecs_create(name=name)
+            ecs_page.assert_popup_success("创建实例命令下发成功")
+            ecs_page.assert_status(name)
+            ecs_id = ecs_page.get_row_data(name).get("名称/ID").split(':')[1]
+
+        with allure_step_log(f"步骤2: 删除云服务器{name}"):
+            ecs_page.ecs_remove(name)
+            ecs_page.wait_for_operation_complete()
+            ecs_page.assert_deleted(name)
+
+        with allure_step_log("步骤3: 验证删除成功提示"):
+            # 导航到回收站页面
+            ecs_page.goto_submenu("回收站")
+
+        with allure_step_log("步骤4: 安全删除云服务器"):
+            # 从回收站安全删除
+            ecs_page.ecs_delete(name, secure=True)
+
+        with allure_step_log("步骤5: 验证资源已完全删除"):
+            # 验证资源已完全删除
+            ecs_page.assert_deleted(name)
+            assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"

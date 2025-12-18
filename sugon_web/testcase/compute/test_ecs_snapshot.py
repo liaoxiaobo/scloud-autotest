@@ -6,11 +6,11 @@ from sugon_web.utils.util import random_data, load_data
 
 
 @allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
+@allure.feature('云服务器快照')
 @allure.story('快照基本功能验证')
 class TestECSS:
 
-    @allure.title("弹性云服务器-创建&删除快照")
+    @allure.title("验证创建&删除快照")
     def test_ecs_system_snapshot(self, ecs_page, vm, ssh_host):
         """测试创建云服务器快照"""
         snapshot_name = f"snapshot_{vm['name']}"
@@ -42,7 +42,7 @@ class TestECSS:
             ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
             assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
 
-    @allure.title("弹性云服务器-批量删除快照")
+    @allure.title("验证批量删除快照")
     def test_ecs_batch_snapshot(self, ecs_page, vm, ssh_host):
         """测试批量删除云服务器快照"""
         snapshot_names = []
@@ -73,7 +73,7 @@ class TestECSS:
             ecs_page.assert_deleted(snapshot_names, refresh=True)
             assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
 
-    @allure.title("弹性云服务器-修改快照")
+    @allure.title("验证修改快照")
     @pytest.mark.parametrize("params", load_data('test_modify'))
     def test_ecss_modify(self, ecs_page, ecss: dict, params):
         """测试云服务器快照修改功能"""
@@ -91,7 +91,7 @@ class TestECSS:
             snapshot_data = ecs_page.get_row_data(new_name)
             assert snapshot_data["描述"] == new_desc
 
-    @allure.title("弹性云服务器-还原快照")
+    @allure.title("验证还原快照")
     def test_ecss_restore(self, ecs_page, vm, ecss: dict, ssh_vm):
         """测试云服务器快照还原功能"""
 
@@ -129,7 +129,7 @@ class TestECSS:
                 ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据
 
-    @allure.title("云服务器快照-列表页搜索&重置")
+    @allure.title("验证列表页搜索&重置")
     def test_ecss_search(self, ecs_page, ecss: dict):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):

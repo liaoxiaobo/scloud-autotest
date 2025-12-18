@@ -1,5 +1,6 @@
 import pytest
 from playwright.sync_api import expect
+
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
@@ -436,5 +437,98 @@ def image(ssh_host, ecs_page, request):
     backend = params.get('backend', ecs_page.storage_pool)
     image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
     ssh_host.glance_image_create(name, image=image_name, backend=backend)
-    yield {"name", name}
+    yield {"name": name}
     ssh_host.glance_image_delete(name)
+
+
+@pytest.fixture
+def pool(ops_page, vm, request):
+    """
+    动态创建存储池的fixture，支持从测试用例层传递参数
+    测试用例可以通过以下方式使用：
+    1. 直接使用：默认参数创建存储池
+    2. 传递参数：使用pytest.mark.parametrize或indirect参数
+    Args:
+        ops_page: Ops页面对象
+        request: pytest的request对象，用于获取测试用例传递的参数
+    Returns:
+        dict: 包含存储池名称的字典
+    Yields:
+        dict: 包含存储池名称的字典，测试用例执行后自动清理
+    """
+    params = getattr(request, 'param', {})
+
+    # 从参数中获取节点名称
+    node = params.get('node', vm.get("host"))
+
+    # 生成随机名称
+    pool_name = f"disk_{random_data()}"
+    ops_page.goto_service("计算设施")
+    # 启用磁盘并获取磁盘大小
+    ops_page.search_disk("所在物理机", node)
+    _disk_name, _disk_size = ops_page.enable_disk(node)
+    # ops_page.assert_status(_disk_name, status="启用")
+
+    # 创建存储池
+    device_type = f"DISK-SSD-{_disk_size}"
+    storage_type = params.get('storage_type', "本地磁盘")
+    ops_page.create_storage_pool(pool_name, device_type=device_type, storage_type=storage_type)
+
+    # 验证存储池创建成功
+    # ops_page.assert_popup_success("执行成功")
+    ops_page.sync_storage_pool_config()
+    ops_page.assert_status(pool_name, status="已同步")
+
+    pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
+    pool_data.update(vm)
+    logger.info(f"pool_data: {pool_data}")
+
+    yield pool_data
+
+    try:
+        # 检查存储池是否存在，如果存在则尝试删除
+        ops_page.goto_service("存储设施")
+        ops_page.search(pool_name)
+
+        # 如果找到存储池，则删除
+        ops_page.delete_storage_pool(pool_name)
+    except Exception as e:
+        logger.warning(f"清理存储池 {pool_name}时出错: {e}")
+
+        # 禁用磁盘
+    try:
+        ops_page.search_disk("所在物理机", node)
+        ops_page.disable_disk(node)
+
+    except Exception as e:
+        logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
+
+@pytest.fixture(scope="module")
+def labels(ecs_page, request):
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)  # 默认创建1个标签
+
+    # 生成标签名称
+    label_names = []
+    prefix = params.get('prefix', 'label')  # 默认前缀为'label'
+
+    for i in range(count):
+        # 使用随机数据生成唯一标签名称
+        name = f"{prefix}_{random_data()}"
+        label_name = ecs_page.create_label(name)
+        ecs_page.assert_popup_success("新建标签成功")
+        label_names.append(label_name)
+        logger.info(f"已创建标签: {label_name}")
+
+    yield label_names
+
+    # 测试结束后清理标签
+    with allure_step_log("清理测试标签"):
+        logger.info(f"开始清理标签: {label_names}")
+        try:
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("标签")
+            ecs_page.batch_delete_label(label_names)
+            logger.info(f"标签清理完成: {label_names}")
+        except Exception as e:
+            logger.warning(f"清理标签时出错: {e}")

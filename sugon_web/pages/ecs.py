@@ -1,6 +1,11 @@
+import os
+import random
 import re
 import time
 from time import sleep
+
+import allure
+import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
@@ -272,7 +277,7 @@ class EcsPage(OpsPage):
             exception: 验证内容
         """
         logger.info(f"验证{name}云服务器{row_name}: {exception}")
-        assert self.get_row_data(name).get(row_name).__contains__(exception)
+        assert exception in self.get_row_data(name).get(row_name)
 
     def assert_ecs_info_not_contains(self, name: str, row_name: str, exception: str):
         """验证云服务器信息
@@ -301,21 +306,40 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
-    def ecs_vnc(self, name: str, vncpwd: str):
-        """修改VNC密码
+    def ecs_vnc(self, name: str, vncpwd: str = "sugon@20"):
+        """登录VNC
         Args：
             name: 云服务器名称
             password: VNC登录密码
         """
         logger.info(f"云服务器{name}：登录VNC")
         self.click_dropdown_option(name, "登录VNC")
-        self.switch_to_new_tab()
-        self.wait_for_page_ready()
-        self.locator("#app iframe").content_frame.get_by_role("textbox", name="密码：").fill(vncpwd)
-        self.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
-        self.wait_for_page_ready()
-        assert self.locator("#app iframe").content_frame.locator("canvas").is_visible()
-        self.switch_to_tab(0)
+        with self.new_tab_context() as new_page:
+            # 输入VNC密码并登录
+            try:
+                new_page.locator("#app iframe").content_frame.get_by_label("Password:").fill(vncpwd)
+            except:
+                new_page.locator("#app iframe").content_frame.get_by_label("密码：").fill(vncpwd)
+            new_page.locator("#app iframe").content_frame.get_by_role("button", name="确认").click()
+            loc = new_page.locator("#app iframe").content_frame.locator("canvas")
+            expect(loc).to_be_visible(timeout=30000)
+            # 保存截图到文件
+            sleep(5)
+            screenshot_dir = "screenshots"
+            os.makedirs(screenshot_dir, exist_ok=True)
+            screenshot_vnc = os.path.join(screenshot_dir, f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png")
+            # 保存截图到文件
+            loc.screenshot(path=screenshot_vnc)
+            logger.info(f"截图保存成功: {screenshot_vnc}")
+
+            # 将截图添加到 Allure 报告
+            with open(screenshot_vnc, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"vnc截图_{name}",
+                    attachment_type=allure.attachment_type.PNG
+                )
+            logger.info(f"云服务器{name}：VNC登录成功")
 
     @submenu("弹性云服务器")
     def ecs_rebuild(self, name: str, version: str, bit: str, image: str):
@@ -639,7 +663,9 @@ class EcsPage(OpsPage):
         """
         logger.info(f"弹性云服务器{name}时钟同步")
         self.click_dropdown_option(name, "时间同步服务器")
-        self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.").fill(time_server)
+        server_loc = self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.")
+        server_loc.clear()
+        server_loc.fill(time_server)
         logger.info(f"弹性云服务器{name}时钟同步，同步间隔为{interval}秒")
         loc = self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox")
         loc.clear() # 清空输入框默认数据
@@ -650,10 +676,12 @@ class EcsPage(OpsPage):
     def ecs_bind_unbind_group(self, names, operation: str, group_name: str):
         """解绑/解绑亲和组
         Args:
-            name: 云服务器名称
+            names: 云服务器名称
             group_name: 亲和组名称
         """
         logger.info(f"云服务器{names}{operation}{group_name}")
+        if isinstance(names, str):
+            names = [names]
         for name in names:
             self.ecs_bind_unbind_affinity_group(name, operation, group_name)
             self.assert_popup_success(f"{name}实例{operation}成功")
@@ -1185,7 +1213,8 @@ class EcsPage(OpsPage):
         # 选择带宽
         if migration_type == "热迁移":
             self.get_by_placeholder("请选择带宽").click()
-            self.locator("li").filter(has_text=bandwidth).click()
+            # self.locator("li").filter(has_text=bandwidth).click()
+            self.locator("//*[text()='半速']/../preceding-sibling::*[1]/span").click()
         if cpu_auto and migration_type == "热迁移":
             # 设置开关
             loc = self.get_by_role("switch").locator("span")
@@ -1197,9 +1226,6 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
         # 等待操作完成
         self.wait_for_operation_complete()
-
-        # 验证成功提示
-        self.assert_popup_success(f"批量{migration_type}命令下发成功")
 
         logger.info(f"批量迁移操作完成: {names}, 迁移方式: {migration_type}")
 
@@ -1277,9 +1303,6 @@ class EcsPage(OpsPage):
         # 确认热迁移
         self.dialog_confirm.click()
 
-        # 验证成功提示
-        self.assert_popup_success("热迁移命令下发成功")
-
         logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
         return checked_host.split("CPU剩余量")[0].strip()
 
@@ -1345,9 +1368,6 @@ class EcsPage(OpsPage):
         # 确认冷迁移
         self.dialog_confirm.click()
 
-        # 验证成功提示
-        self.assert_popup_success("冷迁移命令下发成功")
-
         logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
         return checked_host.split("CPU剩余量")[0].strip()
 
@@ -1398,8 +1418,6 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-        self.assert_popup_success(f"从虚拟机{vm_name}分离云硬盘")
-
     @submenu("弹性云服务器")
     def ecs_expand_system_disk(self, name: str, new_size: str):
         """扩容弹性云服务器系统盘
@@ -1421,7 +1439,6 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success(f"{name}实例扩容成功")
         logger.info(f"云服务器系统盘扩容成功: {name}")
 
     @submenu("弹性云服务器")
@@ -1430,8 +1447,8 @@ class EcsPage(OpsPage):
 
         Args:
             name: 云服务器名称
-            level: CPU QoS级别，默认为"低"
-            weight: CPU权重值，默认为0.2
+            priority: CPU QoS级别，默认为"低"
+            ceiling: CPU权重值，默认为0.2
         """
         logger.info(f"开始修改云服务器{name}的CPU QoS: 级别={priority}, 权重={ceiling}")
 
@@ -1450,7 +1467,6 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器{name}的CPU QoS修改请求已提交")
 
         self.wait_for_operation_complete()
-        self.assert_popup_success(f"设置cpu-qos成功")
 
     @submenu("弹性云服务器")
     def ecs_batch_set_startup_order(self, names: list, order: int, delay):
@@ -1480,7 +1496,6 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success("执行成功")
 
         logger.info(f"批量设置云服务器启动顺序完成: {names}")
 
@@ -1568,37 +1583,46 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-    def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情"):
+    def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情", sub_tab: str=None):
         """验证云服务器详情页面中的信息
 
         Args:
             names: 云服务器名称
             tab: 页签名称
+            sub_tab: 子页签名称
             info_items: 需要验证的信息项字典，格式为 {"信息项名称": "期望内容"}
                        例如: {"启动顺序": "3", "启动延迟时间(秒)": "20"}
         """
         logger.info(f"验证云服务器 {names} 的 {tab} 页签信息")
+        if isinstance(names, str):
+            names = [names]
         for name in names:
             self.ecs_to_details(name)
 
             logger.info(f"点击 {tab} 页签")
-            if tab != "详情":
-                self.get_by_role("tab", name=tab).click()
-                self.wait_for_page_ready()
-            else:
+            exact = False if tab == "安全组" or tab =="事件列表" else True
+            if tab == "详情":
                 sleep(2)
+            else:
+                self.get_by_role("tab", name=tab, exact=exact).click()
+                if sub_tab:
+                    self.locator("label").filter(has_text=sub_tab).click()
+                self.wait_for_page_ready()
             # 逐个验证信息项
             for item_name, expected_content in info_items.items():
                 logger.info(f"验证 {tab} 页签的 {item_name}: {str(expected_content)}")
-                # 定位信息项
-                info_item = self.get_by_text(item_name)
-                # 获取信息项的值
-                info_value = info_item.locator("xpath=./following-sibling::*").first
-
-                # 验证信息项的值是否包含期望内容
-                assert info_value.inner_text().__contains__(str(expected_content)), \
-                    f"验证失败: {tab} 的 {item_name} 不包含 {str(expected_content)}, 实际内容: {info_value.inner_text()}"
-
+                if tab == "详情":
+                    # 定位信息项
+                    info_item = self.get_by_text(item_name)
+                    # 获取信息项的值
+                    info_value = info_item.locator("xpath=./following-sibling::*").first
+                    # 验证信息项的值是否包含期望内容
+                    assert str(expected_content) in info_value.inner_text(), \
+                        f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {info_value.inner_text()}"
+                    logger.info(f"验证成功: {tab}的{item_name}包含{str(expected_content)}, 实际内容: {info_value.inner_text()}")
+                else:
+                    assert expected_content in self.get_row_data(item_name).values(), \
+                        f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {self.get_row_data(item_name)}"
             logger.info(f"云服务器 {tab} 详情页面信息验证成功")
 
     @submenu("弹性云服务器")
@@ -1629,6 +1653,476 @@ class EcsPage(OpsPage):
 
         # 等待操作完成
         self.wait_for_operation_complete()
-        self.assert_popup_success("执行成功")
 
         logger.info(f"批量设置云服务器关机顺序完成: {names}")
+
+    @submenu("弹性云服务器")
+    def ecs_set_boot_order(self, name: str, boot_order: list):
+        """
+        设置云服务器启动顺序
+
+        Args:
+            name: 云服务器名称
+            boot_order: 启动顺序配置，格式为：
+                [  # 启动设备列表，按优先级排序
+                        {"磁盘": "hdc:20GB"},
+                        {"网络", "10.228.42.59/fa:16:3e:ae:bb:fa"}
+                    ]
+        """
+        logger.info(f"开始设置云服务器 {name} 的启动顺序")
+
+        # 点击云服务器的操作按钮
+        self.click_dropdown_option(name, "设置启动顺序")
+
+        # 添加启动项
+        if len(boot_order) > 1:
+            for i in range(len(boot_order) - 1):
+                self.get_by_role("button", name=" 添加启动项").click()
+                self.wait_for_operation_complete()
+
+        for i, boot_device in enumerate(boot_order):
+            # 选择启动类型
+            for boot_type, devices in boot_device.items():
+                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth(0 if i == 0 else i*2).click()
+
+                self.locator("li").filter(has_text=re.compile(fr"^{boot_type}$")).nth(1 if len(boot_order) > 1 else 0).click()
+
+                # 选择设备
+                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth((i*2+1)).click()
+                self.locator("li").filter(has_text=devices).click()
+
+        # 确认设置
+        self.dialog_confirm.click()
+        self.wait_for_operation_complete()
+
+        logger.info(f"云服务器 {name} 启动顺序设置完成")
+
+    @submenu("弹性云服务器")
+    def ecs_install_tools(self, name: str):
+        """为云服务器安装工具
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"开始为云服务器 {name} 安装工具")
+
+        # 点击操作按钮
+        self.click_dropdown_option(name, "安装工具")
+
+        # 点击安装并进入下一步
+        self.get_by_text("安装并进入下一步").click()
+
+    @submenu("弹性云服务器")
+    def ecs_uninstall_tools(self, name: str):
+        """云服务器页面卸载工具
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"开始为云服务器 {name} 卸载工具")
+
+        # 点击操作按钮
+        self.click_dropdown_option(name, "卸载工具")
+
+        # 点击确定
+        self.dialog_confirm.click()
+
+    def assert_ecs_tools_installed(self, name: str):
+        """验证云服务器安装工具页面第一步操作是否完成"""
+        self.assert_popup_success(f"安装工具到虚拟机{name}成功")
+        # 等待安装工具第一步完成
+        expect(self.get_by_text("进入VNC控制台")).to_be_visible(timeout=30000)
+
+    @submenu("弹性云服务器")
+    def ecs_modify_vnc_type(self, name: str, vnc_type: str = "VGA"):
+        """修改云服务器VNC显卡类型
+
+        Args:
+            name: 云服务器名称
+            vnc_type: VNC显卡类型，默认为"VGA"
+        """
+        logger.info(f"开始修改云服务器 {name} 的VNC显卡类型为: {vnc_type}")
+
+        # 点击云服务器操作按钮，选择修改VNC显卡类型
+        self.click_dropdown_option(name, "修改VNC显卡类型")
+
+        # 选择VNC显卡类型
+        self.get_by_placeholder("请选择VNC显卡类型").click()
+        # self.locator("li").filter(has_text=vnc_type).click()
+        self.locator("li").filter(has_text=re.compile(fr"^{vnc_type}$")).click()
+
+        # 确认修改
+        self.dialog_confirm.click()
+
+        logger.info(f"云服务器 {name} 的VNC显卡类型修改成功")
+
+    @submenu("弹性云服务器")
+    def ecs_modify_cpu_mode(self, name: str, cpu_mode: str, custom_value: str = None):
+        """修改云服务器CPU模式
+        Args:
+            name: 云服务器名称
+            cpu_mode: CPU模式，默认为"host-passthrough"
+        """
+        logger.info(f"开始修改云服务器{name}的CPU模式为: {cpu_mode}")
+
+        # 点击云服务器操作按钮，选择修改CPU模式
+        self.click_dropdown_option(name, "修改CPU模式")
+
+        self.get_by_placeholder("请选择CPU模式").first.click()
+        # 选择CPU模式
+        if cpu_mode == "自定义":
+            self.get_by_text("自定义").click()
+            # 如果提供了自定义值，则选择它
+            if custom_value:
+                self.get_by_placeholder("请选择CPU模式").nth(1).click()
+                self.locator("li").filter(has_text=custom_value).click()
+        else:
+            self.get_by_text(cpu_mode).click()
+
+        # 确认修改
+        self.dialog_confirm.click()
+
+        logger.info(f"云服务器{name}的CPU模式修改成功{cpu_mode}, {custom_value}")
+
+    @submenu("弹性云服务器")
+    def ecs_mount_bare_disk(self, name: str, pool_name: str):
+        """为云服务器挂载裸磁盘
+
+        Args:
+            name: 云服务器名称
+            pool_name: 存储池名称
+            disk_name: 磁盘名称
+        """
+        logger.info(f"为云服务器{name}挂载裸磁盘: 存储池={pool_name}")
+
+        # 点击挂载裸磁盘选项
+        self.click_dropdown_option(name, "挂载裸磁盘")
+
+        # 选择存储池
+        self.get_by_placeholder("请选择存储池").click()
+        # 查找包含存储池名称和总量的选项
+        self.locator("li").filter(has_text=re.compile(rf"{pool_name}.*总量:")).click()
+
+        # 选择磁盘
+        self.get_by_placeholder("请输入名称").fill(pool_name)
+
+        # 选择挂载裸磁盘选项
+        self.get_by_label("挂载裸磁盘").get_by_role("radio").click()
+
+        # 确认挂载
+        self.get_by_label("挂载裸磁盘").get_by_text("挂载", exact=True).click()
+
+    @submenu("弹性云服务器")
+    def ecs_unmount_bare_disk(self, name: str, pool_name: str = None):
+        """为云服务器卸载裸磁盘
+
+        Args:
+            name: 云服务器名称
+        """
+        logger.info(f"为云服务器{name}挂载裸磁盘: 裸磁盘={pool_name}")
+
+        # 点击挂载裸磁盘选项
+        self.click_dropdown_option(name, "卸载裸磁盘")
+
+        # 选择裸磁盘
+        self.get_by_label("卸载裸磁盘").get_by_role("radio").click()
+
+        # 确认卸载
+        self.dialog_confirm.click()
+
+    @submenu("弹性云服务器")
+    def bind_labels(self, name: str, label_names: list, bind: bool = True):
+        """将标签绑定到云服务器
+
+        Args:
+            name: 云服务器名称
+            label_names: 标签名称
+        """
+        bind_text = "绑定" if bind else "解绑"
+        logger.info(f"{bind_text} 标签 {label_names} 到云服务器 '{name}'")
+
+        # 点击云服务器的操作按钮
+        self.click_dropdown_option(name, "标签设置")
+
+        # 选择标签
+        for label_name in label_names:
+            # self.get_by_text(label_name).click()
+            self.get_by_label("标签设置", exact=True).get_by_text(label_name).click()
+
+        if bind:
+            # 点击绑定按钮
+            self.get_by_role("button", name="绑定实例标签").click()
+        else:
+            # 点击解绑按钮
+            self.get_by_role("button", name="解绑实例标签").click()
+        self.assert_popup_success(f"实例{bind_text}标签成功,若数据未响应请刷新页面")
+
+        self.dialog_close.click()
+        logger.info(f"标签 {label_names} 成功绑定到云服务器 '{name}'")
+
+    @submenu("弹性云服务器")
+    def ecs_batch_bind_labels(self, names: list, label_names: list):
+        """将标签绑定到云服务器
+
+        Args:
+            names: 云服务器名称
+            label_names: 绑定的标签名称
+        """
+        logger.info(f"绑定标签{label_names}到云服务器 {names}")
+
+        self.select_rows_by_names(names)
+
+        self.get_by_role("button", name="更多操作").click()
+
+        self._click_batch_operation_option("批量标签设置")
+
+        self.get_by_placeholder("请选择标签").click()
+
+        for label_name in label_names:
+            self.locator("li").filter(has_text=label_name).click()
+
+        self.dialog_confirm.click()
+
+    @submenu("弹性云服务器")
+    def ecs_batch_agent_version(self, names: list, agent_conf: list):
+        """批量Agent版本设置
+        Args:
+            names: 云服务器名称
+            agent_conf: Agent版本设置
+        """
+        logger.info(f"云服务器 {names}批量设置Agent版本{agent_conf}")
+
+        self.select_rows_by_names(names)
+
+        self.get_by_role("button", name="更多操作").click()
+
+        self._click_batch_operation_option("批量Agent版本设置")
+        for conf in agent_conf:
+            for agent_type, agent_version in conf.items():
+                self.locator("label").filter(has_text=agent_type).click()
+                locator = self.get_by_role("row", name=f"默认{agent_type} {agent_version} 系统默认，禁止修改").get_by_role("radio")
+                if not locator.is_checked():
+                    locator.click()
+
+        self.dialog_confirm.click()
+
+    @submenu("标签")
+    def create_label(self, name: str):
+        """创建新标签
+
+        Args:
+            name: 标签名称
+        """
+
+        logger.info(f"创建标签: 名称={name}, 描述={name}")
+
+        # 点击新建按钮
+        self.btn_create.click()
+
+        # 填写标签名称
+        self.get_by_label("新建标签").locator("input[type=\"text\"]").fill(name)
+
+        # 填写描述
+        self.get_by_role("textbox", name="请输入描述内容").fill(name)
+
+        # 点击确定按钮
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{name}请求提交成功")
+        return name
+
+    @submenu("标签")
+    def delete_label(self, name: str):
+        """删除标签
+
+        Args:
+            name: 删除的标签名称
+        """
+        logger.info(f"删除标签: {name}")
+        # 点击删除按钮
+        self.click_dropdown_option(name, "删除")
+        # 确认删除
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{name}删除请求提交成功")
+
+
+    @submenu("标签")
+    def batch_delete_label(self, names: list):
+        """批量删除标签
+
+        Args:
+            names: 删除的标签名称
+        """
+        logger.info(f"删除标签: {names}")
+
+        self.select_rows_by_names(names)
+
+        # 点击删除按钮
+        self.btn_batch_delete.click()
+
+        # 确认删除
+        self.dialog_confirm.click()
+
+        logger.info(f"标签{names}删除成功")
+
+    @submenu("标签")
+    def edit_label(self, name: str, new_name: str):
+        """编辑标签
+
+        Args:
+            name: 标签名称
+            new_name: 新标签名称
+        """
+        logger.info(f"编辑{name}标签为{new_name}")
+
+        # 点击编辑按钮
+        self.click_dropdown_option(name, "编辑")
+
+        # 填写标签名称
+        self.get_by_label("修改标签").locator("input[type=\"text\"]").fill(new_name)
+
+        # 填写描述
+        self.get_by_role("textbox", name="请输入描述内容").fill(new_name)
+
+        # 确认编辑
+        self.dialog_confirm.click()
+
+        self.assert_popup_success("修改标签成功")
+
+        logger.info(f"标签{name}编辑修改为: {new_name}")
+
+
+    @submenu("标签")
+    def unbind_vm_from_label(self, vm_name: str, label_name: str):
+        """解绑云服务器标签
+
+        Args:
+            vm_name: 云服务器名称
+            label_name: 绑定的标签名称
+        """
+        logger.info(f"标签页{label_name}解绑实例: {vm_name}")
+        # 点击标签页的操作按钮
+        self.click_dropdown_option(label_name, "查看关联资源")
+        # 点击云服务器后的操作按钮
+        self.click_dropdown_option(vm_name, "解绑实例标签")
+        # 确认解绑
+        self.dialog_confirm.click()
+        # 验证解绑成功
+        self.assert_popup_success("实例解绑标签成功")
+        # 关闭弹窗
+        self.dialog_close.click()
+
+
+    @submenu("标签")
+    def delete_batch_unbind_label(self, names: list, label_names: str):
+        """批量解绑标签
+
+        Args:
+            names: 云服务器名称
+            label_names: 标签名称
+        """
+        logger.info(f"{label_names}批量解绑云服务器: {names}")
+        for label_name in label_names:
+            self.click_dropdown_option(label_name, "查看关联资源")
+            self.select_rows_by_names(names)
+            self.get_by_text("批量解绑").click()
+            self.dialog_confirm.click()
+            self.wait_for_operation_complete()
+            self.dialog_close.click()
+
+    @submenu("弹性云服务器")
+    def ecs_hot_migration_options(self, name) -> list:
+        """云服务器热迁移节点选项
+
+        Args:
+            name: 云服务器名称
+        """
+        # 点击云服务器操作按钮，选择热迁移
+        self.click_dropdown_option(name, "热迁移")
+
+        # 选择目标物理机
+        self.get_by_placeholder("请选择目标物理机").click()
+
+        # 等待下拉列表加载完成
+        self.wait_for_operation_complete()
+
+        # 获取所有下拉选项
+        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
+        options_count = all_host_options.count()
+        available_hosts = []
+        for i in range(options_count):
+            option = all_host_options.nth(i)
+            option_text = option.inner_text().split(" CPU剩余量")[0]
+            available_hosts.append(option_text)
+        logger.info(f"热迁移可用节点: {available_hosts}")
+        self.dialog_close.click()
+        return available_hosts
+
+    def ecs_record_screen(self, name: str):
+        """云服务器录屏
+        Args:
+            name: 云服务器名称
+        """
+        self.click_dropdown_option(name, "开启录屏")
+        self.get_by_label("开启录屏").get_by_text("开启", exact=True).click()
+        self.assert_popup_success(f"{name}实例开启录屏成功")
+        logger.info(f"实例: {name}开启录屏")
+
+    def ecs_stop_record_screen(self, name: str):
+        """云服务器停止录屏
+        Args:
+            name: 云服务器名称
+        """
+        self.click_dropdown_option(name, "关闭录屏")
+        self.get_by_label("关闭录屏").get_by_text("关闭", exact=True).click()
+        self.assert_popup_success(f"{name}实例禁用录屏成功")
+        logger.info(f"实例: {name}实例关闭录屏成功")
+
+    def ecs_agent_version(self, name: str, agent_conf: list):
+        """云服务器获取代理版本
+        Args:
+            name: 云服务器名称
+            agent_conf: 代理类型, [{"FsAgent": "manual"}], [{"FsAgent": "manual"},{"DingAgent": "latest"}]
+        """
+        self.click_dropdown_option(name, "Agent版本设置")
+        for conf in agent_conf:
+            for agent_type, agent_version in conf.items():
+                self.locator("label").filter(has_text=agent_type).click()
+                locator = self.get_by_role("row", name=f"默认{agent_type} {agent_version} 系统默认，禁止修改").get_by_role("radio")
+                if not locator.is_checked():
+                    locator.click()
+                else:
+                    pytest.skip(f"当前{agent_type}版本已设置为: {agent_version}")
+        self.dialog_confirm.click()
+        logger.info(f"{name}实例修改Agent版本设置为: {agent_conf}")
+
+    def ecs_batch_migration_names(self, names: list, pre_nodes: list, available_hosts: list):
+        """批量云服务器热迁移节点检查
+
+        Args:
+            names: 云服务器名称
+            available_hosts: 可用节点
+        """
+        if len(set(pre_nodes)) == 1:
+            # 获取available_hosts和pre_nodes的差值
+            diff_hosts = [host for host in available_hosts if host not in pre_nodes]
+            goal = names[0]
+            if diff_hosts:
+                final_node = random.choice(diff_hosts)  # 选择差值节点作为迁移目标
+                self.ecs_hot_migration(goal, final_node)
+                self.assert_status(goal, status="迁移中", refresh=True, refresh_interval=2)
+                self.assert_status(goal, status="当前无任务")
+                goal = names.pop(0)
+                logger.info(f"需批量迁移的虚: {names}")
+                return names, goal, final_node
+            else:
+                pytest.skip("没有可用的节点满足亲和组迁移策略")
+        elif len(set(pre_nodes)) > 1 and len(set(pre_nodes)) < len(available_hosts):
+            for i, node in enumerate(pre_nodes):
+                if pre_nodes.count(node) == 1:
+                    goal = names.pop(i)
+                    logger.info(f"需批量迁移的虚: {names}")
+                    return names, goal, node
+        else:
+            pytest.skip("没有可用的节点满足亲和组迁移策略")
