@@ -10,7 +10,7 @@
 browser: chromium
 
 # 无头模式 (true无界面/false有界面)
-headless: true
+headless: false
 
 # 操作超时时间(毫秒)
 timeout: 10000
@@ -25,7 +25,7 @@ slow_mo: 0
 host: 172.22.1.190
 
 # 存储池类型 (ceph/usan/local/nfs/xstor等)
-stor: ceph
+stor: xstor
 
 # 默认测试数据
 data: Autotest

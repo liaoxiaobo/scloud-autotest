@@ -14,12 +14,12 @@ from sugon_web.config.config import Config
 
 def pytest_addoption(parser):
     """添加命令行参数支持"""
-    parser.addoption("--host", action="store", default=None, help="指定测试环境的主机地址")
-    parser.addoption("--browser-type", action="store", default=None, help="指定浏览器类型 (chromium/firefox/webkit)")
-    parser.addoption("--headless", action="store", default=None, help="是否无头模式 (true/false)")
-    parser.addoption("--stor", action="store", default=None, help="指定存储类型")
-    parser.addoption("--username", action="store", default=None, help="登录用户名")
-    parser.addoption("--password", action="store", default=None, help="登录密码")
+    parser.addoption("--host", action="store", help="指定测试环境的主机地址")
+    parser.addoption("--browser-type", action="store", help="指定浏览器类型 (chromium/firefox/webkit)")
+    parser.addoption("--headless", action="store", help="是否无头模式 (true/false)")
+    parser.addoption("--stor", action="store", help="指定存储类型")
+    parser.addoption("--username", action="store", help="登录用户名")
+    parser.addoption("--password", action="store", help="登录密码")
 
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
@@ -67,7 +67,7 @@ def config(pytestconfig):
         username=username,
         password=password
     )
-    logger.info(f"测试环境配置加载完成: {Config.get()}")
+    logger.info(f"测试配置加载完成: {Config.get()}")
     return Config
 
 @pytest.fixture(scope="session")

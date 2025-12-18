@@ -1,9 +1,10 @@
+import os
 import yaml
 from sugon_web.utils.logger import logger
-from sugon_web.utils.util import get_file_abspath
 
 
 class Config:
+    # 通过类变量加载一次配置，供所有调用共享，避免重复加载
     _config = {}
 
     @classmethod
@@ -12,14 +13,14 @@ class Config:
         加载配置文件，根据host参数合并特定环境配置
 
         Args:
-            host: 要加载的特定主机配置，如果为None则使用base.yaml中的host值
+            host: 要加载的特定环境配置，如果为None则使用base.yaml中的host值
         """
         # 加载基础配置
-        with open(get_file_abspath("base.yaml"), encoding='utf-8') as f:
+        with open(os.path.join(os.path.dirname(__file__), "base.yaml"), encoding='utf-8') as f:
             base_cfg = yaml.safe_load(f)
 
         # 加载环境配置
-        with open(get_file_abspath("env.yaml"), encoding='utf-8') as f:
+        with open(os.path.join(os.path.dirname(__file__), "env.yaml"), encoding='utf-8') as f:
             env_cfg = yaml.safe_load(f)
 
         # 如果未提供host参数，则使用base.yaml中的host值
@@ -31,7 +32,7 @@ class Config:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-        # 查找匹配的主机配置
+        # 查找匹配的环境配置
         matched_host_config = None
         if "env" in env_cfg:
             for host_config in env_cfg["env"]:
@@ -42,14 +43,14 @@ class Config:
         # 使用基础配置作为默认配置
         cls._config = base_cfg.copy()  # 使用base的副本，避免修改原始配置
 
-        # 如果找到了匹配的主机配置，则合并
+        # 如果找到了匹配的环境配置，则合并
         if matched_host_config:
-            # 合并基础配置和特定主机配置
+            # 合并基础配置和特定环境配置
             cls._config.update(matched_host_config)
-            logger.info(f"已加载主机 {host} 的特定配置")
+            logger.info(f"读取环境 {host} 的特定配置")
         else:
-            # 如果没有找到匹配的主机配置，只使用基础配置
-            logger.info(f"未找到主机 {host} 的特定配置，使用基础配置")
+            # 如果没有找到匹配的环境配置，只使用基础配置
+            logger.info(f"未找到环境 {host} 的特定配置")
 
         # 生成 base_url
         base_url = f"https://{host}:30000"
@@ -69,21 +70,21 @@ class Config:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             cls._config["browser"] = browser
-            logger.info(f"命令行配置参数 browser={browser}")
+            logger.info(f"配置命令行参数 browser={browser}")
         if headless is not None:
             # 将字符串转为布尔值
             hbool = True if headless.lower() == "true" else False
             cls._config["headless"] = hbool
-            logger.info(f"命令行配置参数 headless={hbool}")
+            logger.info(f"配置命令行参数 headless={hbool}")
         if stor is not None:
             cls._config["stor"] = stor
-            logger.info(f"命令行配置参数 stor={stor}")
+            logger.info(f"配置命令行参数 stor={stor}")
         if username is not None:
             cls._config["username"] = username
-            logger.info(f"命令行配置参数 username={username}")
+            logger.info(f"配置命令行参数 username={username}")
         if password is not None:
             cls._config["password"] = password
-            logger.info(f"命令行配置参数 password={password}")
+            logger.info(f"配置命令行参数 password={password}")
 
     @classmethod
     def get(cls, key=None, default=None):
