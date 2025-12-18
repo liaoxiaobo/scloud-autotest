@@ -7,9 +7,6 @@ import pytest
 class KmsPage(BasePage):
     """密钥管理服务页面"""
 
-    def __init__(self, page: Page, env: dict) -> None:
-        super().__init__(page, env)
-
     @property
     def _input_name(self):
         """密钥名称输入框"""

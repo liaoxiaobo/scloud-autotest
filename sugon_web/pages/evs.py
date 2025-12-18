@@ -1,11 +1,7 @@
 from sugon_web.common.base import BasePage, submenu
-from playwright.sync_api import Page
 import re
 
 class EvsPage(BasePage):
-    # 云硬盘页面
-    def __init__(self, page: Page, env: dict) -> None:
-        super().__init__(page, env)
 
     @property
     def _input_name(self):
@@ -91,7 +87,7 @@ class EvsPage(BasePage):
             encrypted: 是否创建加密云硬盘，默认False
             encryption_key: 加密密钥ID，当encrypted为True时使用
         """
-        current_storage = self.env['stor']
+        current_storage = self.stor
 
         # 存储类型支持映射
         STORAGE_SUPPORT = {

@@ -9,16 +9,17 @@ from sugon_web.utils.logger import logger
 from sugon_web.utils.util import get_file_abspath
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
+from sugon_web.config.config import Config
 
 
 def pytest_addoption(parser):
-    """添加命令行参数"""
-    parser.addoption("--host", action="store", default='172.22.1.190', help="测试环境管理VIP")
-    parser.addoption("--headless", action="store", default="false", help="是否无头模式运行（true/false）")
-    parser.addoption("--browser-type", action="store", default="chromium", help="浏览器类型（chromium/firefox/webkit）")
-    parser.addoption("--username", action="store", default="admin", help="登录用户名")
-    parser.addoption("--password", action="store", default="keystone_sugon", help="登录密码")
-    parser.addoption("--stor", action="store", default='xstor', help="storage backend")
+    """添加命令行参数支持"""
+    parser.addoption("--host", action="store", default=None, help="指定测试环境的主机地址")
+    parser.addoption("--browser-type", action="store", default=None, help="指定浏览器类型 (chromium/firefox/webkit)")
+    parser.addoption("--headless", action="store", default=None, help="是否无头模式 (true/false)")
+    parser.addoption("--stor", action="store", default=None, help="指定存储类型")
+    parser.addoption("--username", action="store", default=None, help="登录用户名")
+    parser.addoption("--password", action="store", default=None, help="登录密码")
 
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
@@ -43,53 +44,54 @@ def pytest_configure(config):
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
 
+
 @pytest.fixture(scope="session")
-def env(pytestconfig):
-    """根据--host参数加载对应环境的配置"""
+def config(pytestconfig):
+    """配置fixture，初始化Config类并返回Config对象"""
+    # 获取命令行参数
     host = pytestconfig.getoption("--host")
+    browser_type = pytestconfig.getoption("--browser-type")
+    headless = pytestconfig.getoption("--headless")
+    stor = pytestconfig.getoption("--stor")
     username = pytestconfig.getoption("--username")
     password = pytestconfig.getoption("--password")
-    stor = pytestconfig.getoption("--stor")
 
-    # 根据host值设置不同的端口号
-    port = "30008" if host == "172.22.1.190" else "30000"
+    # 加载配置
+    Config.load(host=host)
 
-    env = {
-        'host': host,
-        'url': f"https://{host}:{port}",
-        "username": username,
-        "password": password,
-        "stor": stor,
-        "pkey": "pkey_scloudadmin"  # 默认使用scloudadmin用户的私钥
-    }
-    logger.info(f"测试环境配置加载完成，URL: {env['url']}")
-    yield env
-
+    # 覆盖配置（使用命令行参数）
+    Config.override(
+        browser=browser_type,
+        headless=headless,
+        stor=stor,
+        username=username,
+        password=password
+    )
+    logger.info(f"测试环境配置加载完成: {Config.get()}")
+    return Config
 
 @pytest.fixture(scope="session")
-def page(env, pytestconfig):
+def page(config):
     """创建新页面，支持动态浏览器类型和 headless 模式"""
-    browser_type = pytestconfig.getoption("--browser-type")
-    headless = pytestconfig.getoption("--headless").lower() == "true"
+    # 从Config对象获取配置
+    browser_type = config.get("browser")
+    headless = config.get("headless")
+    base_url = config.get("base_url")
+    username = config.get("username")
+    password = config.get("password")
+    slow_mo = config.get("slow_mo")
 
     logger.info(f"开始初始化浏览器: type={browser_type}, headless={headless}")
 
-    # 校验浏览器类型是否有效
-    valid_browsers = ["chromium", "firefox", "webkit"]
-    if browser_type not in valid_browsers:
-        error_msg = f"无效的浏览器类型: {browser_type}。支持的选项: {valid_browsers}"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-
     try:
         with sync_playwright() as p:
-            logger.info(f"启动 {browser_type} 浏览器...")
+            logger.info("启动浏览器...")
             # 动态选择浏览器类型
             browser = getattr(p, browser_type).launch(
                 headless=headless,
-                slow_mo=0
+                slow_mo=slow_mo
             )
-            logger.info(f"{browser_type} 浏览器启动成功")
+            logger.info("浏览器启动成功")
 
             logger.info("创建浏览器上下文...")
             context = browser.new_context(ignore_https_errors=True)  # 显式设置忽略 SSL 错误
@@ -99,17 +101,17 @@ def page(env, pytestconfig):
             page = context.new_page()
             logger.info("页面创建成功")
 
-            logger.info(f"导航到目标URL: {env['url']}")
-            page.goto(env['url'])
+            logger.info(f"导航到目标URL: {base_url}")
+            page.goto(base_url)
             logger.info(f"页面导航完成，当前URL: {page.url}")
 
             # 检查是否已登录，如果未登录则执行登录
             if not _is_logged_in(page):
-                _login(page, env)
+                _login(page, {"username": username, "password": password})
                 logger.info("登录成功")
 
                 # 关闭弹窗
-                base_page = BasePage(page, env)
+                base_page = BasePage(page)
                 base_page.close_dialog_if_exists()
 
             yield page
@@ -204,20 +206,27 @@ def pytest_runtest_makereport(item, call):
         if rep.failed:
             logger.error(f"测试清理失败: {item.name}")
 
+
 @pytest.fixture(scope="session")
-def ssh_host(env):
+def ssh_host(config):
     """创建直接连接到目标主机的SSH会话，不使用跳板机"""
+    host = config.get("host")
+    pkey = config.get("pkey")
+
     ssh = SSH()
-    ssh.connect(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']), use_jumphost=False)
+    ssh.connect(host=host, username="scloudadmin", pkey=get_file_abspath(pkey), use_jumphost=False)
     yield ssh
     ssh.close()
 
 
 @pytest.fixture(scope="session")
-def jump_host(env):
+def jump_host(config):
     """创建并配置跳板机连接"""
+    host = config.get("host")
+    pkey = config.get("pkey")
+
     ssh = SSH()
-    ssh._set_jumphost(host=env['host'], username="scloudadmin", pkey=get_file_abspath(env['pkey']))
+    ssh._set_jumphost(host=host, username="scloudadmin", pkey=get_file_abspath(pkey))
     yield ssh
     ssh.close()
 
@@ -243,10 +252,10 @@ def _is_logged_in(page):
         return True
 
 
-def _login(page, env):
+def _login(page, config):
     """执行登录操作"""
-    username = env.get("username")
-    password = env.get("password")
+    username = config.get("username")
+    password = config.get("password")
 
     if not username or not password:
         raise ValueError("环境配置中缺少用户名或密码")

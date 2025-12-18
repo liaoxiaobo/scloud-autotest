@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Callable
 from playwright.sync_api import expect, Page, Locator
 from sugon_web.common.playwright import Playwright
-
+from sugon_web.config.config import Config
 
 # 服务导航映射表 - 支持不同层级结构
 SERVICE_MAP = {
@@ -78,10 +78,11 @@ def submenu(name: str) -> Callable:
 
 class BasePage(Playwright):
 
-    def __init__(self, page: Page, env: dict) -> None:
+    def __init__(self, page: Page) -> None:
         super().__init__(page)
-        self.env = env
-        self.storage_pool, self.volume_type = env['stor'] + '-test', env['stor'] + '-type'
+        # 从内存中读取，不会重复加载文件
+        self.stor = Config.get('stor')
+        self.storage_pool, self.volume_type = self.stor + '-test', self.stor + '-type'
 
     @property
     def popup(self) -> Locator:
