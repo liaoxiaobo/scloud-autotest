@@ -192,7 +192,9 @@ class BasePage(Playwright):
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")   # 云硬盘删除对话框
+            self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span"),   # 云硬盘删除对话框
+            self.locator(".sure-footer > div > .cloud-button-btn").first
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")

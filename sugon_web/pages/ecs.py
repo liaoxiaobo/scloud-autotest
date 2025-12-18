@@ -120,7 +120,7 @@ class EcsPage(OpsPage):
             **kwargs: 其他参数，如快照ID、ISO大小等
         """
         image_name = image_name or self.storage_pool
-        logger.info(f"开始选择镜像: image_source={image_source}, name={image_name}, os={os_version}")
+        logger.info(f"开始选择镜像: image_source={image_source}, image_name={image_name}, os={os_version}")
 
         try:
             # 选择镜像来源
@@ -1139,7 +1139,8 @@ class EcsPage(OpsPage):
         # 设置执行时间
         if hours:
             for hour in hours:
-                self.get_by_text(f"{hour:02d}:00", exact=True).click()
+                # self.get_by_text(f"{hour:02d}:00", exact=True).click()
+                self.locator("label").filter(has_text=f"{hour:02d}:00").locator("span").nth(1).click()
 
         # 设置快照周期（天）
         self.locator("form div").filter(has_text="快照周期 天").get_by_role("spinbutton").fill(str(cycle_days))
@@ -2059,6 +2060,7 @@ class EcsPage(OpsPage):
         self.dialog_close.click()
         return available_hosts
 
+    @submenu("弹性云服务器")
     def ecs_record_screen(self, name: str):
         """云服务器录屏
         Args:
@@ -2069,6 +2071,7 @@ class EcsPage(OpsPage):
         self.assert_popup_success(f"{name}实例开启录屏成功")
         logger.info(f"实例: {name}开启录屏")
 
+    @submenu("弹性云服务器")
     def ecs_stop_record_screen(self, name: str):
         """云服务器停止录屏
         Args:
@@ -2079,6 +2082,7 @@ class EcsPage(OpsPage):
         self.assert_popup_success(f"{name}实例禁用录屏成功")
         logger.info(f"实例: {name}实例关闭录屏成功")
 
+    @submenu("弹性云服务器")
     def ecs_agent_version(self, name: str, agent_conf: list):
         """云服务器获取代理版本
         Args:
@@ -2126,3 +2130,190 @@ class EcsPage(OpsPage):
                     return names, goal, node
         else:
             pytest.skip("没有可用的节点满足亲和组迁移策略")
+
+    @submenu("弹性云服务器")
+    def ecs_bind_snapshot_policy(self, name: str, policy: str, auto_snapshot: bool = False):
+        """云服务器绑定快照策略
+
+        Args:
+            name: 云服务器名称
+            policy: 快照策略名称
+            auto_snapshot: 自动快照
+        """
+        self.click_dropdown_option(name, "绑定快照策略")
+
+        self.get_by_label("绑定快照策略").get_by_placeholder("请选择").click()
+
+        self.locator("li").filter(has_text=policy).click()
+
+        if auto_snapshot:
+            self.get_by_role("switch").locator("span").click()
+
+        self.dialog_confirm.click()
+
+    @submenu("快照策略")
+    def ecss_bind_unbind_snapshot_policy(self, name: str, policy: str, bind: bool = True, vm_type : str = "弹性云服务器"):
+        """云服务器绑定快照策略
+        Args:
+            name: 云服务器名称
+            policy: 快照策略名称
+        """
+        text = "绑定" if bind else "解绑"
+        self.click_dropdown_option(policy, f"{text}云服务器")
+
+        vm_type_locs = [
+            self.locator("label").filter(has_text=vm_type),
+            self.get_by_role("listbox").locator("li").filter(has_text=vm_type),
+            self.get_by_role("radiogroup").locator("label").filter(has_text=vm_type)
+        ]
+        self._find_element(vm_type_locs).click()
+        search_locs = [
+            self.get_by_role("textbox", name="搜索（实例名称）"),
+            self.get_by_placeholder("搜索（实例名称）")
+        ]
+        self._find_element(search_locs).fill(name)
+
+        self.get_by_role("dialog").get_by_text("搜索").click()
+
+        vm_names = self.get_column_data("名称/ID")
+        vm_names = [vm_name.split(" ")[0] for vm_name in vm_names if vm_name.startswith(name)]
+        self.get_by_role("row", name="名称/ID 物理机").locator("span").nth(1).click()
+
+        self.dialog_confirm.click()
+        logger.info(f"快照策略: {policy} 绑定云服务器: {vm_names}")
+        return vm_names
+
+    @submenu("快照策略")
+    def ecss_unbind_snapshot_policy(self, vm_name: str, policy: str, vm_type: str = "弹性云服务器"):
+        """云服务器绑定快照策略
+        Args:
+            vm_name: 云服务器名称
+            policy: 快照策略名称
+            vm_type: 云服务器类型
+        """
+        self.click_dropdown_option(policy, "解绑云服务器")
+
+        self.get_by_role("radiogroup").locator("label").filter(has_text=vm_type)
+
+        self.get_by_role("textbox", name="搜索（实例名称）").click()
+        self.get_by_role("textbox", name="搜索（实例名称）").fill(vm_name)
+
+        self.get_by_role("dialog").get_by_text("搜索").click()
+        self.get_by_role("row", name="名称/ID 物理机").locator("span").nth(1).click()
+        # 获取所有选中的虚机名称
+        vm_names = self.get_column_data("名称/ID")
+        vm_names = [vm_name.split(" ")[0] for vm_name in vm_names if vm_name.startswith(vm_name)]
+
+        self.dialog_confirm.click()
+        logger.info(f"快照策略: {policy} 解绑云服务器: {vm_names}")
+
+    @submenu("快照任务")
+    def ecss_modify_snapshot_task(self, vm_name: str, policy: str):
+        """云服务器快照策略修改快照任务
+        Args:
+            vm_name: 云服务器名称
+            policy: 快照策略名称
+        """
+        self.click_dropdown_option(vm_name, "修改策略")
+
+        self.get_by_label("修改策略").get_by_placeholder("请选择").click()
+
+        self.locator("li").filter(has_text=policy).click()
+
+        self.dialog_confirm.click()
+
+    @submenu("快照任务")
+    def ecss_modify_en_disable_auto_snapshot(self, vm_name: str, enable: bool = False):
+        """快照任务开启自动快照
+        Args:
+            vm_name: 云服务器名称
+            enable: 是否开启自动快照
+        """
+
+        enable_text = "开启" if enable else "禁用"
+        self.click_dropdown_option(vm_name, f"{enable_text}自动快照")
+
+        self.dialog_confirm.click()
+
+    @submenu("快照任务")
+    def ecss_delete_task(self, vm_name):
+        """删除弹性云服务器快照任务，支持单个和批量操作
+
+        Args:
+            vm_name: 实例名称（字符串）或快照名称列表（列表）
+        """
+        if isinstance(vm_name, list):
+            # 批量操作模式
+            self.select_rows_by_names(vm_name)
+
+            # 点击批量删除按钮
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(vm_name, "删除")
+
+        # 使用BasePage中的通用确认按钮
+        self.dialog_confirm.click()
+
+        # 等待操作完成
+        self.wait_for_page_ready()
+
+        self.logger.info(f"云服务器快照删除请求已提交: {vm_name}")
+
+    def wait_for_snapshot_start(self, vm_name, snap_time, timeout=3600):
+        """等待快照开始创建
+
+        Args:
+            vm_name: 虚拟机名称
+            snap_time: 目标时间（小时，如16表示16点）
+            timeout: 最大超时时间（秒），默认为3600秒（1小时）
+
+        Returns:
+            bool: 如果成功检测到快照创建开始，返回True；否则返回False
+        """
+        logger.info(f"等待快照开始创建，虚拟机: {vm_name}, 目标时间: {snap_time}点")
+        start_time = time.time()
+        polling_started = False
+        polling_duration = 180  # 3分钟
+        polling_start_time = None
+
+        # 等待到达目标时间
+        while time.time() - start_time < timeout:
+            # 获取当前时间
+            current_hour = int(time.strftime("%H", time.localtime()))
+            current_time_str = time.strftime("%H:%M:%S", time.localtime())
+
+            # 如果当前时间还未到目标时间，继续等待
+            if current_hour < snap_time:
+                logger.debug(f"当前时间 {current_time_str} 小于目标时间 {snap_time}点，继续等待...")
+                self.page.wait_for_timeout(3000)  # 等待3秒
+                continue
+
+            # 如果到达目标时间但轮询还未开始，开始轮询计时
+            if not polling_started:
+                logger.info(f"已到达目标时间 {snap_time}点，开始轮询检查虚拟机状态")
+                polling_started = True
+                polling_start_time = time.time()
+
+            # 检查虚拟机状态
+            try:
+                self.goto_submenu("弹性云服务器")
+                status = self.get_row_data(vm_name).get("状态", "")
+
+                if "网络" in status:
+                    logger.info(f"检测到虚拟机 {vm_name} 开始创建快照")
+                    return True
+            except Exception as e:
+                logger.warning(f"检查虚拟机状态时出错: {str(e)}")
+
+            # 如果轮询时间超过5分钟，退出
+            if polling_started and (time.time() - polling_start_time) > polling_duration:
+                logger.warning(f"轮询 {polling_duration} 秒后仍未检测到快照创建")
+                break
+
+            # 轮询间隔3秒
+            self.page.wait_for_timeout(3000)
+
+        # 只有在真正超时后才返回False
+        logger.warning(f"等待快照创建超时")
+        return False
