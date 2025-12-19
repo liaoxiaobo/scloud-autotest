@@ -1619,6 +1619,7 @@ class EcsPage(OpsPage):
                         f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {info_value.inner_text()}"
                     logger.info(f"验证成功: {tab}的{item_name}包含{str(expected_content)}, 实际内容: {info_value.inner_text()}")
                 else:
+                    expect(self.get_by_role("cell", name=item_name).locator("div")).to_be_visible()
                     assert expected_content in self.get_row_data(item_name).values(), \
                         f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {self.get_row_data(item_name)}"
             logger.info(f"云服务器 {tab} 详情页面信息验证成功")

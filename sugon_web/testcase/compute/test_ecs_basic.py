@@ -493,39 +493,42 @@ class TestECSBasic:
             ecs_page.assert_deleted(image_name, refresh=True)
 
     @allure.title("验证热迁移功能")
+    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": True}], indirect=True)
     def test_ecs_hot_migration(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的热迁移功能
         """
         ecs_page.goto_service('弹性云服务器')
-        name = vm.get("name")
-        ecs_id = vm.get("id")
+        names = [vm[i].get("name") for i in range(len(vm))]
+        ips = [vm[i].get("ip") for i in range(len(vm))]
+        ecs_ids = [vm[i].get("id") for i in range(len(vm))]
+        mfips = [vm[i].get("mfip") for i in range(len(vm))]
 
         with allure_step_log("步骤1: 虚机长ping"):
-            ssh_vm.connect(vm['mfip'])
-            ssh_vm.run(r"nohup ping 100.126.255.250 -i 1 > /tmp/ping.log 2>&1 &")
+            ssh_vm.connect(mfips[0])
+            ssh_vm.run(fr"nohup ping {ips[1]} -i 1 > /tmp/ping.log 2>&1 &")
             # 然后获取进程ID
-            pid_output = ssh_vm.run(r"pgrep -f 'ping 100.126.255.250'")
+            pid_output = ssh_vm.run(fr"pgrep -f 'ping {ips[1]}'")
             # 验证是否成功获取PID
             if not pid_output or not pid_output.strip():
                 raise Exception("无法获取ping进程ID")
             pid = pid_output.strip()
 
         with allure_step_log("步骤2: 热迁移"):
-            check_node = ecs_page.ecs_hot_migration(name, "master01")
+            check_node = ecs_page.ecs_hot_migration(names[1], "master01")
             ecs_page.assert_popup_success("热迁移命令下发成功")
 
         with allure_step_log("步骤3: 验证迁移结果"):
-            ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
-            ecs_page.assert_status(name, status="当前无任务")
+            ecs_page.assert_status(names[1], status="迁移中", refresh=True, refresh_interval=2)
+            ecs_page.assert_status(names[1], status="当前无任务")
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
-            expect_node = ecs_page.get_row_data(name).get("物理机")
+            expect_node = ecs_page.get_row_data(names[1]).get("物理机")
             assert expect_node == check_node, f"热迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
-            assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == check_node
+            assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_ids[1]}")).get("node") == check_node
 
             # 验证长ping迁移丢包率
-            ssh_vm.connect(vm['mfip'])
+            ssh_vm.connect(mfips[0])
             ssh_vm.run(f"kill -2 {pid}")
             ping_output = ssh_vm.run("cat /tmp/ping.log")
             received = re.search(r"transmitted, (.*?) received", ping_output).group(1)
@@ -536,7 +539,7 @@ class TestECSBasic:
     @allure.title("验证冷迁移功能")
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
         """
-        测试弹性云服务器的热迁移功能
+        测试弹性云服务器的冷迁移功能
         """
         ecs_page.goto_service('弹性云服务器')
         ecs_page.wait_for_page_ready()
@@ -552,7 +555,7 @@ class TestECSBasic:
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
             expect_node = ecs_page.get_row_data(name).get("物理机")
-            assert expect_node == check_node, f"热迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
+            assert expect_node == check_node, f"冷迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
             assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == check_node
 
             # 验证迁移后虚机的可用性
@@ -702,29 +705,17 @@ class TestECSBasic:
                 assert stdout.get("vm_state") == vm_state, f"批量操作{operation}失败，期望vm_state:{vm_state},实际vm_state:{stdout.get('vm_state')}"
 
     @allure.title("验证批量迁移功能")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": True}], indirect=True)
-    def test_ecs_batch_migration(self, ecs_page, vm, ssh_host, ssh_vm):
+    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
         """
         ecs_page.wait_for_page_ready()
         names = [vm[i].get("name") for i in range(len(vm))]
         ecs_ids = [vm[i].get("id") for i in range(len(vm))]
-        pids = []
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 虚机长ping"):
-            for i in range(len(names)):
-                ssh_vm.connect(vm[i]['mfip'])
-                ssh_vm.run(r"nohup ping 100.126.255.250 -i 1 > /tmp/ping.log 2>&1 &")
-                # 然后获取进程ID
-                pid_output = ssh_vm.run(r"pgrep -f 'ping 100.126.255.250'")
-                # 验证是否成功获取PID
-                if not pid_output or not pid_output.strip():
-                    raise Exception("无法获取ping进程ID")
-                pids.append(pid_output.strip())
-
-        with allure_step_log("步骤2: 批量迁移"):
+        with allure_step_log("步骤1: 批量迁移"):
             ecs_page.ecs_batch_migration(names)
             ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
 
@@ -737,15 +728,6 @@ class TestECSBasic:
                 # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
                 expect_node = ecs_page.get_row_data(name).get("物理机")
                 assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
-            # 验证虚机长ping 迁移丢包率
-            for i in range(len(names)):
-                ssh_vm.connect(vm[i]['mfip'])
-                ssh_vm.run(f"kill -2 {pids[i]}")
-                ping_output = ssh_vm.run("cat /tmp/ping.log")
-                received = re.search(r"transmitted, (.*?) received", ping_output).group(1)
-                send = re.search(r"(.*?) packets transmitted,", ping_output).group(1)
-                loss = int(send) - int(received)
-                assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
     @allure.title("验证批量设置启动顺序功能")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)

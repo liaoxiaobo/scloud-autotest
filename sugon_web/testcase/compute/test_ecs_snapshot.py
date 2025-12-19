@@ -350,7 +350,10 @@ class TestECSS:
                 ecs_page.search(vm_name)
                 ecs_page.get_rows_by_text(vm_name)
                 snapshot_name = ecs_page.get_column_data("名称")[0]
+                create_time = ecs_page.get_column_data("创建时间")[0].split(" ")[1]
+                create_hour = create_time.split(":")[0]
                 ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+                assert create_hour == snap_time, f"快照创建时间不符合预期，期望: {snap_time}时，实际: {create_time}时"
             else:
                 allure.attach(f"等待了70分钟仍未检测到快照创建", name="等待超时")
                 pytest.fail("等待快照创建超时")
@@ -360,9 +363,11 @@ class TestECSS:
             ecs_page.assert_status(vm_name)
             ecs_page.assert_ecs_details_info(vm_name, {f"{snapshot_name}": "可用"}, tab="快照")
 
-        with allure_step_log("步骤7: 验证虚机解除绑定策略"):
+        with allure_step_log("步骤7: 验证虚机解除绑定策略、删除策略"):
             ecs_page.goto_submenu("快照策略")
             ecs_page.ecss_unbind_snapshot_policy(vm_name, policy)
+            ecs_page.ecss_policy_delete(policy)
+            ecs_page.assert_popup_success("删除策略成功", refresh=True)
 
         with allure_step_log("步骤6: 删除快照"):
             ecs_page.ecss_delete(snapshot_name)
