@@ -345,21 +345,25 @@ class TestECSS:
             if ecs_page.wait_for_snapshot_start(vm_name, snap_time):
                 # 验证快照创建成功
                 ecs_page.assert_status(vm_name, status="当前无任务", refresh=True)
-
                 # 切换到快照页面验证快照存在
                 ecs_page.goto_submenu("快照")
                 ecs_page.search(vm_name)
                 ecs_page.get_rows_by_text(vm_name)
-                snapshot_name = ecs_page.get_column_data("名称")
+                snapshot_name = ecs_page.get_column_data("名称")[0]
                 ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
             else:
                 allure.attach(f"等待了70分钟仍未检测到快照创建", name="等待超时")
                 pytest.fail("等待快照创建超时")
-            ecs_page.assert_status(vm_name)
 
-        with allure_step_log("步骤5: 验证虚机解除绑定策略"):
+        with allure_step_log("步骤5: 虚机详情页验证快照"):
+            ecs_page.goto_submenu("弹性云服务器")
+            ecs_page.assert_status(vm_name)
+            ecs_page.assert_ecs_details_info(vm_name, {f"{snapshot_name}": "可用"}, tab="快照")
+
+        with allure_step_log("步骤7: 验证虚机解除绑定策略"):
             ecs_page.goto_submenu("快照策略")
             ecs_page.ecss_unbind_snapshot_policy(vm_name, policy)
 
-        with allure_step_log("步骤6: 清理测试数据"):
+        with allure_step_log("步骤6: 删除快照"):
             ecs_page.ecss_delete(snapshot_name)
+            ecs_page.assert_deleted(snapshot_name, refresh=True)

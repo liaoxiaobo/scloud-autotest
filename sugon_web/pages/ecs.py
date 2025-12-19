@@ -2029,8 +2029,7 @@ class EcsPage(OpsPage):
             self.select_rows_by_names(names)
             self.get_by_text("批量解绑").click()
             self.dialog_confirm.click()
-            self.wait_for_operation_complete()
-            self.dialog_close.click()
+            self.get_by_label("实例", exact=True).get_by_label("Close").click()
 
     @submenu("弹性云服务器")
     def ecs_hot_migration_options(self, name) -> list:
@@ -2297,16 +2296,16 @@ class EcsPage(OpsPage):
 
             # 检查虚拟机状态
             try:
-                self.goto_submenu("弹性云服务器")
+                self.locator(".el-icon-refresh").click()
                 status = self.get_row_data(vm_name).get("状态", "")
 
-                if "网络" in status:
+                if "创建快照中" in status:
                     logger.info(f"检测到虚拟机 {vm_name} 开始创建快照")
                     return True
             except Exception as e:
                 logger.warning(f"检查虚拟机状态时出错: {str(e)}")
 
-            # 如果轮询时间超过5分钟，退出
+            # 如果轮询时间超过3分钟，退出
             if polling_started and (time.time() - polling_start_time) > polling_duration:
                 logger.warning(f"轮询 {polling_duration} 秒后仍未检测到快照创建")
                 break
@@ -2314,6 +2313,6 @@ class EcsPage(OpsPage):
             # 轮询间隔3秒
             self.page.wait_for_timeout(3000)
 
-        # 只有在真正超时后才返回False
-        logger.warning(f"等待快照创建超时")
-        return False
+        # 只有在真正超时后返回True
+        logger.warning(f"等待快照创建状态超时, 检查快照")
+        return True
