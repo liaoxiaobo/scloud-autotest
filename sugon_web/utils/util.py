@@ -6,6 +6,9 @@ from typing import List, Dict, Any
 from faker import Faker
 import yaml
 from pathlib import Path
+import pytest
+from functools import wraps
+from sugon_web.config.config import Config
 
 fake = Faker(locale="zh_CN")
 
@@ -117,3 +120,68 @@ def random_string(k: int) -> str:
     """生成指定长度的随机字符串（小写字母+数字）"""
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=k))
 
+
+def skip_stor(*stor_value):
+    """
+    存储类型跳过装饰器
+
+    当当前配置的存储类型在指定的列表中时，跳过测试用例。
+
+    Args:
+        *stor_value: 需要跳过测试的存储类型列表
+
+    Examples:
+        @skip_stor('ceph')
+        def test_function(self):
+            pass
+
+        @skip_stor('ceph', 'usan')
+        def test_function(self):
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            stor = Config.get("stor")
+            if stor in stor_value:
+                pytest.skip(f"{stor}存储不支持该测试用例")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def only_stor(*stor_value):
+    """
+    存储类型支持装饰器
+
+    当当前配置的存储类型不在指定的列表中时，跳过测试用例。
+    与skip_stor装饰器逻辑相反，此装饰器指定只支持的存储类型。
+
+    Args:
+        *stor_value: 支持测试的存储类型列表
+
+    Examples:
+        @only_stor('ceph')
+        def test_function(self):
+            pass
+
+        @only_stor('ceph', 'usan')
+        def test_function(self):
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            stor = Config.get("stor")
+            if stor not in stor_value:
+                supported = ", ".join(stor_value)
+                pytest.skip(f"此测试用例仅支持 {supported} 存储，当前为 {stor}")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator

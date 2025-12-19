@@ -1,0 +1,58 @@
+# =============================================================================
+# SugonCloud Web 自动化测试框架 - 基础配置文件
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 浏览器配置
+# -----------------------------------------------------------------------------
+
+# 浏览器类型 (chromium/firefox/webkit)
+browser: chromium
+
+# 无头模式 (true无界面/false有界面)
+headless: false
+
+# 操作超时时间(毫秒)
+timeout: 10000
+
+# 操作延迟时间(毫秒)
+slow_mo: 0
+
+# -----------------------------------------------------------------------------
+# 环境通用配置
+# -----------------------------------------------------------------------------
+# 默认测试环境地址
+host: 172.22.1.190
+
+# 存储池类型 (ceph/usan/local/nfs/xstor等)
+stor: xstor
+
+# 默认测试数据
+data: Autotest
+
+# 登录用户名
+username: admin
+
+# 登录密码
+password: keystone_sugon
+
+# 镜像源地址
+image_source: http://172.22.5.66:9090/liaoxb/test_image_dontdel/
+
+# 默认测试镜像
+image: centos7.9_test.raw
+
+# SSH私钥名称
+pkey: pkey_scloudadmin
+
+# XStor存储配置
+xstor: |
+  iscsi_helper=lioadm
+  volume_group=cinder-volumes
+  thin_provision=1
+  srv_port=3260
+  username=optadmin
+  password=NzBfMTA1XzExNF8xMTBfMTE1XzY5XzU0XzU1XzU2
+  iscsi_restful_ip=172.22.1.61
+  iscsi_svip=172.22.88.60
+  storage_pool_id=5
