@@ -141,21 +141,32 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证编辑功能")
-    def test_ecs_edit(self, ecs_page, vm, ssh_vm):
-        name = vm.get("name")
-        new_name = random_data()
+    def test_ecs_edit(self, ecs_page, ssh_vm):
+        name = random_data()
+        new_name = random_data(length=6)
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 编辑弹性云服务器"):
+        with allure_step_log("步骤1: 创建弹性云服务器"):
+            ecs_page.ecs_create(name)
+            ecs_page.assert_popup_success(f"创建实例命令下发成功")
+            ecs_page.assert_status(name)
+            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
+            mfip = ecs_page.bind_mfip(ip)
+
+        with allure_step_log("步骤2: 编辑弹性云服务器"):
+            ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_edit(name, new_name)
 
-        with allure_step_log("步骤2: 验证编辑结果"):
+        with allure_step_log("步骤3: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
-            ssh_vm.connect(vm['mfip'])
+            ssh_vm.connect(mfip)
             assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
 
-        with allure_step_log("步骤3: 清理测试数据"):
-            ecs_page.ecs_edit(new_name, name)
+        with allure_step_log("步骤4: 清理测试数据"):
+            ecs_page.ecs_remove(new_name)
+            ecs_page.ecs_delete(new_name)
+            ecs_page.assert_deleted(new_name)
+
 
     @allure.title("验证克隆功能")
     def test_ecs_clone(self, ecs_page, vm, ssh_vm):

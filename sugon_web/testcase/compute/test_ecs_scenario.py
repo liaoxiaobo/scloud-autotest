@@ -83,7 +83,7 @@ class TestECSScenario:
             evs_page.assert_deleted(clone_name)
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
-    @skip_stor("ceph","xbd",'xstor',"zbs")
+    @skip_stor("usan", "local", 'nfs')
     def test_ecs_snapshot_vm(self, ecs_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 

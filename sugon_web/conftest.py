@@ -113,6 +113,9 @@ def page(config):
                 # 关闭弹窗
                 base_page = BasePage(page)
                 base_page.close_dialog_if_exists()
+                base_page.get_by_placeholder("请选择").click()
+                base_page.get_by_text("RegionTwo").click()
+                base_page.wait_for_page_ready()
 
             yield page
 
@@ -210,7 +213,8 @@ def pytest_runtest_makereport(item, call):
 @pytest.fixture(scope="session")
 def ssh_host(config):
     """创建直接连接到目标主机的SSH会话，不使用跳板机"""
-    host = config.get("host")
+    # host = config.get("host")
+    host = "172.22.1.189"
     pkey = config.get("pkey")
 
     ssh = SSH()
@@ -222,7 +226,8 @@ def ssh_host(config):
 @pytest.fixture(scope="session")
 def jump_host(config):
     """创建并配置跳板机连接"""
-    host = config.get("host")
+    # host = config.get("host")
+    host = "172.22.1.189"
     pkey = config.get("pkey")
 
     ssh = SSH()

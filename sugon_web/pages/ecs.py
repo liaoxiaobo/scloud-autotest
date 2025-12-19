@@ -157,6 +157,7 @@ class EcsPage(OpsPage):
 
         # 选择具体镜像
         self.get_by_role("textbox", name="请选择镜像").click()
+        expect(self.get_by_title(image_name, exact=True)).to_be_visible()
         self.get_by_title(image_name, exact=True).click()
         logger.info(f"已选择存储池镜像: {image_name}")
 
