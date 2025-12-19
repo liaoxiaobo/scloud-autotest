@@ -1,6 +1,4 @@
 import re
-from time import sleep
-
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils import db_util
 

@@ -1,7 +1,8 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.util import random_data, load_data, skip_stor
+
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
@@ -138,6 +139,7 @@ class TestEVSBasic:
             assert evs_page.get_row_data(volume["name"]).get("挂载信息") == "--"
             assert ssh_vm.run(f"lsblk | grep {disk_name}") == ""
 
+    @skip_stor("local")
     @allure.title("云硬盘-转镜像")
     def test_volume_convert_to_image(self, ecs_page, evs_page, ssh_host):
 
@@ -232,6 +234,7 @@ class TestEVSBasic:
             evs_page.evs_restore(volume["name"])
             evs_page.assert_popup_success(f"云硬盘{volume['name']}移出回收站成功")
 
+    @skip_stor("local","usan",'nfs')
     @allure.title("云硬盘-安全删除")
     def test_volume_secure_delete(self, evs_page, ssh_host):
 

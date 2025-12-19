@@ -1,7 +1,8 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.util import random_data, load_data, only_stor
+
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
@@ -15,7 +16,7 @@ class TestEVSCreate:
         # 如果是共享盘测试，检查当前存储类型是否支持
         if params.get('shared', False):
             supported_storages = ['xstor', 'xbd', 'ceph', 'ustor', 'zbs']
-            current_storage = evs_page.env['stor']
+            current_storage = evs_page.stor
 
             if current_storage not in supported_storages:
                 pytest.skip(f"当前存储类型 {current_storage} 不支持创建共享云硬盘，跳过测试")
@@ -46,15 +47,10 @@ class TestEVSCreate:
             evs_page.assert_deleted(name)
             assert ssh_host.run(f"cinder list| grep {name}") == ""
 
+    @only_stor("xstor","usan")
     @allure.title("创建HCT加密类型的云硬盘")
     def test_create_hct_encrypted_volume(self, evs_page, kms_key:dict, ssh_host):
 
-        # 检查当前存储类型是否支持加密功能
-        supported_storages = ['usan', 'xstor']
-        current_storage = evs_page.env['stor']
-
-        if current_storage not in supported_storages:
-            pytest.skip(f"当前存储类型 {current_storage} 不支持创建加密云硬盘，跳过测试")
         # 进入云硬盘页面
         evs_page.goto_service("云硬盘")
 
@@ -85,16 +81,11 @@ class TestEVSCreate:
             evs_page.assert_deleted(volume_name)
             assert ssh_host.run(f"cinder list| grep {volume_name}") == ""
 
+    @only_stor("xstor","usan")
     @allure.title("创建OPENSSL纯软加密类型的云硬盘")
     @pytest.mark.parametrize("kms_key", ["OPENSSL纯软"], indirect=True)
     def test_create_openssl_encrypted_volume(self, evs_page, kms_key:dict, ssh_host):
 
-        # 检查当前存储类型是否支持加密功能
-        supported_storages = ['usan', 'xstor']
-        current_storage = evs_page.env['stor']
-
-        if current_storage not in supported_storages:
-            pytest.skip(f"当前存储类型 {current_storage} 不支持创建加密云硬盘，跳过测试")
         # 进入云硬盘页面
         evs_page.goto_service("云硬盘")
 

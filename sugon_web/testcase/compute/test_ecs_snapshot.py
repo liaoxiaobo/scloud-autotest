@@ -124,7 +124,7 @@ class TestECSS:
 
         with allure_step_log("步骤5: 重建虚机并删除快照"):
             image = ecs_page.storage_pool  # 获取存储池同名镜像
-            if ecs_page.env["stor"] not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
+            if ecs_page.stor not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
                 ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
                 ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据

@@ -1,10 +1,8 @@
 import time
 import allure
-import pytest
-
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.util import random_data, only_stor
 
 
 @allure.epic('计算服务')
@@ -130,15 +128,10 @@ class TestECSRecycle:
                 ecs_page.assert_deleted(name)
                 assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
 
+    @only_stor('xstor')
     @allure.title("安全删除功能验证")
     def test_ecs_recycle_secure_delete(self, ecs_page, ssh_host):
         """测试弹性云服务器删除功能，包括普通删除和安全删除"""
-        # 获取要删除的ECS实例名称
-        supported_storages = ['xstor']
-        current_storage = ecs_page.env['stor']
-
-        if current_storage not in supported_storages:
-            pytest.skip(f"当前存储类型 {current_storage} 不支持安全删除，跳过测试")
 
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):

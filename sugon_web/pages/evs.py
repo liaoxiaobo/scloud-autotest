@@ -1,11 +1,7 @@
 from sugon_web.common.base import BasePage, submenu
-from playwright.sync_api import Page
 import re
 
 class EvsPage(BasePage):
-    # 云硬盘页面
-    def __init__(self, page: Page, env: dict) -> None:
-        super().__init__(page, env)
 
     @property
     def _input_name(self):
@@ -91,23 +87,6 @@ class EvsPage(BasePage):
             encrypted: 是否创建加密云硬盘，默认False
             encryption_key: 加密密钥ID，当encrypted为True时使用
         """
-        current_storage = self.env['stor']
-
-        # 存储类型支持映射
-        STORAGE_SUPPORT = {
-            'encrypted': ['xstor', 'usan'],  # 支持加密的存储类型
-            'shared': ['xstor', 'xbd', 'ceph', 'ustor', 'zbs']  # 支持共享的存储类型
-        }
-
-        # 验证存储类型支持
-        if encrypted and current_storage not in STORAGE_SUPPORT['encrypted']:
-            raise ValueError(
-                f"当前存储类型 {current_storage} 不支持创建加密云硬盘，支持的存储类型: {', '.join(STORAGE_SUPPORT['encrypted'])}")
-
-        if shared and current_storage not in STORAGE_SUPPORT['shared']:
-            raise ValueError(
-                f"当前存储类型 {current_storage} 不支持创建共享云硬盘，支持的存储类型: {', '.join(STORAGE_SUPPORT['shared'])}")
-
         # 加密盘不能是共享盘
         if encrypted and shared:
             raise ValueError("加密云硬盘不支持共享模式，请将shared参数设置为False")

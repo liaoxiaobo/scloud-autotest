@@ -1,6 +1,5 @@
 import pytest
 from playwright.sync_api import expect
-
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
@@ -28,17 +27,17 @@ def close_dialog_before_test(page):
     yield
 
 @pytest.fixture(scope="module")
-def login_page(page, env):
+def login_page(page):
     """初始化登录页对象"""
-    login_page = LoginPage(page, env)
+    login_page = LoginPage(page)
     login_page.logout()   # 登录测试用例需要先退出登录状态
     return login_page
 
 
 @pytest.fixture(scope="module")
-def evs_page(page, env):
+def evs_page(page):
     """初始化云硬盘页对象"""
-    evs_page = EvsPage(page, env)
+    evs_page = EvsPage(page)
     evs_page.goto_service('云硬盘')
     return evs_page
 
@@ -89,32 +88,32 @@ def volume(evs_page, request):
 
 
 @pytest.fixture(scope="module")
-def ecs_page(page, env):
+def ecs_page(page):
     """初始化弹性云服务器页对象"""
-    ecs_page = EcsPage(page, env)
+    ecs_page = EcsPage(page)
     ecs_page.goto_service('弹性云服务器')
     return ecs_page
 
 @pytest.fixture(scope="class")
-def ops_page(page, env):
+def ops_page(page):
     """初始化运维管理页对象"""
-    ops_page = OpsPage(page, env)
+    ops_page = OpsPage(page)
     ops_page.goto_service('网络设施')
     return ops_page
 
 
 @pytest.fixture(scope="class")
-def mysql_page(page, env):
+def mysql_page(page):
     """初始化MySQL实例管理页面"""
-    mysql_page = MySQLPage(page, env)
+    mysql_page = MySQLPage(page)
     mysql_page.goto_service('AnhanDB(for MySQL)')
     return mysql_page
 
 
 @pytest.fixture(scope="class")
-def doris_page(page, env):
+def doris_page(page):
     """初始化Doris实例管理页面"""
-    doris_page = DorisPage(page, env)
+    doris_page = DorisPage(page)
     doris_page.goto_service('数据仓库 Doris')
     return doris_page
 
@@ -298,9 +297,9 @@ def evss(evs_page, volume):
 
 
 @pytest.fixture
-def kms_page(page, env):
+def kms_page(page):
     """创建密钥管理页面对象并导航到密钥管理页面"""
-    kms = KmsPage(page, env)
+    kms = KmsPage(page)
     kms.goto_service("可信密码模块")
 
     # 检查是否已授权

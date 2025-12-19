@@ -1,18 +1,9 @@
 import pytest
-from playwright.sync_api import Page
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
 
 class OpsPage(BasePage):
-    def __init__(self, page: Page, env):
-        super().__init__(page, env)
-
-    # def goto_mfip_page(self):
-    #     """导航到 MFIP 页面"""
-    #     self.page.goto("https://172.22.3.140:30000/ops/#/sdn-mfip-list")
-    #     self.page.get_by_text("网络设施").click()
-    #     self.page.get_by_text("MFIP", exact=True).click()
 
     @submenu("MFIP")
     def mfip_create(self, project: str, network: str, ip: str):

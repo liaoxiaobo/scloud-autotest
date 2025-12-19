@@ -3,7 +3,6 @@ import random
 import re
 import time
 from time import sleep
-
 import allure
 import pytest
 from playwright.sync_api import expect
@@ -13,8 +12,6 @@ from sugon_web.utils.logger import logger
 
 
 class EcsPage(OpsPage):
-    def __init__(self, page, env):
-        super().__init__(page, env)
 
     @submenu("弹性云服务器")
     def ecs_create(

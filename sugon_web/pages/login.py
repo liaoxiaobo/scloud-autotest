@@ -2,8 +2,8 @@ from sugon_web.common.base import BasePage
 
 class LoginPage(BasePage):
 
-    def __init__(self, page, env):
-        super().__init__(page, env)
+    def __init__(self, page):
+        super().__init__(page)
 
     def login(self, name: str, pwd: str):
         """执行登录操作
