@@ -59,6 +59,23 @@ class EvsPage(BasePage):
         # 等待页面加载完成
         self.page.wait_for_timeout(1000)
 
+    def _select_host(self, name=None):
+        """选择物理机
+
+        Args:
+            name: 物理机名称，如果为None则默认选择第一个选项
+        """
+        # 点击物理机下拉框
+        self.page.locator("form div").filter(has_text="物理机").get_by_placeholder("请选择").click()
+
+        if name is not None:
+            # 如果指定了物理机名称，选择指定的物理机
+            self.get_by_text(name).click()
+        else:
+            # 如果没有指定物理机名称，选择第一个选项
+            self.page.keyboard.press("ArrowDown")
+            self.page.keyboard.press("Enter")
+
     @submenu("云硬盘")
     def evs_create(
             self,
@@ -71,7 +88,8 @@ class EvsPage(BasePage):
             desc="",
             shared=False,
             encrypted=False,
-            encryption_key=""
+            encryption_key="",
+            host=None
     ):
         """创建云硬盘
 
@@ -86,6 +104,7 @@ class EvsPage(BasePage):
             shared: 是否创建共享云硬盘，默认False
             encrypted: 是否创建加密云硬盘，默认False
             encryption_key: 加密密钥ID，当encrypted为True时使用
+            host: 物理机名称，当volume_type为local-type时必选
         """
         # 加密盘不能是共享盘
         if encrypted and shared:
@@ -109,6 +128,10 @@ class EvsPage(BasePage):
         # 选择云硬盘类型
         volume_type = volume_type or self.volume_type
         self._select_volume_type(volume_type)
+
+        # 如果云硬盘类型为local-type，选择物理机
+        if volume_type == "local-type":
+            self._select_host(host)
 
         if not empty:
             image_name = image_name or self.storage_pool
