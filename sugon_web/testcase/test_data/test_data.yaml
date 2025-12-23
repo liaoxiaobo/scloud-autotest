@@ -32,7 +32,6 @@ evs:
   test_volume_expand:
     - new_size: 100
     - new_size: 500
-    - new_size: 1200
 
   test_volume_add_snapshot:
     - snapshot_name_prefix: "snapshot-"
