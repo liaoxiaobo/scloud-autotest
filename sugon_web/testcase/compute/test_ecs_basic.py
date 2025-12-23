@@ -791,7 +791,7 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"修改vnc密码成功")
 
     @allure.title("验证安装工具&卸载工具功能")
-    def _test_ecs_install_uninstall_tools(self, ecs_page, image, vm, ssh_vm):
+    def test_ecs_install_uninstall_tools(self, ecs_page, vm, ssh_vm):
         """云服务器安安装工具&卸载工具功能验证
 
         Args:
@@ -806,22 +806,22 @@ class TestECSBasic:
             # 调用安装工具方法
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
+            ecs_page.close_dialog_if_exists()
 
         with allure_step_log(f"步骤2: 为云服务器{name}安装工具-虚机控制台安装"):
             # 验证工具安装结果
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run("mkdir /mnt/cdrom")
-            try:
-                ssh_vm.run("mount /dev/sr0 /mnt/cdrom")
-            except:
-                ssh_vm.run("mount /dev/sr1 /mnt/cdrom")
-            ssh_vm.run("cd /mnt/cdrom/linux")
-            ssh_vm.run("bash ./stools.sh")
+            for device in ["/dev/sr0", "/dev/sr1"]:
+                output = ssh_vm.run(f"mount {device} /mnt/cdrom", return_stderr=True)
+                # 成功挂载会显示 "mounting read-only"
+                if "mounting read-only" in output.get("stderr"):
+                    break
+            assert "Success to connect to the server" in ssh_vm.run(r"cd /mnt/cdrom/linux && bash ./stools.sh")
 
-        with allure_step_log(f"步骤2: 为云服务器 {name} 卸载工具"):
+        with allure_step_log(f"步骤3: 为云服务器 {name} 卸载工具"):
             # 调用卸载工具方法
-            ssh_vm.run("cd ~")
-            ssh_vm.run("umount /mnt/cdrom")
+            ssh_vm.run("cd ~ && umount /mnt/cdrom")
             ecs_page.ecs_uninstall_tools(name)
 
     @allure.title("验证列表页搜索&重置")

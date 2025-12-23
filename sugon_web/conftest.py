@@ -11,7 +11,6 @@ from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
 
-
 def pytest_addoption(parser):
     """添加命令行参数支持"""
     parser.addoption("--host", action="store", help="指定测试环境的主机地址")
@@ -94,7 +93,10 @@ def page(config):
             logger.info("浏览器启动成功")
 
             logger.info("创建浏览器上下文...")
-            context = browser.new_context(ignore_https_errors=True)  # 显式设置忽略 SSL 错误
+            context = browser.new_context(
+                ignore_https_errors=True, # 显式设置忽略 SSL 错误
+                viewport={'width': 1600, 'height': 900}
+                )
             logger.info("浏览器上下文创建成功")
 
             logger.info("创建新页面...")
