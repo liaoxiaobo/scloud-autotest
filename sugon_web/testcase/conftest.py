@@ -66,9 +66,9 @@ def volume(evs_page, request):
     desc = params.get('desc', '')
     shared = params.get('shared', False)
 
-    # 当存储类型为 local 时，动态获取 vm fixture 的 host 信息
+    # 当存储类型为 local 时，且测试用例引用了 vm fixture 时，才动态获取 host 信息
     host = None
-    if evs_page.stor == 'local':
+    if evs_page.stor == 'local' and 'vm' in request.fixturenames:
         resource = request.getfixturevalue('vm')
         host = resource.get('host')
         logger.info(f"检测到存储类型为{evs_page.stor}，从虚机 {resource['name']} 获取 host: {host}")

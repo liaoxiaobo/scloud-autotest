@@ -1,5 +1,4 @@
 import datetime
-import os
 import pytest
 import allure
 from datetime import datetime
@@ -158,16 +157,20 @@ def pytest_runtest_makereport(item, call):
             if page:
                 try:
                     logger.info(f"开始生成失败截图")
-                    # 生成截图
-                    screenshot_dir = "screenshots"
-                    os.makedirs(screenshot_dir, exist_ok=True)
+                    # 获取项目根目录
+                    current_dir = Path(__file__).resolve().parent
+                    project_root = current_dir.parent
+
+                    # 创建 screenshots 目录
+                    screenshot_dir = project_root / "screenshots"
+                    screenshot_dir.mkdir(exist_ok=True)
+
+                    # 生成截图路径
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    screenshot_path = os.path.join(
-                        screenshot_dir, f"{item.name}_{timestamp}.png"
-                    )
+                    screenshot_path = screenshot_dir / f"{item.name}_{timestamp}.png"
 
                     # 保存截图到文件
-                    page.screenshot(path=screenshot_path)
+                    page.screenshot(path=str(screenshot_path))
                     logger.info(f"截图保存成功: {screenshot_path}")
 
                     # 记录失败时的页面信息
