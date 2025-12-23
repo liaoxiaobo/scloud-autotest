@@ -807,6 +807,7 @@ class TestECSBasic:
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()
+            assert ecs_page.get_row_data(name).get("挂载云硬盘").startswith("cdrom-")
 
         with allure_step_log(f"步骤2: 为云服务器{name}安装工具-虚机控制台安装"):
             # 验证工具安装结果
@@ -817,12 +818,14 @@ class TestECSBasic:
                 # 成功挂载会显示 "mounting read-only"
                 if "mounting read-only" in output.get("stderr"):
                     break
-            assert "Success to connect to the server" in ssh_vm.run(r"cd /mnt/cdrom/linux && bash ./stools.sh")
+            ssh_vm.run(r"cd /mnt/cdrom/linux && bash ./stools.sh")
+            assert "active (running)" in ssh_vm.run("systemctl status fs-proxy")
 
         with allure_step_log(f"步骤3: 为云服务器 {name} 卸载工具"):
             # 调用卸载工具方法
             ssh_vm.run("cd ~ && umount /mnt/cdrom")
             ecs_page.ecs_uninstall_tools(name)
+            assert ecs_page.get_row_data(name).get("挂载云硬盘") == "--"
 
     @allure.title("验证列表页搜索&重置")
     def test_ecs_search(self, ecs_page, vm):

@@ -1881,6 +1881,7 @@ class EcsPage(OpsPage):
         for label_name in label_names:
             self.locator("li").filter(has_text=label_name).click()
 
+        self.get_by_placeholder("请选择标签").click() # 确保标签列表收起
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")
