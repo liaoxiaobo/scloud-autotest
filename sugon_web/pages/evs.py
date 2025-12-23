@@ -70,7 +70,7 @@ class EvsPage(BasePage):
 
         if name is not None:
             # 如果指定了物理机名称，选择指定的物理机
-            self.get_by_text(name).click()
+            self.get_by_text(name + ',').click()    # 这里的逗号是必需的，否则会匹配到其他的选项
         else:
             # 如果没有指定物理机名称，选择第一个选项
             self.page.keyboard.press("ArrowDown")
@@ -112,6 +112,8 @@ class EvsPage(BasePage):
 
         # 打开创建页面
         self.btn_create.click()
+        # 等待页面加载完成
+        self.wait_for_page_ready()
 
         # 填写基本信息
         self._input_name.fill(name)
@@ -130,7 +132,7 @@ class EvsPage(BasePage):
         self._select_volume_type(volume_type)
 
         # 如果云硬盘类型为local-type，选择物理机
-        if volume_type == "local-type":
+        if self.stor == "local":
             self._select_host(host)
 
         if not empty:

@@ -6,7 +6,7 @@ from sugon_web.utils.util import random_data, load_data, only_stor
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
-@allure.story('云硬盘-加密功能验证')
+@allure.story('云硬盘-创建功能验证')
 class TestEVSCreate:
 
     @allure.title("云硬盘-创建&删除")
