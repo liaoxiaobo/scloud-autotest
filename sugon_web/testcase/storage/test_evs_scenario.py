@@ -2,7 +2,7 @@ import re
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.util import random_data, skip_stor
 
 @allure.epic('存储服务')
 @allure.feature('云硬盘')
@@ -11,14 +11,6 @@ class TestEVSScenario:
 
     @allure.title("云硬盘快照-数据一致性验证")
     def test_volume_snapshot_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
-        """测试云硬盘快照数据一致性
-
-        测试场景：
-        1. 虚机内挂载一块云硬盘A，并且往云硬盘分区写测试文件
-        2. 基于该云硬盘创建快照，接着使用快照创建一块新的云硬盘B
-        3. 虚机内继续挂载云硬盘B
-        4. MD5验证云硬盘B存在该测试文件，两块云硬盘的数据一致
-        """
 
         with allure_step_log("步骤1: 虚机内挂载云硬盘A并写入测试文件"):
             # 挂载云硬盘A到虚机
@@ -171,17 +163,11 @@ class TestEVSScenario:
             evs_page.evs_unmount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
 
+    @skip_stor("local", "nfs", "usan")
     @allure.title("共享云硬盘-多实例挂载数据一致性验证")
     @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
     @pytest.mark.parametrize("volume", [{"shared": True, "size": 10}], indirect=True)
     def test_shared_volume_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
-        """
-        测试共享云硬盘数据一致性：
-        1. 通过fixture预置两台云服务器和一块共享云盘
-        2. 将该云硬盘挂载到一台云服务器A上，并对盘进行格式化挂载写入测试文件
-        3. 将该云硬盘挂载到一台云服务器实例B上，进行挂载后可以看到步骤2的测试文件
-        4. 云服务器B上写一个新文件，验证云服务器A上也能查看到该文件，md5值一致
-        """
 
         # 获取两台云服务器信息
         vm_a = vm[0]

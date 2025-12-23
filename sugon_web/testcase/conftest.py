@@ -48,7 +48,8 @@ def volume(evs_page, request):
     """初始化云硬盘数据
 
     Args:
-        request: pytest fixture，用于获取参数
+        evs_page: 云硬盘页面对象
+        request: pytest fixture，用于获取参数和动态获取其他 fixture
         request.param: 包含云硬盘配置的字典，例如：
             {
                 "empty": True,  # 是否创建空白云硬盘，默认为True
@@ -66,16 +67,28 @@ def volume(evs_page, request):
     desc = params.get('desc', '')
     shared = params.get('shared', False)
 
+    # 当存储类型为 local 时，且测试用例引用了 vm fixture 时，才动态获取 host 信息
+    host = None
+    if evs_page.stor == 'local' and 'vm' in request.fixturenames:
+        resource = request.getfixturevalue('vm')
+        host = resource.get('host')
+        logger.info(f"检测到存储类型为{evs_page.stor}，从虚机 {resource['name']} 获取 host: {host}")
+
     name = random_data()
     evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
-    evs_page.evs_create(
-        name=name,
-        empty=empty,
-        image_name=image_name,
-        size=size,
-        desc=desc,
-        shared=shared
-    )
+
+    # 构建云硬盘创建参数
+    create_kwargs = {
+        "name": name,
+        "empty": empty,
+        "image_name": image_name,
+        "size": size,
+        "desc": desc,
+        "shared": shared,
+        "host": host
+    }
+
+    evs_page.evs_create(**create_kwargs)
     evs_page.assert_popup_success()
     evs_page.assert_status(name, status="可用")
     volume = {"name": name}
