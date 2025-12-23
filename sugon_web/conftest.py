@@ -93,9 +93,9 @@ def page(config):
 
             logger.info("创建浏览器上下文...")
             context = browser.new_context(
-                ignore_https_errors=True, # 显式设置忽略 SSL 错误
-                viewport={'width': 1600, 'height': 900}
-                )
+                ignore_https_errors=True,  # 忽略 SSL 错误
+                permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+            )
             logger.info("浏览器上下文创建成功")
 
             logger.info("创建新页面...")

@@ -185,3 +185,17 @@ def only_stor(*stor_value):
         return wrapper
 
     return decorator
+
+
+def get_output(strs):
+    """将openstack命令输出内容转为字典"""
+    result = {}
+    strs = strs.replace("+", "")
+    strs = strs.strip()
+    l = strs.split("|")
+    for i, v in enumerate(l):
+        if i % 3 == 1:
+            result[v.strip()] = l[i + 1].strip()
+        else:
+            continue
+    return result

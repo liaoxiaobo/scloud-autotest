@@ -1,9 +1,9 @@
 import pytest
 from playwright.sync_api import expect
-
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.mysql import MySQLPage
 from sugon_web.pages.doris import DorisPage
@@ -565,3 +565,77 @@ def affinity(ecs_page, request):
         logger.info(f"已创建标签: {label_name}")
 
     yield label_names
+
+
+@pytest.fixture(scope="module")
+def vpc_page(page):
+    """初始化虚拟私有云页面对象"""
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service('虚拟私有云')
+    return vpc_page
+
+
+@pytest.fixture(scope="class")
+def vpc(vpc_page, request):
+    """
+    创建并返回一个VPC资源数据，测试结束后自动清理
+
+    支持参数化配置，可通过pytest.mark.parametrize传入参数：
+    - name: VPC名称，如果未指定则随机生成
+    - subnet_name: 子网名称
+    - cidr: 子网CIDR
+    - desc: VPC描述
+    - subnet_desc: 子网描述
+    - network_type: 网络类型（Geneve/Vlan/Flat）
+    - gateway_mode: 网关模式（分布式网关/集中式网关）
+    - vlan_id: VLAN ID
+    - gateway_ip: 网关IP
+
+    Args:
+        vpc_page: VPC页面对象
+        request: pytest的request对象，用于获取测试用例传递的参数
+
+    Returns:
+        dict: 包含VPC信息的字典，例如：
+            {
+                "name": "autotest-abc123",
+                "subnet_name": "subnet-xyz789",
+                "cidr": "10.0.0.0/24",
+                "network_type": "Geneve"
+            }
+
+    Yields:
+        dict: VPC信息字典，测试用例执行后自动清理
+    """
+
+
+    # 获取参数，如果没有提供则使用默认值
+    params = getattr(request, 'param', {})
+
+    name = params.get('name', random_data())
+    print(params.get('vlan_id'))
+
+    # 构建创建参数
+    create_kwargs = {
+        "name": name,
+        "subnet_name": params.get('subnet_name', random_data()),
+        "cidr": params.get('cidr', random_data("cidr")),
+        "network_type": params.get('network_type', 'Geneve'),
+        "gateway_mode": params.get('gateway_mode', "分布式网关"),
+        "vlan_id": params.get('vlan_id')
+    }
+
+    # 创建VPC
+    vpc_page.vpc_create(**create_kwargs)
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    vpc_page.assert_status(name)
+
+    # 构建返回的VPC信息
+    vpc_data = create_kwargs
+
+    yield vpc_data
+
+    # 清理VPC
+    vpc_page.vpc_delete(name)
+    vpc_page.assert_deleted(name)
+
