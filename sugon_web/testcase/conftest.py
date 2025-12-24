@@ -203,7 +203,7 @@ def vm(ecs_page, request):
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
-    root_gb = params.get('root_gb', 100)
+    root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
     name = random_data()
@@ -247,7 +247,8 @@ def vm(ecs_page, request):
             ecs_page.mfip_create(vm_data["project"], "Autotest", vm_data["ip"])
             ecs_page.assert_popup_success()
             ecs_page.mfip_search(vm_data["ip"])
-            vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+            # vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+            vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
         ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
 
     # 根据虚机数量返回不同类型的数据
