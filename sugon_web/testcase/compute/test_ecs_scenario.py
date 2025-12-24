@@ -3,7 +3,7 @@ import re
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.util import random_data, skip_stor
 
 
 @allure.epic('计算服务')
@@ -83,13 +83,13 @@ class TestECSScenario:
             evs_page.assert_deleted(clone_name)
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
+    @skip_stor("usan", "local", 'nfs')
     def test_ecs_snapshot_vm(self, ecs_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
         vm_name = vm.get("name")
         volume_name = volume.get("name")
-        disk_name = ""
         snapshot_name = f"snapshot_{vm_name}"
         new_vm = f"{vm_name}-1"
 

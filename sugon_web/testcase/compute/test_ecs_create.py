@@ -1,7 +1,7 @@
 import allure
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.util import random_data, skip_stor
 
 
 @allure.epic('计算服务')
@@ -26,6 +26,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 快照来源")
+    @skip_stor("usan")
     def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")

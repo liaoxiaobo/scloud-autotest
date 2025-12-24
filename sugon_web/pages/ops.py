@@ -1,4 +1,5 @@
 import pytest
+from playwright.sync_api import expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
@@ -10,14 +11,11 @@ class OpsPage(BasePage):
         """创建 MFIP"""
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
-        self.get_by_placeholder("请选择项目").fill(project)
         self.get_by_title(project).click()
         self.get_by_placeholder("请选择网络").click()
-        self.get_by_placeholder("请选择网络").fill(network)
         # self.page.wait_for_timeout(2000)    # 等待下拉列表数据加载完成
         self.get_by_text(network, exact=True).click()
         self.get_by_placeholder("请选择端口").click()
-        self.get_by_placeholder("请选择端口").fill(ip)
         self.get_by_text(ip, exact=True).click()
         self.get_by_text("确定").click()
 
