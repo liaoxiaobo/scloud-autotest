@@ -193,7 +193,9 @@ class BasePage(Playwright):
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")   # 云硬盘删除对话框
+            self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span"),   # 云硬盘删除对话框
+            self.locator(".sure-footer > div > .cloud-button-btn").first
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")
@@ -673,12 +675,32 @@ class BasePage(Playwright):
 
     def get_row_by_name(self, name: str) -> Locator:
         """公共方法：根据名称查找数据行，用于获取单个或第一个匹配的行（前缀匹配优先）"""
-        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-
-        if target_row.count() == 0:
-            raise AssertionError(f"未找到名称为 '{name}' 的数据行")
-
-        return target_row
+        try:
+            target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
+            if target_row.count() > 0:
+                return target_row
+        except Exception as e:
+            self.logger.info(f"前缀匹配失败: {e}")
+        # 如果前缀匹配失败，尝试精确匹配
+        try:
+            target_rows = self.locator("tr")
+            for i in range(target_rows.count()):
+                current_row = target_rows.nth(i)
+                try:
+                    # 获取所有单元格并检查内容
+                    cells = current_row.locator("td")
+                    for j in range(cells.count()):
+                        cell_text = cells.nth(j).text_content()
+                        if cell_text and cell_text.strip() == name:
+                            self.logger.info(f"通过遍历找到 '{name}' 的匹配行")
+                            return current_row
+                except Exception as e:
+                    self.logger.debug(f"检查行 {i} 时出错: {e}")
+                    continue
+        except Exception as e:
+            self.logger.debug(f"遍历表格行失败: {e}")
+        # 所有方法都失败
+        raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
     def get_rows_by_text(self, text: str) -> Locator:
         """公共方法：根据文本查找数据行，用于获取所有匹配的行（包含匹配）"""

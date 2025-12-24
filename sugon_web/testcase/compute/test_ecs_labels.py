@@ -8,7 +8,7 @@ from sugon_web.utils.util import random_data
 @allure.epic('计算服务')
 @allure.feature('标签')
 @allure.story('标签功能验证')
-class TestECSLbaels:
+class TestECSLabels:
     @allure.title("验证创建 & 搜索 & 删除标签功能")
     def test_ecs_create_label(self, ecs_page):
         """测试创建标签功能"""

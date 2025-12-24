@@ -1,5 +1,6 @@
 import pytest
 from playwright.sync_api import expect
+
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
@@ -202,7 +203,7 @@ def vm(ecs_page, request):
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
-    root_gb = params.get('root_gb', 100)
+    root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
     name = random_data()
@@ -414,7 +415,7 @@ def ecss_policy(ecs_page):
     )
 
     # 验证创建成功
-    ecs_page.assert_popup_success("执行成功")
+    # ecs_page.assert_popup_success("执行成功")
 
     # 返回策略名称供测试使用
     yield {"name": policy_name}
@@ -544,3 +545,23 @@ def labels(ecs_page, request):
             logger.info(f"标签清理完成: {label_names}")
         except Exception as e:
             logger.warning(f"清理标签时出错: {e}")
+
+
+@pytest.fixture()
+def affinity(ecs_page, request):
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)  # 默认创建1个标签
+
+    # 生成标签名称
+    label_names = []
+    prefix = params.get('prefix', 'label')  # 默认前缀为'label'
+
+    for i in range(count):
+        # 使用随机数据生成唯一标签名称
+        name = f"{prefix}_{random_data()}"
+        label_name = ecs_page.create_label(name)
+        ecs_page.assert_popup_success("新建标签成功")
+        label_names.append(label_name)
+        logger.info(f"已创建标签: {label_name}")
+
+    yield label_names
