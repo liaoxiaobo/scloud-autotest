@@ -203,7 +203,7 @@ def vm(ecs_page, request):
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
-    root_gb = params.get('root_gb', 100)
+    root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
     name = random_data()

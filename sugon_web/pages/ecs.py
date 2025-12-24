@@ -27,7 +27,7 @@ class EcsPage(OpsPage):
             os_version="centos7.9",
             login_password="admin1234@sugon",
             vnc_password="sugon@20",
-            sys_size=100,
+            sys_size=25,
             **kwargs
     ):
         """创建云服务器
@@ -1881,7 +1881,7 @@ class EcsPage(OpsPage):
         for label_name in label_names:
             self.locator("li").filter(has_text=label_name).click()
 
-        self.get_by_placeholder("请选择标签").click() # 确保标签列表收起
+        self.locator("form i").nth(3).click() # 确保标签列表收起
         self.dialog_confirm.click()
 
     @submenu("弹性云服务器")

@@ -614,7 +614,7 @@ class TestECSBasic:
         """测试弹性云服务器系统盘扩容功能"""
         name = vm.get("name")
         ecs_id  = vm.get("id")
-        new_size = "110"
+        new_size = "30"
         ecs_page.goto_service('弹性云服务器')
 
         with allure_step_log(f"步骤1: 扩容云服务器{name}系统盘至{new_size}GiB"):
