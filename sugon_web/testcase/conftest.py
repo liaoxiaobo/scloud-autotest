@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from playwright.sync_api import expect
 
@@ -18,10 +20,15 @@ def close_dialog_before_test(page):
 
     try:
         # 直接检查并关闭对话框
-        close_button = page.get_by_role("button", name="Close")
-        if close_button.is_visible():
-            logger.info("发现未关闭的对话框，正在关闭...")
-            close_button.click()
+        close_buttons = [
+            page.get_by_role("button", name="Close"),
+            page.get_by_text("删除提示").locator("xpath=./i"),
+            page.get_by_text("关闭取消").get_by_text("关闭")
+        ]
+        for close_button in close_buttons:
+            if close_button.is_visible():
+                logger.info("发现未关闭的对话框，正在关闭...")
+                close_button.click()
     except:
         pass  # 忽略对话框不存在的情况
 
@@ -87,11 +94,11 @@ def volume(evs_page, request):
         "shared": shared,
         "host": host
     }
-
-    evs_page.evs_create(**create_kwargs)
-    evs_page.assert_popup_success()
-    evs_page.assert_status(name, status="可用")
-    volume = {"name": name}
+    with allure_step_log("创建云硬盘"):
+        evs_page.evs_create(**create_kwargs)
+        evs_page.assert_popup_success()
+        evs_page.assert_status(name, status="可用")
+        volume = {"name": name}
 
     yield volume
 
@@ -207,49 +214,49 @@ def vm(ecs_page, request):
     bind_mfip = params.get('bind_mfip', True)
 
     name = random_data()
+    with allure_step_log("创建指定数量的虚机"):
+        # 创建指定数量的虚机
+        ecs_page.goto_service('弹性云服务器') # 临时方案：保证在同一服务页面,满足云盘挂载测试
+        ecs_page.ecs_create(name, count=count, sys_size=root_gb)
+        ecs_page.assert_popup_success("创建实例命令下发成功")
 
-    # 创建指定数量的虚机
-    ecs_page.goto_service('弹性云服务器') # 临时方案：保证在同一服务页面,满足云盘挂载测试
-    ecs_page.ecs_create(name, count=count, sys_size=root_gb)
-    ecs_page.assert_popup_success("创建实例命令下发成功")
+        # 等待虚机创建完成并收集信息
+        metadata_list = []
 
-    # 等待虚机创建完成并收集信息
-    metadata_list = []
+        # 根据创建数量处理虚机名称
+        if count == 1:
+            vm_names = [name]
+        else:
+            # 多台虚机时，名称会自动添加序号后缀
+            vm_names = [f"{name}-{i}" for i in range(0, count)]
 
-    # 根据创建数量处理虚机名称
-    if count == 1:
-        vm_names = [name]
-    else:
-        # 多台虚机时，名称会自动添加序号后缀
-        vm_names = [f"{name}-{i}" for i in range(0, count)]
+        # 等待虚机创建完成
+        ecs_page.assert_status(vm_names)
 
-    # 等待虚机创建完成
-    ecs_page.assert_status(vm_names)
+        # 收集每台虚机的信息
+        for vm_name in vm_names:
+            row_data = ecs_page.get_row_data(vm_name)
+            vm_metadata = {
+                "name": vm_name,
+                "id": row_data["名称/ID"].split(":")[1].strip(),
+                "ip": row_data["IP地址"].split(":")[1].strip(),
+                'host': row_data["物理机"],
+                "flavor": row_data["规格"],
+                "image": row_data["镜像名称"],
+                "project": row_data["项目名称"]
+            }
+            metadata_list.append(vm_metadata)
 
-    # 收集每台虚机的信息
-    for vm_name in vm_names:
-        row_data = ecs_page.get_row_data(vm_name)
-        vm_metadata = {
-            "name": vm_name,
-            "id": row_data["名称/ID"].split(":")[1].strip(),
-            "ip": row_data["IP地址"].split(":")[1].strip(),
-            'host': row_data["物理机"],
-            "flavor": row_data["规格"],
-            "image": row_data["镜像名称"],
-            "project": row_data["项目名称"]
-        }
-        metadata_list.append(vm_metadata)
-
-    # 如果需要绑定mfip
-    if bind_mfip:
-        for vm_data in metadata_list:
-            ecs_page.goto_service("网络设施")
-            ecs_page.mfip_create(vm_data["project"], "Autotest", vm_data["ip"])
-            ecs_page.assert_popup_success()
-            ecs_page.mfip_search(vm_data["ip"])
-            # vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
-            vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
-        ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
+        # 如果需要绑定mfip
+        if bind_mfip:
+            for vm_data in metadata_list:
+                ecs_page.goto_service("网络设施")
+                ecs_page.mfip_create(vm_data["project"], "Autotest", vm_data["ip"])
+                ecs_page.assert_popup_success()
+                ecs_page.mfip_search(vm_data["ip"])
+                # vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+                vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
+            ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
 
     # 根据虚机数量返回不同类型的数据
     if count == 1:
@@ -269,17 +276,18 @@ def evss_policy(evs_page):
     policy_name = random_data()
 
     # 创建快照策略
-    evs_page.evss_policy_create(
-        name=policy_name,
-        enabled=True,
-        hours=[0, 1, 2],
-        retention_type="按数量",
-        retention_value=1,
-        cycle_days=1
-    )
+    with allure_step_log("创建快照策略"):
+        evs_page.evss_policy_create(
+            name=policy_name,
+            enabled=True,
+            hours=[0, 1, 2],
+            retention_type="按数量",
+            retention_value=1,
+            cycle_days=1
+        )
 
-    # 验证创建成功
-    evs_page.assert_popup_success("添加策略成功")
+        # 验证创建成功
+        evs_page.assert_popup_success("添加策略成功")
 
     # 返回策略名称供测试使用
     yield policy_name
@@ -294,12 +302,12 @@ def evss_policy(evs_page):
 def evss(evs_page, volume):
     """创建并返回一个快照，测试结束后自动清理"""
     snapshot_name = random_data()
-
-    # 创建快照
-    evs_page.evss_create(volume["name"], snapshot_name, "测试快照")
-    evs_page.assert_popup_success("创建快照成功")
-    evs_page.goto_submenu("快照")
-    evs_page.assert_status(snapshot_name, status="可用")
+    with allure_step_log("创建快照"):
+        # 创建快照
+        evs_page.evss_create(volume["name"], snapshot_name, "测试快照")
+        evs_page.assert_popup_success("创建快照成功")
+        evs_page.goto_submenu("快照")
+        evs_page.assert_status(snapshot_name, status="可用")
 
     # 返回快照名称供测试使用
     yield {"name": snapshot_name, "volume_name": volume["name"]}
@@ -379,26 +387,27 @@ def ecss(ecs_page, vm):
         str: 快照名称
     """
     vm_name = vm.get("name")
-    snapshot_name = f"snapshot_{vm_name}"
+    snapshot_name = f"{vm_name}{time.strftime('%H%M%S')}"
+    with allure_step_log("setup: 创建系统盘快照"):
+        # 创建系统盘快照
+        ecs_page.ecss_create(
+            name=vm_name,
+            snapshot_name=snapshot_name,
+        )
+        ecs_page.assert_popup_success("创建实例快照成功")
+        ecs_page.assert_status(vm_name, status="当前无任务")
 
-    # 创建系统盘快照
-    ecs_page.ecss_create(
-        name=vm_name,
-        snapshot_name=snapshot_name,
-    )
-    ecs_page.assert_popup_success("创建实例快照成功")
-    ecs_page.assert_status(vm_name, status="当前无任务")
-
-    # 切换到快照页面并验证
-    ecs_page.goto_submenu("快照")
-    ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+        # 切换到快照页面并验证
+        ecs_page.goto_submenu("快照")
+        ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
 
     # 返回快照名称
     yield {"name": snapshot_name, "vm_name": vm_name}
 
-    # 测试结束后清理快照
-    ecs_page.ecss_delete(snapshot_name)
-    ecs_page.assert_deleted(snapshot_name, refresh=True)
+    with allure_step_log("清理测试数据"):
+        # 测试结束后清理快照
+        ecs_page.ecss_delete(snapshot_name)
+        ecs_page.assert_deleted(snapshot_name, refresh=True)
 
 @pytest.fixture()
 def ecss_policy(ecs_page):
@@ -406,17 +415,19 @@ def ecss_policy(ecs_page):
     policy_name = random_data()
 
     # 创建快照策略
-    ecs_page.ecss_policy_create(
-        name=policy_name,
-        hours=[0, 1, 2],
-        enabled=True,
-        cycle_days=1,
-        retention_type="按数量",
-        retention_value=1
-    )
+    with allure_step_log("setup: 创建快照策略"):
+        ecs_page.ecss_policy_create(
+            name=policy_name,
+            hours=[0, 1, 2],
+            enabled=True,
+            cycle_days=1,
+            retention_type="按数量",
+            retention_value=1
+        )
 
     # 验证创建成功
     # ecs_page.assert_popup_success("执行成功")
+    ecs_page.wait_for_operation_complete()
 
     # 返回策略名称供测试使用
     yield {"name": policy_name}
@@ -449,6 +460,8 @@ def image(ssh_host, ecs_page, request):
     params = getattr(request, 'param', {})
     name = params.get('name', random_data())
     backend = params.get('backend', ecs_page.storage_pool)
+    if backend.startswith("local"):
+        backend = "local"
     image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
     ssh_host.glance_image_create(name, image=image_name, backend=backend)
     yield {"name": name}
@@ -477,25 +490,26 @@ def pool(ops_page, vm, request):
 
     # 生成随机名称
     pool_name = f"disk_{random_data()}"
-    ops_page.goto_service("计算设施")
-    # 启用磁盘并获取磁盘大小
-    ops_page.search_disk("所在物理机", node)
-    _disk_name, _disk_size = ops_page.enable_disk(node)
-    # ops_page.assert_status(_disk_name, status="启用")
+    with allure_step_log("创建指定数量的虚机"):
+        ops_page.goto_service("计算设施")
+        # 启用磁盘并获取磁盘大小
+        ops_page.search_disk("所在物理机", node)
+        _disk_name, _disk_size = ops_page.enable_disk(node)
+        # ops_page.assert_status(_disk_name, status="启用")
 
-    # 创建存储池
-    device_type = f"DISK-SSD-{_disk_size}"
-    storage_type = params.get('storage_type', "本地磁盘")
-    ops_page.create_storage_pool(pool_name, device_type=device_type, storage_type=storage_type)
+        # 创建存储池
+        device_type = f"DISK-SSD-{_disk_size}"
+        storage_type = params.get('storage_type', "本地磁盘")
+        ops_page.create_storage_pool(pool_name, device_type=device_type, storage_type=storage_type)
 
-    # 验证存储池创建成功
-    # ops_page.assert_popup_success("执行成功")
-    ops_page.sync_storage_pool_config()
-    ops_page.assert_status(pool_name, status="已同步")
+        # 验证存储池创建成功
+        # ops_page.assert_popup_success("执行成功")
+        ops_page.sync_storage_pool_config()
+        ops_page.assert_status(pool_name, status="已同步")
 
-    pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
-    pool_data.update(vm)
-    logger.info(f"pool_data: {pool_data}")
+        pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
+        pool_data.update(vm)
+        logger.info(f"pool_data: {pool_data}")
 
     yield pool_data
 
@@ -525,14 +539,14 @@ def labels(ecs_page, request):
     # 生成标签名称
     label_names = []
     prefix = params.get('prefix', 'label')  # 默认前缀为'label'
-
-    for i in range(count):
-        # 使用随机数据生成唯一标签名称
-        name = f"{prefix}_{random_data()}"
-        label_name = ecs_page.create_label(name)
-        ecs_page.assert_popup_success("新建标签成功")
-        label_names.append(label_name)
-        logger.info(f"已创建标签: {label_name}")
+    with allure_step_log("创建指定数量的标签"):
+        for i in range(count):
+            # 使用随机数据生成唯一标签名称
+            name = f"{prefix}_{random_data()}"
+            label_name = ecs_page.create_label(name)
+            ecs_page.assert_popup_success("新建标签成功")
+            label_names.append(label_name)
+            logger.info(f"已创建标签: {label_name}")
 
     yield label_names
 

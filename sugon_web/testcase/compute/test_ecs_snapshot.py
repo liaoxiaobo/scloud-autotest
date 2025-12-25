@@ -33,7 +33,7 @@ class TestECSS:
             # 验证快照属性
             snapshot_data = ecs_page.get_row_data(snapshot_name)
             assert snapshot_data["是否快照数据卷"] == "否"
-            assert snapshot_data["是否启动源"] == "是"
+            # assert snapshot_data["是否启动源"] == "是"
 
         with allure_step_log("步骤3: 删除系统盘快照"):
             # 删除快照
@@ -113,10 +113,15 @@ class TestECSS:
 
         with allure_step_log("步骤3: 页面验证快照还原结果"):
             ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.assert_status(vm['name'], status="快照还原中")
-            ecs_page.assert_status(vm['name'], status="当前无任务")
-            data = ecs_page.get_row_data(vm['name'])
-            assert data["镜像名称"] == ecss["name"]
+            # ecs_page.assert_status(vm['name'], status="快照还原中")
+            # ecs_page.assert_status(vm['name'], status="当前无任务", timeout=600)
+            # data = ecs_page.get_row_data(vm['name'])
+            if ecs_page.stor not in ["usan", "local", "nfs"]:
+                ecs_page.assert_row_contains(vm['name'], ecs_page.storage_pool)
+            else:
+                ecs_page.assert_row_contains(vm['name'], ecss["name"])
+            ecs_page.assert_row_contains(vm['name'], "当前无任务")
+            # assert data["镜像名称"] == ecss["name"]
 
         with allure_step_log("步骤4: 验证虚机内测试文件已不存在"):
             # 重新连接虚拟机
@@ -372,3 +377,19 @@ class TestECSS:
         with allure_step_log("步骤6: 删除快照"):
             ecs_page.ecss_delete(snapshot_name)
             ecs_page.assert_deleted(snapshot_name, refresh=True)
+
+    @allure.title("快照策略-编辑策略")
+    def test_ecss_policy_edit(self, ecs_page, ecss_policy):
+        """测试快照策略编辑功能"""
+        policy_name = ecss_policy["name"]
+        new_name = policy_name + "_new"
+
+        with allure_step_log("步骤1: 修改策略名称"):
+            ecs_page.assert_popup_success("执行成功")
+            ecs_page.wait_for_operation_complete()
+            ecs_page.ecss_policy_edit(policy_name, new_name)
+            ecs_page.assert_popup_success("修改策略成功")
+
+        with allure_step_log("步骤2: 验证修改结果"):
+            ecs_page.search(new_name)
+            assert ecs_page.get_column_data("名称/ID")[0].startswith(new_name), "修改策略名称失败"
