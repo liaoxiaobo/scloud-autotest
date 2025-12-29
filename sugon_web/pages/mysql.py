@@ -53,7 +53,7 @@ class MySQLPage(BasePage):
 
         # --- 网络设置 ---
         db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet, fuzzy_match=True)
+        db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
         db_util.disk_type_dropdown(self).click()
@@ -170,6 +170,7 @@ class MySQLPage(BasePage):
         self.get_by_text("绑定公网IP").first.click()
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
+        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -203,6 +204,7 @@ class MySQLPage(BasePage):
         self.click_dropdown_option(f"{name}-0", "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
+        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -234,7 +236,6 @@ class MySQLPage(BasePage):
         self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新建只读节点").click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
-
 
     @submenu("实例管理")
     def delete_node(self, name: str, node_name: str):
@@ -637,5 +638,3 @@ class MySQLPage(BasePage):
         self.wait_for_page_ready()
         sleep(3)
         self.get_by_text("导出", exact=True).click()
-
-
