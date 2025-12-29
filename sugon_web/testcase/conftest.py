@@ -1,3 +1,4 @@
+import allure
 import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
@@ -5,11 +6,9 @@ from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
-from sugon_web.pages.mysql import MySQLPage
-from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.util import random_data
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -114,77 +113,6 @@ def ops_page(page):
     ops_page = OpsPage(page)
     ops_page.goto_service('网络设施')
     return ops_page
-
-
-@pytest.fixture(scope="class")
-def mysql_page(page):
-    """初始化MySQL实例管理页面"""
-    mysql_page = MySQLPage(page)
-    mysql_page.goto_service('AnhanDB(for MySQL)')
-    return mysql_page
-
-
-@pytest.fixture(scope="class")
-def doris_page(page):
-    """初始化Doris实例管理页面"""
-    doris_page = DorisPage(page)
-    doris_page.goto_service('数据仓库 Doris')
-    return doris_page
-
-
-@pytest.fixture(scope="class")
-def doris(doris_page):
-    """创建一个供整个测试类使用的Doris实例对象"""
-    name = f"doris-{random_data()}"
-    admin_password = "admin1234@sugon"  # Doris默认密码
-    data = {"name": name, "admin_password": admin_password}
-    logger.info(f"为测试类创建共享Doris实例: {name}")
-
-    with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        doris_page.create_instance(name, password=admin_password)
-        doris_page.assert_popup_success("Doris创建任务提交成功")
-        doris_page.assert_status(name, status="就绪", timeout=1800)
-
-    yield data
-
-    with allure_step_log(f"后置操作：删除共享实例 {name}"):
-        logger.info(f"清理共享Doris实例: {name}")
-        doris_page.delete_instance(data["name"])
-
-
-@pytest.fixture(scope="class")
-def mysql(mysql_page):
-    """创建一个供整个测试类使用的MySQL实例对象"""
-    name = random_data()
-    type = "集群"
-    db_name = f"autodb-{random_string(k=5)}"
-    user_name = f"user_{random_string(k=5)}"
-    user_password = f"sugon1234@{random_string(k=5)}"
-    privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
-    logger.info(f"为测试类创建共享MySQL实例: {name}")
-
-    with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        mysql_page.create_instance(name, type)
-        mysql_page.assert_popup_success("创建MySQL资源成功")
-        mysql_page.assert_status(name, status="运行中", timeout=1200)
-
-    with allure_step_log(f"前置操作：创建新数据库 {db_name}"):
-        mysql_page.create_database(name, db_name)
-        mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
-        mysql_page.assert_list_contain(db_name)
-
-    with allure_step_log(f"前置操作：创建新用户 {db_name}"):
-        mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功",10)
-
-    yield data
-
-    with allure_step_log(f"后置操作：删除共享实例 {name}"):
-        logger.info(f"清理共享MySQL实例: {name}")
-        # 在删除前，确保页面在实例列表页，防止在详情页删除失败
-        mysql_page.delete_instance(data["name"])
-
 
 @pytest.fixture(scope="class")
 def vm(ecs_page, request):

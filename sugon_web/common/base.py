@@ -153,6 +153,7 @@ class BasePage(Playwright):
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
+            self.get_by_role("textbox", name="搜索（参数名称）"),
             self.locator(".input-with-select > .el-input__inner")
         ]
 
@@ -173,6 +174,7 @@ class BasePage(Playwright):
         """公共元素:刷新按钮"""
         locators = [
             self.locator("#serverRefresh"),
+            self.locator("#SpecificationRefresh").nth(1),  # 详情页面的刷新按钮
             self.locator(".el-icon-refresh")
         ]
 
@@ -422,13 +424,21 @@ class BasePage(Playwright):
                 else:
                     # 刷新模式：定期刷新页面并检查状态
                     start_time = time.time()
+                    current_status = "未知"
+                    first_check = True
 
                     while time.time() - start_time < timeout:
                         try:
-                            # 刷新页面（避免在循环开始时立即刷新）
-                            if time.time() - start_time > 0:
-                                self.btn_refresh.click()
-                                self.wait_for_page_ready()
+                            # 刷新页面（第一次循环跳过刷新，直接检查当前状态）
+                            if not first_check:
+                                try:
+                                    self.btn_refresh.click()
+                                    self.wait_for_page_ready()
+                                    self.logger.debug(f"页面已刷新，继续检查状态: {name}")
+                                except Exception as refresh_error:
+                                    self.logger.warning(f"刷新页面失败，将继续检查状态: {refresh_error}")
+
+                            first_check = False
 
                             # 定位目标行并检查状态
                             target_row = self.get_row_by_name(name)
@@ -447,7 +457,7 @@ class BasePage(Playwright):
                     else:
                         # 超时后记录失败
                         failed_resources.append(
-                            f"{name} (期望状态: {status}, 当前状态: {current_status if 'current_status' in locals() else '未知'})")
+                            f"{name} (期望状态: {status}, 当前状态: {current_status})")
 
             except Exception as e:
                 self.logger.error(f"资源状态验证失败: {name} -> {status}, 错误: {e}")
@@ -485,13 +495,20 @@ class BasePage(Playwright):
                 else:
                     # 刷新模式：定期刷新页面并检查资源是否已删除
                     start_time = time.time()
+                    first_check = True
 
                     while time.time() - start_time < timeout:
                         try:
-                            # 刷新页面（避免在循环开始时立即刷新）
-                            if time.time() - start_time > 0:
-                                self.btn_refresh.click()
-                                self.wait_for_page_ready()
+                            # 刷新页面（第一次循环跳过刷新，直接检查当前状态）
+                            if not first_check:
+                                try:
+                                    self.btn_refresh.click()
+                                    self.wait_for_page_ready()
+                                    self.logger.debug(f"页面已刷新，继续检查删除状态: {resource_name}")
+                                except Exception as refresh_error:
+                                    self.logger.warning(f"刷新页面失败，将继续检查删除状态: {refresh_error}")
+
+                            first_check = False
 
                             # 定位包含资源名称的表格行
                             resource_row = self.get_by_role("row", name=resource_name)
