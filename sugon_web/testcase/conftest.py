@@ -426,7 +426,7 @@ def ecss_policy(ecs_page):
         )
 
     # 验证创建成功
-    # ecs_page.assert_popup_success("执行成功")
+    ecs_page.assert_popup_success("执行成功")
     ecs_page.wait_for_operation_complete()
 
     # 返回策略名称供测试使用
@@ -436,6 +436,7 @@ def ecss_policy(ecs_page):
     with allure_step_log("清理测试数据"):
         ecs_page.ecss_policy_delete(policy_name)
         ecs_page.assert_deleted(policy_name)
+        ecs_page.assert_popup_success("删除策略成功")
 
 @pytest.fixture()
 def image(ssh_host, ecs_page, request):

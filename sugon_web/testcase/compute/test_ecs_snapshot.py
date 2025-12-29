@@ -116,7 +116,7 @@ class TestECSS:
             # ecs_page.assert_status(vm['name'], status="快照还原中")
             # ecs_page.assert_status(vm['name'], status="当前无任务", timeout=600)
             # data = ecs_page.get_row_data(vm['name'])
-            if ecs_page.stor not in ["usan", "local", "nfs"]:
+            if ecs_page.stor in ["usan", "local", "nfs"]:
                 ecs_page.assert_row_contains(vm['name'], ecs_page.storage_pool)
             else:
                 ecs_page.assert_row_contains(vm['name'], ecss["name"])
@@ -327,6 +327,25 @@ class TestECSS:
         with allure_step_log("步骤3: 删除多个快照任务"):
             ecs_page.ecss_delete_task(vm_names)
 
+    @allure.title("快照策略-编辑策略")
+    def test_ecss_policy_edit(self, ecs_page, ecss_policy):
+        """测试快照策略编辑功能"""
+        policy_name = ecss_policy["name"]
+        new_name = policy_name + "_new"
+
+        with allure_step_log("步骤1: 修改策略名称"):
+            ecs_page.ecss_policy_edit(policy_name, new_name)
+            ecs_page.assert_popup_success("修改策略成功")
+
+        with allure_step_log("步骤2: 验证修改结果"):
+            ecs_page.search(new_name)
+            assert ecs_page.get_column_data("名称/ID")[0].startswith(new_name), "修改策略名称失败"
+
+        with allure_step_log("步骤3: 恢复策略名称"):
+            ecs_page.ecss_policy_edit(new_name, policy_name)
+            ecs_page.assert_popup_success("修改策略成功")
+            ecs_page.btn_reset.click()
+
     @allure.title("快照策略-虚机绑定快照策略等待自动创建快照")
     @pytest.mark.slow
     def test_ecss_bind_wait_snapshot(self, ecs_page, vm):
@@ -377,19 +396,3 @@ class TestECSS:
         with allure_step_log("步骤6: 删除快照"):
             ecs_page.ecss_delete(snapshot_name)
             ecs_page.assert_deleted(snapshot_name, refresh=True)
-
-    @allure.title("快照策略-编辑策略")
-    def test_ecss_policy_edit(self, ecs_page, ecss_policy):
-        """测试快照策略编辑功能"""
-        policy_name = ecss_policy["name"]
-        new_name = policy_name + "_new"
-
-        with allure_step_log("步骤1: 修改策略名称"):
-            ecs_page.assert_popup_success("执行成功")
-            ecs_page.wait_for_operation_complete()
-            ecs_page.ecss_policy_edit(policy_name, new_name)
-            ecs_page.assert_popup_success("修改策略成功")
-
-        with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.search(new_name)
-            assert ecs_page.get_column_data("名称/ID")[0].startswith(new_name), "修改策略名称失败"
