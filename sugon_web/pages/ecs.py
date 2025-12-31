@@ -585,7 +585,7 @@ class EcsPage(OpsPage):
                 
                 self.dialog_confirm.click()
                 logger.info(f"操作完成: 云服务器{name}修改规格为{classify} {cpu}核{mem}GiB")
-                
+
             else:  # 自定义规格
                 self.get_by_role("radio").filter(has_text="自定义规格").click()
                 
@@ -596,7 +596,7 @@ class EcsPage(OpsPage):
                 # 点击确定按钮
                 self.get_by_label("修改规格").get_by_text("确定").click()
                 logger.info(f"操作完成: 云服务器{name}修改自定义规格为{cpu}核{mem}GiB")
-                
+
         except Exception as e:
             logger.error(f"云服务器{name}修改规格失败: {e}")
             raise e

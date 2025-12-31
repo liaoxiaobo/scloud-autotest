@@ -1,4 +1,3 @@
-import time
 import pytest
 import allure
 from sugon_web.testcase.conftest import ecs_page

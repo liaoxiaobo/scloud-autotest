@@ -1,17 +1,16 @@
 import time
 
+import allure
 import pytest
 from playwright.sync_api import expect
-
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.evs import EvsPage
 from sugon_web.pages.ecs import EcsPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
-from sugon_web.pages.mysql import MySQLPage
-from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.util import random_data
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -121,77 +120,6 @@ def ops_page(page):
     ops_page = OpsPage(page)
     ops_page.goto_service('网络设施')
     return ops_page
-
-
-@pytest.fixture(scope="class")
-def mysql_page(page):
-    """初始化MySQL实例管理页面"""
-    mysql_page = MySQLPage(page)
-    mysql_page.goto_service('AnhanDB(for MySQL)')
-    return mysql_page
-
-
-@pytest.fixture(scope="class")
-def doris_page(page):
-    """初始化Doris实例管理页面"""
-    doris_page = DorisPage(page)
-    doris_page.goto_service('数据仓库 Doris')
-    return doris_page
-
-
-@pytest.fixture(scope="class")
-def doris(doris_page):
-    """创建一个供整个测试类使用的Doris实例对象"""
-    name = f"doris-{random_data()}"
-    admin_password = "admin1234@sugon"  # Doris默认密码
-    data = {"name": name, "admin_password": admin_password}
-    logger.info(f"为测试类创建共享Doris实例: {name}")
-
-    with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        doris_page.create_instance(name, password=admin_password)
-        doris_page.assert_popup_success("Doris创建任务提交成功")
-        doris_page.assert_status(name, status="就绪", timeout=1800)
-
-    yield data
-
-    with allure_step_log(f"后置操作：删除共享实例 {name}"):
-        logger.info(f"清理共享Doris实例: {name}")
-        doris_page.delete_instance(data["name"])
-
-
-@pytest.fixture(scope="class")
-def mysql(mysql_page):
-    """创建一个供整个测试类使用的MySQL实例对象"""
-    name = random_data()
-    type = "集群"
-    db_name = f"autodb-{random_string(k=5)}"
-    user_name = f"user_{random_string(k=5)}"
-    user_password = f"sugon1234@{random_string(k=5)}"
-    privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
-    logger.info(f"为测试类创建共享MySQL实例: {name}")
-
-    with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        mysql_page.create_instance(name, type)
-        mysql_page.assert_popup_success("创建MySQL资源成功")
-        mysql_page.assert_status(name, status="运行中", timeout=1200)
-
-    with allure_step_log(f"前置操作：创建新数据库 {db_name}"):
-        mysql_page.create_database(name, db_name)
-        mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
-        mysql_page.assert_list_contain(db_name)
-
-    with allure_step_log(f"前置操作：创建新用户 {db_name}"):
-        mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功",10)
-
-    yield data
-
-    with allure_step_log(f"后置操作：删除共享实例 {name}"):
-        logger.info(f"清理共享MySQL实例: {name}")
-        # 在删除前，确保页面在实例列表页，防止在详情页删除失败
-        mysql_page.delete_instance(data["name"])
-
 
 @pytest.fixture(scope="class")
 def vm(ecs_page, request):
@@ -427,7 +355,6 @@ def ecss_policy(ecs_page):
 
     # 验证创建成功
     ecs_page.assert_popup_success("执行成功")
-    ecs_page.wait_for_operation_complete()
 
     # 返回策略名称供测试使用
     yield {"name": policy_name}
@@ -581,3 +508,77 @@ def affinity(ecs_page, request):
         logger.info(f"已创建标签: {label_name}")
 
     yield label_names
+
+
+@pytest.fixture(scope="module")
+def vpc_page(page):
+    """初始化虚拟私有云页面对象"""
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service('虚拟私有云')
+    return vpc_page
+
+
+@pytest.fixture(scope="class")
+def vpc(vpc_page, request):
+    """
+    创建并返回一个VPC资源数据，测试结束后自动清理
+
+    支持参数化配置，可通过pytest.mark.parametrize传入参数：
+    - name: VPC名称，如果未指定则随机生成
+    - subnet_name: 子网名称
+    - cidr: 子网CIDR
+    - desc: VPC描述
+    - subnet_desc: 子网描述
+    - network_type: 网络类型（Geneve/Vlan/Flat）
+    - gateway_mode: 网关模式（分布式网关/集中式网关）
+    - vlan_id: VLAN ID
+    - gateway_ip: 网关IP
+
+    Args:
+        vpc_page: VPC页面对象
+        request: pytest的request对象，用于获取测试用例传递的参数
+
+    Returns:
+        dict: 包含VPC信息的字典，例如：
+            {
+                "name": "autotest-abc123",
+                "subnet_name": "subnet-xyz789",
+                "cidr": "10.0.0.0/24",
+                "network_type": "Geneve"
+            }
+
+    Yields:
+        dict: VPC信息字典，测试用例执行后自动清理
+    """
+
+
+    # 获取参数，如果没有提供则使用默认值
+    params = getattr(request, 'param', {})
+
+    name = params.get('name', random_data())
+    print(params.get('vlan_id'))
+
+    # 构建创建参数
+    create_kwargs = {
+        "name": name,
+        "subnet_name": params.get('subnet_name', random_data()),
+        "cidr": params.get('cidr', random_data("cidr")),
+        "network_type": params.get('network_type', 'Geneve'),
+        "gateway_mode": params.get('gateway_mode', "分布式网关"),
+        "vlan_id": params.get('vlan_id')
+    }
+
+    # 创建VPC
+    vpc_page.vpc_create(**create_kwargs)
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    vpc_page.assert_status(name)
+
+    # 构建返回的VPC信息
+    vpc_data = create_kwargs
+
+    yield vpc_data
+
+    # 清理VPC
+    vpc_page.vpc_delete(name)
+    vpc_page.assert_deleted(name)
+
