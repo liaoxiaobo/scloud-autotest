@@ -843,3 +843,22 @@ class BasePage(Playwright):
             if key in result:
                 del result[key]
         return result
+
+    def assert_row_contains(self, name: str, expected_data: str, timeout=300):
+        """
+        断言指定行数据包含期望数据
+
+        Args:
+            name: 行名称，用于定位特定行
+            expected_data: 期望数据
+
+        Raises:
+            AssertionError: 当行数据不包含期望数据时
+        """
+
+        target_row = self.get_row_by_name(name)
+
+        # expect(target_row.text_content()).contains(expected_data, timeout=3000)
+        timeout = timeout * 1000
+        expect(target_row).to_contain_text(expected_data, timeout=timeout)
+        self.logger.info(f"行 '{name}' 包含期望数据 '{expected_data}'")

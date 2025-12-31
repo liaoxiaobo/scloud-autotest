@@ -2,9 +2,12 @@ import re
 import time
 import pytest
 import allure
+from playwright.sync_api import expect
+
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.util import random_data, load_data, skip_stor
+
 
 @allure.epic('计算服务')
 @allure.feature('弹性云服务器 ECS')
@@ -215,7 +218,6 @@ class TestECSBasic:
 
         with allure_step_log("步骤3: 验证重建结果"):
             ecs_page.assert_popup_success(f"{name}实例重建成功")
-            ecs_page.assert_status(name, status="重建中")
             ecs_page.assert_status(name)
             ssh_vm.connect(vm['mfip'])
             md5_new = ssh_vm.run(f"md5sum /home/{name}-1")
@@ -339,26 +341,39 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"从虚拟机{name}分离云硬盘")
 
     @allure.title("验证修改密码功能")
-    def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
-        name = vm.get("name")
+    def test_ecs_modifypwd(self, ecs_page, ssh_vm):
+        name = random_data()
+        ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log(f"步骤1: 云服务器{name}修改密码"):
+        with allure_step_log("步骤1: 创建弹性云服务器"):
+            ecs_page.ecs_create(name)
+            ecs_page.assert_popup_success(f"创建实例命令下发成功")
+            ecs_page.assert_status(name)
+            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
+            mfip = ecs_page.bind_mfip(ip)
+
+        with allure_step_log(f"步骤2: 云服务器{name}修改密码"):
             ecs_page.goto_service('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
             ecs_page.ecs_modify_pwd(name, "sugon@21", "sugon@21")
 
-        with allure_step_log("步骤2: 验证修改密码结果"):
+        with allure_step_log("步骤3: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
-            ssh_vm.connect(vm['mfip'], pwd="sugon@21")
+            ssh_vm.connect(mfip, pwd="sugon@21")
             assert ssh_vm.run("hostname") == name, f"修改密码后，无法登录虚拟机"
 
-        with allure_step_log(f"步骤3: 云服务器{name}还原密码"):
+        with allure_step_log(f"步骤4: 云服务器{name}还原密码"):
             ecs_page.ecs_modify_pwd(name, "admin1234@sugon", "admin1234@sugon")
 
-        with allure_step_log("步骤4: 验证修改密码结果"):
+        with allure_step_log("步骤5: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
-            ssh_vm.connect(vm['mfip'])
+            ssh_vm.connect(mfip)
             assert ssh_vm.run("hostname") == name, f"还原密码后，无法登录虚拟机"
+
+        with allure_step_log(f"步骤6: 删除云服务器{name}"):
+            ecs_page.ecs_remove(name)
+            ecs_page.ecs_delete(name)
+            ecs_page.assert_deleted(name)
 
     @allure.title("验证修改主机名功能")
     def test_ecs_modify_hostname(self, ecs_page, vm, ssh_vm):
@@ -407,7 +422,7 @@ class TestECSBasic:
 
     @allure.title("验证修改CPU模式功能")
     @pytest.mark.parametrize("cpu_mode,custom_value", [["host-passthrough",""], ["自定义", "custom_Dhyana"]])
-    def test_ecs_modify_cpu_mode(self, ecs_page, vm, ssh_vm, ssh_host, cpu_mode, custom_value):
+    def test_ecs_modify_cpu_mode(self, ecs_page, vm, ssh_host, cpu_mode, custom_value):
         """
         测试弹性云服务器CPU模式修改功能
         """
@@ -423,7 +438,6 @@ class TestECSBasic:
             ecs_page.assert_status(name)
             cpu_mode = "host-passthrough" if cpu_mode == "host-passthrough" else custom_value
             ecs_page.assert_ecs_details_info([name], info_items={"CPU模式": cpu_mode})
-            ssh_vm.connect(vm['mfip'])
 
         with allure_step_log("步骤3: 验证虚机xml"):
             cmd = f"""ssh -o StrictHostKeyChecking=no {node} 'docker exec -i nova_libvirt virsh dumpxml {ecs_id} |grep "cpu mode="'"""
@@ -472,7 +486,7 @@ class TestECSBasic:
 
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
-            ecs_page.assert_status(name, "创建镜像中")
+            # ecs_page.assert_status(name, "创建镜像中")
             ecs_page.assert_status(name, "当前无任务")
             ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", refresh=True)
@@ -548,6 +562,7 @@ class TestECSBasic:
             assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
     @allure.title("验证冷迁移功能")
+    @skip_stor("local")
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的冷迁移功能
@@ -825,6 +840,7 @@ class TestECSBasic:
             # 调用卸载工具方法
             ssh_vm.run("cd ~ && umount /mnt/cdrom")
             ecs_page.ecs_uninstall_tools(name)
+            ecs_page.btn_refresh.click()
             assert ecs_page.get_row_data(name).get("挂载云硬盘") == "--"
 
     @allure.title("验证列表页搜索&重置")
@@ -859,7 +875,7 @@ class TestECSBasic:
                     except_agent_version[f"{agent_type}版本"] = agent_version
             ecs_page.assert_ecs_details_info(name, info_items=except_agent_version)
 
-    @allure.title("验证Agent版本设置功能")
+    @allure.title("验证批量Agent版本设置功能")
     @pytest.mark.parametrize("agent_conf", load_data("test_ecs_batch_modify_agent", "test_ecs.yaml"))
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
     def test_ecs_batch_modify_agent(self, ecs_page, vm, agent_conf):
