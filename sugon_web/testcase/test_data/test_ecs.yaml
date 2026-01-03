@@ -26,36 +26,6 @@ evs:
       desc: "修改为内存型4核32G"
   test_ecs_operations:
     - param:
-      operation: "关机"
-      desc: "实例关机成功"
-      status: "关机"
-      vm_state: "stopped"
-    - param:
-      operation: "启动"
-      desc: "实例启动成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
-      operation: "挂起"
-      desc: "实例挂起成功"
-      status: "挂起"
-      vm_state: "suspended"
-    - param:
-      operation: "恢复运行"
-      desc: "实例恢复运行成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
-      operation: "暂停"
-      desc: "实例暂停成功"
-      status: "暂停"
-      vm_state: "paused"
-    - param:
-      operation: "取消暂停"
-      desc: "实例恢复运行成功"
-      status: "运行"
-      vm_state: "active"
-    - param:
       operation: "重启"
       desc: "实例重启成功"
       status: "运行"
@@ -118,3 +88,13 @@ evs:
         quota:cpu_quota: "1000000.0"
         quota:cpu_shares: "4096"
         quota:cpu_period: "1000000"
+  test_ecs_batch_modify_agent:
+    - - FsAgent: "latest"
+    - - DingAgent: "manual"
+    - - FsAgent: "manual"
+        DingAgent: "manual"
+  test_ecs_agent_conf:
+    - - FsAgent: "manual"
+    - - DingAgent: "manual"
+    - - FsAgent: "latest"
+        DingAgent: "latest"

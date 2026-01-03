@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Callable
 from playwright.sync_api import expect, Page, Locator
 from sugon_web.common.playwright import Playwright
-
+from sugon_web.config.config import Config
 
 # 服务导航映射表 - 支持不同层级结构
 SERVICE_MAP = {
@@ -78,10 +78,11 @@ def submenu(name: str) -> Callable:
 
 class BasePage(Playwright):
 
-    def __init__(self, page: Page, env: dict) -> None:
+    def __init__(self, page: Page) -> None:
         super().__init__(page)
-        self.env = env
-        self.storage_pool, self.volume_type = env['stor'] + '-test', env['stor'] + '-type'
+        # 从内存中读取，不会重复加载文件
+        self.stor = Config.get('stor')
+        self.storage_pool, self.volume_type = self.stor + '-test', self.stor + '-type'
 
     @property
     def popup(self) -> Locator:
@@ -152,6 +153,7 @@ class BasePage(Playwright):
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
+            self.get_by_role("textbox", name="搜索（参数名称）"),
             self.locator(".input-with-select > .el-input__inner")
         ]
 
@@ -172,6 +174,7 @@ class BasePage(Playwright):
         """公共元素:刷新按钮"""
         locators = [
             self.locator("#serverRefresh"),
+            self.locator("#SpecificationRefresh").nth(1),  # 详情页面的刷新按钮
             self.locator(".el-icon-refresh")
         ]
 
@@ -192,7 +195,9 @@ class BasePage(Playwright):
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span")   # 云硬盘删除对话框
+            self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span"),   # 云硬盘删除对话框
+            self.locator(".sure-footer > div > .cloud-button-btn").first
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")
@@ -288,6 +293,17 @@ class BasePage(Playwright):
                 - "弹性云服务器"
                 - "虚拟私有云"
         """
+        # 检查是否已经在目标子菜单页面上
+        try:
+            # 查找当前激活的菜单项
+            active_menu = self.locator(".one-tree-active")
+            if active_menu.count() > 0:
+                active_text = active_menu.inner_text().strip()
+                if active_text == submenu:
+                    self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
+                    return
+        except Exception as e:
+            self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
@@ -408,13 +424,21 @@ class BasePage(Playwright):
                 else:
                     # 刷新模式：定期刷新页面并检查状态
                     start_time = time.time()
+                    current_status = "未知"
+                    first_check = True
 
                     while time.time() - start_time < timeout:
                         try:
-                            # 刷新页面（避免在循环开始时立即刷新）
-                            if time.time() - start_time > 0:
-                                self.btn_refresh.click()
-                                self.wait_for_page_ready()
+                            # 刷新页面（第一次循环跳过刷新，直接检查当前状态）
+                            if not first_check:
+                                try:
+                                    self.btn_refresh.click()
+                                    self.wait_for_page_ready()
+                                    self.logger.debug(f"页面已刷新，继续检查状态: {name}")
+                                except Exception as refresh_error:
+                                    self.logger.warning(f"刷新页面失败，将继续检查状态: {refresh_error}")
+
+                            first_check = False
 
                             # 定位目标行并检查状态
                             target_row = self.get_row_by_name(name)
@@ -433,7 +457,7 @@ class BasePage(Playwright):
                     else:
                         # 超时后记录失败
                         failed_resources.append(
-                            f"{name} (期望状态: {status}, 当前状态: {current_status if 'current_status' in locals() else '未知'})")
+                            f"{name} (期望状态: {status}, 当前状态: {current_status})")
 
             except Exception as e:
                 self.logger.error(f"资源状态验证失败: {name} -> {status}, 错误: {e}")
@@ -471,13 +495,20 @@ class BasePage(Playwright):
                 else:
                     # 刷新模式：定期刷新页面并检查资源是否已删除
                     start_time = time.time()
+                    first_check = True
 
                     while time.time() - start_time < timeout:
                         try:
-                            # 刷新页面（避免在循环开始时立即刷新）
-                            if time.time() - start_time > 0:
-                                self.btn_refresh.click()
-                                self.wait_for_page_ready()
+                            # 刷新页面（第一次循环跳过刷新，直接检查当前状态）
+                            if not first_check:
+                                try:
+                                    self.btn_refresh.click()
+                                    self.wait_for_page_ready()
+                                    self.logger.debug(f"页面已刷新，继续检查删除状态: {resource_name}")
+                                except Exception as refresh_error:
+                                    self.logger.warning(f"刷新页面失败，将继续检查删除状态: {refresh_error}")
+
+                            first_check = False
 
                             # 定位包含资源名称的表格行
                             resource_row = self.get_by_role("row", name=resource_name)
@@ -592,7 +623,7 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
-        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
+        self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
         self.page.wait_for_selector(".el-loading-spinner", state='hidden')
 
     def wait_for_operation_complete(self, timeout=30):
@@ -661,12 +692,32 @@ class BasePage(Playwright):
 
     def get_row_by_name(self, name: str) -> Locator:
         """公共方法：根据名称查找数据行，用于获取单个或第一个匹配的行（前缀匹配优先）"""
-        target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-
-        if target_row.count() == 0:
-            raise AssertionError(f"未找到名称为 '{name}' 的数据行")
-
-        return target_row
+        try:
+            target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
+            if target_row.count() > 0:
+                return target_row
+        except Exception as e:
+            self.logger.info(f"前缀匹配失败: {e}")
+        # 如果前缀匹配失败，尝试精确匹配
+        try:
+            target_rows = self.locator("tr")
+            for i in range(target_rows.count()):
+                current_row = target_rows.nth(i)
+                try:
+                    # 获取所有单元格并检查内容
+                    cells = current_row.locator("td")
+                    for j in range(cells.count()):
+                        cell_text = cells.nth(j).text_content()
+                        if cell_text and cell_text.strip() == name:
+                            self.logger.info(f"通过遍历找到 '{name}' 的匹配行")
+                            return current_row
+                except Exception as e:
+                    self.logger.debug(f"检查行 {i} 时出错: {e}")
+                    continue
+        except Exception as e:
+            self.logger.debug(f"遍历表格行失败: {e}")
+        # 所有方法都失败
+        raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
     def get_rows_by_text(self, text: str) -> Locator:
         """公共方法：根据文本查找数据行，用于获取所有匹配的行（包含匹配）"""
@@ -775,3 +826,39 @@ class BasePage(Playwright):
             if not loc.is_checked():
                 loc.click()
                 self.logger.info(f"勾选资源 '{name}'")
+
+    def get_row_data_by_locator(self, loc):
+        """获取指定行数据"""
+
+        # 获取表头和单元格内容
+        headers = self.table_headers
+        cell_contents = self._get_cell_contents(loc)
+        # 组合数据，将表头和单元格内容对应起来
+        result = dict(zip(headers, cell_contents))
+        self.logger.debug(f"原始数据行: {result}")
+
+        # 移除不需要的键
+        exclude_headers = ["", "操作"]
+        for key in exclude_headers:
+            if key in result:
+                del result[key]
+        return result
+
+    def assert_row_contains(self, name: str, expected_data: str, timeout=300):
+        """
+        断言指定行数据包含期望数据
+
+        Args:
+            name: 行名称，用于定位特定行
+            expected_data: 期望数据
+
+        Raises:
+            AssertionError: 当行数据不包含期望数据时
+        """
+
+        target_row = self.get_row_by_name(name)
+
+        # expect(target_row.text_content()).contains(expected_data, timeout=3000)
+        timeout = timeout * 1000
+        expect(target_row).to_contain_text(expected_data, timeout=timeout)
+        self.logger.info(f"行 '{name}' 包含期望数据 '{expected_data}'")

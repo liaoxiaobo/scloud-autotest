@@ -65,6 +65,19 @@ def _create_ssh_client(host, port, username, pwd, pkey, transport=None, timeout=
             time.sleep(interval)
 
 
+def _handle_arch_specific_config(arch, image, hw_firmware_type, os_version, kwargs):
+    """处理架构特定的配置"""
+    if arch == 'aarch64':
+        image = image.replace(".raw", "-aarch64.raw")
+        hw_firmware_type = "uefi"
+
+    if "os_hygon_csv" in kwargs:
+        hw_firmware_type = "uefi"
+        os_version = "Anolis OS8.8"
+
+    return image, hw_firmware_type, os_version
+
+
 class SSH:
 
     def __init__(self):
@@ -332,16 +345,36 @@ class SSH:
         logger.error(f"Ping to {ip} failed after {retries} retries")
         assert False, f"Ping to {ip} failed after {retries} retries"
 
-    def image_upload(self, name, image, backend, size=20, purpose='kvm', hw_firmware_type='bios', os_version="centos7.9", **kwargs):
+    def glance_image_create(self, name, image, backend, size=20, purpose='kvm', hw_firmware_type='bios', os_version="centos7.9", **kwargs):
+        """
+        上传镜像到OpenStack Glance服务
+
+        Args:
+            name: 镜像名称
+            image: 镜像文件名
+            backend: 存储后端
+            size: 最小磁盘大小（GB），默认20GB
+            purpose: 镜像用途，默认'kvm'
+            hw_firmware_type: 固件类型，默认'bios'
+            os_version: 操作系统版本，默认'centos7.9'
+            **kwargs: 额外的镜像属性
+
+        Returns:
+            dict: 包含执行结果的字典
+        """
+        # 获取系统架构
         arch = self.run("arch")
-        if arch == 'aarch64':
-            image = image.replace(".raw", "-aarch64.raw")   # 当环境是arm时，image参数写死
-            hw_firmware_type = "uefi"
-        if "os_hygon_csv" in kwargs:
-            hw_firmware_type = "uefi"
-            os_version = "Anolis OS8.8"
-        self.image_download(image)
-        disk_format = image.rsplit('.', 1)[-1]
+
+        # 处理架构特定的配置
+        image_name, hw_firmware_type, os_version = _handle_arch_specific_config(
+            arch, image, hw_firmware_type, os_version, kwargs
+        )
+
+        # 下载镜像
+        self.image_download(image_name)
+
+        # 构建glance上传命令
+        disk_format = image_name.rsplit('.', 1)[-1]
         cmd = f'glance image-create --name {name} \
             --visibility public \
             --min-disk {size} \
@@ -354,13 +387,32 @@ class SSH:
             --property os_type=linux \
             --property architecture={arch} \
             --property hw_firmware_type={hw_firmware_type} \
-            --file {image} \
+            --file {image_name} \
             --backend {backend} \
             --progress '
+
+        # 添加额外属性
         for k, v in kwargs.items():
             cmd = cmd + f"--property {k}={v} "
-        r = self.run(cmd, return_stderr=True)
-        return r
+        return self.run(cmd, return_stderr=True, check_rc=True)
+
+    def image_download(self, image):
+        """下载镜像到后台节点"""
+        # 构建完整URL
+        img_path = "http://172.22.5.66:9090/liaoxb/test_image_dontdel/"
+        full_url = f"{img_path}{image}"
+        if image not in self.run('ls'):
+            self.run(f'curl {full_url} -o {image}')
+            self.file_exist(image)
+
+    def glance_image_delete(self, name):
+        """删除镜像"""
+        image_id = self.run(f"glance image-list |grep {name} |awk '{{print $2}}'")
+        if image_id:
+            self.run(f"glance image-delete {image_id}", check_rc=True)
+            logger.info(f"镜像 {name} 已删除")
+        else:
+            logger.info(f"镜像 {name} 不存在，无需删除")
 
     def mount_disk(self, disk_name, mount_point=None, format_disk=True):
         """在虚拟机中挂载磁盘

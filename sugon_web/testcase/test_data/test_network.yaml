@@ -1,0 +1,56 @@
+network:
+  # VPC 创建和删除测试 - 覆盖参数组合边界值
+  test_vpc_create_delete:
+    # 测试组1: 中文最小长度 + Geneve类型
+    - case_name: "Geneve网络"
+      network_type: "Geneve"
+      gateway_mode: "分布式网关"
+      vlan_id: null
+      subnet_name: "测试"
+      desc: "中文"
+      subnet_desc: "描述"
+
+    # 测试组2: 英文最大长度 + Flat类型
+    - case_name: "Flat网络"
+      network_type: "Flat"
+      gateway_mode: "集中式网关"
+      vlan_id: null
+      subnet_name: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ab"
+      desc: "Maximum length description in English"
+      subnet_desc: "Maximum length subnet description in English"
+
+    # 测试组3: 中英混合 + VLAN最小ID
+    - case_name: "VLAN网络-最小ID"
+      network_type: "Vlan"
+      gateway_mode: "分布式网关"
+      vlan_id: 1
+      subnet_name: "测试Test子网Sub"
+      desc: "测试混合字符Description混合Test"
+      subnet_desc: "测试混合子网Description混合Test"
+
+    # 测试组4: 中文 + VLAN中间值
+    - case_name: "VLAN网络-中间值"
+      network_type: "Vlan"
+      gateway_mode: "分布式网关"
+      vlan_id: 111
+      subnet_name: "测试云子网名称"
+      desc: "中文描述用于测试VLAN中间值场景"
+      subnet_desc: "中文子网描述用于测试"
+
+    # 测试组5: 英文 + VLAN最大ID + 集中式网关
+    - case_name: "VLAN网络-最大ID-集中式"
+      network_type: "Vlan"
+      gateway_mode: "集中式网关"
+      vlan_id: 4094
+      subnet_name: "TestSubnetName"
+      desc: "English description for maximum VLAN ID test"
+      subnet_desc: "English subnet description"
+
+    # 测试组6: 64字符边界值 + 中英混合
+    - case_name: "VLAN网络-分布式"
+      network_type: "Vlan"
+      gateway_mode: "分布式网关"
+      vlan_id: 555
+      subnet_name: "BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary"
+      desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+      subnet_desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
