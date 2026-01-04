@@ -2,13 +2,16 @@ import ipaddress
 import os
 import random
 import string
-from typing import List, Dict, Any
-from faker import Faker
-import yaml
-from pathlib import Path
-import pytest
+from datetime import datetime
 from functools import wraps
+from pathlib import Path
+from typing import List, Dict, Any
+import allure
+from faker import Faker
+import pytest
+import yaml
 from sugon_web.config.config import Config
+from sugon_web.utils.logger import logger
 
 fake = Faker(locale="zh_CN")
 
@@ -199,3 +202,61 @@ def get_output(strs):
         else:
             continue
     return result
+
+def capture_failure_screenshot(page, item, failure_stage):
+    """
+    捕获失败截图并添加到Allure报告
+
+    Args:
+        page: Playwright页面对象
+        item: pytest测试项对象
+        failure_stage: 失败阶段 (setup/call/teardown)
+    """
+    try:
+        logger.info(f"开始生成失败截图")
+        # 获取项目根目录
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent
+
+        # 创建 screenshots 目录
+        screenshot_dir = project_root / "screenshots"
+        screenshot_dir.mkdir(exist_ok=True)
+
+        # 生成截图路径
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = screenshot_dir / f"{item.name}_{timestamp}.png"
+
+        # 保存截图到文件
+        page.screenshot(path=str(screenshot_path))
+        logger.info(f"截图保存成功: {screenshot_path}")
+
+        # 记录失败时的页面信息
+        failure_info = (
+            f"测试失败时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"测试用例名称: {item.name}\n"
+            f"失败阶段: {failure_stage}\n"
+            f"当前页面URL: {page.url}\n"
+        )
+        logger.error(f"测试失败详情:\n{failure_info}")
+
+        # 将截图添加到 Allure 报告
+        with allure.step(f"用例信息收集 -> {failure_stage}阶段"):
+
+            with open(screenshot_path, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"失败截图",
+                    attachment_type=allure.attachment_type.PNG
+                )
+
+            # 添加失败时的页面信息
+            allure.attach(
+                body=failure_info,
+                name="失败信息",
+                attachment_type=allure.attachment_type.TEXT
+            )
+
+        logger.info(f"失败截图已保存并添加到 Allure 报告: {screenshot_path}")
+
+    except Exception as e:
+        logger.error(f"截图保存失败: {e}")
