@@ -119,56 +119,44 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证重置状态功能")
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
     def test_ecs_reset_status(self, ecs_page, vm, ssh_vm, ssh_host):
         """弹性云服务器-重置状态功能验证"""
         name = vm.get("name")
-        ecs_ip = vm.get("ip")
-        ecs_id = vm.get("id")[:18]
+        ecs_id = vm.get("id")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log(f"步骤1: 检查云服务器{name}状态"):
-            if "错误" in ecs_page.get_row_data(name).get("状态"):
-                ecs_page.ecs_operations(name, "重置状态")
-                ecs_page.assert_popup_success(f"{name}实例重置状态成功")
-            else:
-                pytest.skip("云服务器处于正常状态，无需重置")
+        with allure_step_log(f"步骤1: 修改云服务器{name}状态为错误，重置状态"):
+            sql_statement = f"UPDATE instances SET vm_state = 'error' WHERE uuid = '{ecs_id}'"
+            ssh_host.run_sql("gova", sql_statement)
+            ecs_page.btn_refresh.click()
+            ecs_page.ecs_operations(name, "重置状态")
+            ecs_page.assert_popup_success(f"{name}实例重置状态成功")
 
         with allure_step_log(f"步骤2: 验证重置状态结果"):
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"重置状态验证失败: 状态为 {stdout.get('status')}"
-
-            # 给虚机绑定mfip, 验证虚机可用性
-            mfip = ecs_page.bind_mfip(ecs_ip)
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证编辑功能")
-    def test_ecs_edit(self, ecs_page, ssh_vm):
-        name = random_data()
-        new_name = random_data(length=6)
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    def test_ecs_edit(self, ecs_page, vm, ssh_vm):
+        new_name = random_data(length=4)
+        name = vm.get("name")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 创建弹性云服务器"):
-            ecs_page.ecs_create(name)
-            ecs_page.assert_popup_success(f"创建实例命令下发成功")
-            ecs_page.assert_status(name)
-            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
-            mfip = ecs_page.bind_mfip(ip)
-
-        with allure_step_log("步骤2: 编辑弹性云服务器"):
+        with allure_step_log("步骤1: 编辑弹性云服务器"):
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_edit(name, new_name)
 
-        with allure_step_log("步骤3: 验证编辑结果"):
+        with allure_step_log("步骤2: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
             ssh_vm.connect(mfip)
             assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
-
-        with allure_step_log("步骤4: 清理测试数据"):
-            ecs_page.ecs_remove(new_name)
-            ecs_page.ecs_delete(new_name)
-            ecs_page.assert_deleted(new_name)
 
 
     @allure.title("验证克隆功能")
@@ -341,39 +329,21 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"从虚拟机{name}分离云硬盘")
 
     @allure.title("验证修改密码功能")
-    def test_ecs_modifypwd(self, ecs_page, ssh_vm):
-        name = random_data()
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
+        name = vm.get("name")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 创建弹性云服务器"):
-            ecs_page.ecs_create(name)
-            ecs_page.assert_popup_success(f"创建实例命令下发成功")
-            ecs_page.assert_status(name)
-            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
-            mfip = ecs_page.bind_mfip(ip)
-
-        with allure_step_log(f"步骤2: 云服务器{name}修改密码"):
+        with allure_step_log(f"步骤1: 云服务器{name}修改密码"):
             ecs_page.goto_service('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
             ecs_page.ecs_modify_pwd(name, "sugon@21", "sugon@21")
 
-        with allure_step_log("步骤3: 验证修改密码结果"):
+        with allure_step_log("步骤2: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
             ssh_vm.connect(mfip, pwd="sugon@21")
             assert ssh_vm.run("hostname") == name, f"修改密码后，无法登录虚拟机"
-
-        with allure_step_log(f"步骤4: 云服务器{name}还原密码"):
-            ecs_page.ecs_modify_pwd(name, "admin1234@sugon", "admin1234@sugon")
-
-        with allure_step_log("步骤5: 验证修改密码结果"):
-            ecs_page.assert_popup_success(f"修改密码成功")
-            ssh_vm.connect(mfip)
-            assert ssh_vm.run("hostname") == name, f"还原密码后，无法登录虚拟机"
-
-        with allure_step_log(f"步骤6: 删除云服务器{name}"):
-            ecs_page.ecs_remove(name)
-            ecs_page.ecs_delete(name)
-            ecs_page.assert_deleted(name)
 
     @allure.title("验证修改主机名功能")
     def test_ecs_modify_hostname(self, ecs_page, vm, ssh_vm):

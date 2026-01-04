@@ -2,14 +2,16 @@ import ipaddress
 import os
 import random
 import string
+import pytest
+import yaml
+import allure
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import List, Dict, Any
-import allure
 from faker import Faker
-import pytest
-import yaml
+from pathlib import Path
+from functools import wraps
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger
 

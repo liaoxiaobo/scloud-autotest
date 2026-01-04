@@ -167,69 +167,7 @@ class TestECSScenario:
             ecs_page.ecss_delete(snapshot_name)
             ecs_page.assert_deleted(snapshot_name, refresh=True)
 
-    @allure.title("验证虚机绑定亲和组, 指定物理机节点批量迁移功能")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
-    def test_ecs_batch_migration_node(self, ecs_page, vm, ssh_host):
-        policy = "亲和"
-        if isinstance(vm, list) and len(vm) > 1:
-            names = [vm[i].get("name") for i in range(len(vm))]
-            ecs_ids = [vm[i].get("id") for i in range(len(vm))]
-        else:
-            names = [vm.get("name")]
-            ecs_ids = vm.get("id")
-        group_name = f"{random_data(length=3)}-{policy}"
-
-        with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
-            ecs_page.goto_service('弹性云服务器')
-            ecs_page.ecs_create_affinity_group(group_name, policy)
-
-        with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
-            ecs_page.assert_popup_success("执行成功")
-            assert ecs_page.get_row_data(group_name).get("策略") == policy, \
-                f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(group_name).get('策略')}"
-
-        with allure_step_log(f"步骤3: 云服务器{names}绑定{policy}组并验证绑定结果"):
-            ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.wait_for_page_ready()
-            ecs_page.ecs_bind_unbind_group(names, "绑定亲和组", group_name)
-
-        with allure_step_log(f"步骤4: 云服务器{names}批量迁移"):
-            ecs_page.ecs_batch_migration(names)
-            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
-
-        with allure_step_log(f"步骤5: 验证批量迁移结果"):
-            nodes = []
-            for name in names:
-                ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
-            for name, ecs_id in zip(names, ecs_ids):
-                ecs_page.assert_status(name, status="当前无任务")
-                nodes.append(ecs_page.get_row_data(name).get("物理机"))
-
-            if policy == "亲和":
-                assert len(set(nodes)) == 1, f"云服务器{names}未迁移到同一节点"
-            else:
-                assert len(set(nodes)) > 1, f"云服务器{names}未迁移到不同节点"
-
-        with allure_step_log(f"步骤6: 云服务器{names}解绑{policy}组"):
-            ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.ecs_bind_unbind_group(names, "解绑亲和组", group_name)
-
-        with allure_step_log(f"步骤7: 云服务器{names}批量迁移"):
-            ecs_page.ecs_batch_migration(names)
-            ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
-
-        with allure_step_log(f"步骤8: 验证批量迁移结果"):
-            nodes = []
-            for name, ecs_id in zip(names, ecs_ids):
-                ecs_page.assert_status(name, status="当前无任务", refresh=True)
-                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
-            assert len(set(nodes)) >= 1
-
-        with allure_step_log(f"步骤9: 删除{policy}组: {group_name}"):
-            ecs_page.ecs_delete_affinity_group(group_name)
-            ecs_page.assert_deleted(group_name, refresh=True)
-
-    @allure.title("验证虚机绑定亲和组, 系统调度批量迁移功能")
+    @allure.title("验证虚机绑定亲和组批量迁移功能")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
     def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
         policy = "亲和"

@@ -53,7 +53,7 @@ class Config:
             logger.info(f"未找到环境 {host} 的特定配置")
 
         # 生成 base_url
-        base_url = f"https://{host}:30008"
+        base_url = f"https://{host}:30000"
         cls._config["base_url"] = base_url
         logger.info(f"生成 base_url: {base_url}")
 
