@@ -454,4 +454,15 @@ class SSH:
         ping_thread.start()
         return ping_thread
 
+    def run_sql(self, database: str, sql_statement: str):
+        """
+        执行SQL语句并返回结果。
+        :param database: 数据库名称
+        :param sql_statement: SQL语句
+        :return: SQL执行结果
+        """
+        sql_command = f"use {database};{sql_statement}"
+        command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_command}\\\"\""
+        result = self.run(command, return_stderr=True)
+        logger.info(f"SQL执行成功: {sql_statement}, 结果: {result}")
 

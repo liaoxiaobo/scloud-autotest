@@ -33,5 +33,5 @@ class LoginPage(BasePage):
 
     def logout(self):
         """执行登出操作"""
-        self.get_by_role("definition").locator("i").click()
+        self.get_by_role("definition").filter(has_text="admin").click()
         self.get_by_text("退出系统").click()
