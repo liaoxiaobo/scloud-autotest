@@ -576,7 +576,9 @@ class DorisPage(BasePage):
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=db_name).click()
-        dialog.get_by_text("确定").click()
+        confirm_btn = dialog.get_by_text("确定")
+        confirm_btn.scroll_into_view_if_needed()
+        confirm_btn.click(force=True)
 
     @submenu("实例管理")
     def enable_audit_log(self, name: str):

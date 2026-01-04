@@ -506,164 +506,111 @@ class TestDorisBasic:
                 assert user_name not in result, f"用户 {user_name} 在后端批量删除失败，仍然存在。"
             ssh_vm.close()
 
-    # @allure.title("Doris-用户授权和解除授权的后端验证")
-    # def test_authorize_and_deauthorize_user(self, doris_page, ssh_host, ssh_vm):
-    #     """测试用户的各种权限授权及解除授权，并进行完整的后端生效性验证"""
-    #     # instance_name = doris["name"]
-    #     # user_name = doris["user_name"]
-    #     # password = doris["user_password"]
-    #     instance_name = "doris-batch-autotest-jo89r"
-    #     user_name = "user01"
-    #     password = "admin1234@sugon"
-    #     admin_password = "admin1234@sugon"
-    #
-    #     # 使用两个测试数据库
-    #     # db_readonly = doris["db_name"]
-    #     # db_readwrite = doris["db_name1"]
-    #     db_readonly = "autodb_1hzs7"
-    #     db_readwrite = "autodb_nlurj"
-    #
-    #     # 获取FE节点IP，用于后端验证
-    #     fe_node_name = f"{instance_name}_fe_node01"
-    #     fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
-    #     ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
-    #
-    #     # 测试1: 对数据库、表的只读权限
-    #     with allure_step_log(f"步骤一：为用户 {user_name} 授予对 {db_readonly} 的只读权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readonly, "对数据库、表的只读权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤二：后端确认只读权限生效 - 写入失败，读取成功"):
-    #         # 尝试创建表（应失败）
-    #         cmd_write_fail = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE {db_readonly}.test_ro(id int);\""
-    #         result_write_fail = ssh_vm.run(cmd_write_fail, True, True)
-    #         assert "denied" in result_write_fail['stderr'].lower(), "只读用户执行写入操作未按预期失败。"
-    #
-    #         # 尝试读取（应成功）
-    #         cmd_read_ok = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SHOW TABLES FROM {db_readonly};\""
-    #         result_read_ok = ssh_vm.run(cmd_read_ok, True, True)
-    #         assert "error" not in result_read_ok['stderr'].lower(), "只读用户执行读取操作未按预期成功。"
-    #
-    #     # 测试2: 对数据库、表的写权限
-    #     with allure_step_log(f"步骤三：为用户 {user_name} 授予对 {db_readwrite} 的写权限"):
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "对数据库、表的写权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤四：后端确认写权限生效 - 可以插入数据"):
-    #         # 先用admin创建表
-    #         cmd_admin_create = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE IF NOT EXISTS {db_readwrite}.test_write(id int);\""
-    #         ssh_vm.run(cmd_admin_create)
-    #
-    #         # 用户尝试写入数据（应成功）
-    #         cmd_write_ok = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"INSERT INTO {db_readwrite}.test_write VALUES (1);\""
-    #         result_write_ok = ssh_vm.run(cmd_write_ok, True, True)
-    #         assert "error" not in result_write_ok['stderr'].lower(), f"写权限用户执行插入操作失败"
-    #
-    #     # 测试3: 对数据库、表的更改权限
-    #     with allure_step_log(f"步骤五：为用户 {user_name} 授予对 {db_readwrite} 的更改权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "对数据库、表的更改权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤六：后端确认更改权限生效 - 可以修改表结构"):
-    #         # 尝试修改表结构（应成功）
-    #         cmd_alter = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"ALTER TABLE {db_readwrite}.test_write ADD COLUMN name VARCHAR(50);\""
-    #         result_alter = ssh_vm.run(cmd_alter, True, True)
-    #         assert "error" not in result_alter['stderr'].lower(), "更改权限用户执行ALTER操作失败"
-    #
-    #     # 测试4: 创建数据库、表的权限
-    #     with allure_step_log(f"步骤七：为用户 {user_name} 授予对 {db_readwrite} 的创建权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "创建数据库、表的权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤八：后端确认创建权限生效 - 可以创建表"):
-    #         # 尝试创建新表（应成功）
-    #         cmd_create = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE {db_readwrite}.test_create(id int);\""
-    #         result_create = ssh_vm.run(cmd_create, True, True)
-    #         assert "error" not in result_create['stderr'].lower(), "创建权限用户执行CREATE TABLE操作失败"
-    #
-    #     # 测试5: 删除对数据库、表的权限
-    #     with allure_step_log(f"步骤九：为用户 {user_name} 授予对 {db_readwrite} 的删除权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "删除对数据库、表的权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤十：后端确认删除权限生效 - 可以删除表"):
-    #         # 尝试删除表（应成功）
-    #         cmd_drop = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"DROP TABLE IF EXISTS {db_readwrite}.test_create;\""
-    #         result_drop = ssh_vm.run(cmd_drop, True, True)
-    #         assert "error" not in result_drop['stderr'].lower(), "删除权限用户执行DROP TABLE操作失败"
-    #
-    #     # 测试6: 资源的使用权限
-    #     with allure_step_log(f"步骤十一：为用户 {user_name} 授予对 {db_readwrite} 的资源使用权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "资源的使用权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤十二：后端确认资源使用权限已授予"):
-    #         # 验证用户可以查看资源（Doris中的USAGE权限）
-    #         cmd_show_resources = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SHOW RESOURCES;\""
-    #         result_resources = ssh_vm.run(cmd_show_resources, True, True)
-    #         # USAGE权限允许用户访问数据库但不能进行其他操作
-    #         assert "error" not in result_resources['stderr'].lower() or "access denied" not in result_resources[
-    #             'stderr'].lower()
-    #
-    #     # 测试7: 执行 SHOW CREATE VIEW 的权限
-    #     with allure_step_log(f"步骤十三：为用户 {user_name} 授予对 {db_readwrite} 的 SHOW CREATE VIEW 权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "执行 SHOW CREATE VIEW 的权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤十四：后端确认 SHOW CREATE VIEW 权限已授予"):
-    #         # 先用admin创建一个视图
-    #         cmd_admin_view = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE IF NOT EXISTS {db_readwrite}.base_table(id int); CREATE VIEW IF NOT EXISTS {db_readwrite}.test_view AS SELECT * FROM {db_readwrite}.base_table;\""
-    #         ssh_vm.run(cmd_admin_view, True, True)
-    #
-    #         # 用户尝试执行SHOW CREATE VIEW（应成功）
-    #         cmd_show_view = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SHOW CREATE VIEW {db_readwrite}.test_view;\""
-    #         result_show_view = ssh_vm.run(cmd_show_view, True, True)
-    #         assert "error" not in result_show_view['stderr'].lower(), "SHOW CREATE VIEW 权限用户执行操作失败"
-    #
-    #     # 测试8: 读写权限（组合权限）
-    #     with allure_step_log(f"步骤十五：为用户 {user_name} 授予对 {db_readwrite} 的读写权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.authorize_user(instance_name, user_name, db_readwrite, "对数据库、表的读写权限")
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤十六：后端确认读写权限生效 - 可以读写数据"):
-    #         # 创建表并插入数据
-    #         cmd_readwrite = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE IF NOT EXISTS {db_readwrite}.test_rw(id int); INSERT INTO {db_readwrite}.test_rw VALUES (999);\""
-    #         result_rw = ssh_vm.run(cmd_readwrite, True, True)
-    #         assert "error" not in result_rw['stderr'].lower(), "读写权限用户执行创建和插入操作失败"
-    #
-    #         # 读取数据
-    #         cmd_select = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SELECT * FROM {db_readwrite}.test_rw;\""
-    #         result_select = ssh_vm.run(cmd_select)
-    #         assert "999" in result_select, "读写权限用户执行读取操作未能查到刚写入的数据"
-    #
-    #     # 测试9: 解除授权
-    #     with allure_step_log(f"步骤十七：解除用户 {user_name} 对 {db_readonly} 和 {db_readwrite} 的所有权限"):
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readonly)
-    #         doris_page.assert_popup_success("执行成功")
-    #         doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
-    #         doris_page.assert_popup_success("执行成功")
-    #
-    #     with allure_step_log("步骤十八：后端确认用户权限已被完全解除"):
-    #         cmd_access_denied = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"USE {db_readonly};\""
-    #         result_access_denied = ssh_vm.run(cmd_access_denied, True, True)
-    #         assert "access denied" in result_access_denied[
-    #             'stderr'].lower(), f"访问已解除授权的数据库 {db_readonly} 时未返回预期错误"
-    #
-    #     ssh_vm.close()
+    @allure.title("Doris-用户授权和解除授权的后端验证")
+    def test_authorize_and_deauthorize_user(self, doris_page, doris, ssh_host, ssh_vm):
+        """测试用户的各种权限授权及解除授权，并进行完整的后端生效性验证"""
+        instance_name = doris["name"]
+        user_name = doris["user_name"]
+        password = doris["user_password"]
+        admin_password = "admin1234@sugon"
+
+        # 使用两个测试数据库
+        db_readonly = doris["db_name"]
+        db_readwrite = doris["db_name1"]
+
+        # 获取FE节点IP，用于后端验证
+        fe_node_name = f"{instance_name}_fe_node01"
+        fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+        ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
+
+        # 测试1: 对数据库、表的只读权限
+        with allure_step_log(f"步骤一：为用户 {user_name} 授予对 {db_readonly} 的只读权限"):
+            doris_page.authorize_user(instance_name, user_name, db_readonly, "对数据库、表的只读权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤二：后端确认只读权限生效 - 写入失败，读取成功"):
+            # 尝试创建表（应失败）
+            cmd_write_fail = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE {db_readonly}.test_ro(id int);\""
+            result_write_fail = ssh_vm.run(cmd_write_fail, True, True)
+            assert "denied" in result_write_fail['stderr'].lower(), "只读用户执行写入操作未按预期失败。"
+
+            # 尝试读取（应成功）
+            cmd_read_ok = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SHOW TABLES FROM {db_readonly};\""
+            result_read_ok = ssh_vm.run(cmd_read_ok, True, True)
+            assert "error" not in result_read_ok['stderr'].lower(), "只读用户执行读取操作未按预期成功。"
+
+        # 测试2: 对数据库、表的写权限
+        with allure_step_log(f"步骤三：为用户 {user_name} 授予对 {db_readwrite} 的写权限"):
+            doris_page.authorize_user(instance_name, user_name, db_readwrite, "对数据库、表的写权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤四：后端确认写权限生效 - 可以插入数据"):
+            # 先用admin创建表
+            cmd_admin_create = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE IF NOT EXISTS {db_readwrite}.test_write(id int);\""
+            ssh_vm.run(cmd_admin_create)
+
+            # 用户尝试写入数据（应成功）
+            cmd_write_ok = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"INSERT INTO {db_readwrite}.test_write VALUES (1);\""
+            result_write_ok = ssh_vm.run(cmd_write_ok, True, True)
+            assert "error" not in result_write_ok['stderr'].lower(), f"写权限用户执行插入操作失败"
+
+        # 测试3: 对数据库、表的更改权限
+        with allure_step_log(f"步骤五：为用户 {user_name} 授予对 {db_readwrite} 的更改权限"):
+            doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
+            doris_page.assert_popup_success("操作成功")
+            doris_page.authorize_user(instance_name, user_name, db_readwrite, "对数据库、表的更改权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤六：后端确认更改权限生效 - 可以修改表结构"):
+            # 尝试修改表结构（应成功）
+            cmd_alter = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"ALTER TABLE {db_readwrite}.test_write ADD COLUMN name VARCHAR(50);\""
+            result_alter = ssh_vm.run(cmd_alter, True, True)
+            assert "error" not in result_alter['stderr'].lower(), "更改权限用户执行ALTER操作失败"
+
+        # 测试4: 创建数据库、表的权限
+        with allure_step_log(f"步骤七：为用户 {user_name} 授予对 {db_readwrite} 的创建权限"):
+            doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
+            doris_page.assert_popup_success("操作成功")
+            doris_page.authorize_user(instance_name, user_name, db_readwrite, "创建数据库、表的权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤八：后端确认创建权限生效 - 可以创建表"):
+            # 尝试创建新表（应成功）
+            cmd_create = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE {db_readwrite}.test_create(id int);\""
+            result_create = ssh_vm.run(cmd_create, True, True)
+            assert "error" not in result_create['stderr'].lower(), "创建权限用户执行CREATE TABLE操作失败"
+
+        # 测试5: 删除对数据库、表的权限
+        with allure_step_log(f"步骤九：为用户 {user_name} 授予对 {db_readwrite} 的删除权限"):
+            doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
+            doris_page.assert_popup_success("操作成功")
+            doris_page.authorize_user(instance_name, user_name, db_readwrite, "删除对数据库、表的权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤十：后端确认删除权限生效 - 可以删除表"):
+            # 尝试删除表（应成功）
+            cmd_drop = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"DROP TABLE IF EXISTS {db_readwrite}.test_create;\""
+            result_drop = ssh_vm.run(cmd_drop, True, True)
+            assert "error" not in result_drop['stderr'].lower(), "删除权限用户执行DROP TABLE操作失败"
+
+        # 测试6: 执行 SHOW CREATE VIEW 的权限
+        with allure_step_log(f"步骤十一：为用户 {user_name} 授予对 {db_readwrite} 的 SHOW CREATE VIEW 权限"):
+            doris_page.deauthorize_user(instance_name, user_name, db_readwrite)
+            doris_page.assert_popup_success("操作成功")
+            doris_page.authorize_user(instance_name, user_name, db_readwrite, "执行 SHOW CREATE VIEW 的权限")
+            doris_page.assert_popup_success("操作成功,若数据未更新请刷新页面")
+
+        with allure_step_log("步骤十二：后端确认 SHOW CREATE VIEW 权限已授予"):
+            # 先用admin创建一个视图
+            cmd_admin_view = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"CREATE TABLE IF NOT EXISTS {db_readwrite}.base_table(id int); CREATE VIEW IF NOT EXISTS {db_readwrite}.test_view AS SELECT * FROM {db_readwrite}.base_table;\""
+            ssh_vm.run(cmd_admin_view, True, True)
+
+            # 用户尝试执行SHOW CREATE VIEW（应成功）
+            cmd_show_view = f"mysql -u{user_name} -p'{password}' -P9030 -h127.0.0.1 -e \"SHOW CREATE VIEW {db_readwrite}.test_view;\""
+            result_show_view = ssh_vm.run(cmd_show_view, True, True)
+            assert "error" not in result_show_view['stderr'].lower(), "SHOW CREATE VIEW 权限用户执行操作失败"
+
+        ssh_vm.close()
 
     @allure.title("Doris-开启和关闭审计日志")
     def test_toggle_audit_log(self, doris_page, doris):

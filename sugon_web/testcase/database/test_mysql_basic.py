@@ -109,8 +109,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             mysql_page.instance_ip_unbinding(instance_name)
@@ -118,8 +117,7 @@ class TestMySQLBasic:
         with allure_step_log("步骤四：验证解绑结果"):
             # 解绑后，IP地址信息应该不再显示
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip, connected=False)
 
     @allure.title("MySQL-添加和删除节点")
     def test_add_and_delete_node(self, mysql_page, mysql, ssh_host):
@@ -152,16 +150,14 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             mysql_page.node_ip_unbinding(instance_name)
         with allure_step_log("步骤四：验证解绑结果"):
             # 解绑后，IP地址信息应该不再显示
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip, connected=False)
 
     @allure.title("MySQL-创建并删除数据库")
     def test_create_and_delete_database(self, mysql_page, mysql, ssh_host, ssh_vm):
