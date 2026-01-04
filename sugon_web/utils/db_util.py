@@ -304,3 +304,20 @@ def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list"
         self.logger.info(f"后端资源 '{name}' 在最后一次检查时已删除。")
     else:
         pytest.fail(f"超时错误：资源 '{name}' 在 {timeout} 秒内未能从后端删除。")
+
+
+def execute_sql_update(self, ssh_host, sql_statement: str) -> bool:
+    """
+    通用SQL更新方法
+    :param self: 页面对象实例
+    :param ssh_host: master节点的SSH连接对象
+    :param sql_statement: SQL更新语句
+    :return: bool 是否更新成功
+    """
+    try:
+        command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_statement}\\\"\""
+        result = ssh_host.run(command)
+        self.logger.info(f"SQL更新执行成功: {sql_statement}, 结果: {result}")
+        return True
+    except Exception as e:
+        raise RuntimeError(f"SQL更新失败: {sql_statement}, 错误: {e}")

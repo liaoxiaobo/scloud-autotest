@@ -5,6 +5,7 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.testcase.conftest import ecs_page
+from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, skip_stor
 
@@ -119,29 +120,39 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证重置状态功能")
-    def test_ecs_reset_status(self, ecs_page, vm, ssh_vm, ssh_host):
+    def test_ecs_reset_status(self, ecs_page, ssh_vm, ssh_host):
         """弹性云服务器-重置状态功能验证"""
-        name = vm.get("name")
-        ecs_ip = vm.get("ip")
-        ecs_id = vm.get("id")[:18]
-        ecs_page.goto_service('弹性云服务器')
+        name = random_data()
 
-        with allure_step_log(f"步骤1: 检查云服务器{name}状态"):
-            if "错误" in ecs_page.get_row_data(name).get("状态"):
-                ecs_page.ecs_operations(name, "重置状态")
-                ecs_page.assert_popup_success(f"{name}实例重置状态成功")
-            else:
-                pytest.skip("云服务器处于正常状态，无需重置")
+        with allure_step_log("步骤1: 创建弹性云服务器"):
+            ecs_page.ecs_create(name)
+            ecs_page.assert_popup_success(f"创建实例命令下发成功")
+            ecs_page.assert_status(name)
+            ecs_id = ecs_page.get_row_data(name).get("名称/ID").split(":")[1].strip()
+            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
 
-        with allure_step_log(f"步骤2: 验证重置状态结果"):
+        with allure_step_log(f"步骤2: 修改云服务器{name}状态为错误，重置状态"):
+            sql_statement = f"use gova;UPDATE instances SET vm_state = 'error' WHERE uuid = '{ecs_id}'"
+            db_util.execute_sql_update(ecs_page, ssh_host, sql_statement)
+            ecs_page.btn_refresh.click()
+            ecs_page.ecs_operations(name, "重置状态")
+            ecs_page.assert_popup_success(f"{name}实例重置状态成功")
+
+        with allure_step_log(f"步骤3: 验证重置状态结果"):
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"重置状态验证失败: 状态为 {stdout.get('status')}"
 
             # 给虚机绑定mfip, 验证虚机可用性
-            mfip = ecs_page.bind_mfip(ecs_ip)
+            mfip = ecs_page.bind_mfip(ip)
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
+
+        with allure_step_log(f"步骤4: 删除云服务器{name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_remove(name)
+            ecs_page.ecs_delete(name)
+            ecs_page.assert_deleted(name)
 
     @allure.title("验证编辑功能")
     def test_ecs_edit(self, ecs_page, ssh_vm):

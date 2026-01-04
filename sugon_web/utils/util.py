@@ -2,11 +2,12 @@ import ipaddress
 import os
 import random
 import string
+import pytest
+import yaml
+
 from typing import List, Dict, Any
 from faker import Faker
-import yaml
 from pathlib import Path
-import pytest
 from functools import wraps
 from sugon_web.config.config import Config
 
