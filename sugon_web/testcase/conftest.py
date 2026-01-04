@@ -33,7 +33,7 @@ def close_dialog_before_test(page):
 
     yield
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def login_page(page):
     """初始化登录页对象"""
     login_page = LoginPage(page)
@@ -41,7 +41,7 @@ def login_page(page):
     return login_page
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def evs_page(page):
     """初始化云硬盘页对象"""
     evs_page = EvsPage(page)
@@ -107,7 +107,7 @@ def volume(evs_page, request):
     evs_page.assert_deleted(volume["name"])
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def ecs_page(page):
     """初始化弹性云服务器页对象"""
     ecs_page = EcsPage(page)
@@ -459,7 +459,7 @@ def pool(ops_page, vm, request):
     except Exception as e:
         logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def labels(ecs_page, request):
     params = getattr(request, 'param', {})
     count = params.get('count', 1)  # 默认创建1个标签
@@ -510,7 +510,7 @@ def affinity(ecs_page, request):
     yield label_names
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def vpc_page(page):
     """初始化虚拟私有云页面对象"""
     vpc_page = VpcPage(page)

@@ -68,14 +68,14 @@ def config(pytestconfig):
     return Config
 
 @pytest.fixture(scope="session")
-def page(config):
-    """创建新页面，支持动态浏览器类型和 headless 模式"""
+def browser(config):
+    """
+    Session级别的browser fixture
+    所有测试用例共享同一个浏览器实例，提高性能
+    """
     # 从Config对象获取配置
     browser_type = config.get("browser")
     headless = config.get("headless")
-    base_url = config.get("base_url")
-    username = config.get("username")
-    password = config.get("password")
     slow_mo = config.get("slow_mo")
 
     logger.info(f"开始初始化浏览器: type={browser_type}, headless={headless}")
@@ -88,42 +88,72 @@ def page(config):
                 headless=headless,
                 slow_mo=slow_mo
             )
-            logger.info("浏览器启动成功")
+            logger.info(f"浏览器 {browser_type} 启动成功")
 
-            logger.info("创建浏览器上下文...")
-            context = browser.new_context(
-                ignore_https_errors=True,  # 忽略 SSL 错误
-                permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
-            )
-            logger.info("浏览器上下文创建成功")
+            yield browser
 
-            logger.info("创建新页面...")
-            page = context.new_page()
-            logger.info("页面创建成功")
-
-            logger.info(f"导航到目标URL: {base_url}")
-            page.goto(base_url)
-            logger.info(f"页面导航完成，当前URL: {page.url}")
-
-            # 检查是否已登录，如果未登录则执行登录
-            if not _is_logged_in(page):
-                _login(page, {"username": username, "password": password})
-                logger.info("登录成功")
-
-                # 关闭弹窗
-                base_page = BasePage(page)
-                base_page.close_dialog_if_exists()
-
-            yield page
-
-            logger.info("开始清理浏览器资源...")
-            context.close()
-            logger.info("浏览器上下文已关闭")
+            logger.info("浏览器关闭中...")
             browser.close()
             logger.info("浏览器已关闭")
 
     except Exception as e:
         logger.error(f"浏览器初始化失败: {e}")
+        raise
+
+
+@pytest.fixture(scope="class")
+def browser_context(browser):
+    """
+    浏览器上下文fixture
+
+    Context是浏览器上下文，类似于浏览器的隐身模式窗口。
+    每个context有独立的cookies、localStorage等数据。
+    """
+    context = browser.new_context(
+        ignore_https_errors=True,  # 忽略 SSL 错误
+        permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+    )
+
+    logger.info("浏览器上下文创建成功")
+
+    yield context
+
+    context.close()
+    logger.info("浏览器上下文已关闭")
+
+
+@pytest.fixture(scope="class")
+def page(browser_context, config):
+    """
+    每个测试用例获得独立的页面实例，保证测试隔离性
+    受限于用例设计及被依赖fixture，此fixture暂时只能在class级别使用
+    """
+    base_url = config.get("base_url")
+    username = config.get("username")
+    password = config.get("password")
+
+    try:
+        logger.info("创建新页面...")
+        page = browser_context.new_page()
+        logger.info("页面创建成功")
+
+        logger.info(f"导航到目标URL: {base_url}")
+        page.goto(base_url)
+        logger.info(f"页面导航完成，当前URL: {page.url}")
+
+        # 检查是否已登录，如果未登录则执行登录
+        if not _is_logged_in(page):
+            _login(page, {"username": username, "password": password})
+            logger.info("登录成功")
+
+            # 关闭弹窗
+            base_page_obj = BasePage(page)
+            base_page_obj.close_dialog_if_exists()
+
+        yield page
+
+    except Exception as e:
+        logger.error(f"页面初始化失败: {e}")
         raise
 
 @pytest.hookimpl(tryfirst=True)
