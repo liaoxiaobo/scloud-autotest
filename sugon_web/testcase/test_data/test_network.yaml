@@ -29,16 +29,16 @@ network:
       subnet_desc: "测试混合子网Description混合Test"
 
     # 测试组4: 中文 + VLAN中间值
-    - case_name: "VLAN网络-中间值"
+    - case_name: "VLAN网络-集中式"
       network_type: "Vlan"
-      gateway_mode: "分布式网关"
+      gateway_mode: "集中式网关"
       vlan_id: 111
       subnet_name: "测试云子网名称"
       desc: "中文描述用于测试VLAN中间值场景"
       subnet_desc: "中文子网描述用于测试"
 
     # 测试组5: 英文 + VLAN最大ID + 集中式网关
-    - case_name: "VLAN网络-最大ID-集中式"
+    - case_name: "VLAN网络-最大ID"
       network_type: "Vlan"
       gateway_mode: "集中式网关"
       vlan_id: 4094
@@ -54,3 +54,23 @@ network:
       subnet_name: "BoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundaryBoundary"
       desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
       subnet_desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+
+  # 子网创建和删除测试 - 数据驱动
+  test_vpc_subnet_create_delete:
+    # 测试组1: 默认参数（gateway_ip、available_ip和dns为null，使用默认值）
+    - case_name: "默认参数"
+      subnet_name: "subnet-default"
+      desc: "默认参数测试"
+      cidr: "10.0.200.0/24"
+      gateway_ip: null
+      available_ip: null
+      dns: null
+
+    # 测试组2: 全部指定参数
+    - case_name: "全部指定参数"
+      subnet_name: "subnet-custom"
+      desc: "全部指定参数测试"
+      cidr: "10.0.201.0/24"
+      gateway_ip: "10.0.201.1"
+      available_ip: "10.0.201.10-10.0.201.100"
+      dns: "8.8.8.8"
