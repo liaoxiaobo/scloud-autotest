@@ -293,17 +293,17 @@ class BasePage(Playwright):
                 - "弹性云服务器"
                 - "虚拟私有云"
         """
-        # 检查是否已经在目标子菜单页面上
-        try:
-            # 查找当前激活的菜单项
-            active_menu = self.locator(".one-tree-active")
-            if active_menu.count() > 0:
-                active_text = active_menu.inner_text().strip()
-                if active_text == submenu:
-                    self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
-                    return
-        except Exception as e:
-            self.logger.debug(f"检查当前菜单状态时出错: {e}")
+        # # 检查是否已经在目标子菜单页面上
+        # try:
+        #     # 查找当前激活的菜单项
+        #     active_menu = self.locator(".one-tree-active")
+        #     if active_menu.count() > 0:
+        #         active_text = active_menu.inner_text().strip()
+        #         if active_text == submenu:
+        #             self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
+        #             return
+        # except Exception as e:
+        #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
