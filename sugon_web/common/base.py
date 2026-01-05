@@ -185,7 +185,8 @@ class BasePage(Playwright):
         """公共元素: 批量删除按钮"""
         locators = [
             self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除", exact=True).first
+            self.get_by_text("删除", exact=True).first,
+            self.get_by_text("批量删除").first
         ]
 
         return self._find_element(locators, "批量删除按钮")

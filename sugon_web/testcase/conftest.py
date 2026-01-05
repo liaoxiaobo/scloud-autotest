@@ -1,6 +1,4 @@
 import time
-
-import allure
 import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
@@ -128,8 +126,12 @@ def vm(ecs_page, request):
     支持参数化配置，可通过pytest.mark.parametrize传入参数：
     - count: 创建虚机数量，默认为1
     - root_gb: 系统盘大小，默认为100GB
-    - bind_mfip: 是否绑定mfip，默认为False
+    - bind_mfip: 是否绑定mfip，默认为True
+    - network: 网络名称，默认为"Autotest"
+    - subnet: 子网名称，默认为"Autotest(10"
+    - cluster: 集群名称，默认为"Autotest"
 
+    特性：如果测试用例引用了vpc fixture，自动使用vpc的网络和子网信息
 
     返回值:
     - 如果创建一台虚机：返回字典类型的虚机信息
@@ -141,11 +143,35 @@ def vm(ecs_page, request):
     root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
+    # ✅ 如果引用了vpc fixture，自动获取网络和子网信息
+    if 'vpc' in request.fixturenames:
+        vpc_data = request.getfixturevalue('vpc')
+        network = vpc_data['name']  # VPC名称就是网络名称
+        subnet = vpc_data['subnet_name']
+        logger.info(f"检测到vpc fixture，使用VPC网络: {network}, 子网: {subnet}")
+    else:
+        network = params.get('network', 'Autotest')
+        subnet = params.get('subnet', 'Autotest(10')
+
+    cluster = params.get('cluster', 'Autotest')
     name = random_data()
+
     with allure_step_log("创建指定数量的虚机"):
         # 创建指定数量的虚机
-        ecs_page.goto_service('弹性云服务器') # 临时方案：保证在同一服务页面,满足云盘挂载测试
-        ecs_page.ecs_create(name, count=count, sys_size=root_gb)
+        ecs_page.goto_service('弹性云服务器')
+        ecs_page.ecs_create(
+            name=name,
+            count=count,
+            network=network,
+            subnet=subnet,
+            cluster=cluster,
+            flavor="ecs.c6.large",
+            image_name="",
+            os_version="centos7.9",
+            login_password="admin1234@sugon",
+            vnc_password="sugon@20",
+            sys_size=root_gb
+        )
         ecs_page.assert_popup_success("创建实例命令下发成功")
 
         # 等待虚机创建完成并收集信息
@@ -161,30 +187,32 @@ def vm(ecs_page, request):
         # 等待虚机创建完成
         ecs_page.assert_status(vm_names)
 
-        # 收集每台虚机的信息
-        for vm_name in vm_names:
-            row_data = ecs_page.get_row_data(vm_name)
-            vm_metadata = {
-                "name": vm_name,
-                "id": row_data["名称/ID"].split(":")[1].strip(),
-                "ip": row_data["IP地址"].split(":")[1].strip(),
-                'host': row_data["物理机"],
-                "flavor": row_data["规格"],
-                "image": row_data["镜像名称"],
-                "project": row_data["项目名称"]
-            }
-            metadata_list.append(vm_metadata)
+    # 收集每台虚机的信息
+    for vm_name in vm_names:
+        row_data = ecs_page.get_row_data(vm_name)
+        vm_metadata = {
+            "name": vm_name,
+            "id": row_data["名称/ID"].split(":")[1].strip(),
+            "ip": row_data["IP地址"].split(":")[1].strip(),
+            'host': row_data["物理机"],
+            "flavor": row_data["规格"],
+            "image": row_data["镜像名称"],
+            "project": row_data["项目名称"],
+            "network": network,  # 添加网络信息
+            "subnet": subnet  # 添加子网信息
+        }
+        metadata_list.append(vm_metadata)
 
-        # 如果需要绑定mfip
-        if bind_mfip:
-            for vm_data in metadata_list:
-                ecs_page.goto_service("网络设施")
-                ecs_page.mfip_create(vm_data["project"], "Autotest", vm_data["ip"])
-                ecs_page.assert_popup_success()
-                ecs_page.mfip_search(vm_data["ip"])
-                # vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
-                vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
-            ecs_page.goto_service("弹性云服务器") # 跳转回弹性云服务器页面
+    # 如果需要绑定mfip
+    if bind_mfip:
+        for vm_data in metadata_list:
+            ecs_page.goto_service("网络设施")
+            ecs_page.mfip_create(vm_data["project"], network, vm_data["ip"])
+            ecs_page.assert_popup_success()
+            ecs_page.mfip_search(vm_data["ip"])
+            # vm_data["mfip"] = ecs_page.get_column_data("Mfip 地址")[0]  # 更新metadata
+            vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
+        ecs_page.goto_service("弹性云服务器")
 
     # 根据虚机数量返回不同类型的数据
     if count == 1:
@@ -510,7 +538,7 @@ def affinity(ecs_page, request):
     yield label_names
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def vpc_page(page):
     """初始化虚拟私有云页面对象"""
     vpc_page = VpcPage(page)
@@ -556,7 +584,6 @@ def vpc(vpc_page, request):
     params = getattr(request, 'param', {})
 
     name = params.get('name', random_data())
-    print(params.get('vlan_id'))
 
     # 构建创建参数
     create_kwargs = {
@@ -565,7 +592,9 @@ def vpc(vpc_page, request):
         "cidr": params.get('cidr', random_data("cidr")),
         "network_type": params.get('network_type', 'Geneve'),
         "gateway_mode": params.get('gateway_mode', "分布式网关"),
-        "vlan_id": params.get('vlan_id')
+        "vlan_id": params.get('vlan_id'),
+        "gateway_ip": params.get('gateway_ip'),
+        "mac": params.get('mac')
     }
 
     # 创建VPC
@@ -579,6 +608,8 @@ def vpc(vpc_page, request):
     yield vpc_data
 
     # 清理VPC
+    # ✅ 在删除前确保在虚拟私有云页面
+    vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
 
