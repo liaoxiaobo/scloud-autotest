@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger
-from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot
+from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
@@ -180,8 +180,8 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    # 获取页面对象
-    page = item.funcargs.get("page", None)
+    # 获取page对象
+    page = get_page_from_item(item)
 
     # 处理call阶段（测试执行阶段）
     if rep.when == "call":

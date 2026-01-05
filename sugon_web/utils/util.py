@@ -262,3 +262,29 @@ def capture_failure_screenshot(page, item, failure_stage):
 
     except Exception as e:
         logger.error(f"截图保存失败: {e}")
+
+def get_page_from_item(item):
+    """
+    从测试用例的fixture中获取page对象
+
+    Args:
+        item: pytest测试项对象
+
+    Returns:
+        Page对象或None
+    """
+    # 方法1：直接获取page fixture
+    page = item.funcargs.get("page", None)
+    if page:
+        return page
+
+    # 方法2：遍历所有fixture，查找包含page属性的fixture
+    for fixture_name, fixture_obj in item.funcargs.items():
+        if hasattr(fixture_obj, 'page'):
+            page = getattr(fixture_obj, 'page')
+            logger.info(f"从 {fixture_name} 中获取到page对象")
+            return page
+
+    logger.warning("无法获取page对象")
+    return None
+
