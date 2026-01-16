@@ -1,6 +1,6 @@
 import time
 
-from playwright.sync_api import Page, expect, BrowserContext
+from playwright.sync_api import Page, expect, BrowserContext, Locator
 from sugon_web.utils.logger import logger
 from contextlib import contextmanager
 
@@ -30,19 +30,20 @@ class Playwright:
 
     def __init__(self, page: Page):
         self.page = page
-        self.logger = logger  # 传递日志工具
+        self.logger = logger
 
     def locator(self, selector):
-        """创建页面元素定位器
+        """创建页面元素定位器，返回自定义包装的定位器
 
         Args:
             selector: 元素选择器
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"创建定位器: {selector}")
-        return self.page.locator(selector)
+        original_locator = self.page.locator(selector)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_test_id(self, test_id):
         """通过测试ID创建定位器
@@ -51,10 +52,11 @@ class Playwright:
             test_id: 测试ID
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过测试ID创建定位器: {test_id}")
-        return self.page.get_by_test_id(test_id)
+        original_locator = self.page.get_by_test_id(test_id)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_role(self, role, name=None, exact=False):
         """通过角色和名称创建定位器
@@ -65,10 +67,11 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过角色创建定位器: role={role}, name={name}")
-        return self.page.get_by_role(role, name=name, exact=exact)
+        original_locator = self.page.get_by_role(role, name=name, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_placeholder(self, text, exact=False):
         """通过占位符创建定位器
@@ -78,10 +81,11 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过占位符创建定位器: text={text}, exact={exact}")
-        return self.page.get_by_placeholder(text, exact=exact)
+        original_locator = self.page.get_by_placeholder(text, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_label(self, text, exact=False):
         """通过标签文本创建定位器
@@ -91,10 +95,11 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过标签文本创建定位器: text={text}, exact={exact}")
-        return self.page.get_by_label(text, exact=exact)
+        original_locator = self.page.get_by_label(text, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_text(self, text, exact=False):
         """通过文本内容创建定位器
@@ -104,10 +109,11 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过文本内容创建定位器: text={text}, exact={exact}")
-        return self.page.get_by_text(text, exact=exact)
+        original_locator = self.page.get_by_text(text, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_alt_text(self, text, exact=False):
         """通过ALT文本创建定位器
@@ -117,10 +123,11 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过ALT文本创建定位器: text={text}, exact={exact}")
-        return self.page.get_by_alt_text(text, exact=exact)
+        original_locator = self.page.get_by_alt_text(text, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
 
     def get_by_title(self, text, exact=False):
         """通过标题创建定位器
@@ -130,10 +137,12 @@ class Playwright:
             exact: 是否精确匹配
 
         Returns:
-            Locator: 定位器对象
+            CustomLocator: 自定义包装的定位器对象
         """
         self.logger.debug(f"通过标题创建定位器: text={text}, exact={exact}")
-        return self.page.get_by_title(text, exact=exact)
+        original_locator = self.page.get_by_title(text, exact=exact)
+        return CustomLocator(original_locator, self, self.logger)
+
 
     def click(self, selector):
         """点击元素
@@ -149,6 +158,7 @@ class Playwright:
             formatted_selector = _format_selector(selector)
             self.page.click(formatted_selector)
             self.logger.info(f"成功点击元素: {original_selector}")
+            self.wait_for_page_ready()
         except Exception as e:
             self.logger.error(f"点击元素失败: {original_selector}, 错误: {str(e)}")
             raise
@@ -272,3 +282,111 @@ class Playwright:
                     self.logger.info("已自动关闭新标签页")
             except Exception as e:
                 self.logger.warning(f"关闭新标签页时出错: {str(e)}")
+
+    def wait_for_page_ready(self):
+        """公共方法: 等待页面完全就绪"""
+        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
+        self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
+        self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
+        # self.page.wait_for_selector(".el-loading-spinner", state='hidden')
+        # 等待所有 .el-loading-spinner 元素隐藏
+        loading_spinners = self.page.locator(".el-loading-spinner")
+        count = loading_spinners.count()
+        if count > 0:
+            for i in range(count):
+                loading_spinners.nth(i).wait_for(state='hidden')
+
+class CustomLocator:
+    """自定义定位器包装器，用于拦截 Locator 的方法调用"""
+
+    def __init__(self, locator: Locator, playwright_instance, logger_instance):
+        self._locator = locator
+        self._playwright = playwright_instance
+        self._logger = logger_instance
+
+    def __str__(self):
+        """返回定位器的字符串表示，便于调试"""
+        try:
+            # 获取原始 locator 的字符串表示
+            original_str = str(self._locator)
+
+            # 去除关键字后面的多余反斜杠
+            cleaned_str = original_str.replace("url=\\'", "url='")
+            cleaned_str = cleaned_str.replace('selector=\\\'', "selector='")
+            cleaned_str = cleaned_str.replace('name=\\\'', "name='")
+            cleaned_str = cleaned_str.replace('role=\\\'', "role='")
+            cleaned_str = cleaned_str.replace('url=\\"', 'url="')
+            cleaned_str = cleaned_str.replace('selector=\\"', 'selector="')
+            cleaned_str = cleaned_str.replace('name=\\"', 'name="')
+            cleaned_str = cleaned_str.replace('role=\\"', 'role="')
+
+            return cleaned_str
+        except Exception as e:
+            # 如果出错，返回包含对象ID的信息
+            self._logger.debug(f"生成定位器字符串表示时出错: {e}")
+            return f"<Locator id={id(self._locator)}>"
+
+    def __repr__(self):
+        """返回定位器的正式字符串表示"""
+        return self.__str__()
+
+    def click(self, **kwargs):
+        """点击元素，直接在内部 locator 上调用"""
+        try:
+            # 直接在内部 locator 上调用 click
+            self._locator.click(**kwargs)
+            # 触发等待（确保页面加载完成）
+            self._playwright.wait_for_page_ready()
+        except Exception as e:
+            self._logger.error(f"[CustomLocator.click] 点击失败: {e}")
+            raise
+
+
+    def __getattr__(self, name):
+        """拦截所有属性访问，返回包装后的方法或属性"""
+        # 直接委托给原始 locator
+        attr = getattr(self._locator, name)
+
+        # 如果是可调用对象（方法），则包装它
+        if callable(attr):
+            def wrapped_method(*args, **kwargs):
+                result = attr(*args, **kwargs)
+
+                # 如果返回的是 Locator，则继续包装
+                if isinstance(result, Locator):
+                    return CustomLocator(result, self._playwright, self._logger)
+
+                return result
+
+            return wrapped_method
+
+        # 如果是属性且返回 Locator，则包装
+        if isinstance(attr, Locator):
+            return CustomLocator(attr, self._playwright, self._logger)
+
+        return attr
+
+# 让 expect() 能够识别 CustomLocator, 保存原始的 expect 函数
+_original_expect = expect
+
+
+def patched_expect(value, message=None):
+    """
+    补丁版本的 expect 函数，能够处理 CustomLocator 对象
+    """
+    # 如果传入的是 CustomLocator，提取其内部的 _locator
+    if isinstance(value, CustomLocator):
+        value = value._locator
+    return _original_expect(value, message)
+
+
+# 应用补丁到 playwright.sync_api 模块
+try:
+    import playwright.sync_api as playwright_sync_api
+    playwright_sync_api.expect = patched_expect
+    logger.info("成功应用 expect() 补丁，支持 CustomLocator")
+except Exception as e:
+    logger.error(f"应用 expect() 补丁失败: {e}")
+
+# 导出补丁后的 expect
+expect = patched_expect

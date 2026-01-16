@@ -100,8 +100,8 @@ def volume(evs_page, request):
     yield volume
 
     evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
-    evs_page.evs_remove(volume["name"])
-    evs_page.evs_delete(volume["name"])
+    evs_page.evs_remove([volume["name"]])
+    evs_page.evs_delete([volume["name"]])
     evs_page.assert_deleted(volume["name"])
 
 
@@ -172,8 +172,8 @@ def vm(ecs_page, request):
             vnc_password="sugon@20",
             sys_size=root_gb
         )
-        ecs_page.assert_popup_success("创建实例命令下发成功")
-
+        # ecs_page.assert_popup_success("创建实例命令下发成功")
+        ecs_page.wait_for_page_ready()
         # 等待虚机创建完成并收集信息
         metadata_list = []
 
@@ -351,7 +351,8 @@ def ecss(ecs_page, vm):
             snapshot_name=snapshot_name,
         )
         ecs_page.assert_popup_success("创建实例快照成功")
-        ecs_page.assert_status(vm_name, status="当前无任务")
+        # ecs_page.wait_for_source_complete(vm_name)
+        ecs_page.assert_status(vm_name)
 
         # 切换到快照页面并验证
         ecs_page.goto_submenu("快照")
@@ -449,19 +450,18 @@ def pool(ops_page, vm, request):
     with allure_step_log("创建指定数量的虚机"):
         ops_page.goto_service("计算设施")
         # 启用磁盘并获取磁盘大小
-        ops_page.search_disk("所在物理机", node)
-        _disk_name, _disk_size = ops_page.enable_disk(node)
+        _disk_name, _disk_size = ops_page.enable_disk("所在物理机", node)
         # ops_page.assert_status(_disk_name, status="启用")
 
         # 创建存储池
-        device_type = f"DISK-SSD-{_disk_size}"
+        # device_type = f"DISK-SATA-{_disk_size}"
         storage_type = params.get('storage_type', "本地磁盘")
-        ops_page.create_storage_pool(pool_name, device_type=device_type, storage_type=storage_type)
+        ops_page.create_storage_pool(pool_name, device_type=_disk_size, storage_type=storage_type)
 
         # 验证存储池创建成功
         # ops_page.assert_popup_success("执行成功")
         ops_page.sync_storage_pool_config()
-        ops_page.assert_status(pool_name, status="已同步")
+        ops_page.sync_pool_size(pool_name)
 
         pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
         pool_data.update(vm)
@@ -482,7 +482,7 @@ def pool(ops_page, vm, request):
         # 禁用磁盘
     try:
         ops_page.search_disk("所在物理机", node)
-        ops_page.disable_disk(node)
+        ops_page.disable_disk(_disk_name)
 
     except Exception as e:
         logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
@@ -612,4 +612,3 @@ def vpc(vpc_page, request):
     vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
-

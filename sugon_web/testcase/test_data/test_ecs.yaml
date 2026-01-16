@@ -27,22 +27,22 @@ evs:
   test_ecs_operations:
     - param:
       operation: "重启"
-      desc: "实例重启成功"
+      desc: "实例重启任务下发成功"
       status: "运行"
       vm_state: "active"
     - param:
       operation: "强制重启"
-      desc: "实例强制重启成功"
+      desc: "实例强制重启任务下发成功"
       status: "运行"
       vm_state: "active"
     - param:
       operation: "强制关机"
-      desc: "实例强制关机成功"
+      desc: "实例强制关机任务下发成功"
       status: "关机"
       vm_state: "stopped"
     - param:
       operation: "启动"
-      desc: "实例启动成功"
+      desc: "实例启动任务下发成功"
       status: "运行"
       vm_state: "active"
   test_ecs_network:

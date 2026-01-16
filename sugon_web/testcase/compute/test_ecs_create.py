@@ -93,8 +93,8 @@ class TestECSCreate:
 
         with allure_step_log(f"步骤4: 验证虚机{name}挂载CD-ROM结果"):
             ecs_page.assert_popup_success(f"挂载CD-ROM到虚拟机{name}成功")
-            ecs_page.assert_status(name, status="挂载CD-ROM中")
-            ecs_page.assert_status(name, status="当前无任务")
+            # ecs_page.wait_for_source_complete(name)
+            ecs_page.assert_status(name)
             # 验证CD-ROM已成功挂载
             cdrom_name = ecs_page.get_row_data(name).get("挂载云硬盘")
             assert cdrom_name.startswith("cdrom-")

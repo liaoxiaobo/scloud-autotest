@@ -414,7 +414,7 @@ class SSH:
         else:
             logger.info(f"镜像 {name} 不存在，无需删除")
 
-    def mount_disk(self, disk_name, mount_point=None, format_disk=True):
+    def mount_disk(self, disk_name, mount_point=None, format_disk=True, disk_type="ext4"):
         """在虚拟机中挂载磁盘
 
         Args:
@@ -434,7 +434,7 @@ class SSH:
 
         # 格式化磁盘（如果需要）
         if format_disk:
-            self.run(f"mkfs.ext4 /dev/{disk_name}")
+            self.run(f"mkfs.{disk_type} /dev/{disk_name}", check_rc=True)
 
         # 创建挂载点并挂载
         self.run(f"mkdir -p {mount_point}")

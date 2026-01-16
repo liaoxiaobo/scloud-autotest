@@ -64,6 +64,7 @@ class TestECSScenario:
             new_md5d = ssh_vm.run(f"md5sum {mount_point}/test_file.txt")
             assert md5s in new_md5s, f"克隆后系统盘数据MD5不一致，原始数据:{md5s},克隆后数据:{new_md5s}"
             assert md5d in new_md5d, f"克隆后系统盘数据MD5不一致，原始数据:{md5d},克隆后数据:{new_md5d}"
+            ssh_vm.connect(vm['mfip'])
             ssh_vm.run(f"umount /dev/{disk_name}")
 
         with allure_step_log(f"步骤5: 从服务器{vm_name}卸载云硬盘{volume_name}"):
@@ -79,7 +80,7 @@ class TestECSScenario:
 
         with allure_step_log(f"步骤7: 清理测试数据{clone_disk}"):
             evs_page.goto_service('云硬盘')
-            evs_page.evs_remove(clone_disk)
+            evs_page.evs_remove([clone_disk])
             evs_page.assert_deleted(clone_name)
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
@@ -120,7 +121,7 @@ class TestECSScenario:
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecss_create(name=vm_name, snapshot_name=snapshot_name, desc="系统盘快照测试", data_disk=True)
             ecs_page.assert_popup_success("创建实例快照成功")
-            ecs_page.assert_status(vm['name'], status="当前无任务")
+            ecs_page.assert_status(vm['name'])
 
         with allure_step_log(f"步骤4: 基于快照{snapshot_name}创建云服务器{new_vm}"):
             ecs_page.ecs_create(new_vm, image_source="快照", image_name=snapshot_name)
@@ -145,12 +146,12 @@ class TestECSScenario:
             new_vm_mfip = ecs_page.bind_mfip(new_vm_ip)
             ssh_vm.connect(new_vm_mfip)
 
-            # # 克隆的虚机重新mount数据盘，验证md5值
-            ssh_vm.run(f"mount /dev/{new_disk_name} {mount_point}")
+            # 快照新建的虚机重新mount数据盘，验证md5值
+            ssh_vm.mount_disk(new_disk_name, mount_point, format_disk=False)
             new_md5s = ssh_vm.run(f"md5sum /root/{vm_name}")
             new_md5d = ssh_vm.run(f"md5sum {mount_point}/test_file.txt")
-            assert md5s in new_md5s, f"克隆后系统盘数据MD5不一致，原始数据:{md5s},克隆后数据:{new_md5s}"
-            assert md5d in new_md5d, f"克隆后系统盘数据MD5不一致，原始数据:{md5d},克隆后数据:{new_md5d}"
+            assert md5s in new_md5s, f"快照创建的虚机系统盘数据MD5不一致，原始数据:{md5s},克隆后数据:{new_md5s}"
+            assert md5d in new_md5d, f"快照创建的虚机系统盘数据MD5不一致，原始数据:{md5d},克隆后数据:{new_md5d}"
 
         with allure_step_log(f"步骤6: 从服务器{vm_name}卸载云硬盘{volume_name}"):
             ecs_page.goto_service('弹性云服务器')
@@ -175,6 +176,7 @@ class TestECSScenario:
             names = [vm[i].get("name") for i in range(len(vm))]
             ecs_ids = [vm[i].get("id") for i in range(len(vm))]
             pre_nodes = [vm[i].get("host") for i in range(len(vm))]
+            all_vms = names.copy() # 备份虚机名称
         else:
             names = [vm.get("name")]
             ecs_ids = vm.get("id")
@@ -196,7 +198,7 @@ class TestECSScenario:
             ecs_page.goto_service('弹性云服务器')
             # 获取可热迁移的节点
             available_hosts = ecs_page.ecs_hot_migration_options(names[0])
-            m_names, goal, final_node = ecs_page.ecs_batch_migration_names(names, pre_nodes, available_hosts)
+            m_names, final_node = ecs_page.ecs_batch_migration_names(names, pre_nodes, available_hosts)
 
         with allure_step_log(f"步骤5: 云服务器{m_names}批量迁移"):
             ecs_page.ecs_batch_migration(m_names)
@@ -207,7 +209,7 @@ class TestECSScenario:
             for name in m_names:
                 ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
             for name in m_names:
-                ecs_page.assert_status(name, status="当前无任务")
+                ecs_page.assert_status(name)
                 nodes.append(ecs_page.get_row_data(name).get("物理机"))
 
             if policy == "亲和":
@@ -216,21 +218,20 @@ class TestECSScenario:
             else:
                 assert len(set(nodes)) > 1, f"云服务器{m_names}未迁移到不同节点"
 
-        with allure_step_log(f"步骤7: 云服务器{names}解绑{policy}组"):
+        with allure_step_log(f"步骤7: 云服务器{all_vms}解绑{policy}组"):
             ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.ecs_bind_unbind_group(goal, "解绑亲和组", group_name)
-            ecs_page.ecs_bind_unbind_group(m_names, "解绑亲和组", group_name)
+            ecs_page.ecs_bind_unbind_group(all_vms, "解绑亲和组", group_name)
 
-        with allure_step_log(f"步骤8: 云服务器{names}批量迁移"):
-            ecs_page.ecs_batch_migration(names)
+        with allure_step_log(f"步骤8: 云服务器{all_vms}批量迁移"):
+            ecs_page.ecs_batch_migration(all_vms)
             ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
 
         with allure_step_log(f"步骤9: 验证批量迁移结果"):
             nodes = []
-            for name, ecs_id in zip(names, ecs_ids):
+            for name, ecs_id in zip(all_vms, ecs_ids):
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
-            for name, ecs_id in zip(names, ecs_ids):
-                ecs_page.assert_status(name, status="当前无任务", refresh=True)
+            for name, ecs_id in zip(all_vms, ecs_ids):
+                ecs_page.assert_status(name)
                 nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
             assert len(set(nodes)) >= 1
 
