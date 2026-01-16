@@ -1,3 +1,4 @@
+import time
 import pytest
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage, submenu
@@ -44,13 +45,16 @@ class OpsPage(BasePage):
     def search_disk(self, search_type: str, search_value: str):
         """搜索裸磁盘"""
         self.get_by_placeholder("请选择").nth(1).click()
-        self.locator("span").filter(has_text=search_type).click()
-        self.get_by_placeholder("请输入搜索内容").fill(search_value)
+        # self.locator("span").filter(has_text=search_type).click()
+        self.locator("li").filter(has_text=search_type).click()
+        # self.get_by_placeholder("请输入搜索内容").fill(search_value)
+        self.get_by_placeholder(f"搜索（{search_type}）").fill(search_value)
         self.get_by_text("搜索", exact=True).click()
+        self.wait_for_page_ready()
 
     @submenu("物理机设备")
     @submenu("裸磁盘")
-    def enable_disk(self, node: str):
+    def enable_disk_(self, node: str):
         """启用虚机所在节点的裸磁盘
 
         Args:
@@ -83,11 +87,30 @@ class OpsPage(BasePage):
             logger.info(f"{node} 的裸磁盘处于 {status} 状态")
             pytest.skip(f"{node} 的裸磁盘处于 {status} 状态")
 
-    @submenu("物理机设备")
+    def enable_disk(self, search_type: str, search_value: str):
+        """通过名称启用裸磁盘"""
+        self.search_disk(search_type, search_value)
+        names = self.get_column_data("名称")
+        # data = ops_page.get_row_data("/dev/sdk")
+        status = self.get_column_data("状态")
+        if "禁用" in status:
+            for name, sta in zip(names, status):
+                if sta == "禁用":
+                    self.click_option(name, "启用")
+                    self.dialog_confirm.click()
+                    self.assert_popup_success("请求成功！")
+                    data = self.get_row_data(name)
+                    _disk_size = data.get("容量")
+                    self.logger.info(f"已启用第一个状态为禁用的磁盘: {name}")
+                    return name, _disk_size
+        else:
+            pytest.skip("没有找到可启用的裸磁盘")
+
+    # @submenu("物理机设备")
     @submenu("裸磁盘")
     def disable_disk(self, ndoe: str):
         """禁用裸磁盘"""
-        self.click_dropdown_option(ndoe, "禁用")
+        self.click_option(ndoe, "禁用")
         self.dialog_confirm.click()
 
     @submenu("存储池")
@@ -99,7 +122,6 @@ class OpsPage(BasePage):
             device_type: 设备类型, 如"DISK-SSD-894.3G"
             storage_type: 存储类型, 默认为"本地磁盘"
         """
-        logger.info(f"创建存储池: 名称={name}, 类型={storage_type}, 设备类型={device_type}")
 
         # 点击新建按钮
         self.btn_create.click()
@@ -130,6 +152,7 @@ class OpsPage(BasePage):
         # 选择设备类型
         self.get_by_placeholder("请选择类型").click()
         self.locator("li").filter(has_text=device_type).click()
+        time.sleep(1)
 
         # 填写数量
         loc = self.locator(".el-input-number__increase")
@@ -141,7 +164,7 @@ class OpsPage(BasePage):
         # 确认创建
         self.get_by_label("新建存储池").locator("div").filter(has_text="确定").nth(3).click()
 
-        logger.info(f"存储池 {name} 创建请求已提交")
+        logger.info(f"创建请求已提交: 名称={name}, 类型={storage_type}, 设备类型={device_type}")
 
     @submenu("存储池")
     def sync_storage_pool_config(self):
@@ -155,6 +178,27 @@ class OpsPage(BasePage):
         self.dialog_confirm.click()
 
         logger.info("存储池配置同步请求已提交")
+
+    @submenu("存储池")
+    def sync_pool_size(self, name: str):
+        """同步存储池配置"""
+
+        self.click_option(name, "同步容量")
+        # 确认同步
+        self.dialog_confirm.click()
+
+        logger.info("存储池容量同步请求已提交")
+
+    def storage_pool_operation(self, name: str, operation: str):
+        """存储池操作
+        Args:
+            name: 存储池名称
+            operation: 操作类型，如"启用"、"禁用"
+        """
+
+        self.click_dropdown_option(name, operation)
+        self.dialog_confirm.click()
+        self.assert_popup_success("请求成功！")
 
     @submenu("存储池")
     def delete_storage_pool(self, name: str):

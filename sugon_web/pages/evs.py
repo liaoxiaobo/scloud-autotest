@@ -20,7 +20,8 @@ class EvsPage(BasePage):
 
     def _select_image_source(self):
         """选择云硬盘来源为镜像"""
-        self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择", exact=True).click()
+        # self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择", exact=True).click()
+        self.get_by_text("云硬盘来源").locator("xpath=./following-sibling::div//input").click()
         self.locator("li").filter(has_text=re.compile(r"^镜像$")).click()
 
     def _select_volume_type(self, name):
@@ -169,7 +170,7 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_option(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
