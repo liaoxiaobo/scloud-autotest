@@ -60,6 +60,20 @@ class EvsPage(BasePage):
         # 等待页面加载完成
         self.page.wait_for_timeout(1000)
 
+    def _enable_virtio_scsi(self):
+        """启用VirtioSCSI
+
+        如果 VirtioSCSI 未勾选，则勾选它
+        """
+        scsi_label = self.page.locator("form label").filter(has_text="VirtioSCSI")
+
+        # 检查是否已选中
+        if not scsi_label.get_by_role("checkbox").is_checked():
+            scsi_label.click()
+            self.logger.info("已启用 VirtioSCSI")
+        else:
+            self.logger.info("VirtioSCSI 已处于启用状态")
+
     def _select_host(self, name=None):
         """选择物理机
 
@@ -90,7 +104,8 @@ class EvsPage(BasePage):
             shared=False,
             encrypted=False,
             encryption_key="",
-            host=None
+            host=None,
+            scsi=True
     ):
         """创建云硬盘
 
@@ -106,6 +121,7 @@ class EvsPage(BasePage):
             encrypted: 是否创建加密云硬盘，默认False
             encryption_key: 加密密钥ID，当encrypted为True时使用
             host: 物理机名称，当volume_type为local-type时必选
+            scsi: 是否启用VirtioSCSI，默认True
         """
         # 加密盘不能是共享盘
         if encrypted and shared:
@@ -143,6 +159,10 @@ class EvsPage(BasePage):
         # 设置加密
         if encrypted:
             self._enable_encryption(encryption_key)
+
+        # 启用VirtioSCSI
+        if scsi:
+            self._enable_virtio_scsi()
 
         # 设置共享盘
         if shared:

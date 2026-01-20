@@ -92,7 +92,7 @@ class EcsPage(OpsPage):
         """选择规格"""
         self.locator(".el-icon-circle-plus-outline").first.click()
         self.search(flavor)
-        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").click()
+        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").first.click()
         self.get_by_role("dialog").get_by_text("确定").click()
 
     def _select_storage_pool(self, image_name):
@@ -191,7 +191,7 @@ class EcsPage(OpsPage):
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
-        if "xbd" in self.storage_pool:
+        if re.search(r'xbd|ustor', self.storage_pool):
             self.get_by_role("textbox", name="请选择", exact=True).nth(4).click()
             self.get_by_text(mode).click()
         self.get_by_role("spinbutton").nth(1).fill(str(size))
@@ -526,10 +526,11 @@ class EcsPage(OpsPage):
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
         # 选择资源池
-        self.get_by_role("dialog", name="绑定公网IP").get_by_placeholder("请选择").click()
+        bind_dialog = self.get_by_role("dialog", name="绑定公网IP")
+        bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
         # 选择公网ip
-        ip_info = self.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
+        ip_info = bind_dialog.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
         ip_info.first.click()
         ip = ip_info.nth(1).text_content()
         self.dialog_confirm.click()
@@ -1401,7 +1402,15 @@ class EcsPage(OpsPage):
             if not available_hosts:
                 error_msg = "没有可用的物理机可供选择"
                 logger.error(error_msg)
-                raise Exception(error_msg)
+                locs = [
+                    self.get_by_label("close 选择物理机"),
+                    self.get_by_text("取消"),
+                    # self.locator("body").get_by_role("document").get_by_text("取消"),
+                ]
+                self._find_element(locs, "取消").click()
+                time.sleep(0.5) # 等待选择物理机的section关闭
+                self.get_by_label("热迁移", exact=True).get_by_text("取消").click() # 取消热迁移
+                pytest.skip(error_msg)
 
             # 选择目标物理机
             if target_host:
@@ -1547,7 +1556,8 @@ class EcsPage(OpsPage):
                     if not available_hosts:
                         error_msg = "没有可用的物理机可供选择"
                         logger.error(error_msg)
-                        raise Exception(error_msg)
+                        self.dialog_cancel.click()
+                        pytest.skip(error_msg)
                     self.get_by_role("radio", name=available_hosts[0]).click()
                     checked_host = available_hosts[0]
                     logger.info(f"已选择第一个可用的物理机: {checked_host}")

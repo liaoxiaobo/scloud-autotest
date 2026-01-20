@@ -120,9 +120,10 @@ class TestECSRecycle:
         # 批量删除回收站中的弹性云服务器
         with allure_step_log("步骤3: 批量删除回收站中的弹性云服务器"):
             ecs_page.ecs_recover_batch_delete(ecs_names)
+            ecs_page.wait_for_operation_complete()
 
         with allure_step_log("步骤4: 验证删除结果"):
-            ecs_page.wait_for_operation_complete()
+            ecs_page.wait_for_page_ready()
             # 验证弹性云服务器已彻底删除
             for name, ecs_id in zip(ecs_names, ids):
                 ecs_page.assert_deleted(name)

@@ -645,12 +645,13 @@ class TestECSBasic:
 
             # 验证扩容后页面展示的系统盘大小 和 通过gova show 获取的系统盘大小是否一致
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+            root_dev = stdout.get("root_dev")
             assert stdout.get("root_gb") == new_size, \
                 f"扩容系统盘失败，期望系统盘大小:{new_size}GiB,实际系统盘大小:{stdout.get('root_gb')}GiB"
 
             # 验证扩容后页面展示的系统盘大小 和 虚机中的系统盘大小是否一致
             ssh_vm.connect(vm['mfip'])
-            assert new_size in ssh_vm.run(f"lsblk | grep '^vda' | awk '{{print $4}}'"), \
+            assert new_size in ssh_vm.run(f"lsblk | grep '^{root_dev}' | awk '{{print $4}}'"), \
                 f"扩容系统盘失败，云服务器{name}系统盘大小不一致"
 
     @allure.title("验证挂载CD-ROM功能")
@@ -749,7 +750,7 @@ class TestECSBasic:
             ecs_page.ecs_batch_migration(names)
             ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
 
-        with allure_step_log("步骤3: 验证迁移结果"):
+        with allure_step_log("步骤2: 验证迁移结果"):
             for name in names:
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
 
@@ -810,7 +811,7 @@ class TestECSBasic:
 
     @allure.title("验证安装工具&卸载工具功能")
     def test_ecs_install_uninstall_tools(self, ecs_page, vm, ssh_vm):
-        """云服务器安安装工具&卸载工具功能验证
+        """云服务器安装工具&卸载工具功能验证
 
         Args:
             ecs_page: 云服务器页面对象
@@ -831,11 +832,15 @@ class TestECSBasic:
             # 验证工具安装结果
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run("mkdir /mnt/cdrom")
+            # 挂载设备并检查结果
+            mounted = False
             for device in ["/dev/sr0", "/dev/sr1"]:
-                output = ssh_vm.run(f"mount {device} /mnt/cdrom", return_stderr=True)
-                # 成功挂载会显示 "mounting read-only"
-                if "mounting read-only" in output.get("stderr"):
+                output = ssh_vm.run(f"mount {device} /mnt/cdrom", return_stderr=True, return_rc=True)
+                if output.get("rc") == 0 and "mounting read-only" in output.get("stderr", ""):
+                    mounted = True
                     break
+            if not mounted:
+                raise AssertionError(f"挂载CD-ROM失败：已尝试挂载 /dev/sr0 和 /dev/sr1，但未找到有效的CD-ROM设备")
             ssh_vm.run(r"cd /mnt/cdrom/linux && bash ./stools.sh")
             assert "active (running)" in ssh_vm.run("systemctl status fs-proxy")
 

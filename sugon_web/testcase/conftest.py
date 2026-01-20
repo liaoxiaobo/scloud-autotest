@@ -20,7 +20,8 @@ def close_dialog_before_test(page):
         close_buttons = [
             page.get_by_role("button", name="Close"),
             page.get_by_text("删除提示").locator("xpath=./i"),
-            page.get_by_text("关闭取消").get_by_text("关闭")
+            page.get_by_text("关闭取消").get_by_text("关闭"),
+            page.locator(".one-diloag-footer .cloud-button-btn.cl-btn-primary").filter(has_text="关闭")
         ]
         for close_button in close_buttons:
             if close_button.is_visible():

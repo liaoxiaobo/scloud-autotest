@@ -402,7 +402,7 @@ class SSH:
         img_path = "http://172.22.5.66:9090/liaoxb/test_image_dontdel/"
         full_url = f"{img_path}{image}"
         if image not in self.run('ls'):
-            self.run(f'curl {full_url} -o {image}')
+            self.run(f'sudo curl {full_url} -o {image}')
             self.file_exist(image)
 
     def glance_image_delete(self, name):

@@ -138,6 +138,7 @@ class TestECSS:
             image = ecs_page.storage_pool  # 获取存储池同名镜像
             if ecs_page.stor not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
                 ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
+                ecs_page.assert_popup_success(f"{vm['name']}实例重建成功")
                 # ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.assert_status(vm['name'])
                 # ecs_page.wait_for_source_complete(vm['name'])

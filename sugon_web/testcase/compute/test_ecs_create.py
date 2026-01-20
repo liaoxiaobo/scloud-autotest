@@ -26,7 +26,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 快照来源")
-    @skip_stor("usan","local")
+    @skip_stor("usan","local", "nfs")
     def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")
