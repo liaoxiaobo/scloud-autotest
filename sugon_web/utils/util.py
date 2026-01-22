@@ -288,3 +288,72 @@ def get_page_from_item(item):
     logger.warning("无法获取page对象")
     return None
 
+
+def skip_if_nodes_less_than(min_nodes=2):
+    """
+    节点数跳过装饰器
+
+    当物理机节点数小于指定值时，跳过测试用例。
+
+    Args:
+        min_nodes: 最小节点数，默认为2
+
+    Examples:
+        @skip_if_nodes_less_than()
+        def test_function(self):
+            # 节点数小于2时跳过
+            pass
+
+        @skip_if_nodes_less_than(3)
+        def test_function(self):
+            # 节点数小于3时跳过
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            # 直接从 Config 中获取节点信息（由 check_compute_nodes fixture 设置）
+            nodes = Config._config.get('_node_count', "")
+
+            if int(nodes) < min_nodes:
+                logger.warning(f"节点数不足，准备跳过测试")
+                pytest.skip(f"节点数不足，当前节点数: {nodes}，要求最小节点数: {min_nodes}")
+
+            logger.info(f"节点数满足要求，继续执行测试")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+def skip_arch(*arch_value):
+    """
+    架构类型跳过装饰器
+
+    当当前配置的架构类型在指定的列表中时，跳过测试用例。
+
+    Args:
+        *arch_value: 需要跳过测试的架构类型列表 (如 'aarch64', 'x86_64')
+
+    Examples:
+        @skip_arch('aarch64')
+        def test_function(self):
+            pass
+
+        @skip_arch('aarch64', 'x86_64')
+        def test_function(self):
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            architecture = Config.get("architecture")
+            if architecture in arch_value:
+                pytest.skip(f"{architecture}架构不支持该测试用例")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator

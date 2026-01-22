@@ -1,4 +1,6 @@
 import datetime
+
+import allure
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -270,3 +272,114 @@ def _login(page, config):
     # 等待页面加载完成
     page.wait_for_load_state("networkidle")
     page.wait_for_load_state("domcontentloaded")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def check_compute_nodes(ssh_host, config):
+    """
+    检查物理机节点信息并更新到配置中
+
+    Args:
+        ssh_host: 直接连接到目标主机的SSH会话对象
+        config: Config 对象，用于更新节点数信息
+
+    Returns:
+        dict: 包含节点信息的字典
+            - nodes: 节点名称列表
+            - count: 节点数量
+    """
+    # 使用 ssh_host 获取节点信息
+    try:
+        logger.info("开始获取物理机节点信息...")
+        # 获取集群的节点
+        _output = ssh_host.run("gova aggregate list | grep Autotest | awk '{print $6}'")
+        _node_count = _output.split('(')[1].split(')')[0]
+
+        # 将节点信息更新到 config 中
+        Config._config['_node_count'] = _node_count
+
+        logger.info(f"节点列表已更新到config: {Config._config['_node_count']}")
+
+        # 返回节点信息
+        return {
+            'nodes': _node_count
+        }
+
+    except Exception as e:
+        logger.error(f"获取物理机节点信息失败: {e}")
+        _nodes = []
+
+def _write_allure_environment():
+    """将 Config 配置信息写入 Allure 的 environment.properties 文件"""
+    try:
+        # 获取项目根目录和 allure-result 目录
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent
+        allure_dir = project_root / "allure-result"
+
+        # 确保 allure-result 目录存在
+        allure_dir.mkdir(exist_ok=True)
+
+        # environment.properties 文件路径
+        env_file = allure_dir / "environment.properties"
+
+        # 获取 Config 中的所有配置
+        config_data = Config.get()
+
+        env_mappings = [
+            ("ENV", "host"),  # 测试环境主机地址
+            ("URL", "base_url"),  # 基础URL
+            ("STOR", "stor"),  # 存储类型
+            ("USER", "username"), # 登录用户名
+            ("Arch", "architecture") # 架构类型
+        ]
+
+        # 构建环境信息内容
+        env_content = []
+
+        # 按照定义的顺序添加环境信息
+        for label, config_key in env_mappings:
+            if config_key:
+                # 从 Config 中获取值
+                value = config_data.get(config_key, "Unknown")
+            else:
+                # 动态生成的值（如测试日期）
+                value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            env_content.append(f"{label}={value}")
+        patch = config_data.get("patch")
+        for key, value in patch.items():
+            if key in ["VERSION", "BUILD_TIME", "COMMIT"]:
+                env_content.append(f"{key}={value}")
+        # 写入文件
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(env_content))
+
+    except Exception as e:
+        logger.error(f"写入 Allure 环境信息失败: {e}")
+
+@pytest.fixture(scope="session", autouse=True)
+def _get_patch_version(ssh_host, config):
+    """
+    获取补丁版本信息
+    """
+    logger.info("开始获取补丁版本信息...")
+    env_dic = {}
+    # 获取环境节点信息
+    hosts = ssh_host._get_host()
+
+    # 获取环境版本信息
+    first_host = hosts['master'][0]
+    version_info = ssh_host._get_release_version(first_host)
+    env_dic.update(version_info)
+
+    Config._config['patch'] = env_dic
+
+    try:
+        architecture = ssh_host.run(r"arch", check_rc=True)
+    except Exception as e:
+        architecture = None
+        logger.warning(f"无法获取节点架构信息: {e}")
+    Config._config['architecture'] = architecture
+
+    _write_allure_environment()

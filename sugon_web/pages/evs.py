@@ -171,6 +171,7 @@ class EvsPage(BasePage):
         # 设置云硬盘大小
         self._input_size.fill(str(size))
         self.dialog_confirm.click()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_remove(self, names):

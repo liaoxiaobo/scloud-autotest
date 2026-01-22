@@ -13,8 +13,9 @@ class OpsPage(BasePage):
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
         self.get_by_title(project).click()
+        self.page.wait_for_timeout(1000) # 获取虚拟私有云列表接口加载完成
         self.get_by_placeholder("请选择网络").click()
-        # self.page.wait_for_timeout(2000)    # 等待下拉列表数据加载完成
+        self.page.wait_for_timeout(1000)    # 等待下拉列表数据加载完成
         self.get_by_text(network, exact=True).click()
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=True).click()

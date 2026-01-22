@@ -183,6 +183,7 @@ class EcsPage(OpsPage):
         if iso_name:
             # 定位并选择ISO行
             self.get_by_text("选择ISO").first.click()
+            self.get_by_role("dialog").get_by_text("重置").click() # 重置一下，避免hover的tips遮挡选择
             row = self.get_row_by_name(iso_name)
             row.get_by_role("radio").click()
             self.dialog_confirm.click()
@@ -851,10 +852,8 @@ class EcsPage(OpsPage):
         """
         # 根据不同的操作类型，使用不同的确认方式
         if operation == "批量重启":
-            self.get_by_label("批量重启").locator("div").filter(has_text="确定").nth(3).click()
-        elif operation == "批量关机":
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
-        elif operation == "批量启动":
+            self.get_by_label("批量重启").get_by_text("确定").click()
+        elif operation in ["批量关机", "批量启动"]:
             self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
         elif operation == "批量强制重启":
             self.get_by_label("批量强制重启").get_by_text("确定").click()
@@ -1053,7 +1052,7 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器快照创建请求已提交: {name}, {snapshot_name}")
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("快照")
     def ecss_search(self, keyword, s_type="快照名称"):
@@ -1805,6 +1804,7 @@ class EcsPage(OpsPage):
             exact = False if tab == "安全组" or tab =="事件列表" else True
             if tab == "详情":
                 sleep(2)
+                self.wait_for_page_ready()
             else:
                 self.get_by_role("tab", name=tab, exact=exact).click()
                 if sub_tab:
@@ -1937,6 +1937,7 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(name, "卸载工具")
 
         # 点击确定
+        time.sleep(2)
         self.dialog_confirm.click()
         self.wait_for_operation_complete()
         logger.info(f"云服务器 {name} 卸载工具请求已提交")
@@ -1967,7 +1968,7 @@ class EcsPage(OpsPage):
         # 确认修改
         self.dialog_confirm.click()
 
-        logger.info(f"云服务器 {name} 的VNC显卡类型修改成功")
+        logger.info(f"云服务器{name}的VNC显卡类型修改提交成功")
 
     @submenu("弹性云服务器")
     def ecs_modify_cpu_mode(self, name: str, cpu_mode: str, custom_value: str = None):

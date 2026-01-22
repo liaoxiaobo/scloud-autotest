@@ -4,9 +4,10 @@ import pytest
 import allure
 from playwright.sync_api import expect
 
+from sugon_web.config.config import Config
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, skip_stor
+from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch
 
 
 @allure.epic('计算服务')
@@ -378,6 +379,10 @@ class TestECSBasic:
         node = vm.get("host").split(".")[0]
         ecs_page.goto_service('弹性云服务器')
 
+        architecture = Config.get("architecture")
+        if architecture == "aarch64" and vnc_type == "QXL":
+            pytest.skip("aarch64架构不支持QXL显卡类型")
+
         with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
             ecs_page.ecs_modify_vnc_type(name, vnc_type)
 
@@ -397,6 +402,7 @@ class TestECSBasic:
 
     @allure.title("验证修改CPU模式功能")
     @pytest.mark.parametrize("cpu_mode,custom_value", [["host-passthrough",""], ["自定义", "custom_Dhyana"]])
+    @skip_arch('aarch64')
     def test_ecs_modify_cpu_mode(self, ecs_page, vm, ssh_host, cpu_mode, custom_value):
         """
         测试弹性云服务器CPU模式修改功能
@@ -496,6 +502,7 @@ class TestECSBasic:
 
     @allure.title("验证热迁移手动指定节点功能")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": True}], indirect=True)
+    @skip_if_nodes_less_than(2)
     def test_ecs_hot_migration_manual(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的热迁移功能
@@ -540,6 +547,7 @@ class TestECSBasic:
             assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
     @allure.title("验证热迁移系统分配功能")
+    @skip_if_nodes_less_than(2)
     def test_ecs_hot_migration(self, ecs_page, vm, ssh_host):
         """
         测试弹性云服务器热迁移 系统分配功能
@@ -564,6 +572,7 @@ class TestECSBasic:
 
     @allure.title("验证冷迁移功能")
     @skip_stor("local")
+    @skip_if_nodes_less_than(2)
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的冷迁移功能
@@ -679,8 +688,9 @@ class TestECSBasic:
         with allure_step_log(f"步骤3: 后台验证虚机{name}挂载CD-ROM结果"):
             ssh_vm.connect(vm['mfip'])
             assert "20G" in ssh_vm.run(f"lsblk | grep sr | awk '{{print $4}}'")
+            disk = ssh_vm.run(f"lsblk | grep sr | grep 20G | awk '{{print $1}}'")
             ssh_vm.run(f"mkdir /mnt/{name}")
-            ssh_vm.run(f"mount /dev/sr0 /mnt/{name}")
+            ssh_vm.run(f"mount /dev/{disk} /mnt/{name}")
             assert ssh_vm.run(f"ls /mnt/{name}") != ""
 
         with allure_step_log(f"步骤4: 卸载CD-ROM"):
@@ -692,6 +702,7 @@ class TestECSBasic:
             assert ecs_page.get_row_data(name).get("挂载云硬盘") == "--"
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"ls /mnt/{name}") == ""
+            ssh_vm.run(f"umount /mnt/{name}")
 
     @allure.title("验证挂载&卸载裸磁盘功能")
     def test_ecs_mount_bare_disk(self, ecs_page, pool, ssh_vm):
@@ -737,6 +748,7 @@ class TestECSBasic:
 
     @allure.title("验证批量迁移功能")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @skip_if_nodes_less_than(2)
     def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
@@ -826,6 +838,7 @@ class TestECSBasic:
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()
+            ecs_page.assert_status(name)
             assert ecs_page.get_row_data(name).get("挂载云硬盘").startswith("cdrom-")
 
         with allure_step_log(f"步骤2: 为云服务器{name}安装工具-虚机控制台安装"):
