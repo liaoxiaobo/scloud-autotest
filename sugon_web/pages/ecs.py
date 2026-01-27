@@ -92,7 +92,7 @@ class EcsPage(OpsPage):
         """选择规格"""
         self.locator(".el-icon-circle-plus-outline").first.click()
         self.search(flavor)
-        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").click()
+        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").first.click()
         self.get_by_role("dialog").get_by_text("确定").click()
 
     def _select_storage_pool(self, image_name):
@@ -183,6 +183,7 @@ class EcsPage(OpsPage):
         if iso_name:
             # 定位并选择ISO行
             self.get_by_text("选择ISO").first.click()
+            self.get_by_role("dialog").get_by_text("重置").click() # 重置一下，避免hover的tips遮挡选择
             row = self.get_row_by_name(iso_name)
             row.get_by_role("radio").click()
             self.dialog_confirm.click()
@@ -191,7 +192,7 @@ class EcsPage(OpsPage):
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
-        if "xbd" in self.storage_pool:
+        if re.search(r'xbd|ustor', self.storage_pool):
             self.get_by_role("textbox", name="请选择", exact=True).nth(4).click()
             self.get_by_text(mode).click()
         self.get_by_role("spinbutton").nth(1).fill(str(size))
@@ -526,10 +527,11 @@ class EcsPage(OpsPage):
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
         # 选择资源池
-        self.get_by_role("dialog", name="绑定公网IP").get_by_placeholder("请选择").click()
+        bind_dialog = self.get_by_role("dialog", name="绑定公网IP")
+        bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
         # 选择公网ip
-        ip_info = self.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
+        ip_info = bind_dialog.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
         ip_info.first.click()
         ip = ip_info.nth(1).text_content()
         self.dialog_confirm.click()
@@ -850,10 +852,8 @@ class EcsPage(OpsPage):
         """
         # 根据不同的操作类型，使用不同的确认方式
         if operation == "批量重启":
-            self.get_by_label("批量重启").locator("div").filter(has_text="确定").nth(3).click()
-        elif operation == "批量关机":
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
-        elif operation == "批量启动":
+            self.get_by_label("批量重启").get_by_text("确定").click()
+        elif operation in ["批量关机", "批量启动"]:
             self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
         elif operation == "批量强制重启":
             self.get_by_label("批量强制重启").get_by_text("确定").click()
@@ -1052,7 +1052,7 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器快照创建请求已提交: {name}, {snapshot_name}")
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("快照")
     def ecss_search(self, keyword, s_type="快照名称"):
@@ -1401,7 +1401,15 @@ class EcsPage(OpsPage):
             if not available_hosts:
                 error_msg = "没有可用的物理机可供选择"
                 logger.error(error_msg)
-                raise Exception(error_msg)
+                locs = [
+                    self.get_by_label("close 选择物理机"),
+                    self.get_by_text("取消"),
+                    # self.locator("body").get_by_role("document").get_by_text("取消"),
+                ]
+                self._find_element(locs, "取消").click()
+                time.sleep(0.5) # 等待选择物理机的section关闭
+                self.get_by_label("热迁移", exact=True).get_by_text("取消").click() # 取消热迁移
+                pytest.skip(error_msg)
 
             # 选择目标物理机
             if target_host:
@@ -1547,7 +1555,8 @@ class EcsPage(OpsPage):
                     if not available_hosts:
                         error_msg = "没有可用的物理机可供选择"
                         logger.error(error_msg)
-                        raise Exception(error_msg)
+                        self.dialog_cancel.click()
+                        pytest.skip(error_msg)
                     self.get_by_role("radio", name=available_hosts[0]).click()
                     checked_host = available_hosts[0]
                     logger.info(f"已选择第一个可用的物理机: {checked_host}")
@@ -1795,6 +1804,7 @@ class EcsPage(OpsPage):
             exact = False if tab == "安全组" or tab =="事件列表" else True
             if tab == "详情":
                 sleep(2)
+                self.wait_for_page_ready()
             else:
                 self.get_by_role("tab", name=tab, exact=exact).click()
                 if sub_tab:
@@ -1927,6 +1937,7 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(name, "卸载工具")
 
         # 点击确定
+        time.sleep(2)
         self.dialog_confirm.click()
         self.wait_for_operation_complete()
         logger.info(f"云服务器 {name} 卸载工具请求已提交")
@@ -1957,7 +1968,7 @@ class EcsPage(OpsPage):
         # 确认修改
         self.dialog_confirm.click()
 
-        logger.info(f"云服务器 {name} 的VNC显卡类型修改成功")
+        logger.info(f"云服务器{name}的VNC显卡类型修改提交成功")
 
     @submenu("弹性云服务器")
     def ecs_modify_cpu_mode(self, name: str, cpu_mode: str, custom_value: str = None):

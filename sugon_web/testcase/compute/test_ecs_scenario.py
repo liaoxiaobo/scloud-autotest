@@ -3,7 +3,7 @@ import re
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data, skip_stor
+from sugon_web.utils.util import random_data, skip_stor, skip_if_nodes_less_than
 
 
 @allure.epic('计算服务')
@@ -170,6 +170,7 @@ class TestECSScenario:
 
     @allure.title("验证虚机绑定亲和组批量迁移功能")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @skip_if_nodes_less_than(2)
     def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
         policy = "亲和"
         if isinstance(vm, list) and len(vm) > 1:

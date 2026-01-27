@@ -26,7 +26,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 快照来源")
-    @skip_stor("usan","local")
+    @skip_stor("usan","local", "nfs")
     def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")
@@ -81,10 +81,10 @@ class TestECSCreate:
         iso_name = image.get("name")
         with allure_step_log("步骤1: 创建启动方式为 空启动 的云服务器"):
             ecs_page.ecs_create(name=name, image_source="空启动")
+            ecs_page.assert_popup_success("创建实例命令下发成功")
 
         with allure_step_log("步骤2: 验证创建结果"):
             # 页面验证
-            ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
             assert ecs_page.get_row_data(name).get("镜像名称") == "--", "镜像名称不为空"
 

@@ -422,8 +422,9 @@ class BasePage(Playwright):
                 if not refresh:
                     # 不刷新模式：直接使用Playwright的高效等待机制
                     timeout_ms = timeout * 1000  # 转换为毫秒
+                    self.wait_for_page_ready() # 等待页面加载完成再查找元素
                     target_row = self.get_row_by_name(name)
-                    expect(target_row.locator(".cloud-icon-content").nth(1)).not_to_be_visible(timeout=timeout_ms)
+                    expect(target_row.locator(".icon-dengdaizhong")).not_to_be_visible(timeout=timeout_ms)
                     expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
                     self.logger.info(f"资源状态验证成功: {name} -> {status}")
                 else:
@@ -584,6 +585,7 @@ class BasePage(Playwright):
         try:
             # 点击指定行资源的操作按钮
             operation_btn=self._btn_operation(resource_name)
+            operation_btn.scroll_into_view_if_needed()
             operation_btn.click()
 
             # 等待下拉菜单出现
@@ -734,11 +736,11 @@ class BasePage(Playwright):
         timeout_ms = timeout * 1000
         target_row = self.get_row_by_name(name)
         # 在该行内定位 .cloud-icon-content 元素
-        loading_icon = target_row.locator(".cloud-icon-content").nth(1)
+        loading_icon = target_row.locator(".icon-dengdaizhong")
         try:
             # 等待 loading_icon 可见（10秒超时）
             loading_icon.wait_for(state="visible", timeout=10000)
-            text = loading_icon.inner_text()
+            text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
             # 如果到达这里，说明 loading_icon 出现了，等待其消失
             expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
             self.logger.info(f"{name}资源中间态 {text} 出现并消失")
