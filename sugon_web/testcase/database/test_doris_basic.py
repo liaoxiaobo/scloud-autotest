@@ -343,6 +343,9 @@ class TestDorisBasic:
             doris_page.assert_deleted(db_name, refresh=True)
             sleep(2)
         with allure_step_log("步骤六：验证数据库在后端已失效"):
+            fe_node_name = f"{instance_name}_fe_node01"
+            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            ssh_vm.connect(fe_ip, port=22022, pwd="admin1234@sugon")
             cmd_check_gone = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"SHOW DATABASES LIKE '{db_name}';\""
             result_gone = ssh_vm.run(cmd_check_gone)
             allure.attach(result_gone, name=f"再次查询数据库 {db_name} 的存在性",
@@ -358,7 +361,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             doris_page.goto_submenu("实例管理")
-            doris_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="数据库", exact=True).click()
             doris_page.wait_for_page_ready()
@@ -380,7 +383,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             doris_page.goto_submenu("实例管理")
-            doris_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="用户").click()
             doris_page.wait_for_page_ready()
@@ -705,7 +708,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             doris_page.goto_submenu("实例管理")
-            doris_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             doris_page.wait_for_page_ready()
             sleep(2)
             doris_page.get_by_role("tab", name="参数设置").click()
