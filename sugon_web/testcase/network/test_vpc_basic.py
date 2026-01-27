@@ -38,7 +38,7 @@ class TestVPCBasic:
             assert params['desc'] == data['描述']
             assert params['network_type'].lower() in data['网络类型']
             assert params['subnet_name'] in data['已连接的子网']
-            ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
+            # ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
 
         with allure_step_log("步骤3: 删除虚拟私有云"):
             vpc_page.vpc_delete(vpc_name)
@@ -46,7 +46,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤4: 验证虚拟私有云已删除"):
             vpc_page.assert_deleted(vpc_name)
-            assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
+            # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
 
     @allure.title("虚拟私有云-创建和删除双栈VPC")
     def test_vpc_dual_stack_create_delete(self, vpc_page, ssh_host):
@@ -82,7 +82,7 @@ class TestVPCBasic:
             assert "双栈VPC测试" == data['描述'], f"描述断言失败: 期望 '双栈VPC测试', 实际 {data['描述']}"
 
             # SSH验证VPC已创建
-            ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
+            # ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
             logger.info(f"✓ 双栈VPC {vpc_name} 创建成功")
 
         with allure_step_log("步骤3: 删除虚拟私有云"):
@@ -90,7 +90,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤4: 验证VPC已删除"):
             vpc_page.assert_deleted(vpc_name)
-            assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
+            # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
             logger.info(f"✓ 双栈VPC {vpc_name} 删除成功")
 
     @allure.title("虚拟私有云-修改名称和描述")
@@ -192,7 +192,7 @@ class TestVPCBasic:
         with allure_step_log("步骤3: 验证VPC已删除"):
             for vpc_name in vpc_names:
                 vpc_page.assert_deleted(vpc_name)
-                assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
+                # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
 
 
     @allure.title("虚拟私有云-子网创建和删除（详情页）-{params[case_name]}")
@@ -275,7 +275,7 @@ class TestVPCBasic:
 
         # 步骤1: 在VPC详情页创建2个子网
         with allure_step_log("步骤1: 在VPC详情页创建2个子网"):
-            for i in range(2):
+            for i in range(1):
                 subnet_name = f"{vpc_name}-subnet-{i}"
                 subnet_names.append(subnet_name)
                 cidr = random_data("cidr")

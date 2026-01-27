@@ -13,7 +13,7 @@ class OpsPage(BasePage):
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
         self.get_by_title(project).click()
-        self.page.wait_for_timeout(1000) # 获取虚拟私有云列表接口加载完成
+        self.page.wait_for_timeout(2000)    # 解决下拉列表数据加载未完成导致的定位元素冲突问题
         self.get_by_placeholder("请选择网络").click()
         self.page.wait_for_timeout(1000)    # 等待下拉列表数据加载完成
         self.get_by_text(network, exact=True).click()
