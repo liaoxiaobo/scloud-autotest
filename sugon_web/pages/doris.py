@@ -49,20 +49,12 @@ class DorisPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 配置设置 ---
-        # 操作系统
-        self.locator("div").filter(has_text=re.compile(r"^操作系统CentOS 7\.9AnolisOS 7\.9$")).get_by_placeholder(
-            "请选择").click()
-        self.locator("li").filter(has_text=re.compile(rf"^{re.escape(os_type)}$")).click()
-
-        # 大小写策略 - 通过下拉框选择
-        case_sensitivity_dropdown = self.locator("form").filter(
-            has_text="配置 专有网络 操作系统 大小写策略"
-        ).get_by_placeholder("请选择", exact=True).nth(1)
-        case_sensitivity_dropdown.click()
-        # 滚动到选项并点击
-        case_option = self.page.locator("li").filter(has_text=case_sensitivity).first
-        case_option.scroll_into_view_if_needed()
-        case_option.click()
+        # 大小写策略 - 在配置区域的第一个"请选择"下拉框
+        # 使用包含"大小写策略"关键字的表单区域定位
+        self.locator("form").filter(has_text="配置 专有网络 大小写策略").get_by_placeholder("请选择", exact=True).first.click()
+        # 点击选项
+        re.compile(rf"^{re.escape(case_sensitivity)}$")
+        self.locator("span").filter(has_text=re.compile(rf"^{re.escape(case_sensitivity)}$")).click()
 
         # 密码
         self.get_by_placeholder("请输入admin管理员用户密码").fill(password)
@@ -71,28 +63,39 @@ class DorisPage(BasePage):
         # FE节点配置 - 高可用类型
         self.get_by_role("radio", name=ha_type).click()
 
-        # FE节点数据盘类型
+        # FE节点数据盘类型 - 在配置区域的第3个"请选择"（索引为2）
         fe_disk_dropdown = self.locator("form").filter(
-            has_text="FE节点配置 高可用"
-        ).get_by_placeholder("请选择", exact=True).nth(3)
+            has_text="配置 专有网络 大小写策略 用户名 密码 确认密码 FE"
+        ).get_by_placeholder("请选择", exact=True).nth(2)
         fe_disk_dropdown.click()
+        # 等待下拉列表出现
+        self.page.wait_for_timeout(1000)
         # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_fe_disk_type = fe_disk_type if fe_disk_type else self.volume_type
+        # 点击 FE 的磁盘类型选项（第2个，索引为1）
         self.locator("li").filter(has_text=selected_fe_disk_type).nth(1).click()
 
         # FE节点数据盘大小
+        self.get_by_role("spinbutton").first.click()
         self.get_by_role("spinbutton").first.fill(str(fe_disk_size))
-
-        # BE节点配置 - 数据盘类型
-        be_disk_dropdown = self.locator("form").filter(
-            has_text="BE节点配置"
-        ).get_by_placeholder("请选择", exact=True).nth(4)
-        be_disk_dropdown.click()
+        
+        # 点击 BE 区域关闭 FE 下拉框
+        self.locator("form").filter(has_text="BE节点配置").click()
+        self.page.wait_for_timeout(1000)
+        
         # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_be_disk_type = be_disk_type if be_disk_type else self.volume_type
+        # BE 数据盘类型 - 在配置区域的第4个"请选择"（索引为3）
+        be_disk_dropdown = self.locator("form").filter(
+            has_text="配置 专有网络 大小写策略 用户名 密码 确认密码 FE"
+        ).get_by_placeholder("请选择", exact=True).nth(3)
+        be_disk_dropdown.click()
+        self.page.wait_for_timeout(1000)
+        # 点击 BE 的磁盘类型选项（第3个，索引为2）
         self.locator("li").filter(has_text=selected_be_disk_type).nth(2).click()
 
         # BE节点数据盘大小
+        self.get_by_role("spinbutton").nth(2).click()
         self.get_by_role("spinbutton").nth(2).fill(str(be_disk_size))
 
         # --- 确认创建 ---
@@ -186,7 +189,7 @@ class DorisPage(BasePage):
         :param node_type: 节点类型，"fe"或"be"
         :param new_size: 新磁盘大小
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
 
         # 根据节点类型确定节点名称
@@ -212,7 +215,7 @@ class DorisPage(BasePage):
         :param specification_name: 新规格名称（用于页面选择）
         :param node_type: 节点类型，"fe"或"be"
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
 
         # 根据节点类型确定节点名称（使用原始命名格式）
@@ -221,7 +224,7 @@ class DorisPage(BasePage):
         else:
             node_name = f"{name}_be_node01"
 
-        self.click_dropdown_option(node_name, "修改规格")
+        self.click_option(node_name, "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
@@ -233,7 +236,7 @@ class DorisPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         :return: 绑定的IP地址
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_text("绑定公网IP").first.click()
 
@@ -258,7 +261,7 @@ class DorisPage(BasePage):
         为Doris实例解绑弹性IP
         :param name: 实例名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
@@ -272,7 +275,7 @@ class DorisPage(BasePage):
         :param node_type: 节点类型，"fe"或"be"
         :return: 绑定的IP地址
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
 
         # 根据节点类型确定节点名称（使用原始命名格式）
@@ -305,7 +308,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_type: 节点类型，"fe"或"be"
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
 
         # 根据节点类型确定节点名称（使用原始命名格式）
@@ -327,7 +330,7 @@ class DorisPage(BasePage):
         :param disk_type: 磁盘类型，如果未指定则使用环境变量中的磁盘类型
         :param specification_name: 节点规格名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新增BE节点").click()
 
@@ -353,7 +356,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_name: 节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         sleep(3)
         self.wait_for_page_ready()
         self.click_dropdown_option(node_name, "删除节点")
@@ -366,7 +369,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_name: 节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.click_dropdown_option(node_name, "停止节点")
         self.get_by_label("停止").get_by_text("确定", exact=True).click()
@@ -378,7 +381,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_name: 节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.click_dropdown_option(node_name, "启动节点")
         self.get_by_label("启动").get_by_text("确定", exact=True).click()
@@ -390,7 +393,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_name: BE节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.click_dropdown_option(node_name, "下线节点")
         self.get_by_label("下线").get_by_text("确定", exact=True).click()
@@ -402,7 +405,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_name: 节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.click_dropdown_option(node_name, "重启节点")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
@@ -415,7 +418,7 @@ class DorisPage(BasePage):
         :param db_name: 数据库名称
         :param catalog: 数据目录（默认为internal）
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="数据库").click()
         self.wait_for_page_ready()
@@ -437,18 +440,15 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param db_name: 数据库名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(3)
         self.wait_for_page_ready()
-
-        # 通过 span.key-name 精确匹配数据库名称，然后向上找到最近的 tr 父元素
-        db_span = self.locator(f"span.key-name:text-is('{db_name}')").first
-        # 从 span 向上查找到最近的 tr 行 (使用 ancestor::tr[1] 只获取最近的祖先)
-        row = db_span.locator("xpath=ancestor::tr[1]")
-        row.locator("i.el-icon-delete").first.click()
-
+        self.page.locator(f"span.key-name:text-is('{db_name}')") \
+            .locator("xpath=ancestor::tr[1]") \
+            .get_by_text("删除") \
+            .click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -459,7 +459,7 @@ class DorisPage(BasePage):
         :param user_name: 用户名
         :param password: 密码
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
@@ -483,7 +483,7 @@ class DorisPage(BasePage):
         :param user_name: 用户名
         :param new_password: 新密码
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
@@ -504,7 +504,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param user_name: 用户名
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
@@ -518,7 +518,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param user_names: 用户名列表
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
@@ -546,7 +546,7 @@ class DorisPage(BasePage):
             - "执行 SHOW CREATE VIEW 的权限"
             - "对数据库、表的读写权限" (默认)
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         sleep(2)
         self.get_by_role("tab", name="用户").click()
@@ -568,7 +568,7 @@ class DorisPage(BasePage):
         :param user_name: 用户名
         :param db_name: 数据库名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
@@ -576,9 +576,10 @@ class DorisPage(BasePage):
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=db_name).click()
-        confirm_btn = dialog.get_by_text("确定")
+        dialog.click()
+        confirm_btn = dialog.get_by_text("确定").locator("visible=true").last
         confirm_btn.scroll_into_view_if_needed()
-        confirm_btn.click(force=True)
+        confirm_btn.click()
 
     @submenu("实例管理")
     def enable_audit_log(self, name: str):
@@ -586,7 +587,7 @@ class DorisPage(BasePage):
         为Doris实例开启审计日志
         :param name: 实例名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="审计日志").click()
         self.get_by_text("立即开启").click()
@@ -598,7 +599,7 @@ class DorisPage(BasePage):
         为Doris实例关闭审计日志
         :param name: 实例名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         self.get_by_role("tab", name="审计日志").click()
         self.get_by_text("服务设置").first.click()
@@ -612,7 +613,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param ip_address: IP地址或CIDR
         """
-        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
         self.get_by_text("添加", exact=True).click()
         self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
@@ -625,7 +626,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param ip_address: IP地址或CIDR
         """
-        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
         # 精准定位到要删除的IP地址对应的删除按钮
         self.locator("span").filter(has_text=ip_address).locator("i").click()
@@ -638,7 +639,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param ip_addresses: IP地址或CIDR的列表
         """
-        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.wait_for_page_ready()
@@ -654,7 +655,7 @@ class DorisPage(BasePage):
         为Doris实例重置白名单
         :param name: 实例名称
         """
-        self.locator(f"#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
@@ -667,14 +668,14 @@ class DorisPage(BasePage):
         :param param_name: 参数名称
         :param param_value: 参数新值
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         sleep(2)
         self.wait_for_page_ready()
         self.get_by_role("tab", name="参数设置").click()
         self.wait_for_page_ready()
         sleep(2)
         # 定位到参数行并点击编辑图标
-        self.get_by_role("row", name=param_name).locator("i").click()
+        self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
         # 在弹窗中修改值
         dialog = self.get_by_label("编辑参数")
         spinbutton = dialog.get_by_role("spinbutton")
@@ -692,7 +693,7 @@ class DorisPage(BasePage):
         :param param_name: 参数名称
         :param param_value: 参数新值
         """
-        self.locator("#cloud-container-content").get_by_text(name).click()
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         sleep(2)
         self.get_by_role("tab", name="参数设置").click()
@@ -702,7 +703,7 @@ class DorisPage(BasePage):
         self.get_by_text("BE节点").click()
         sleep(2)
         # 定位到参数行并点击编辑图标
-        self.get_by_role("row", name=param_name).locator("i").click()
+        self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
         # 在弹窗中修改值
         dialog = self.get_by_label("编辑参数")
         spinbutton = dialog.get_by_role("spinbutton")
