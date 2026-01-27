@@ -173,7 +173,7 @@ def vm(ecs_page, request):
             vnc_password="sugon@20",
             sys_size=root_gb
         )
-        # ecs_page.assert_popup_success("创建实例命令下发成功")
+        ecs_page.assert_popup_success("创建实例命令下发成功")
         ecs_page.wait_for_page_ready()
         # 等待虚机创建完成并收集信息
         metadata_list = []
@@ -584,7 +584,7 @@ def vpc(vpc_page, request):
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
 
-    name = params.get('name', random_data())
+    name = params.get('name', random_data(length=3))
 
     # 构建创建参数
     create_kwargs = {

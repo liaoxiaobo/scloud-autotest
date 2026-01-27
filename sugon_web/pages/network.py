@@ -106,10 +106,11 @@ class VpcPage(BasePage):
         # - Geneve 类型：支持 IPv6
         if network_type == "Geneve" and enable_ipv6:
             # 检查"开启IPv6"元素是否可见
-            ipv6_checkbox = self.get_by_text("开启IPv6")
-            if ipv6_checkbox.is_visible():
+            ipv6_checkbox = self.get_by_text("开启IPv6", exact=True)
+            if ipv6_checkbox.is_visible() and ipv6_checkbox.is_enabled():
                 ipv6_checkbox.click()
             else:
+                self.goto_service("虚拟私有云")
                 pytest.skip("当前环境不支持双栈VPC")
 
         # 填写子网信息
@@ -198,7 +199,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果不提供则不修改
         """
         # 点击操作按钮
-        self.click_dropdown_option(name, "修改")
+        self.click_option(name, "修改")
 
         # 修改名称（如果提供）
         if new_name:
@@ -255,7 +256,7 @@ class VpcPage(BasePage):
         """
 
         # 点击VPC行的操作按钮并选择"新建子网"
-        self.click_dropdown_option(vpc_name, "新建子网")
+        self.click_option(vpc_name, "新建子网")
 
         # 填写子网名称
         self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(subnet_name)
@@ -370,8 +371,8 @@ class VpcPage(BasePage):
         # self.wait_for_page_ready()
 
         # 点击"子网"tab
-        self.get_by_role("tab", name="子网").click()
-        self.wait_for_page_ready()
+        # self.get_by_role("tab", name="子网").click()
+        # self.wait_for_page_ready()
 
         if isinstance(names, list):
             # 批量删除模式
@@ -379,7 +380,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个删除模式
-            self.get_by_role("row", name=names).locator("i").nth(3).click()
+            self.click_option(names, "删除", t_type="body")
 
         # 确认删除
         self.dialog_confirm.click()

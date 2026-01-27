@@ -35,6 +35,7 @@ class TestEVSCreate:
             evs_page.assert_status(name, status="可用")
 
             # 验证云硬盘属性
+            evs_page.set_table_header("加密")
             data = evs_page.get_row_data(name)
             assert data['可启动'] == ('是' if not params['empty'] else '否')
             assert data['容量'] == f"{params['size']}GiB"
@@ -70,6 +71,7 @@ class TestEVSCreate:
             evs_page.assert_status(volume_name, status="可用")
 
             # 验证云硬盘属性
+            evs_page.set_table_header("加密")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
             assert data['加密'] == "已加密"
@@ -105,6 +107,7 @@ class TestEVSCreate:
             evs_page.assert_status(volume_name, status="可用")
 
             # 验证云硬盘属性
+            evs_page.set_table_header("加密")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
             assert data['加密'] == "已加密"

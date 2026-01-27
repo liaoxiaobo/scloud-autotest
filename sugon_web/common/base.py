@@ -155,6 +155,7 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
+            self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner")
         ]
 
@@ -200,7 +201,7 @@ class BasePage(Playwright):
             self.get_by_role("dialog").locator("span").filter(has_text="确定"),
             self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
             self.locator("section").get_by_text("确定"),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span"),   # 云硬盘删除对话框
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").first,   # 云硬盘删除对话框
             self.locator(".sure-footer > div > .cloud-button-btn").first
         ]
 
@@ -549,8 +550,13 @@ class BasePage(Playwright):
         """公共元素: 资源操作按钮"""
 
         # 定位资源行
-        # row = self.locator(f"tr:has-text('{name}')")
-        row = self.get_row_by_name(name, "operation")
+        try:
+            row = self.get_row_by_name(name, "operation")
+            self.logger.info(f"在 operation 区域找到资源行: {name}")
+        except AssertionError:
+            self.logger.debug(f"在 operation 区域未找到 {name}，尝试在 body 区域查找")
+            row = self.get_row_by_name(name, "body")
+            self.logger.info(f"在 body 区域找到资源行: {name}")
 
         # 提供两种定位方式，第二种适用于ecs列表页面
         locators = [
@@ -696,7 +702,7 @@ class BasePage(Playwright):
             self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
             raise
 
-    def click_option(self, resource_name: str, option_text: str):
+    def click_option(self, resource_name: str, option_text: str, t_type="operation"):
         """
         公共方法：点击指定资源行的操作选项
 
@@ -706,7 +712,7 @@ class BasePage(Playwright):
         """
         try:
             # 点击指定行资源的操作按钮
-            operation_btn=self.get_row_by_name(resource_name, "operation")
+            operation_btn=self.get_row_by_name(resource_name, t_type)
             operation_btn.get_by_text(option_text, exact=True).click()
             self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
         except Exception as e:
@@ -1035,3 +1041,34 @@ class BasePage(Playwright):
         timeout = timeout * 1000
         expect(target_row).to_contain_text(expected_data, timeout=timeout)
         self.logger.info(f"行 '{name}' 包含期望数据 '{expected_data}'")
+
+
+    def set_table_header(self, names, enable=True):
+        """设置表头列
+
+        Args:
+            names: 列名称
+            enable: 是否展示，默认为True
+        """
+        if isinstance(names, str):
+            names = [names]
+        self.locator(".el-icon-setting").click()
+        for name in names:
+            locs = [
+                self.get_by_label("checkbox-group").get_by_text(name, exact=True),
+                self.get_by_label("checkbox-group").locator("div").filter(has_text=re.compile(fr"^{name}$")),
+                self.get_by_label("设置表头").get_by_text(name, exact=True),
+                self.get_by_text(name, exact=True),
+            ]
+            loc = self._find_element(locs, f"checkbox{name}")
+            if enable and not loc.is_checked():
+                loc.click()
+            elif not enable and loc.is_checked():
+                loc.click()
+        try:
+            self.dialog_confirm.click()
+        except:
+            self.locator(".el-icon-setting").click() # 收起下拉
+
+        self.wait_for_page_ready()
+        self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
