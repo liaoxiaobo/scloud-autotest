@@ -46,7 +46,7 @@ class EvsPage(BasePage):
             encryption_key: 加密密钥ID
         """
         # 打开加密开关
-        self.locator("label").filter(has_text="加密").locator("span").nth(1).click()
+        self.locator("label").filter(has_text="机密存储").locator("span").nth(1).click()
 
         # 选择密钥
         self.get_by_text("选择密钥").first.click()
