@@ -256,22 +256,53 @@ def _is_logged_in(page):
         return True
 
 
-def _login(page, config):
-    """执行登录操作"""
+def _login(page, config, max_retries=3):
+    """
+    执行登录操作，带轮询重试机制
+
+    Args:
+        page: Playwright page 对象
+        config: 配置字典，包含 username 和 password
+        max_retries: 最大重试次数，默认3次
+
+    Returns:
+        bool: 登录成功返回 True
+
+    Raises:
+        Exception: 超过最大重试次数后抛出异常
+    """
     username = config.get("username")
     password = config.get("password")
 
     if not username or not password:
         raise ValueError("环境配置中缺少用户名或密码")
 
-    # 填写登录信息
-    page.get_by_placeholder("请输入登录账号").fill(username)
-    page.get_by_placeholder("请输入登录密码").fill(password)
-    page.get_by_text("登 录").click()
+    for attempt in range(1, max_retries + 1):
+        if attempt > 1:
+            logger.info(f"\n{'=' * 40}")
+            logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
+            logger.info(f"{'=' * 40}")
 
-    # 等待页面加载完成
-    page.wait_for_load_state("networkidle")
-    page.wait_for_load_state("domcontentloaded")
+        try:
+            # 填写登录信息
+            page.get_by_placeholder("请输入登录账号").fill(username)
+            page.get_by_placeholder("请输入登录密码").fill(password)
+            page.get_by_text("登 录").click()
+
+            # 等待页面加载完成
+            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("domcontentloaded")
+
+            # 检查登录按钮是否消失（说明登录成功）
+            return _is_logged_in(page)
+
+        except Exception as e:
+            logger.info(f"第{attempt}次登录未成功: {e}")
+            if attempt == max_retries:
+                raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
+            continue
+
+    return False
 
 
 @pytest.fixture(scope="session", autouse=True)

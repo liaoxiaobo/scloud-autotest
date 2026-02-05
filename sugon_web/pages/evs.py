@@ -594,7 +594,7 @@ class EvsPage(BasePage):
         # 设置执行时间 - 修改这里，使用exact=True参数
         if hours:
             for hour in hours:
-                self.get_by_text(f"{hour:02d}:00", exact=True).click()
+                dialog.get_by_text(f"{hour:02d}:00", exact=True).click()
 
         # 设置快照周期（天）
         self.locator("form div").filter(has_text="快照周期 天").get_by_role("spinbutton").fill(str(cycle_days))
