@@ -1001,7 +1001,7 @@ class BasePage(Playwright):
 
         # 选择指定的行
         for name in names:
-            loc = self.get_by_role("row", name=name).locator("label span").nth(1)
+            loc = self.get_by_role("row", name=name).locator("label span").last # 存在挂载云盘的虚机nth(1)方法不能勾选
             if not loc.is_checked():
                 loc.click()
                 self.logger.info(f"勾选资源 '{name}'")
