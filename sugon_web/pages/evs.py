@@ -1,3 +1,4 @@
+import pytest
 from sugon_web.common.base import BasePage, submenu
 import re
 
@@ -123,9 +124,14 @@ class EvsPage(BasePage):
             host: 物理机名称，当volume_type为local-type时必选
             scsi: 是否启用VirtioSCSI，默认True
         """
+        # 新增跳过逻辑：集中式存储、本地存储、共享文件存储不支持创建共享盘
+        unsupported_storages = ["local", "nfs", "usan"]
+        if shared and self.stor in unsupported_storages:
+            pytest.skip(f"当前存储类型 {self.stor} 不支持创建共享云硬盘")
+
         # 加密盘不能是共享盘
         if encrypted and shared:
-            raise ValueError("加密云硬盘不支持共享模式，请将shared参数设置为False")
+            pytest.skip(f"加密云硬盘不支持共享模式")
 
         # 打开创建页面
         self.btn_create.click()
