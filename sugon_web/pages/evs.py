@@ -221,11 +221,10 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            # 根据参数选择删除类型
-            delete_option = "安全删除" if secure else "删除"
-
-            # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_option(names, delete_option, t_type="body")
+            if secure:
+                self.click_dropdown_option(names, "安全删除")
+            else:
+                self.click_option(names, "删除", t_type="body")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
