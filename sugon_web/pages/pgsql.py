@@ -33,10 +33,10 @@ class PgSQLPage(BasePage):
         self.locator("form").filter(has_text="基本设置").get_by_role("textbox").first.fill(name)
 
         # 版本选择（如果有需要切换版本）
-        # version_dropdown = self.locator("div").filter(has_text=re.compile(r"^版本")).get_by_placeholder("请选择")
-        # if version_dropdown.is_visible():
-        #     version_dropdown.click()
-        #     self.locator("li").filter(has_text=re.compile(rf"^{re.escape(version)}$")).click()
+        version_dropdown = self.locator("div").filter(has_text=re.compile(r"^版本")).get_by_placeholder("请选择")
+        if version_dropdown.is_visible():
+            version_dropdown.click()
+            self.locator("li").filter(has_text=re.compile(rf"^{re.escape(version)}$")).click()
 
         # 项目选择
         db_util.project_dropdown(self).click()

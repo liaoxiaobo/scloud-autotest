@@ -25,7 +25,7 @@ class TestPgSQLCreate:
             )
 
         with allure_step_log("步骤二：验证创建结果"):
-            pgsql_page.assert_popup_success("创建PostgreSQL资源成功")
+            pgsql_page.assert_popup_success("创建实例")
             pgsql_page.assert_list_contain(instance_name)
             pgsql_page.assert_status(instance_name, status="运行中", timeout=1200)
 
