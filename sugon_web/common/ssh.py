@@ -328,27 +328,34 @@ class SSH:
         if not result['rc']:
             raise AssertionError(f"File exists at path: {path}")
 
-    def ping(self, ip, connected=True, count=4, retries=5, retry_delay=5):
+    def ping(self, ip, connected=True, count=10, retries=5, retry_delay=5, ipv6=False):
         """
         通过ping命令测试目标IP的连通性，并支持重试机制。
         失败时直接抛出断言错误。
 
         :param ip: 目标IP地址。
         :param connected: 预期连通状态，如果为True，表示期望IP可达；如果为False，表示期望IP不可达。
-        :param count: 每次ping命令发送的ICMP包数量，默认是4个。
-        :param retries: 如果ping失败，最大重试次数，默认3次。
-        :param retry_delay: 每次重试前的延迟时间，默认2秒。
+        :param count: 每次ping命令发送的ICMP包数量，默认是10个。
+        :param retries: 如果ping失败，最大重试次数，默认5次。
+        :param retry_delay: 每次重试前的延迟时间，默认5秒。
+        :param ipv6: 是否使用 ping6 命令（用于 IPv6 地址），默认为 False（使用 ping 命令）。
         """
 
+        # 根据 ipv6 参数选择 ping 命令
+        ping_cmd = f'ping6 {ip} -c {count}' if ipv6 else f'ping {ip} -c {count}'
+
+        success_pattern = f"{count} packets transmitted, {count} received, 0% packet loss"
+        fail_pattern = f"{count} packets transmitted, 0 received, 100% packet loss"
+
         for attempt in range(1, retries + 1):
-            stdout = self.run(f'ping {ip} -c {count}')
+            stdout = self.run(ping_cmd)
 
             if connected:
-                if f"{count} packets transmitted, {count} received, 0% packet loss" in stdout:
+                if success_pattern in stdout:
                     logger.info(f"Ping to {ip} succeeded.")
                     return
             else:
-                if f"{count} packets transmitted, 0 received, 100% packet loss" in stdout:
+                if fail_pattern in stdout:
                     logger.info(f"Ping to {ip} failed as expected.")
                     return
 

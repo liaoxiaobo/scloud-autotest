@@ -28,6 +28,7 @@ class EcsPage(OpsPage):
             login_password="admin1234@sugon",
             vnc_password="sugon@20",
             sys_size=25,
+            enable_ipv6=False,
             **kwargs
     ):
         """创建云服务器
@@ -74,6 +75,9 @@ class EcsPage(OpsPage):
 
         # 选择网络
         self._select_network(network, subnet)
+        if enable_ipv6:
+            self.get_by_role("textbox", name="请选择是否分配IPv6地址").click()
+            self.get_by_text("自动分配IPv6地址").nth(2).click()
 
         # 设置密码
         self._set_passwords(login_password, vnc_password)

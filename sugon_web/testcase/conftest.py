@@ -191,10 +191,12 @@ def vm(ecs_page, request):
     # 收集每台虚机的信息
     for vm_name in vm_names:
         row_data = ecs_page.get_row_data(vm_name)
+        ip_list = row_data["IP地址"].split("固定: ")
         vm_metadata = {
             "name": vm_name,
             "id": row_data["名称/ID"].split(":")[1].strip(),
-            "ip": row_data["IP地址"].split(":")[1].strip(),
+            "ip": ip_list[-1].strip(),
+            "ipv6": ip_list[-2].strip(),
             'host': row_data["物理机"],
             "flavor": row_data["规格"],
             "image": row_data["镜像名称"],
@@ -595,7 +597,8 @@ def vpc(vpc_page, request):
         "gateway_mode": params.get('gateway_mode', "分布式网关"),
         "vlan_id": params.get('vlan_id'),
         "gateway_ip": params.get('gateway_ip'),
-        "mac": params.get('mac')
+        "mac": params.get('mac'),
+        "enable_ipv6": params.get('enable_ipv6', False)
     }
 
     # 创建VPC

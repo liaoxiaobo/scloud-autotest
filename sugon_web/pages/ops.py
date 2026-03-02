@@ -8,7 +8,7 @@ from sugon_web.utils.logger import logger
 class OpsPage(BasePage):
 
     @submenu("MFIP")
-    def mfip_create(self, project: str, network: str, ip: str):
+    def mfip_create(self, project: str, network: str, ip: str, exact=True):
         """创建 MFIP"""
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
@@ -19,7 +19,7 @@ class OpsPage(BasePage):
         self.page.wait_for_timeout(1000)    # 等待下拉列表数据加载完成
         self.get_by_text(network, exact=True).click()
         self.get_by_placeholder("请选择端口").click()
-        self.get_by_text(ip, exact=True).click()
+        self.get_by_text(ip, exact=exact).click()
         self.get_by_text("确定").click()
 
     @submenu("MFIP")
