@@ -613,3 +613,4 @@ def vpc(vpc_page, request):
     vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
+    expect(vpc_page.alert).not_to_be_visible(timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
