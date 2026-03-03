@@ -7,7 +7,7 @@ from playwright.sync_api import expect
 from sugon_web.config.config import Config
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch
+from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch, retry_check
 
 
 @allure.epic('计算服务')
@@ -154,13 +154,12 @@ class TestECSBasic:
         ecs_page.goto_service('弹性云服务器')
 
         with allure_step_log("步骤1: 编辑弹性云服务器"):
-            ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_edit(name, new_name)
 
         with allure_step_log("步骤2: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
             ssh_vm.connect(mfip)
-            assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
+            retry_check(lambda: ssh_vm.run("hostname"), expected=name, max_retries=3, interval=30)
 
         with allure_step_log("步骤3: 验证虚拟机hostname"):
             ecs_page.ecs_edit(new_name, name)

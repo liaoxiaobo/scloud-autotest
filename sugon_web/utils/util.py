@@ -2,6 +2,8 @@ import ipaddress
 import os
 import random
 import string
+import time
+
 import pytest
 import yaml
 import allure
@@ -357,3 +359,24 @@ def skip_arch(*arch_value):
         return wrapper
 
     return decorator
+
+def retry_check(check_func, expected, max_retries=3, interval=5, error_msg=None):
+    """
+    重试检查，直到 check_func() 返回值等于 expected
+
+    Args:
+        check_func: 检查函数，返回需要比较的值
+        expected: 期望值
+        max_retries: 最大重试次数
+        interval: 重试间隔
+        error_msg: 错误消息
+    """
+    for i in range(max_retries):
+        actual = check_func()
+        if actual == expected:
+            return actual
+        if i < max_retries - 1:
+            time.sleep(interval)
+
+    final_msg = error_msg or f"断言失败: 期望 '{expected}', 实际 '{actual}'"
+    raise AssertionError(final_msg)
