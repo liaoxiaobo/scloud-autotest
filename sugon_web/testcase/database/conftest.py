@@ -137,11 +137,9 @@ def pgsql(pgsql_page):
     """创建一个供整个测试类使用的PostgreSQL实例对象"""
     name = f"pgsql-{random_data()}"
     instance_type = "集群"
-    db_name = f"autodb_{random_string(k=5)}"
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
-    privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享PostgreSQL实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -149,13 +147,8 @@ def pgsql(pgsql_page):
         pgsql_page.assert_popup_success("创建PostgreSQL资源成功")
         pgsql_page.assert_status(name, status="运行中", timeout=1200)
 
-    with allure_step_log(f"前置操作：创建新数据库 {db_name}"):
-        pgsql_page.create_database(name, db_name)
-        pgsql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
-        pgsql_page.assert_list_contain(db_name)
-
     with allure_step_log(f"前置操作：创建新用户 {user_name}"):
-        pgsql_page.create_user(name, user_name, user_password, db_name, privileges)
+        pgsql_page.create_user(name, user_name, user_password)
         pgsql_page.assert_popup_success("创建用户成功", 10)
 
     yield data

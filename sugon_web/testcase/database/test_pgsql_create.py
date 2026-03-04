@@ -43,7 +43,7 @@ class TestPgSQLCreate:
         for instance_name in instance_names:
             with allure_step_log(f"步骤一：创建实例: {instance_name}"):
                 pgsql_page.create_instance(name=instance_name)
-                pgsql_page.assert_popup_success("创建PostgreSQL资源成功")
+                pgsql_page.assert_popup_success("创建实例")
                 pgsql_page.assert_list_contain(instance_name)
                 pgsql_page.assert_status(instance_name, status="运行中", timeout=1200)
 
