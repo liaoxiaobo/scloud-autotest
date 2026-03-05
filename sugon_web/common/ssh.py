@@ -1,6 +1,7 @@
 import threading
 import time
 from paramiko import SSHClient, AutoAddPolicy, RSAKey, SSHException, AuthenticationException, ChannelException, Ed25519Key
+from sugon_web.config.config import Config
 from sugon_web.utils.util import get_file_abspath
 from sugon_web.utils.logger import logger
 
@@ -250,13 +251,26 @@ class SSH:
             time.sleep(5)
         raise Exception(f"Telnet to {host}:{port} timed out")
 
-    def _get_host(self):
+    def _get_host(self) -> dict:
         """获取集群的节点ip"""
-        d = {
-            'master': self.run("sudo kubectl get no -owide | grep master | awk '{print $6}'").split('\n'),
-            'host': self.run("sudo kubectl get no -owide|grep -v backup | awk 'NR>1' |awk '{print $6}'").split('\n')
-        }
-        return d
+        # 一次获取所有节点信息，按行解析
+        node_info = self.run("sudo kubectl get no -owide", check_rc=True)
+
+        master_nodes = []
+        all_nodes = []
+
+        for line in node_info.split('\n')[1:]:  # 跳过标题行
+            if line.strip() == "":
+                continue
+
+            parts = line.split()
+            if len(parts) >= 6:
+                ip = parts[5]
+                all_nodes.append(ip)
+                if 'master' in line:
+                    master_nodes.append(ip)
+
+        return {'master': master_nodes, 'host': all_nodes}
 
     def _set_alias(self):
         """设置alias命令，仅适用于物理环境节点"""
@@ -314,27 +328,34 @@ class SSH:
         if not result['rc']:
             raise AssertionError(f"File exists at path: {path}")
 
-    def ping(self, ip, connected=True, count=4, retries=5, retry_delay=5):
+    def ping(self, ip, connected=True, count=10, retries=5, retry_delay=5, ipv6=False):
         """
         通过ping命令测试目标IP的连通性，并支持重试机制。
         失败时直接抛出断言错误。
 
         :param ip: 目标IP地址。
         :param connected: 预期连通状态，如果为True，表示期望IP可达；如果为False，表示期望IP不可达。
-        :param count: 每次ping命令发送的ICMP包数量，默认是4个。
-        :param retries: 如果ping失败，最大重试次数，默认3次。
-        :param retry_delay: 每次重试前的延迟时间，默认2秒。
+        :param count: 每次ping命令发送的ICMP包数量，默认是10个。
+        :param retries: 如果ping失败，最大重试次数，默认5次。
+        :param retry_delay: 每次重试前的延迟时间，默认5秒。
+        :param ipv6: 是否使用 ping6 命令（用于 IPv6 地址），默认为 False（使用 ping 命令）。
         """
 
+        # 根据 ipv6 参数选择 ping 命令
+        ping_cmd = f'ping6 {ip} -c {count}' if ipv6 else f'ping {ip} -c {count}'
+
+        success_pattern = f"{count} packets transmitted, {count} received, 0% packet loss"
+        fail_pattern = f"{count} packets transmitted, 0 received, 100% packet loss"
+
         for attempt in range(1, retries + 1):
-            stdout = self.run(f'ping {ip} -c {count}')
+            stdout = self.run(ping_cmd)
 
             if connected:
-                if f"{count} packets transmitted, {count} received, 0% packet loss" in stdout:
+                if success_pattern in stdout:
                     logger.info(f"Ping to {ip} succeeded.")
                     return
             else:
-                if f"{count} packets transmitted, 0 received, 100% packet loss" in stdout:
+                if fail_pattern in stdout:
                     logger.info(f"Ping to {ip} failed as expected.")
                     return
 
@@ -396,13 +417,13 @@ class SSH:
             cmd = cmd + f"--property {k}={v} "
         return self.run(cmd, return_stderr=True, check_rc=True)
 
-    def image_download(self, image):
+    def image_download(self, image, img_path="/liaoxb/test_image_dontdel"):
         """下载镜像到后台节点"""
         # 构建完整URL
-        img_path = "http://172.22.5.66:9090/liaoxb/test_image_dontdel/"
-        full_url = f"{img_path}{image}"
+        img_source = Config.get("image_source")
+        full_url = rf"{img_source}{img_path}/{image}"
         if image not in self.run('ls'):
-            self.run(f'curl {full_url} -o {image}')
+            self.run(f'sudo curl {full_url} -o {image}')
             self.file_exist(image)
 
     def glance_image_delete(self, name):
@@ -414,7 +435,7 @@ class SSH:
         else:
             logger.info(f"镜像 {name} 不存在，无需删除")
 
-    def mount_disk(self, disk_name, mount_point=None, format_disk=True):
+    def mount_disk(self, disk_name, mount_point=None, format_disk=True, disk_type="ext4"):
         """在虚拟机中挂载磁盘
 
         Args:
@@ -434,7 +455,7 @@ class SSH:
 
         # 格式化磁盘（如果需要）
         if format_disk:
-            self.run(f"mkfs.ext4 /dev/{disk_name}")
+            self.run(f"mkfs.{disk_type} -F /dev/{disk_name}", check_rc=True)
 
         # 创建挂载点并挂载
         self.run(f"mkdir -p {mount_point}")
@@ -454,4 +475,49 @@ class SSH:
         ping_thread.start()
         return ping_thread
 
+    def run_sql(self, database: str, sql_statement: str):
+        """
+        执行SQL语句并返回结果。
+        :param database: 数据库名称
+        :param sql_statement: SQL语句
+        :return: SQL执行结果
+        """
+        sql_command = f"use {database};{sql_statement}"
+        command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_command}\\\"\""
+        result = self.run(command, return_stderr=True)
+        logger.info(f"SQL执行成功: {sql_statement}, 结果: {result}")
 
+
+    def _get_release_version(self, host):
+        """
+        获取版本信息并解析为字典
+
+        Args:
+            host: 主机ip
+
+        Returns:
+            dict: 解析后的版本信息
+        """
+
+        # 版本文件路径列表（按优先级排序）
+        version_paths = [
+            '/opt/extra/init-base/patch_release_version',
+            '/opt/extra/release_version'
+        ]
+
+        # 尝试从每个路径获取版本信息
+        for path in version_paths:
+            try:
+                cmd = f"ssh -o StrictHostKeyChecking=no {host} cat {path}"
+                release_version = self.run(cmd)
+
+                if release_version and release_version.strip():
+                    print(f"成功从 {path} 获取版本信息")
+                    return dict(item.split(": ") for item in release_version.split("\n"))
+                else:
+                    print(f"路径 {path} 中的版本信息为空")
+            except Exception as e:
+                print(f"从 {path} 获取版本信息失败: {e}")
+
+        print("警告: 无法从任何路径获取版本信息")
+        return {}

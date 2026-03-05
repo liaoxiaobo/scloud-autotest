@@ -109,8 +109,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             mysql_page.instance_ip_unbinding(instance_name)
@@ -118,8 +117,7 @@ class TestMySQLBasic:
         with allure_step_log("步骤四：验证解绑结果"):
             # 解绑后，IP地址信息应该不再显示
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip, connected=False)
 
     @allure.title("MySQL-添加和删除节点")
     def test_add_and_delete_node(self, mysql_page, mysql, ssh_host):
@@ -152,16 +150,14 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             mysql_page.node_ip_unbinding(instance_name)
         with allure_step_log("步骤四：验证解绑结果"):
             # 解绑后，IP地址信息应该不再显示
             mysql_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(mysql_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip, connected=False)
 
     @allure.title("MySQL-创建并删除数据库")
     def test_create_and_delete_database(self, mysql_page, mysql, ssh_host, ssh_vm):
@@ -372,6 +368,10 @@ class TestMySQLBasic:
             mysql_page.assert_popup_success("授权用户数据库成功,若数据未更新请刷新页面")
 
         with allure_step_log("步骤五：后端确认读写权限生效"):
+            node_name = f"{instance_name}-0"
+            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
+
             # 尝试写入（应成功）
             cmd_write_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readwrite}.test(id int); INSERT INTO {db_readwrite}.test VALUES (1);\""
             result_write_ok = ssh_vm.run(cmd_write_ok, True, True)
@@ -390,6 +390,10 @@ class TestMySQLBasic:
             mysql_page.assert_popup_success("解除用户数据库权限成功")
 
         with allure_step_log("步骤七：后端确认用户权限已被解除"):
+            node_name = f"{instance_name}-0"
+            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
+
             cmd_access_denied = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"USE {db_readonly};\""
             result_access_denied = ssh_vm.run(cmd_access_denied, True, True)
             assert "Access denied" in result_access_denied[
@@ -527,7 +531,7 @@ class TestMySQLBasic:
             mysql_page.goto_submenu("实例管理")
             mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
-            mysql_page.locator(f"#cloud-container-content").get_by_text(instance_name).click()
+            mysql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.assert_status(f"{instance_name}-0", status="运行中", timeout=1200, refresh=True)
             mysql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=1200, refresh=True)
             mysql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=1200, refresh=True)
@@ -580,7 +584,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
-            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="数据库", exact=True).click()
             mysql_page.wait_for_page_ready()
@@ -603,7 +607,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
-            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="用户").click()
             mysql_page.wait_for_page_ready()
@@ -625,7 +629,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
-            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).click()
+            mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.wait_for_page_ready()
             sleep(2)
             mysql_page.get_by_role("tab", name="参数设置").click()

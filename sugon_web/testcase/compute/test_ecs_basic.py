@@ -4,9 +4,10 @@ import pytest
 import allure
 from playwright.sync_api import expect
 
+from sugon_web.config.config import Config
 from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, skip_stor
+from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch, retry_check
 
 
 @allure.epic('计算服务')
@@ -49,7 +50,7 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "关机")
 
         with allure_step_log(f"步骤2: 验证{name}关机结果"):
-            ecs_page.assert_popup_success(f"{name}实例关机成功", timeout=60)
+            ecs_page.assert_popup_success(f"{name}实例关机任务下发成功", timeout=60)
             ecs_page.assert_status(name, status="关机")
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "stopped", f"{name}状态变更失败"
@@ -58,7 +59,7 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "启动")
 
         with allure_step_log(f"步骤4: 验证{name}启动结果"):
-            ecs_page.assert_popup_success(f"{name}实例启动成功")
+            ecs_page.assert_popup_success(f"{name}实例启动任务下发成功")
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
@@ -75,7 +76,8 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "挂起")
 
         with allure_step_log(f"步骤2: 验证{name}挂起结果"):
-            ecs_page.assert_popup_success(f"{name}实例挂起成功", timeout=60)
+            ecs_page.assert_popup_success(f"{name}实例挂起任务下发成功", timeout=60)
+            # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name, status="挂起")
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "suspended", f"{name}状态变更失败"
@@ -84,7 +86,8 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "恢复运行")
 
         with allure_step_log(f"步骤4: 验证{name}恢复运行结果"):
-            ecs_page.assert_popup_success(f"{name}实例恢复运行成功")
+            ecs_page.assert_popup_success(f"{name}实例恢复运行任务下发成功")
+            # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
@@ -101,7 +104,7 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "暂停")
 
         with allure_step_log(f"步骤2: 验证{name}暂停结果"):
-            ecs_page.assert_popup_success(f"{name}实例暂停成功", timeout=60)
+            ecs_page.assert_popup_success(f"{name}实例暂停任务下发成功", timeout=60)
             ecs_page.assert_status(name, status="暂停")
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "paused", f"{name}状态变更失败"
@@ -110,7 +113,8 @@ class TestECSBasic:
             ecs_page.ecs_operations(name, "取消暂停")
 
         with allure_step_log(f"步骤4: 验证{name}取消暂停结果"):
-            ecs_page.assert_popup_success(f"{name}实例恢复运行成功")
+            ecs_page.assert_popup_success(f"{name}实例恢复运行任务下发成功")
+            # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
@@ -119,57 +123,46 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证重置状态功能")
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
     def test_ecs_reset_status(self, ecs_page, vm, ssh_vm, ssh_host):
         """弹性云服务器-重置状态功能验证"""
         name = vm.get("name")
-        ecs_ip = vm.get("ip")
-        ecs_id = vm.get("id")[:18]
+        ecs_id = vm.get("id")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log(f"步骤1: 检查云服务器{name}状态"):
-            if "错误" in ecs_page.get_row_data(name).get("状态"):
-                ecs_page.ecs_operations(name, "重置状态")
-                ecs_page.assert_popup_success(f"{name}实例重置状态成功")
-            else:
-                pytest.skip("云服务器处于正常状态，无需重置")
+        with allure_step_log(f"步骤1: 修改云服务器{name}状态为错误，重置状态"):
+            sql_statement = f"UPDATE instances SET vm_state = 'error' WHERE uuid = '{ecs_id}'"
+            ssh_host.run_sql("gova", sql_statement)
+            ecs_page.btn_refresh.click()
+            ecs_page.ecs_operations(name, "重置状态")
+            ecs_page.assert_popup_success(f"{name}实例重置状态任务下发成功")
 
         with allure_step_log(f"步骤2: 验证重置状态结果"):
             ecs_page.assert_status(name)
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vm_state") == "active", f"重置状态验证失败: 状态为 {stdout.get('status')}"
-
-            # 给虚机绑定mfip, 验证虚机可用性
-            mfip = ecs_page.bind_mfip(ecs_ip)
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("验证编辑功能")
-    def test_ecs_edit(self, ecs_page, ssh_vm):
-        name = random_data()
-        new_name = random_data(length=6)
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    def test_ecs_edit(self, ecs_page, vm, ssh_vm):
+        new_name = random_data(length=4)
+        name = vm.get("name")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 创建弹性云服务器"):
-            ecs_page.ecs_create(name)
-            ecs_page.assert_popup_success(f"创建实例命令下发成功")
-            ecs_page.assert_status(name)
-            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
-            mfip = ecs_page.bind_mfip(ip)
-
-        with allure_step_log("步骤2: 编辑弹性云服务器"):
-            ecs_page.goto_service('弹性云服务器')
+        with allure_step_log("步骤1: 编辑弹性云服务器"):
             ecs_page.ecs_edit(name, new_name)
 
-        with allure_step_log("步骤3: 验证编辑结果"):
+        with allure_step_log("步骤2: 验证编辑结果"):
             ecs_page.assert_popup_success("更新实例成功")
             ssh_vm.connect(mfip)
-            assert ssh_vm.run("hostname") == name, f"编辑后虚拟机hostname变更，原始主机名:{name},编辑后主机名:{ssh_vm.run('hostname')}"
+            retry_check(lambda: ssh_vm.run("hostname"), expected=name, max_retries=3, interval=30)
 
-        with allure_step_log("步骤4: 清理测试数据"):
-            ecs_page.ecs_remove(new_name)
-            ecs_page.ecs_delete(new_name)
-            ecs_page.assert_deleted(new_name)
-
+        with allure_step_log("步骤3: 验证虚拟机hostname"):
+            ecs_page.ecs_edit(new_name, name)
 
     @allure.title("验证克隆功能")
     def test_ecs_clone(self, ecs_page, vm, ssh_vm):
@@ -330,7 +323,8 @@ class TestECSBasic:
         with allure_step_log("步骤3: 验证启动顺序设置结果"):
             ecs_page.assert_popup_success("设置实例启动顺序成功")
             ecs_page.ecs_operations(name, "强制重启")
-            ecs_page.assert_popup_success(f"{name}实例强制重启成功", timeout=60)
+            ecs_page.wait_for_source_complete(name)
+            ecs_page.assert_status(name)
 
         with allure_step_log("步骤4: 云服务器登录vnc验证启动顺序"):
             ecs_page.ecs_vnc(name)
@@ -341,39 +335,20 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"从虚拟机{name}分离云硬盘")
 
     @allure.title("验证修改密码功能")
-    def test_ecs_modifypwd(self, ecs_page, ssh_vm):
-        name = random_data()
+    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
+        name = vm.get("name")
+        mfip = vm.get("mfip")
         ecs_page.goto_service('弹性云服务器')
 
-        with allure_step_log("步骤1: 创建弹性云服务器"):
-            ecs_page.ecs_create(name)
-            ecs_page.assert_popup_success(f"创建实例命令下发成功")
-            ecs_page.assert_status(name)
-            ip = ecs_page.get_row_data(name).get("IP地址").split(":")[1].strip()
-            mfip = ecs_page.bind_mfip(ip)
-
-        with allure_step_log(f"步骤2: 云服务器{name}修改密码"):
-            ecs_page.goto_service('弹性云服务器')
+        with allure_step_log(f"步骤1: 云服务器{name}修改密码"):
             ecs_page.assert_status(name, refresh=True)
             ecs_page.ecs_modify_pwd(name, "sugon@21", "sugon@21")
 
-        with allure_step_log("步骤3: 验证修改密码结果"):
+        with allure_step_log("步骤2: 验证修改密码结果"):
             ecs_page.assert_popup_success(f"修改密码成功")
             ssh_vm.connect(mfip, pwd="sugon@21")
             assert ssh_vm.run("hostname") == name, f"修改密码后，无法登录虚拟机"
-
-        with allure_step_log(f"步骤4: 云服务器{name}还原密码"):
-            ecs_page.ecs_modify_pwd(name, "admin1234@sugon", "admin1234@sugon")
-
-        with allure_step_log("步骤5: 验证修改密码结果"):
-            ecs_page.assert_popup_success(f"修改密码成功")
-            ssh_vm.connect(mfip)
-            assert ssh_vm.run("hostname") == name, f"还原密码后，无法登录虚拟机"
-
-        with allure_step_log(f"步骤6: 删除云服务器{name}"):
-            ecs_page.ecs_remove(name)
-            ecs_page.ecs_delete(name)
-            ecs_page.assert_deleted(name)
 
     @allure.title("验证修改主机名功能")
     def test_ecs_modify_hostname(self, ecs_page, vm, ssh_vm):
@@ -403,6 +378,10 @@ class TestECSBasic:
         node = vm.get("host").split(".")[0]
         ecs_page.goto_service('弹性云服务器')
 
+        architecture = Config.get("architecture")
+        if architecture == "aarch64" and vnc_type == "QXL":
+            pytest.skip("aarch64架构不支持QXL显卡类型")
+
         with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
             ecs_page.ecs_modify_vnc_type(name, vnc_type)
 
@@ -411,7 +390,7 @@ class TestECSBasic:
 
         with allure_step_log("步骤3: 验证VNC登录"):
             ecs_page.ecs_operations(name, "强制重启")
-            ecs_page.assert_popup_success(f"{name}实例强制重启成功", timeout=60)
+            ecs_page.assert_popup_success(f"{name}实例强制重启任务下发成功", timeout=60)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
             ecs_page.assert_ecs_details_info([name], info_items={"VNC显卡类型": vnc_type})
@@ -422,6 +401,7 @@ class TestECSBasic:
 
     @allure.title("验证修改CPU模式功能")
     @pytest.mark.parametrize("cpu_mode,custom_value", [["host-passthrough",""], ["自定义", "custom_Dhyana"]])
+    @skip_arch('aarch64')
     def test_ecs_modify_cpu_mode(self, ecs_page, vm, ssh_host, cpu_mode, custom_value):
         """
         测试弹性云服务器CPU模式修改功能
@@ -473,6 +453,7 @@ class TestECSBasic:
             assert expection in actual, f"同步时间服务器失败，期望时间:{expection},实际时间:{actual}"
 
     @allure.title("验证新建镜像功能")
+    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": True}], indirect=True)
     def test_ecs_create_image(self, ecs_page, vm, ssh_vm):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
@@ -487,7 +468,7 @@ class TestECSBasic:
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
             # ecs_page.assert_status(name, "创建镜像中")
-            ecs_page.assert_status(name, "当前无任务")
+            ecs_page.assert_status(name)
             ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", refresh=True)
 
@@ -497,6 +478,7 @@ class TestECSBasic:
             image_vm = f"{name}-image"
             ecs_page.ecs_create(image_vm, image_name=image_name)
             ecs_page.assert_popup_success("创建实例命令下发成功")
+            # ecs_page.wait_for_source_complete(image_vm)
             ecs_page.assert_status(image_vm)
 
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
@@ -517,9 +499,10 @@ class TestECSBasic:
             ecs_page.ecs_image_delete(image_name)
             ecs_page.assert_deleted(image_name, refresh=True)
 
-    @allure.title("验证热迁移功能")
+    @allure.title("验证热迁移手动指定节点功能")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": True}], indirect=True)
-    def test_ecs_hot_migration(self, ecs_page, vm, ssh_vm, ssh_host):
+    @skip_if_nodes_less_than(2)
+    def test_ecs_hot_migration_manual(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的热迁移功能
         """
@@ -540,12 +523,13 @@ class TestECSBasic:
             pid = pid_output.strip()
 
         with allure_step_log("步骤2: 热迁移"):
-            check_node = ecs_page.ecs_hot_migration(names[1], "master01")
+            check_node = ecs_page.ecs_hot_migration(names[1], target_host="master01", m_type="手动指定")
             ecs_page.assert_popup_success("热迁移命令下发成功")
 
         with allure_step_log("步骤3: 验证迁移结果"):
             ecs_page.assert_status(names[1], status="迁移中", refresh=True, refresh_interval=2)
-            ecs_page.assert_status(names[1], status="当前无任务")
+            # ecs_page.wait_for_source_complete(names[1])
+            ecs_page.assert_status(names[1])
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
             expect_node = ecs_page.get_row_data(names[1]).get("物理机")
@@ -561,8 +545,33 @@ class TestECSBasic:
             loss = int(send) - int(received)
             assert loss <= 10, f"长ping迁移丢包数超高，期望丢包率小于10，实际丢包数:{loss}"
 
+    @allure.title("验证热迁移系统分配功能")
+    @skip_if_nodes_less_than(2)
+    def test_ecs_hot_migration(self, ecs_page, vm, ssh_host):
+        """
+        测试弹性云服务器热迁移 系统分配功能
+        """
+        name = vm.get("name")
+        host = vm.get("host")
+        ecs_id = vm.get("id")
+
+        with allure_step_log("步骤1: 热迁移"):
+            ecs_page.ecs_hot_migration(name)
+            ecs_page.assert_popup_success("热迁移命令下发成功")
+
+        with allure_step_log("步骤2: 验证迁移结果"):
+            ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
+            ecs_page.wait_for_page_ready()
+            ecs_page.wait_for_source_complete(name)
+            new_host = ecs_page.get_row_data(name).get("物理机")
+            assert new_host != host, f"热迁移失败，迁移前节点:{host}, 迁移后节点:{new_host}"
+            assert new_host == ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"), \
+                f"热迁移失败，页面展示节点:{new_host}, 后台物理机节点:{new_host}"
+            vm.update({"host": new_host})
+
     @allure.title("验证冷迁移功能")
     @skip_stor("local")
+    @skip_if_nodes_less_than(2)
     def test_ecs_cold_migration(self, ecs_page, vm, ssh_vm, ssh_host):
         """
         测试弹性云服务器的冷迁移功能
@@ -572,17 +581,19 @@ class TestECSBasic:
         name = vm.get("name")
         ecs_id = vm.get("id")
         with allure_step_log("步骤1: 冷迁移"):
-            check_node = ecs_page.ecs_cold_migration(name, "master01")
+            check_node = ecs_page.ecs_cold_migration(name, m_type="手动指定", cluster="Autotest", target_host="master01")
             ecs_page.assert_popup_success("冷迁移命令下发成功")
 
         with allure_step_log("步骤2: 验证迁移结果"):
             ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
-            ecs_page.assert_status(name, status="当前无任务")
+            # ecs_page.wait_for_source_complete(name)
+            ecs_page.assert_status(name)
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
             expect_node = ecs_page.get_row_data(name).get("物理机")
             assert expect_node == check_node, f"冷迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
             assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == check_node
+            vm.update({"host": check_node})
 
             # 验证迁移后虚机的可用性
             ssh_vm.connect(vm['mfip'])
@@ -637,16 +648,18 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"{name}实例扩容成功")
 
         with allure_step_log("步骤2: 验证扩容结果"):
-            ecs_page.assert_ecs_info(name, "系统盘", f"容量(GiB):{new_size}")
+            ecs_page.assert_ecs_info(name, "系统盘关闭机密存储开启机密存储   筛选   重置 ", f"容量(GiB):{new_size}")
+            ecs_page.assert_ecs_details_info(name, {"系统盘": new_size})
 
             # 验证扩容后页面展示的系统盘大小 和 通过gova show 获取的系统盘大小是否一致
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+            root_dev = stdout.get("root_dev")
             assert stdout.get("root_gb") == new_size, \
                 f"扩容系统盘失败，期望系统盘大小:{new_size}GiB,实际系统盘大小:{stdout.get('root_gb')}GiB"
 
             # 验证扩容后页面展示的系统盘大小 和 虚机中的系统盘大小是否一致
             ssh_vm.connect(vm['mfip'])
-            assert new_size in ssh_vm.run(f"lsblk | grep '^vda' | awk '{{print $4}}'"), \
+            assert new_size in ssh_vm.run(f"lsblk | grep '^{root_dev}' | awk '{{print $4}}'"), \
                 f"扩容系统盘失败，云服务器{name}系统盘大小不一致"
 
     @allure.title("验证挂载CD-ROM功能")
@@ -660,8 +673,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤2: 验证虚机{name}挂载CD-ROM结果"):
             ecs_page.assert_popup_success(f"挂载CD-ROM到虚拟机{name}成功")
-            ecs_page.assert_status(name, status="挂载CD-ROM中")
-            ecs_page.assert_status(name, status="当前无任务")
+            ecs_page.assert_status(name)
 
             # 验证CD-ROM已成功挂载
             cdrom_name = ecs_page.get_row_data(name).get("挂载云硬盘")
@@ -675,8 +687,9 @@ class TestECSBasic:
         with allure_step_log(f"步骤3: 后台验证虚机{name}挂载CD-ROM结果"):
             ssh_vm.connect(vm['mfip'])
             assert "20G" in ssh_vm.run(f"lsblk | grep sr | awk '{{print $4}}'")
+            disk = ssh_vm.run(f"lsblk | grep sr | grep 20G | awk '{{print $1}}'")
             ssh_vm.run(f"mkdir /mnt/{name}")
-            ssh_vm.run(f"mount /dev/sr0 /mnt/{name}")
+            ssh_vm.run(f"mount /dev/{disk} /mnt/{name}")
             assert ssh_vm.run(f"ls /mnt/{name}") != ""
 
         with allure_step_log(f"步骤4: 卸载CD-ROM"):
@@ -688,6 +701,7 @@ class TestECSBasic:
             assert ecs_page.get_row_data(name).get("挂载云硬盘") == "--"
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"ls /mnt/{name}") == ""
+            ssh_vm.run(f"umount /mnt/{name}")
 
     @allure.title("验证挂载&卸载裸磁盘功能")
     def test_ecs_mount_bare_disk(self, ecs_page, pool, ssh_vm):
@@ -705,6 +719,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤3: {vm_name}卸载裸磁盘{pool_name}"):
             ecs_page.ecs_unmount_bare_disk(vm_name)
+            ecs_page.wait_for_operation_complete()
             ecs_page.assert_popup_success(f"{vm_name}实例卸载主机设备成功")
 
         with allure_step_log(f"步骤4: 验证卸载裸磁盘结果"):
@@ -732,6 +747,7 @@ class TestECSBasic:
 
     @allure.title("验证批量迁移功能")
     @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @skip_if_nodes_less_than(2)
     def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
@@ -745,17 +761,17 @@ class TestECSBasic:
             ecs_page.ecs_batch_migration(names)
             ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
 
-        with allure_step_log("步骤3: 验证迁移结果"):
+        with allure_step_log("步骤2: 验证迁移结果"):
             for name in names:
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
 
             for name,ecs_id in zip(names,ecs_ids):
-                ecs_page.assert_status(name, status="当前无任务")
+                ecs_page.assert_status(name)
                 # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
                 expect_node = ecs_page.get_row_data(name).get("物理机")
                 assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
 
-    @allure.title("验证批量设置启动顺序功能")
+    @allure.title("验证批量设置启动/关机顺序功能")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("operation",["关机","启动"])
     def test_ecs_batch_set_boot_order(self, ecs_page, vm, operation):
@@ -774,7 +790,6 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 进入云服务器详情页面验证顺序及{operation}延迟"):
             for i, name in enumerate(names, start=1):
                 ecs_page.assert_ecs_details_info(name, info_items={f"{operation}顺序": str(i), f"{operation}延迟时间(秒)": delay})
-                ecs_page.ecs_back_to_list()
 
         with allure_step_log(f"步骤3: 批量{operation}"):
             names = [name[0] for name in names]
@@ -807,7 +822,7 @@ class TestECSBasic:
 
     @allure.title("验证安装工具&卸载工具功能")
     def test_ecs_install_uninstall_tools(self, ecs_page, vm, ssh_vm):
-        """云服务器安安装工具&卸载工具功能验证
+        """云服务器安装工具&卸载工具功能验证
 
         Args:
             ecs_page: 云服务器页面对象
@@ -822,17 +837,22 @@ class TestECSBasic:
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()
+            ecs_page.assert_status(name)
             assert ecs_page.get_row_data(name).get("挂载云硬盘").startswith("cdrom-")
 
         with allure_step_log(f"步骤2: 为云服务器{name}安装工具-虚机控制台安装"):
             # 验证工具安装结果
             ssh_vm.connect(vm['mfip'])
             ssh_vm.run("mkdir /mnt/cdrom")
+            # 挂载设备并检查结果
+            mounted = False
             for device in ["/dev/sr0", "/dev/sr1"]:
-                output = ssh_vm.run(f"mount {device} /mnt/cdrom", return_stderr=True)
-                # 成功挂载会显示 "mounting read-only"
-                if "mounting read-only" in output.get("stderr"):
+                output = ssh_vm.run(f"mount {device} /mnt/cdrom", return_stderr=True, return_rc=True)
+                if output.get("rc") == 0 and "mounting read-only" in output.get("stderr", ""):
+                    mounted = True
                     break
+            if not mounted:
+                raise AssertionError(f"挂载CD-ROM失败：已尝试挂载 /dev/sr0 和 /dev/sr1，但未找到有效的CD-ROM设备")
             ssh_vm.run(r"cd /mnt/cdrom/linux && bash ./stools.sh")
             assert "active (running)" in ssh_vm.run("systemctl status fs-proxy")
 

@@ -163,7 +163,6 @@ class TestEVSScenario:
             evs_page.evs_unmount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
 
-    @skip_stor("local", "nfs", "usan")
     @allure.title("共享云硬盘-多实例挂载数据一致性验证")
     @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
     @pytest.mark.parametrize("volume", [{"shared": True, "size": 10}], indirect=True)

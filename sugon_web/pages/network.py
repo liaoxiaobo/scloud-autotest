@@ -1,4 +1,6 @@
 import re
+import time
+import pytest
 from playwright.sync_api import Page, expect
 from sugon_web.common.base import BasePage, submenu
 import ipaddress
@@ -56,7 +58,8 @@ class VpcPage(BasePage):
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
                    network_type="Geneve", gateway_mode="分布式网关",
-                   gateway_ip=None, available_ip=None, dns=None, vlan_id=None):
+                   gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
+                   enable_ipv6=False):
         """创建虚拟私有云
 
         Args:
@@ -72,6 +75,8 @@ class VpcPage(BasePage):
             available_ip: 可用IP，如果为None则使用默认值
             dns: DNS服务器地址，如果为None则使用默认值
             vlan_id: VLAN ID，范围1-4094，仅当 network_type="Vlan" 时有效
+            mac: MAC地址，仅当 network_type="Vlan" 或 "Flat" 时有效
+            enable_ipv6: 是否开启IPv6，默认为False（仅当 network_type="Geneve" 时有效）
         """
         # 打开创建页面
         self.btn_create.click()
@@ -91,6 +96,22 @@ class VpcPage(BasePage):
             # 填写 VLAN ID（如果提供）
             if vlan_id is not None:
                 self._input_vlan_id.fill(str(vlan_id))
+
+        # - Vlan 和 Flat 类型：可以填写 MAC 地址
+        if network_type in ["Vlan", "Flat"]:
+            # 填写 MAC 地址（如果提供）
+            if mac is not None:
+                self.get_by_placeholder("默认mac地址aa:bb:cc:dd:ee:ff").fill(mac)
+
+        # - Geneve 类型：支持 IPv6
+        if network_type == "Geneve" and enable_ipv6:
+            # 检查"开启IPv6"元素是否可见
+            ipv6_checkbox = self.get_by_text("开启IPv6", exact=True)
+            if ipv6_checkbox.is_visible() and ipv6_checkbox.is_enabled():
+                ipv6_checkbox.click()
+            else:
+                self.goto_service("虚拟私有云")
+                pytest.skip("当前环境不支持双栈VPC")
 
         # 填写子网信息
         self._input_subnet_name.fill(subnet_name)
@@ -117,14 +138,19 @@ class VpcPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("虚拟私有云")
-    def vpc_delete(self, name):
-        """删除虚拟私有云
+    def vpc_delete(self, names):
+        """删除虚拟私有云，支持单个和批量操作
 
         Args:
-            name: VPC名称
+            names: VPC名称（字符串）或VPC名称列表（列表）
         """
-        # 点击操作按钮
-        self.click_dropdown_option(name, "删除")
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(names, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -173,7 +199,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果不提供则不修改
         """
         # 点击操作按钮
-        self.click_dropdown_option(name, "修改")
+        self.click_option(name, "修改")
 
         # 修改名称（如果提供）
         if new_name:
@@ -215,7 +241,7 @@ class VpcPage(BasePage):
 
     @submenu("虚拟私有云")
     def subnet_create(self, vpc_name, subnet_name, cidr, desc="",
-                          available_ip=None, dns=None, acl_policy=None):
+                          available_ip=None, dns=None, acl_policy=None, gateway_ip=None):
         """在VPC中新建子网
 
         Args:
@@ -226,10 +252,11 @@ class VpcPage(BasePage):
             available_ip: 可用IP范围，如 "10.0.100.10-10.0.100.100"，如果为None则使用默认
             dns: DNS服务器地址，如果为None则使用默认
             acl_policy: 关联的ACL策略名称，如果为None则不选择
+            gateway_ip: 网关IP，如果为None则使用默认
         """
 
         # 点击VPC行的操作按钮并选择"新建子网"
-        self.click_dropdown_option(vpc_name, "新建子网")
+        self.click_option(vpc_name, "新建子网")
 
         # 填写子网名称
         self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(subnet_name)
@@ -240,6 +267,14 @@ class VpcPage(BasePage):
 
         # 填写CIDR
         self._input_cidr.fill(cidr)
+
+        # 如果指定了网关IP，则填写
+        if gateway_ip:
+            self._input_gateway.fill(gateway_ip)
+        # else:
+        #     # 使用默认网关IP（CIDR的第一个可用IP）
+        #     ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
+        #     self._input_gateway.fill(ip)
 
         # 如果提供了ACL策略，则关联ACL
         if acl_policy:
@@ -258,6 +293,99 @@ class VpcPage(BasePage):
         # 提交创建
         self.dialog_confirm.click()
         self.wait_for_page_ready()
+
+    def subnet_create_in_detail(self, vpc_name, subnet_name, cidr, desc="",
+                                available_ip=None, dns=None, acl_policy=None, gateway_ip=None):
+        """在VPC详情页的子网tab页中新建子网
+
+        Args:
+            vpc_name: VPC名称
+            subnet_name: 子网名称
+            cidr: 子网CIDR，如 "10.0.100.0/24"
+            desc: 子网描述，默认为空
+            available_ip: 可用IP范围，如 "10.0.100.10-10.0.100.100"，如果为None则使用默认
+            dns: DNS服务器地址，如果为None则使用默认
+            acl_policy: 关联的ACL策略名称，如果为None则不选择
+            gateway_ip: 网关IP，如果为None则使用默认值
+        """
+        # 进入VPC详情页面
+        self.get_by_role("row", name=vpc_name).locator("a").click()
+        self.wait_for_page_ready()
+
+        # 点击"子网"tab
+        self.get_by_role("tab", name="子网").click()
+        self.wait_for_page_ready()
+
+        # 点击"新建子网"按钮
+        new_button = self.get_by_label("子网", exact=True).get_by_text("新建")
+        # expect(new_button).to_be_visible()
+        # expect(new_button).to_be_enabled()
+        time.sleep(3)   # 等待元素可点击
+        new_button.click()
+
+        # 填写子网名称
+        self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(subnet_name)
+
+        # 填写子网描述
+        if desc:
+            self.locator("div").filter(has_text=re.compile(r"^描述0/255$")).get_by_role("textbox").fill(desc)
+
+        # 填写CIDR
+        self._input_cidr.fill(cidr)
+
+        # 如果指定了网关IP，则填写
+        if gateway_ip:
+            self._input_gateway.fill(gateway_ip)
+        # else:
+        #     # 使用默认网关IP（CIDR的第一个可用IP）
+        #     ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
+        #     self._input_gateway.fill(ip)
+
+        # 如果指定了可用IP，则填写
+        if available_ip:
+            self._input_available_ip.fill(available_ip)
+
+        # 如果指定了DNS，则填写
+        if dns:
+            self._input_dns.fill(dns)
+
+        # 如果提供了ACL策略，则关联ACL
+        if acl_policy:
+            acl_select = self.get_by_text("关联ACL策略").locator("..//..").get_by_role("combobox")
+            acl_select.click()
+            self.get_by_role("option", name=acl_policy).click()
+
+        # 提交创建
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    def subnet_delete(self, vpc_name, names):
+        """在VPC详情页的子网tab页中删除子网，支持单个和批量操作
+
+        Args:
+            vpc_name: VPC名称
+            names: 子网名称（字符串）或子网名称列表（列表）
+        """
+        # # 进入VPC详情页面
+        # self.get_by_role("row", name=vpc_name).locator("a").click()
+        # self.wait_for_page_ready()
+
+        # 点击"子网"tab
+        # self.get_by_role("tab", name="子网").click()
+        # self.wait_for_page_ready()
+
+        if isinstance(names, list):
+            # 批量删除模式
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            # 单个删除模式
+            self.click_option(names, "删除", t_type="body")
+
+        # 确认删除
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
 
 
 

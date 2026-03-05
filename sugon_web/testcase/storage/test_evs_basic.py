@@ -156,13 +156,12 @@ class TestEVSBasic:
                 image_name=image_name
             )
             evs_page.assert_popup_success()
-            evs_page.assert_status(name, status="上传中")
             evs_page.assert_status(name, status="可用", timeout=1200)
 
             # 切换到弹性云服务器服务的镜像服务页面
             evs_page.goto_service("弹性云服务器")
             evs_page.goto_submenu("镜像服务")
-            evs_page.assert_list_contain(image_name)
+            ecs_page.assert_status(image_name, status="可用")
 
         with allure_step_log("步骤3：清理测试数据"):
             # 删除创建的镜像

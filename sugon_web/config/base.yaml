@@ -37,7 +37,7 @@ username: admin
 password: keystone_sugon
 
 # 镜像源地址
-image_source: http://172.22.5.66:9090/liaoxb/test_image_dontdel/
+image_source: http://172.22.5.66:9090
 
 # 默认测试镜像
 image: centos7.9_test.raw

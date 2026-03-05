@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import allure
 from sugon_web.testcase.conftest import ecs_page
@@ -22,7 +24,8 @@ class TestECSS:
                 desc="系统盘快照测试"
             )
             ecs_page.assert_popup_success("创建实例快照成功")
-            ecs_page.assert_status(vm['name'], status="当前无任务")
+            # ecs_page.wait_for_source_complete(vm['name'])
+            ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证快照创建成功"):
             # 切换到快照页面
@@ -31,7 +34,7 @@ class TestECSS:
 
             # 验证快照属性
             snapshot_data = ecs_page.get_row_data(snapshot_name)
-            assert snapshot_data["是否快照数据卷"] == "否"
+            assert snapshot_data["是否快照数据卷是否   筛选   重置 "] == "否"
             # assert snapshot_data["是否启动源"] == "是"
 
         with allure_step_log("步骤3: 删除系统盘快照"):
@@ -58,7 +61,8 @@ class TestECSS:
                     snapshot_name=snapshot_name,
                 )
                 ecs_page.assert_popup_success("创建实例快照成功")
-                ecs_page.assert_status(vm["name"], status="当前无任务")
+                # ecs_page.wait_for_source_complete(vm['name'])
+                ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证所有快照创建成功"):
             # 切换到快照页面
@@ -86,6 +90,7 @@ class TestECSS:
             ecs_page.assert_popup_success("修改快照成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
+            ecs_page.ecss_el_setting("描述")
             ecs_page.assert_list_contain(new_name)
             # 获取修改后的快照数据并验证
             snapshot_data = ecs_page.get_row_data(new_name)
@@ -119,7 +124,9 @@ class TestECSS:
                 ecs_page.assert_row_contains(vm['name'], ecs_page.storage_pool)
             else:
                 ecs_page.assert_row_contains(vm['name'], ecss["name"])
-            ecs_page.assert_row_contains(vm['name'], "当前无任务")
+            # ecs_page.assert_row_contains(vm['name'], "当前无任务")
+            ecs_page.assert_status(vm['name'])
+            # ecs_page.wait_for_source_complete(vm['name'])
             # assert data["镜像名称"] == ecss["name"]
 
         with allure_step_log("步骤4: 验证虚机内测试文件已不存在"):
@@ -131,7 +138,10 @@ class TestECSS:
             image = ecs_page.storage_pool  # 获取存储池同名镜像
             if ecs_page.stor not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
                 ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
-                ecs_page.assert_status(vm['name'], status="当前无任务")
+                ecs_page.assert_popup_success(f"{vm['name']}实例重建成功")
+                # ecs_page.assert_status(vm['name'], status="当前无任务")
+                ecs_page.assert_status(vm['name'])
+                # ecs_page.wait_for_source_complete(vm['name'])
                 ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据
 
     @allure.title("验证列表页搜索&重置")
@@ -139,18 +149,18 @@ class TestECSS:
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = ecss['name'][:-2]
-            ecs_page.search(keyword)
+            input_loc = ecs_page.ecss_search(keyword)
 
         with allure_step_log("步骤2: 验证搜索结果"):
             ecs_page.assert_list_contain(keyword, exact_match=False)
 
         with allure_step_log("步骤3: 重置搜索条件"):
-            ecs_page.search(random_data())
+            ecs_page.ecss_search(random_data())
             ecs_page.btn_reset.click()
             ecs_page.wait_for_page_ready()
 
         with allure_step_log("步骤4: 验证重置结果"):
-            assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+            assert input_loc.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
 
     @allure.title("快照策略-创建&删除")
@@ -237,7 +247,8 @@ class TestECSS:
             ecs_page.assert_popup_success("资源绑定策略成功")
 
         with allure_step_log("步骤2: 验证虚机已绑定策略"):
-            ecs_page.assert_status(vm_name, status="当前无任务")
+            # ecs_page.wait_for_source_complete(vm_name)
+            ecs_page.assert_status(vm_name)
             ecs_page.assert_ecs_details_info(vm_name, {f"{policy_name}": "已启用"}, tab="快照策略")
 
         with allure_step_log("步骤3: 解绑快照策略"):
@@ -275,7 +286,7 @@ class TestECSS:
             ecs_page.goto_submenu("快照策略")
             ecs_page.ecss_bind_unbind_snapshot_policy(vm_name, new_policy, bind=False)
 
-        with allure_step_log("步骤5: 删除快照策略"):
+        with allure_step_log("步骤6: 删除快照策略"):
             ecs_page.ecss_policy_delete(new_policy)
             ecs_page.assert_popup_success("删除策略成功")
             ecs_page.assert_deleted(new_policy)

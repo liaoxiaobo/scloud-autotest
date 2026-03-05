@@ -1,3 +1,4 @@
+import pytest
 from sugon_web.common.base import BasePage, submenu
 import re
 
@@ -20,7 +21,8 @@ class EvsPage(BasePage):
 
     def _select_image_source(self):
         """选择云硬盘来源为镜像"""
-        self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择", exact=True).click()
+        # self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择", exact=True).click()
+        self.get_by_text("云硬盘来源").locator("xpath=./following-sibling::div//input").click()
         self.locator("li").filter(has_text=re.compile(r"^镜像$")).click()
 
     def _select_volume_type(self, name):
@@ -45,7 +47,7 @@ class EvsPage(BasePage):
             encryption_key: 加密密钥ID
         """
         # 打开加密开关
-        self.page.locator("form div").filter(has_text="加密").get_by_role("switch").locator("span").click()
+        self.locator("label").filter(has_text="机密存储").locator("span").nth(1).click()
 
         # 选择密钥
         self.get_by_text("选择密钥").first.click()
@@ -58,6 +60,20 @@ class EvsPage(BasePage):
 
         # 等待页面加载完成
         self.page.wait_for_timeout(1000)
+
+    def _enable_virtio_scsi(self):
+        """启用VirtioSCSI
+
+        如果 VirtioSCSI 未勾选，则勾选它
+        """
+        scsi_label = self.page.locator("form label").filter(has_text="VirtioSCSI")
+
+        # 检查是否已选中
+        if not scsi_label.get_by_role("checkbox").is_checked():
+            scsi_label.click()
+            self.logger.info("已启用 VirtioSCSI")
+        else:
+            self.logger.info("VirtioSCSI 已处于启用状态")
 
     def _select_host(self, name=None):
         """选择物理机
@@ -89,7 +105,8 @@ class EvsPage(BasePage):
             shared=False,
             encrypted=False,
             encryption_key="",
-            host=None
+            host=None,
+            scsi=True
     ):
         """创建云硬盘
 
@@ -105,10 +122,16 @@ class EvsPage(BasePage):
             encrypted: 是否创建加密云硬盘，默认False
             encryption_key: 加密密钥ID，当encrypted为True时使用
             host: 物理机名称，当volume_type为local-type时必选
+            scsi: 是否启用VirtioSCSI，默认True
         """
+        # 新增跳过逻辑：集中式存储、本地存储、共享文件存储不支持创建共享盘
+        unsupported_storages = ["local", "nfs", "usan"]
+        if shared and self.stor in unsupported_storages:
+            pytest.skip(f"当前存储类型 {self.stor} 不支持创建共享云硬盘")
+
         # 加密盘不能是共享盘
         if encrypted and shared:
-            raise ValueError("加密云硬盘不支持共享模式，请将shared参数设置为False")
+            pytest.skip(f"加密云硬盘不支持共享模式")
 
         # 打开创建页面
         self.btn_create.click()
@@ -143,13 +166,18 @@ class EvsPage(BasePage):
         if encrypted:
             self._enable_encryption(encryption_key)
 
+        # 启用VirtioSCSI
+        if scsi:
+            self._enable_virtio_scsi()
+
         # 设置共享盘
         if shared:
-            self.page.locator("form div").filter(has_text="共享盘").get_by_role("switch").locator("span").click()
+            self.locator("label").filter(has_text="共享盘").locator("span").nth(1).click()
 
         # 设置云硬盘大小
         self._input_size.fill(str(size))
         self.dialog_confirm.click()
+        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_remove(self, names):
@@ -169,7 +197,7 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_option(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -193,11 +221,10 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            # 根据参数选择删除类型
-            delete_option = "安全删除" if secure else "删除"
-
-            # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, delete_option)
+            if secure:
+                self.click_dropdown_option(names, "安全删除")
+            else:
+                self.click_option(names, "删除", t_type="body")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -213,7 +240,7 @@ class EvsPage(BasePage):
             volume_name: 云硬盘名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(volume_name, "恢复")
+        self.click_option(volume_name, "恢复", t_type="body")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -230,7 +257,7 @@ class EvsPage(BasePage):
             new_name: 新的云硬盘名称
             new_desc: 新的描述信息
         """
-        self.click_dropdown_option(name, "修改")
+        self.click_option(name, "修改")
 
         dialog = self.get_by_role("dialog")
         dialog.locator('input[type="text"]').fill(new_name)
@@ -285,7 +312,8 @@ class EvsPage(BasePage):
         self.get_by_role("row", name=server_name).get_by_role("radio").click()
 
         # 确认挂载
-        self.locator("span").filter(has_text="挂载").click()
+        self.get_by_label("挂载").get_by_text("挂载").nth(1).click()
+        # self.locator("span").filter(has_text="挂载").click()
 
         # 等待操作完成
         self.wait_for_operation_complete()
@@ -455,7 +483,8 @@ class EvsPage(BasePage):
         self.click_dropdown_option(volume_name, "绑定策略")
 
         # 选择快照策略
-        self.get_by_role("dialog", name="dialog").get_by_placeholder("请选择").click()
+        self.get_by_role("dialog", name="绑定策略").get_by_placeholder("请选择").click()
+
         self.get_by_text(policy_name, exact=True).click()
 
         # 设置自动快照开关
@@ -478,7 +507,7 @@ class EvsPage(BasePage):
             desc: 云硬盘描述信息，默认为空
         """
         # 点击操作按钮
-        self.click_dropdown_option(snapshot_name, "创建云硬盘")
+        self.click_option(snapshot_name, "创建云硬盘", t_type='body')
 
         # 填写云硬盘名称
         dialog = self.get_by_role("dialog")
@@ -509,7 +538,7 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_option(names, "删除", t_type='body')
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -527,7 +556,7 @@ class EvsPage(BasePage):
             new_desc: 新的描述信息
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, "修改")
+        self.click_option(name, "修改", t_type='body')
 
         # 定位对话框中的输入框
         dialog = self.get_by_role("dialog")
@@ -560,7 +589,7 @@ class EvsPage(BasePage):
         self.btn_create.click()
 
         # 填写策略名称
-        dialog = self.get_by_label("dialog")
+        dialog = self.get_by_label("新建策略")
         dialog.get_by_role("textbox").fill(name)
 
         # 设置启用状态
@@ -570,7 +599,7 @@ class EvsPage(BasePage):
         # 设置执行时间 - 修改这里，使用exact=True参数
         if hours:
             for hour in hours:
-                self.get_by_text(f"{hour:02d}:00", exact=True).click()
+                dialog.get_by_text(f"{hour:02d}:00", exact=True).click()
 
         # 设置快照周期（天）
         self.locator("form div").filter(has_text="快照周期 天").get_by_role("spinbutton").fill(str(cycle_days))
@@ -603,7 +632,7 @@ class EvsPage(BasePage):
         else:
             # 单个操作模式
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, "删除")
+            self.click_option(names, "删除", t_type='body')
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -624,7 +653,7 @@ class EvsPage(BasePage):
             retention_value: 保留值，数量或天数，默认为1
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, "修改")
+        self.click_option(name, "修改", t_type='body')
 
         # 填写策略名称
         self.get_by_label("修改策略").get_by_role("textbox").nth(1).fill(name)
@@ -689,7 +718,7 @@ class EvsPage(BasePage):
         else:
             # 单个操作模式
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, "删除")
+            self.click_option(names, "删除", t_type='body')
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()

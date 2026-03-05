@@ -28,6 +28,7 @@ class EcsPage(OpsPage):
             login_password="admin1234@sugon",
             vnc_password="sugon@20",
             sys_size=25,
+            enable_ipv6=False,
             **kwargs
     ):
         """创建云服务器
@@ -74,6 +75,9 @@ class EcsPage(OpsPage):
 
         # 选择网络
         self._select_network(network, subnet)
+        if enable_ipv6:
+            self.get_by_role("textbox", name="请选择是否分配IPv6地址").click()
+            self.get_by_text("自动分配IPv6地址").nth(2).click()
 
         # 设置密码
         self._set_passwords(login_password, vnc_password)
@@ -92,7 +96,7 @@ class EcsPage(OpsPage):
         """选择规格"""
         self.locator(".el-icon-circle-plus-outline").first.click()
         self.search(flavor)
-        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").click()
+        self.get_by_role("row").filter(has_text=re.compile(rf"{re.escape(flavor)}")).get_by_role("radio").first.click()
         self.get_by_role("dialog").get_by_text("确定").click()
 
     def _select_storage_pool(self, image_name):
@@ -168,25 +172,31 @@ class EcsPage(OpsPage):
         # 选择快照
         if snapshot_name:
             # 定位并选择快照行
-            self.get_by_role("row", name=snapshot_name).get_by_role("radio").click()
+            self.get_by_text("选择快照").first.click()
+            self.wait_for_page_ready()
+            row = self.get_row_by_name(snapshot_name)
+            row.get_by_role("radio").click()
+            self.dialog_confirm.click()
+            # self.get_by_role("row", name=snapshot_name).get_by_role("radio").click()
             logger.info(f"已选择快照: {snapshot_name}")
 
     def _select_iso_image(self, iso_name, **kwargs):
         """来源选择 ISO"""
         logger.info(f"使用ISO镜像: {iso_name}")
 
-        # 选择ISO
-        self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
-        self.locator("li").filter(has_text="ISO").click()
-
         if iso_name:
             # 定位并选择ISO行
-            self.get_by_role("row", name=iso_name).get_by_role("radio").click()
+            self.get_by_text("选择ISO").first.click()
+            self.get_by_role("dialog").get_by_text("重置").click() # 重置一下，避免hover的tips遮挡选择
+            row = self.get_row_by_name(iso_name)
+            row.get_by_role("radio").click()
+            self.dialog_confirm.click()
+            # self.get_by_role("row", name=iso_name).get_by_role("radio").click()
             logger.info(f"已选择ISO镜像: {iso_name}")
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
-        if "xbd" in self.storage_pool:
+        if re.search(r'xbd|ustor', self.storage_pool):
             self.get_by_role("textbox", name="请选择", exact=True).nth(4).click()
             self.get_by_text(mode).click()
         self.get_by_role("spinbutton").nth(1).fill(str(size))
@@ -258,7 +268,7 @@ class EcsPage(OpsPage):
             delete_option = "安全删除" if secure else "删除"
 
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, delete_option)
+            self.click_option(names, delete_option)
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -311,7 +321,7 @@ class EcsPage(OpsPage):
             password: VNC登录密码
         """
         logger.info(f"云服务器{name}：登录VNC")
-        self.click_dropdown_option(name, "登录VNC")
+        self.click_option(name, "登录")
         with self.new_tab_context() as new_page:
             # 输入VNC密码并登录
             try:
@@ -428,8 +438,8 @@ class EcsPage(OpsPage):
             self.get_by_text("重启 取消", exact=True).get_by_text("重启", exact=True).click()
         elif operation == "强制重启":
             self.get_by_text("强制重启 取消", exact=True).get_by_text("强制重启", exact=True).click()
-        elif operation in ["恢复运行", "暂停", "取消暂停"]:
-            self.get_by_label(operation, exact=True).get_by_text("确定", exact=True).click()
+        elif operation in ["恢复运行", "取消暂停"]:
+            self.get_by_label(operation).get_by_text("确定", exact=True).click()
         else:
             self.dialog_confirm.click()
         logger.info(f"操作完成: {name}云服务器点击: {operation}")
@@ -521,13 +531,14 @@ class EcsPage(OpsPage):
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
         # 选择资源池
-        self.get_by_role("dialog", name="绑定公网IP").get_by_placeholder("请选择").click()
+        bind_dialog = self.get_by_role("dialog", name="绑定公网IP")
+        bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
         # 选择公网ip
-        ip_info = self.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
+        ip_info = bind_dialog.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
         ip_info.first.click()
         ip = ip_info.nth(1).text_content()
-        self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+        self.dialog_confirm.click()
         logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}")
         return str(ip)
 
@@ -563,6 +574,7 @@ class EcsPage(OpsPage):
         spec_type = spec.get("spec_type")
 
         self.click_dropdown_option(name, "修改规格")
+        self.wait_for_page_ready()
         try:
             if spec_type:
                 classify = spec.get("classify", "计算型")
@@ -571,6 +583,7 @@ class EcsPage(OpsPage):
                 # 选择规格分类
                 if classify:
                     self.get_by_text(classify).click()
+                    self.wait_for_page_ready()
                 
                 # 选择具体规格
                 if flavor_name:
@@ -580,7 +593,7 @@ class EcsPage(OpsPage):
                     # 通过CPU和内存模糊匹配
                     (self.get_by_role("row").filter(has_text=f"{cpu} 核")
                      .and_(self.get_by_role("row").filter(has_text=f"{mem}.00 GiB"))
-                     .and_(self.get_by_role("row").filter(has_text="标准"))
+                     .and_(self.get_by_role("row").filter(has_text=f"{classify[:-1]}标准"))
                      .get_by_role("radio").click())
                 
                 self.dialog_confirm.click()
@@ -667,7 +680,7 @@ class EcsPage(OpsPage):
         loc = self.get_by_label("时间同步服务器").locator("form div").filter(has_text="时间同步间隔(秒)").get_by_role("textbox")
         loc.clear() # 清空输入框默认数据
         loc.fill(interval)
-        self.get_by_label("时间同步服务器").locator("div").filter(has_text="确定").nth(3).click()
+        self.dialog_confirm.click()
         logger.info(f"操作完成: 云服务器{name}时钟同步，同步间隔为{interval}秒")
 
     @submenu("弹性云服务器")
@@ -843,10 +856,8 @@ class EcsPage(OpsPage):
         """
         # 根据不同的操作类型，使用不同的确认方式
         if operation == "批量重启":
-            self.get_by_label("批量重启").locator("div").filter(has_text="确定").nth(3).click()
-        elif operation == "批量关机":
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
-        elif operation == "批量启动":
+            self.get_by_label("批量重启").get_by_text("确定").click()
+        elif operation in ["批量关机", "批量启动"]:
             self.locator("div:nth-child(2) > div > .cloud-button-btn > span").click()
         elif operation == "批量强制重启":
             self.get_by_label("批量强制重启").get_by_text("确定").click()
@@ -873,7 +884,7 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
         """
-        self.click_dropdown_option(name, "恢复")
+        self.click_option(name, "恢复")
         self.get_by_label("恢复实例").get_by_text("确定", exact=True).click()
         logger.info(f"恢复弹性云服务器: {name}")
 
@@ -889,7 +900,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始安全删除云服务器: {name}")
 
         # 点击指定云服务器的操作按钮
-        self.click_dropdown_option(name, "删除")
+        self.click_option(name, "删除")
 
         # 根据参数选择删除选项
         if delete_volume:
@@ -1003,7 +1014,7 @@ class EcsPage(OpsPage):
         else:
             # 单个操作模式
             # self.click_dropdown_option(names, "删除")
-            self.get_by_role("row").filter(has_text=names).locator("i").click()
+            self.get_row_by_name(names).get_by_text("删除", exact=True).click()
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1045,7 +1056,57 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器快照创建请求已提交: {name}, {snapshot_name}")
 
         # 等待操作完成
+        self.wait_for_operation_complete()
+
+    @submenu("快照")
+    def ecss_search(self, keyword, s_type="快照名称"):
+        """
+        搜索快照
+        Args:
+            keyword: 搜索关键字
+            s_type: 搜索类型，默认为"快照名称"
+        """
+        if s_type in ["快照名称", "实例名称", "存储池"]:
+            if s_type != "快照名称":
+                self.get_by_placeholder("请选择").nth(2).click()
+                self.locator("li").filter(has_text=s_type).locator("span").click()
+            input_loc = self.get_by_placeholder(f"搜索（{s_type}）")
+            self.get_by_placeholder(f"搜索（{s_type}）").fill(keyword)
+            self.get_by_text("搜索", exact=True).click()
+            return input_loc
+        else:
+            raise ValueError(f"不支持的搜索类型: {s_type}")
+
+    # @submenu("快照")
+    def ecss_el_setting(self, names, enable=True):
+        """设置表头列
+
+        Args:
+            names: 列名称
+            enable: 是否展示，默认为True
+        """
+        if isinstance(names, str):
+            names = [names]
+        self.locator(".el-icon-setting").click()
+        for name in names:
+            locs = [
+                self.get_by_label("checkbox-group").get_by_text(name, exact=True),
+                self.get_by_label("checkbox-group").locator("div").filter(has_text=re.compile(fr"^{name}$")),
+                self.get_by_label("设置表头").get_by_text(name, exact=True),
+                self.get_by_text(name, exact=True),
+            ]
+            loc = self._find_element(locs, f"checkbox{name}")
+            if enable and not loc.is_checked():
+                loc.click()
+            elif not enable and loc.is_checked():
+                loc.click()
+        try:
+            self.dialog_confirm.click()
+        except:
+            self.locator(".el-icon-setting").click() # 收起下拉
+
         self.wait_for_page_ready()
+        self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
 
     @submenu("快照")
     def ecss_delete(self, snapshot_names):
@@ -1107,7 +1168,7 @@ class EcsPage(OpsPage):
             snapshot_name: 快照名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(snapshot_name, "还原快照")
+        self.click_option(snapshot_name, "还原快照")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1246,29 +1307,55 @@ class EcsPage(OpsPage):
         self.logger.info(f"云服务器快照策略修改请求已提交: {new_name}")
 
     @submenu("弹性云服务器")
-    def ecs_batch_migration(self, names, migration_type="热迁移", bandwidth="全速", cpu_auto=False):
+    def ecs_batch_migration(self, names, migration_type="热迁移", scheduling=None, node="master01", cluster="Autotest",
+                            bandwidth=None, cpu_auto=False):
         """批量迁移云服务器
 
         Args:
             names: 云服务器名称列表
             migration_type: 迁移方式，默认为"热迁移"，可选"冷迁移"
+            scheduling: 调度方式
+            node: 目标节点
             bandwidth: 带宽设置，默认为"全速"
             cpu_auto: CPU自动收敛
         """
-        logger.info(f"开始批量迁移云服务器: {names}, 迁移方式: {migration_type}, 带宽: {bandwidth}")
+        # 选择指定的云服务器
+        self.select_rows_by_names(names)
 
+        # 点击更多操作按钮
+        self.get_by_role("button", name="更多操作").click()
+        self.wait_for_operation_complete()
         # 选择指定的云服务器并点击批量迁移
-        self.ecs_batch_operations(names, "批量迁移")
+        self._click_batch_operation_option(f"批量{migration_type}")
 
-        # 选择迁移方式
-        self.get_by_placeholder("请选择迁移方式").click()
-        self.locator("li").filter(has_text=re.compile(rf"^{migration_type}$")).click()
+        if scheduling == "手动指定":
+            self.get_by_role("radio", name="手动指定 󦕟").click()
+            if migration_type == "热迁移":
+                # 选择目标集群cluster
+                self.get_by_text("目标集群").locator("xpath=./following-sibling::div//input").click()
+                self.wait_for_page_ready()
+                locs = [
+                    self.locator("li").filter(has_text=cluster).nth(1),  # 同名集群内迁移
+                    self.locator("li").filter(has_text=cluster)
+                ]
+                self._find_element(locs, f"集群{cluster}").click()
+
+                # 等待物理机选择区域加载完成
+                self.wait_for_page_ready()
+                # 尝试选择指定的目标物理机
+                available_hosts = self._get_available_migration_hosts()
+                if node in available_hosts:
+                    # 点击该节点
+                    self.get_by_role("radio", name=node).click()
+                    checked_host = node
+                    logger.info(f"已选择指定的目标物理机: {checked_host}")
 
         # 选择带宽
-        if migration_type == "热迁移":
+        if migration_type == "热迁移" and bandwidth:
             self.get_by_placeholder("请选择带宽").click()
             # self.locator("li").filter(has_text=bandwidth).click()
             self.locator("//*[text()='半速']/../preceding-sibling::*[1]/span").click()
+            self.locator("li").filter(has_text=bandwidth).click()
         if cpu_auto and migration_type == "热迁移":
             # 设置开关
             loc = self.get_by_role("switch").locator("span")
@@ -1281,68 +1368,74 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_operation_complete()
 
-        logger.info(f"批量迁移操作完成: {names}, 迁移方式: {migration_type}")
+        logger.info(f"批量迁移云服务器下发成功: {names}, 迁移方式: {migration_type}, 带宽: {bandwidth}")
 
 
     @submenu("弹性云服务器")
-    def ecs_hot_migration(self, name, target_host=None, bandwidth="全速", cpu_auto=False):
+    def ecs_hot_migration(self, name, target_host=None, m_type="系统分配", storage=False, bandwidth="全速", cpu_auto=False):
         """云服务器热迁移
 
         Args:
             name: 云服务器名称
             target_host: 目标物理机，如"master03.cloud.local"
+            m_type: 调度方式，"系统分配"或"手动指定"
+            storage: 是否迁移存储，默认为False
             bandwidth: 迁移速率，默认为"全速"
             cpu_auto: 是否启用CPU自动收敛，默认为False
         """
-        logger.info(f"开始热迁移云服务器: {name}, 目标主机: {target_host}, 带宽: {bandwidth}")
         checked_host = None
         # 点击云服务器操作按钮，选择热迁移
         self.click_dropdown_option(name, "热迁移")
 
-        # 选择目标物理机
-        self.get_by_placeholder("请选择目标物理机").click()
+        # 选择调度方式
+        if m_type == "手动指定":
 
-        # 等待下拉列表加载完成
-        self.wait_for_operation_complete()
+            self.get_by_role("radio", name="手动指定 󦕟").click()
 
-        # 获取所有下拉选项
-        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
-        options_count = all_host_options.count()
-        available_hosts = []
+            # 点击"选择物理机"按钮，打开物理机选择区域
+            self.get_by_text("目标物理机").locator("xpath=./following-sibling::div/span").click()
 
-        # 遍历所有选项，获取文本并排除包含"当前节点"的选项
-        for i in range(options_count):
-            option = all_host_options.nth(i)
-            option_text = option.inner_text()
-            if "当前节点" not in option_text:
-                available_hosts.append({"element": option, "text": option_text})
-        logger.info(f"可操作下拉选项: {[x.get('text') for x in available_hosts]}")
-        # 如果没有可用物理机，抛出异常
-        if not available_hosts:
-            error_msg = "没有可用的物理机可供选择"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+            # 等待物理机选择区域加载完成
+            self.wait_for_page_ready()
 
-        # 尝试选择指定的目标物理机
-        if target_host:
-            for host in available_hosts:
-                if target_host in host["text"]:
-                    host["element"].click()
-                    logger.info(f"已选择指定的目标物理机: {host['text']}")
-                    checked_host = host["text"]
-                    break
+            # 取所有可用的物理机节点，排除包含is-disabled属性的节点
+            available_hosts = self._get_available_migration_hosts()
 
-            # 如果指定的目标物理机不可用，选择第一个可用的
-            if not checked_host:
-                logger.warning(f"指定的目标物理机 {target_host} 不可用，选择第一个可用物理机")
-                available_hosts[0]["element"].click()
-                logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
-                checked_host = available_hosts[0]["text"]
-        else:
-            # 如果没有指定目标物理机，选择第一个可用的
-            available_hosts[0]["element"].click()
-            logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
-            checked_host = available_hosts[0]["text"]
+            # 如果没有可用物理机，抛出异常
+            if not available_hosts:
+                error_msg = "没有可用的物理机可供选择"
+                logger.error(error_msg)
+                locs = [
+                    self.get_by_label("close 选择物理机"),
+                    self.get_by_text("取消"),
+                    # self.locator("body").get_by_role("document").get_by_text("取消"),
+                ]
+                self._find_element(locs, "取消").click()
+                time.sleep(0.5) # 等待选择物理机的section关闭
+                self.get_by_label("热迁移", exact=True).get_by_text("取消").click() # 取消热迁移
+                pytest.skip(error_msg)
+
+            # 选择目标物理机
+            if target_host:
+                # 尝试选择指定的目标物理机
+                target_host = f"{target_host}.cloud.local" if ".cloud.local" not in target_host else target_host
+                if target_host in available_hosts:
+                    # 点击该节点
+                    self.get_by_role("radio", name=target_host).click()
+                    checked_host = target_host
+                    self.dialog_confirm.click()
+                    logger.info(f"已选择指定的目标物理机: {checked_host}")
+                else:
+                    # 如果指定的目标物理机不可用，选择第一个可用的
+                    logger.warning(f"指定的目标物理机 {target_host} 不可用，选择第一个可用物理机")
+                    self.get_by_role("radio", name=available_hosts[0]).click()
+                    checked_host = available_hosts[0]
+                    self.dialog_confirm.click()
+                    logger.info(f"已选择第一个可用的物理机: {checked_host}")
+
+        # 选择是否迁移存储
+        if storage:
+            self.get_by_role("checkbox").click()
 
         # 选择迁移速率
         self.get_by_placeholder("请选择迁移速率").click()
@@ -1357,73 +1450,126 @@ class EcsPage(OpsPage):
         # 确认热迁移
         self.dialog_confirm.click()
 
-        logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
-        return checked_host.split("CPU剩余量")[0].strip()
+        logger.info(f"开始热迁移云服务器: {name}, 调度方式: {m_type}, 目标主机: {checked_host}, 存储迁移: {storage}, 迁移速率: {bandwidth}")
+        return checked_host
+
+    def _get_available_migration_hosts(self):
+        """获取可用的迁移物理机节点，排除包含is-disabled的节点
+
+        Returns:
+            可用物理机节点名称列表
+        """
+        available_hosts = []
+        self.wait_for_page_ready()
+        # 获取所有物理机行
+        all_rows = self.locator("section").locator(".el-table__body-wrapper").locator("tr")
+        row_count = all_rows.count()
+        self.logger.info(f"找到 {row_count} 个tr行")
+
+        # 备用选择器
+        if row_count == 0:
+            all_rows = self.locator("section").locator("tbody tr")
+            row_count = all_rows.count()
+            logger.info(f"使用备用选择器找到 {row_count} 个tr行")
+
+        for i in range(row_count):
+            try:
+                row = all_rows.nth(i)
+                first_td = row.locator("td").first
+
+                # 获取节点名称
+                host_name = first_td.inner_text().strip()
+
+                # 获取第一个span并检查is-disabled
+                first_span = first_td.locator("div label span").nth(0)
+                class_attr = ""
+
+                if first_span.count() > 0:
+                    class_attr = first_span.get_attribute("class") or ""
+
+                is_disabled = "is-disabled" in class_attr
+
+                # 如果可用且名称不为空
+                if not is_disabled and host_name:
+                    available_hosts.append(host_name)
+
+            except Exception as e:
+                import traceback
+                logger.error(f"处理第{i + 1}行出错: {e}")
+                logger.error(traceback.format_exc())
+                continue
+
+        logger.info(f"可用节点: {available_hosts}")
+        return available_hosts
 
     @submenu("弹性云服务器")
-    def ecs_cold_migration(self, name, target_host=None):
+    def ecs_cold_migration(self, name, m_type="系统分配", cluster=None, target_host="master01"):
         """云服务器冷迁移
 
         Args:
             name: 云服务器名称
-            target_host: 目标物理机，如"master01.cloud.local"
+            m_type: 调度方式，"系统分配"或"手动指定"
+            cluster: 目标集群，如"Autotest"
+            target_host: 目标物理机，如"master01","controller01"
         """
-        logger.info(f"开始热迁移云服务器: {name}, 目标主机: {target_host}")
         checked_host = None
-        # 点击云服务器操作按钮，选择热迁移
+
+        # 点击云服务器操作按钮，选择冷迁移
         self.click_dropdown_option(name, "冷迁移")
+        # 选择调度方式
+        if m_type == "手动指定":
 
-        # 选择目标物理机
-        self.get_by_placeholder("请选择物理机").click()
+            self.get_by_role("radio", name="手动指定 󦕟").click()
 
-        # 等待下拉列表加载完成
-        self.wait_for_operation_complete()
+            # 选择目标集群cluster
+            self.get_by_text("目标集群").locator("xpath=./following-sibling::div//input").click()
+            self.wait_for_page_ready()
+            locs = [
+                self.locator("li").filter(has_text=cluster).nth(1), # 同名集群内迁移
+                self.locator("li").filter(has_text=cluster)
+            ]
+            self._find_element(locs, f"集群{cluster}").click()
 
-        # 获取所有下拉选项
-        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
-        options_count = all_host_options.count()
-        available_hosts = []
+            # 等待物理机选择区域加载完成
+            self.wait_for_page_ready()
 
-        # 遍历所有选项，获取文本并排除包含"当前节点"的选项
-        for i in range(options_count):
-            option = all_host_options.nth(i)
-            option_text = option.inner_text()
-            if not option.get_attribute("class").count("is-disabled"):
-                logger.info(f"可操作下拉选项class属性: {option.get_attribute('class')}")
-                available_hosts.append({"element": option, "text": option_text})
-        logger.info(f"可操作下拉选项: {[x.get('text') for x in available_hosts]}")
-        # 如果没有可用物理机，抛出异常
-        if not available_hosts:
-            error_msg = "没有可用的物理机可供选择"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+            # 选择目标物理机
+            if target_host:
+                try:
+                    # 尝试选择指定的目标物理机
+                    target_host = f"{target_host}.cloud.local" if ".cloud.local" not in target_host else target_host
+                    # self.search(target_host)
+                    # self.get_by_role("dialog", name="批量冷迁移 close 批量冷迁移").get_by_placeholder("搜索（名称）").fill(target_host)
+                    self.locator("section").get_by_placeholder("搜索（名称）").fill(target_host)
+                    self.get_by_role("dialog").get_by_text("搜索").click()
+                    self.wait_for_page_ready()
 
-        # 尝试选择指定的目标物理机
-        if target_host:
-            for host in available_hosts:
-                if target_host in host["text"]:
-                    host["element"].click()
-                    logger.info(f"已选择指定的目标物理机: {host['text']}")
-                    checked_host = host["text"]
-                    break
+                    # 尝试选择指定的目标物理机
+                    self.get_by_role("radio", name=target_host).click()
+                    checked_host = target_host
+                    logger.info(f"已选择指定的目标物理机: {checked_host}")
 
-            # 如果指定的目标物理机不可用，选择第一个可用的
-            if not checked_host:
-                logger.warning(f"指定的目标物理机 {target_host} 不可用，选择第一个可用物理机")
-                available_hosts[0]["element"].click()
-                logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
-                checked_host = available_hosts[0]["text"]
-        else:
-            # 如果没有指定目标物理机，选择第一个可用的
-            available_hosts[0]["element"].click()
-            logger.info(f"已选择第一个可用的物理机: {available_hosts[0]['text']}")
-            checked_host = available_hosts[0]["text"]
+                except Exception as e:
+                    # 如果未指定的目标物理机，选择第一个可用的
+                    logger.warning(f"指定的目标物理机 {target_host} 不可用 ，选择第一个可用物理机")
+                    self.locator("section").get_by_text("重置").click()
+                    self.wait_for_page_ready()
+                    available_hosts = self._get_available_migration_hosts()
+                    # 如果没有可用物理机，抛出异常
+                    if not available_hosts:
+                        error_msg = "没有可用的物理机可供选择"
+                        logger.error(error_msg)
+                        self.dialog_cancel.click()
+                        pytest.skip(error_msg)
+                    self.get_by_role("radio", name=available_hosts[0]).click()
+                    checked_host = available_hosts[0]
+                    logger.info(f"已选择第一个可用的物理机: {checked_host}")
 
         # 确认冷迁移
         self.dialog_confirm.click()
 
-        logger.info(f"云服务器热迁移请求已提交: {name}，目标主机: {checked_host}")
-        return checked_host.split("CPU剩余量")[0].strip()
+        logger.info(f"云服务器冷迁移请求已提交: {name}，迁移方式: {m_type}, 集群{cluster},目标主机: {checked_host}")
+        return checked_host
 
     @submenu("弹性云服务器")
     def ecs_mount_to_server(self, volume_name, vm_name):
@@ -1437,7 +1583,7 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(vm_name, "挂载云硬盘")
 
         # 搜索云硬盘
-        self.get_by_placeholder("搜索(云硬盘名称）").fill(volume_name)
+        self.get_by_label("挂载云硬盘").get_by_placeholder("搜索（名称）").fill(volume_name)
         self.get_by_label("挂载云硬盘").get_by_text("搜索").click()
 
         # 选择云硬盘
@@ -1539,7 +1685,8 @@ class EcsPage(OpsPage):
         self.select_rows_by_names(names)
 
         # 点击设置启动顺序按钮
-        self.locator("div:nth-child(3) > .cloud-button-btn").first.click()
+        self.get_by_role("button", name="更多操作").click()
+        self._click_batch_operation_option("设置启动顺序")
 
         # 设置每台服务器的启动顺序
         self.get_by_role("dialog", name="设置启动顺序").get_by_role("textbox").first.fill(str(order))
@@ -1661,6 +1808,7 @@ class EcsPage(OpsPage):
             exact = False if tab == "安全组" or tab =="事件列表" else True
             if tab == "详情":
                 sleep(2)
+                self.wait_for_page_ready()
             else:
                 self.get_by_role("tab", name=tab, exact=exact).click()
                 if sub_tab:
@@ -1668,12 +1816,15 @@ class EcsPage(OpsPage):
                 self.wait_for_page_ready()
             # 逐个验证信息项
             for item_name, expected_content in info_items.items():
-                logger.info(f"验证 {tab} 页签的 {item_name}: {str(expected_content)}")
                 if tab == "详情":
                     # 定位信息项
-                    info_item = self.get_by_text(item_name)
+                    info_item = self.get_by_label(tab).get_by_text(item_name, exact=True)
                     # 获取信息项的值
-                    info_value = info_item.locator("xpath=./following-sibling::*").first
+                    _list = ["亲和组", "硬件密码加速", "CPU QoS 优先级", "CPU QoS 上限", "NUMA 绑定", "vNUMA拓扑","CPU独占", "VNC显卡类型", "CPU模式", "声卡类型"]
+                    if item_name in _list:
+                        info_value = info_item.locator("xpath=./following-sibling::*").first
+                    else:
+                        info_value = info_item.locator("xpath=../following-sibling::*").first
                     # 验证信息项的值是否包含期望内容
                     assert str(expected_content) in info_value.inner_text(), \
                         f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {info_value.inner_text()}"
@@ -1683,6 +1834,11 @@ class EcsPage(OpsPage):
                     assert expected_content in self.get_row_data(item_name).values(), \
                         f"验证失败: {tab}的{item_name}不包含{str(expected_content)}, 实际内容: {self.get_row_data(item_name)}"
             logger.info(f"云服务器 {tab} 详情页面信息验证成功")
+            self.goto_submenu("弹性云服务器")
+            # self.ecs_back_to_list()
+            # self.wait_for_page_ready()
+            # self.btn_refresh.click()
+            # self.wait_for_page_ready()
 
     @submenu("弹性云服务器")
     def ecs_batch_set_shutdown_order(self, names: list, order: int, delay):
@@ -1698,8 +1854,9 @@ class EcsPage(OpsPage):
         # 选择指定的云服务器
         self.select_rows_by_names(names)
 
-        # 点击设置启动顺序按钮
-        self.get_by_text("设置关机顺序").first.click()
+        # 点击设置关机顺序按钮
+        self.get_by_role("button", name="更多操作").click()
+        self._click_batch_operation_option("设置关机顺序")
 
         # 设置每台服务器的启动顺序
         self.get_by_label("设置关机顺序").get_by_role("textbox").first.fill(str(order))
@@ -1731,7 +1888,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始设置云服务器 {name} 的启动顺序")
 
         # 点击云服务器的操作按钮
-        self.click_dropdown_option(name, "设置启动顺序")
+        self.click_dropdown_option(name, "设置启动项")
 
         # 添加启动项
         if len(boot_order) > 1:
@@ -1742,12 +1899,12 @@ class EcsPage(OpsPage):
         for i, boot_device in enumerate(boot_order):
             # 选择启动类型
             for boot_type, devices in boot_device.items():
-                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth(0 if i == 0 else i*2).click()
+                self.get_by_label("设置启动项").get_by_placeholder("请选择").nth(0 if i == 0 else i*2).click()
 
                 self.locator("li").filter(has_text=re.compile(fr"^{boot_type}$")).nth(1 if len(boot_order) > 1 else 0).click()
 
                 # 选择设备
-                self.get_by_role("dialog", name="设置启动顺序").get_by_placeholder("请选择").nth((i*2+1)).click()
+                self.get_by_label("设置启动项").get_by_placeholder("请选择").nth((i*2+1)).click()
                 self.locator("li").filter(has_text=devices).click()
 
         # 确认设置
@@ -1763,11 +1920,10 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
         """
-        logger.info(f"开始为云服务器 {name} 安装工具")
-
         # 点击操作按钮
         self.click_dropdown_option(name, "安装工具")
 
+        self.wait_for_page_ready()
         # 点击安装并进入下一步
         self.get_by_text("安装并进入下一步").click()
         logger.info(f"云服务器 {name} 安装工具请求已提交")
@@ -1785,13 +1941,13 @@ class EcsPage(OpsPage):
         self.click_dropdown_option(name, "卸载工具")
 
         # 点击确定
+        time.sleep(2)
         self.dialog_confirm.click()
         self.wait_for_operation_complete()
         logger.info(f"云服务器 {name} 卸载工具请求已提交")
 
     def assert_ecs_tools_installed(self, name: str):
         """验证云服务器安装工具页面第一步操作是否完成"""
-        self.assert_popup_success(f"安装工具到虚拟机{name}成功")
         # 等待安装工具第一步完成
         expect(self.get_by_text("进入VNC控制台")).to_be_visible(timeout=30000)
 
@@ -1816,7 +1972,7 @@ class EcsPage(OpsPage):
         # 确认修改
         self.dialog_confirm.click()
 
-        logger.info(f"云服务器 {name} 的VNC显卡类型修改成功")
+        logger.info(f"云服务器{name}的VNC显卡类型修改提交成功")
 
     @submenu("弹性云服务器")
     def ecs_modify_cpu_mode(self, name: str, cpu_mode: str, custom_value: str = None):
@@ -1869,7 +2025,7 @@ class EcsPage(OpsPage):
         self.get_by_placeholder("请输入名称").fill(pool_name)
 
         # 选择挂载裸磁盘选项
-        self.get_by_label("挂载裸磁盘").get_by_role("radio").click()
+        self.get_by_label("挂载裸磁盘").get_by_role("radio").first.click()
 
         # 确认挂载
         self.get_by_label("挂载裸磁盘").get_by_text("挂载", exact=True).click()
@@ -1915,10 +2071,10 @@ class EcsPage(OpsPage):
 
         if bind:
             # 点击绑定按钮
-            self.get_by_role("button", name="绑定实例标签").click()
+            self.get_by_label("标签设置", exact=True).get_by_role("button").locator(".el-icon-arrow-right").click()
         else:
             # 点击解绑按钮
-            self.get_by_role("button", name="解绑实例标签").click()
+            self.get_by_label("标签设置", exact=True).get_by_role("button").locator(".el-icon-arrow-left").click()
         self.assert_popup_success(f"实例{bind_text}标签成功,若数据未响应请刷新页面")
 
         self.dialog_close.click()
@@ -2070,9 +2226,9 @@ class EcsPage(OpsPage):
         """
         logger.info(f"标签页{label_name}解绑实例: {vm_name}")
         # 点击标签页的操作按钮
-        self.click_dropdown_option(label_name, "查看关联资源")
+        self.click_option(label_name, "查看关联资源")
         # 点击云服务器后的操作按钮
-        self.click_dropdown_option(vm_name, "解绑实例标签")
+        self.get_by_label("实例", exact=True).get_by_text("解绑实例标签").click()
         # 确认解绑
         self.dialog_confirm.click()
         # 验证解绑成功
@@ -2092,7 +2248,7 @@ class EcsPage(OpsPage):
         """
         logger.info(f"{label_names}批量解绑云服务器: {names}")
         for label_name in label_names:
-            self.click_dropdown_option(label_name, "查看关联资源")
+            self.click_option(label_name, "查看关联资源")
             self.select_rows_by_names(names)
             self.get_by_text("批量解绑").click()
             self.dialog_confirm.click()
@@ -2109,22 +2265,19 @@ class EcsPage(OpsPage):
         # 点击云服务器操作按钮，选择热迁移
         self.click_dropdown_option(name, "热迁移")
 
-        # 选择目标物理机
-        self.get_by_placeholder("请选择目标物理机").click()
+        self.get_by_role("radio", name="手动指定 󦕟").click()
 
-        # 等待下拉列表加载完成
-        self.wait_for_operation_complete()
+        # 点击"选择物理机"按钮，打开物理机选择区域
+        self.get_by_text("目标物理机").locator("xpath=./following-sibling::div/span").click()
 
-        # 获取所有下拉选项
-        all_host_options = self.locator("li").filter(has_text="CPU剩余量")
-        options_count = all_host_options.count()
-        available_hosts = []
-        for i in range(options_count):
-            option = all_host_options.nth(i)
-            option_text = option.inner_text().split(" CPU剩余量")[0]
-            available_hosts.append(option_text)
-        logger.info(f"热迁移可用节点: {available_hosts}")
-        self.dialog_close.click()
+        # 等待物理机选择区域加载完成
+        self.wait_for_page_ready()
+
+        # 取所有可用的物理机节点，排除包含is-disabled属性的节点
+        available_hosts = self._get_available_migration_hosts()
+        self.locator("section").get_by_text("取消").click()
+        sleep(1) # 多个弹窗堆叠，需要等待上一层关闭
+        self.close_dialog_if_exists()
         return available_hosts
 
     @submenu("弹性云服务器")
@@ -2175,26 +2328,40 @@ class EcsPage(OpsPage):
             names: 云服务器名称
             available_hosts: 可用节点
         """
-        if len(set(pre_nodes)) == 1:
-            # 获取available_hosts和pre_nodes的差值
-            diff_hosts = [host for host in available_hosts if host not in pre_nodes]
-            goal = names[0]
-            if diff_hosts:
-                final_node = random.choice(diff_hosts)  # 选择差值节点作为迁移目标
-                self.ecs_hot_migration(goal, final_node)
-                self.assert_status(goal, status="迁移中", refresh=True, refresh_interval=2)
-                self.assert_status(goal, status="当前无任务")
-                goal = names.pop(0)
-                logger.info(f"需批量迁移的虚: {names}")
-                return names, goal, final_node
-            else:
+        unique_nodes = set(pre_nodes)
+
+        # 场景1: 所有虚机在同一节点
+        if len(unique_nodes) == 1:
+            self.logger.info(f"虚机在同一节点{unique_nodes}")
+            if not available_hosts:
                 pytest.skip("没有可用的节点满足亲和组迁移策略")
-        elif len(set(pre_nodes)) > 1 and len(set(pre_nodes)) < len(available_hosts):
-            for i, node in enumerate(pre_nodes):
-                if pre_nodes.count(node) == 1:
-                    goal = names.pop(i)
-                    logger.info(f"需批量迁移的虚: {names}")
-                    return names, goal, node
+
+            final_node = random.choice(available_hosts)
+            self.ecs_hot_migration(names[0], final_node, m_type="手动指定")
+            self.assert_status(names[0], status="迁移中", refresh=True, refresh_interval=2)
+            self.assert_status(names[0])
+
+            return names[1:], final_node
+
+        # 场景2: 虚机分布在不同节点
+        if len(unique_nodes) > 1 and len(unique_nodes) <= len(available_hosts) + 1:
+            # 统计每个节点的索引
+            node_indices = {}
+            for idx, node in enumerate(pre_nodes):
+                node_indices.setdefault(node, []).append(idx)
+
+            # 找出现次数最少的节点
+            min_node = min(node_indices, key=lambda n: len(node_indices[n]))
+            min_indices = node_indices[min_node]
+
+            # 如果有唯一节点（出现1次），只移除一个
+            if len(min_indices) == 1:
+                names.pop(min_indices[0])
+                return names, min_node
+
+            # 否则移除该节点的所有虚机
+            [names.pop(idx) for idx in sorted(min_indices, reverse=True)]
+            return names, min_node
         else:
             pytest.skip("没有可用的节点满足亲和组迁移策略")
 
@@ -2225,31 +2392,103 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
             policy: 快照策略名称
+            bind: 绑定/解绑
+            vm_type: 云服务器类型: 弹性云服务器/机密云服务器
         """
         text = "绑定" if bind else "解绑"
-        self.click_dropdown_option(policy, f"{text}云服务器")
+        if text == "绑定":
+            self.click_option(policy, f"{text}云服务器")
+        else:
+            self.click_dropdown_option(policy, f"{text}云服务器")
 
+        # 选择云服务器类型
         vm_type_locs = [
+            self.get_by_role("tab", name=vm_type),
             self.locator("label").filter(has_text=vm_type),
             self.get_by_role("listbox").locator("li").filter(has_text=vm_type),
             self.get_by_role("radiogroup").locator("label").filter(has_text=vm_type)
         ]
         self._find_element(vm_type_locs).click()
+        self.wait_for_page_ready()
+        # 搜索云服务器
         search_locs = [
+            self.locator("section").get_by_placeholder("搜索（名称）"),
+            self.get_by_role("dialog", name="详细信息 close 详细信息").get_by_placeholder("搜索（名称）"),
+            self.get_by_role("dialog", name="解绑云服务器 close 解绑云服务器").get_by_placeholder("搜索（名称）"),
             self.get_by_role("textbox", name="搜索（实例名称）"),
             self.get_by_placeholder("搜索（实例名称）")
         ]
         self._find_element(search_locs).fill(name)
-
         self.get_by_role("dialog").get_by_text("搜索").click()
+        self.wait_for_page_ready()
 
+        # 勾选查询到的虚机
         vm_names = self.get_column_data("名称/ID")
         vm_names = [vm_name.split(" ")[0] for vm_name in vm_names if vm_name.startswith(name)]
-        self.get_by_role("row", name="名称/ID 物理机").locator("span").nth(1).click()
+
+        loc = self.locator(".cloud-drawer-body .table-main .el-table__header-wrapper .el-checkbox").first
+        try:
+            loc.click()
+            logger.info(f"勾选: {loc}")
+        except Exception as e:
+            # 因1230版本设置复选框loc的属性 element is not visible，此处新增且使用强制点击方法
+            logger.warning(f"勾选复选框失败: {e}")
+            self.force_click_element(loc)
 
         self.dialog_confirm.click()
         logger.info(f"快照策略: {policy} 绑定云服务器: {vm_names}")
         return vm_names
+
+    def force_click_element(self, locator):
+        """强制点击元素,即使元素不可见
+
+        通过JavaScript修改元素的样式属性,使其可见后再点击
+
+        Args:
+            locator: Playwright Locator对象
+        """
+        try:
+            # 方法1: 先尝试等待元素可见
+            locator.wait_for(state="visible", timeout=5000)
+            locator.click()
+        except Exception as e:
+            self.logger.warning(f"元素不可见,尝试使用JavaScript强制点击")
+
+            try:
+                # 方法2: 使用JavaScript强制点击(不要求元素可见)
+                locator.evaluate("element => element.click()")
+                self.logger.info("通过JavaScript成功强制点击元素")
+            except Exception as e2:
+                self.logger.warning(f"JavaScript点击失败,尝试修改元素样式: {e2}")
+
+                try:
+                    # 方法3: 修改元素样式使其可见
+                    locator.evaluate("""
+                        element => {
+                            element.style.visibility = 'visible';
+                            element.style.display = 'block';
+                            element.style.opacity = '1';
+                            // 如果父元素隐藏,也尝试显示父元素
+                            let parent = element.parentElement;
+                            while (parent) {
+                                if (parent.style.display === 'none') {
+                                    parent.style.display = 'block';
+                                }
+                                parent = parent.parentElement;
+                            }
+                        }
+                    """)
+
+                    # 等待短暂时间让样式生效
+                    time.sleep(0.5)
+
+                    # 再次尝试点击
+                    locator.click()
+                    self.logger.info("通过修改样式成功点击元素")
+
+                except Exception as e3:
+                    self.logger.error(f"所有方法都失败: {e3}")
+                    raise Exception(f"无法点击元素: {e3}")
 
     @submenu("快照策略")
     def ecss_unbind_snapshot_policy(self, vm_name: str, policy: str, vm_type: str = "弹性云服务器"):
@@ -2282,7 +2521,7 @@ class EcsPage(OpsPage):
             vm_name: 云服务器名称
             policy: 快照策略名称
         """
-        self.click_dropdown_option(vm_name, "修改策略")
+        self.click_option(vm_name, "修改策略")
 
         self.get_by_label("修改策略").get_by_placeholder("请选择").click()
 

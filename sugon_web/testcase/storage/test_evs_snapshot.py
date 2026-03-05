@@ -19,6 +19,9 @@ class TestEVSS:
             evs_page.assert_popup_success("创建快照成功")
             evs_page.goto_submenu("快照")
             evs_page.assert_status(snapshot_name, status="可用")
+
+        with allure_step_log("步骤2: 验证快照数据"):
+            evs_page.set_table_header("描述")
             snapshot_data = evs_page.get_row_data(snapshot_name)
             assert snapshot_data["描述"] == params["desc"]
 
@@ -77,6 +80,7 @@ class TestEVSS:
             evs_page.assert_list_contain(new_name)
 
             # 获取修改后的快照数据并验证
+            evs_page.set_table_header("描述")
             snapshot_data = evs_page.get_row_data(new_name)
             assert snapshot_data["描述"] == new_desc
 

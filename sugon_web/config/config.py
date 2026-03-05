@@ -49,11 +49,16 @@ class Config:
             cls._config.update(matched_host_config)
             logger.info(f"读取环境 {host} 的特定配置")
         else:
+            # 修复：确保配置字典中的 host 与传入参数一致
+            cls._config["host"] = host
             # 如果没有找到匹配的环境配置，只使用基础配置
             logger.info(f"未找到环境 {host} 的特定配置")
 
+        # 修复：确保配置字典中的 host 与传入参数一致
+        cls._config["host"] = host
+
         # 生成 base_url
-        base_url = f"https://{host}:30008"
+        base_url = f"https://{host}:30000"
         cls._config["base_url"] = base_url
         logger.info(f"生成 base_url: {base_url}")
 

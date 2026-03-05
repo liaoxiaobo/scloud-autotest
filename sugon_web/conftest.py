@@ -1,11 +1,12 @@
 import datetime
-import pytest
+
 import allure
+import pytest
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger
-from sugon_web.utils.util import get_file_abspath
+from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
@@ -69,14 +70,14 @@ def config(pytestconfig):
     return Config
 
 @pytest.fixture(scope="session")
-def page(config):
-    """创建新页面，支持动态浏览器类型和 headless 模式"""
+def browser(config):
+    """
+    Session级别的browser fixture
+    所有测试用例共享同一个浏览器实例，提高性能
+    """
     # 从Config对象获取配置
     browser_type = config.get("browser")
     headless = config.get("headless")
-    base_url = config.get("base_url")
-    username = config.get("username")
-    password = config.get("password")
     slow_mo = config.get("slow_mo")
 
     logger.info(f"开始初始化浏览器: type={browser_type}, headless={headless}")
@@ -89,42 +90,72 @@ def page(config):
                 headless=headless,
                 slow_mo=slow_mo
             )
-            logger.info("浏览器启动成功")
+            logger.info(f"浏览器 {browser_type} 启动成功")
 
-            logger.info("创建浏览器上下文...")
-            context = browser.new_context(
-                ignore_https_errors=True,  # 忽略 SSL 错误
-                permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
-            )
-            logger.info("浏览器上下文创建成功")
+            yield browser
 
-            logger.info("创建新页面...")
-            page = context.new_page()
-            logger.info("页面创建成功")
-
-            logger.info(f"导航到目标URL: {base_url}")
-            page.goto(base_url)
-            logger.info(f"页面导航完成，当前URL: {page.url}")
-
-            # 检查是否已登录，如果未登录则执行登录
-            if not _is_logged_in(page):
-                _login(page, {"username": username, "password": password})
-                logger.info("登录成功")
-
-                # 关闭弹窗
-                base_page = BasePage(page)
-                base_page.close_dialog_if_exists()
-
-            yield page
-
-            logger.info("开始清理浏览器资源...")
-            context.close()
-            logger.info("浏览器上下文已关闭")
+            logger.info("浏览器关闭中...")
             browser.close()
             logger.info("浏览器已关闭")
 
     except Exception as e:
         logger.error(f"浏览器初始化失败: {e}")
+        raise
+
+
+@pytest.fixture(scope="class")
+def browser_context(browser):
+    """
+    浏览器上下文fixture
+
+    Context是浏览器上下文，类似于浏览器的隐身模式窗口。
+    每个context有独立的cookies、localStorage等数据。
+    """
+    context = browser.new_context(
+        ignore_https_errors=True,  # 忽略 SSL 错误
+        permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+    )
+
+    logger.info("浏览器上下文创建成功")
+
+    yield context
+
+    context.close()
+    logger.info("浏览器上下文已关闭")
+
+
+@pytest.fixture(scope="class")
+def page(browser_context, config):
+    """
+    每个测试用例获得独立的页面实例，保证测试隔离性
+    受限于用例设计及被依赖fixture，此fixture暂时只能在class级别使用
+    """
+    base_url = config.get("base_url")
+    username = config.get("username")
+    password = config.get("password")
+
+    try:
+        logger.info("创建新页面...")
+        page = browser_context.new_page()
+        logger.info("页面创建成功")
+
+        logger.info(f"导航到目标URL: {base_url}")
+        page.goto(base_url)
+        logger.info(f"页面导航完成，当前URL: {page.url}")
+
+        # 检查是否已登录，如果未登录则执行登录
+        if not _is_logged_in(page):
+            _login(page, {"username": username, "password": password})
+            logger.info("登录成功")
+
+            # 关闭弹窗
+            base_page_obj = BasePage(page)
+            base_page_obj.close_dialog_if_exists()
+
+        yield page
+
+    except Exception as e:
+        logger.error(f"页面初始化失败: {e}")
         raise
 
 @pytest.hookimpl(tryfirst=True)
@@ -144,72 +175,40 @@ def pytest_runtest_teardown(item):
     """在teardown阶段开始时记录标记"""
     logger.info(f"=== TEARDOWN START: {item.name} ===")
 
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
 
-    # 记录测试开始
+    # 获取page对象
+    page = get_page_from_item(item)
+
+    # 处理call阶段（测试执行阶段）
     if rep.when == "call":
         if rep.passed:
             logger.info(f"测试通过: {item.name}")
         elif rep.failed:
             logger.error(f"测试失败: {item.name}")
-            page = item.funcargs.get("page", None)
             if page:
-                try:
-                    logger.info(f"开始生成失败截图")
-                    # 获取项目根目录
-                    current_dir = Path(__file__).resolve().parent
-                    project_root = current_dir.parent
-
-                    # 创建 screenshots 目录
-                    screenshot_dir = project_root / "screenshots"
-                    screenshot_dir.mkdir(exist_ok=True)
-
-                    # 生成截图路径
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    screenshot_path = screenshot_dir / f"{item.name}_{timestamp}.png"
-
-                    # 保存截图到文件
-                    page.screenshot(path=str(screenshot_path))
-                    logger.info(f"截图保存成功: {screenshot_path}")
-
-                    # 记录失败时的页面信息
-                    failure_info = (
-                        f"测试失败时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"测试用例名称: {item.name}\n"
-                        f"当前页面URL: {page.url}\n"
-                    )
-                    logger.error(f"测试失败详情:\n{failure_info}")
-
-                    # 将截图添加到 Allure 报告
-                    with open(screenshot_path, "rb") as f:
-                        allure.attach(
-                            body=f.read(),
-                            name=f"失败截图_{item.name}",
-                            attachment_type=allure.attachment_type.PNG
-                        )
-
-                    # 添加失败时的页面信息
-                    allure.attach(
-                        body=failure_info,
-                        name="失败信息",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
-
-                    logger.info(f"失败截图已保存并添加到 Allure 报告: {screenshot_path}")
-
-                except Exception as e:
-                    logger.error(f"截图保存失败: {e}")
+                capture_failure_screenshot(page, item, "call")
         elif rep.skipped:
             logger.warning(f"测试跳过: {item.name}")
+
+    # 处理setup阶段（测试前置准备阶段）
     elif rep.when == "setup":
         if rep.failed:
             logger.error(f"测试设置失败: {item.name}")
+            if page:
+                capture_failure_screenshot(page, item, "setup")
+
+    # 处理teardown阶段（测试清理阶段）
     elif rep.when == "teardown":
         if rep.failed:
             logger.error(f"测试清理失败: {item.name}")
+            if page:
+                capture_failure_screenshot(page, item, "teardown")
 
 
 @pytest.fixture(scope="session")
@@ -257,19 +256,161 @@ def _is_logged_in(page):
         return True
 
 
-def _login(page, config):
-    """执行登录操作"""
+def _login(page, config, max_retries=3):
+    """
+    执行登录操作，带轮询重试机制
+
+    Args:
+        page: Playwright page 对象
+        config: 配置字典，包含 username 和 password
+        max_retries: 最大重试次数，默认3次
+
+    Returns:
+        bool: 登录成功返回 True
+
+    Raises:
+        Exception: 超过最大重试次数后抛出异常
+    """
     username = config.get("username")
     password = config.get("password")
 
     if not username or not password:
         raise ValueError("环境配置中缺少用户名或密码")
 
-    # 填写登录信息
-    page.get_by_placeholder("请输入登录账号").fill(username)
-    page.get_by_placeholder("请输入登录密码").fill(password)
-    page.get_by_text("登 录").click()
+    for attempt in range(1, max_retries + 1):
+        if attempt > 1:
+            logger.info(f"\n{'=' * 40}")
+            logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
+            logger.info(f"{'=' * 40}")
 
-    # 等待页面加载完成
-    page.wait_for_load_state("networkidle")
-    page.wait_for_load_state("domcontentloaded")
+        try:
+            # 填写登录信息
+            page.get_by_placeholder("请输入登录账号").fill(username)
+            page.get_by_placeholder("请输入登录密码").fill(password)
+            page.get_by_text("登 录").click()
+
+            # 等待页面加载完成
+            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("domcontentloaded")
+
+            # 检查登录按钮是否消失（说明登录成功）
+            return _is_logged_in(page)
+
+        except Exception as e:
+            logger.info(f"第{attempt}次登录未成功: {e}")
+            if attempt == max_retries:
+                raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
+            continue
+
+    return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def check_compute_nodes(ssh_host, config):
+    """
+    检查物理机节点信息并更新到配置中
+
+    Args:
+        ssh_host: 直接连接到目标主机的SSH会话对象
+        config: Config 对象，用于更新节点数信息
+
+    Returns:
+        dict: 包含节点信息的字典
+            - nodes: 节点名称列表
+            - count: 节点数量
+    """
+    # 使用 ssh_host 获取节点信息
+    try:
+        logger.info("开始获取物理机节点信息...")
+        # 获取集群的节点
+        _output = ssh_host.run("gova aggregate list | grep Autotest | awk '{print $6}'")
+        _node_count = _output.split('(')[1].split(')')[0]
+
+        # 将节点信息更新到 config 中
+        Config._config['_node_count'] = _node_count
+
+        logger.info(f"节点列表已更新到config: {Config._config['_node_count']}")
+
+        # 返回节点信息
+        return {
+            'nodes': _node_count
+        }
+
+    except Exception as e:
+        logger.error(f"获取物理机节点信息失败: {e}")
+        _nodes = []
+
+def _write_allure_environment():
+    """将 Config 配置信息写入 Allure 的 environment.properties 文件"""
+    try:
+        # 获取项目根目录和 allure-result 目录
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent
+        allure_dir = project_root / "allure-result"
+
+        # 确保 allure-result 目录存在
+        allure_dir.mkdir(exist_ok=True)
+
+        # environment.properties 文件路径
+        env_file = allure_dir / "environment.properties"
+
+        # 获取 Config 中的所有配置
+        config_data = Config.get()
+
+        env_mappings = [
+            ("ENV", "host"),  # 测试环境主机地址
+            ("URL", "base_url"),  # 基础URL
+            ("STOR", "stor"),  # 存储类型
+            ("USER", "username"), # 登录用户名
+            ("Arch", "architecture") # 架构类型
+        ]
+
+        # 构建环境信息内容
+        env_content = []
+
+        # 按照定义的顺序添加环境信息
+        for label, config_key in env_mappings:
+            if config_key:
+                # 从 Config 中获取值
+                value = config_data.get(config_key, "Unknown")
+            else:
+                # 动态生成的值（如测试日期）
+                value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            env_content.append(f"{label}={value}")
+        patch = config_data.get("patch")
+        for key, value in patch.items():
+            if key in ["VERSION", "BUILD_TIME", "COMMIT"]:
+                env_content.append(f"{key}={value}")
+        # 写入文件
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(env_content))
+
+    except Exception as e:
+        logger.error(f"写入 Allure 环境信息失败: {e}")
+
+@pytest.fixture(scope="session", autouse=True)
+def _get_patch_version(ssh_host, config):
+    """
+    获取补丁版本信息
+    """
+    logger.info("开始获取补丁版本信息...")
+    env_dic = {}
+    # 获取环境节点信息
+    hosts = ssh_host._get_host()
+
+    # 获取环境版本信息
+    first_host = hosts['master'][0]
+    version_info = ssh_host._get_release_version(first_host)
+    env_dic.update(version_info)
+
+    Config._config['patch'] = env_dic
+
+    try:
+        architecture = ssh_host.run(r"arch", check_rc=True)
+    except Exception as e:
+        architecture = None
+        logger.warning(f"无法获取节点架构信息: {e}")
+    Config._config['architecture'] = architecture
+
+    _write_allure_environment()

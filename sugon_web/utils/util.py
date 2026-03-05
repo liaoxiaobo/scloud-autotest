@@ -2,13 +2,20 @@ import ipaddress
 import os
 import random
 import string
+import time
+
+import pytest
+import yaml
+import allure
+from datetime import datetime
+from functools import wraps
+from pathlib import Path
 from typing import List, Dict, Any
 from faker import Faker
-import yaml
 from pathlib import Path
-import pytest
 from functools import wraps
 from sugon_web.config.config import Config
+from sugon_web.utils.logger import logger
 
 fake = Faker(locale="zh_CN")
 
@@ -199,3 +206,177 @@ def get_output(strs):
         else:
             continue
     return result
+
+def capture_failure_screenshot(page, item, failure_stage):
+    """
+    捕获失败截图并添加到Allure报告
+
+    Args:
+        page: Playwright页面对象
+        item: pytest测试项对象
+        failure_stage: 失败阶段 (setup/call/teardown)
+    """
+    try:
+        logger.info(f"开始生成失败截图")
+        # 获取项目根目录
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent
+
+        # 创建 screenshots 目录
+        screenshot_dir = project_root / "screenshots"
+        screenshot_dir.mkdir(exist_ok=True)
+
+        # 生成截图路径
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = screenshot_dir / f"{item.name}_{timestamp}.png"
+
+        # 保存截图到文件
+        page.screenshot(path=str(screenshot_path))
+        logger.info(f"截图保存成功: {screenshot_path}")
+
+        # 记录失败时的页面信息
+        failure_info = (
+            f"测试失败时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"测试用例名称: {item.name}\n"
+            f"失败阶段: {failure_stage}\n"
+            f"当前页面URL: {page.url}\n"
+        )
+        logger.error(f"测试失败详情:\n{failure_info}")
+
+        # 将截图添加到 Allure 报告
+        with allure.step(f"用例信息收集 -> {failure_stage}阶段"):
+
+            with open(screenshot_path, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"失败截图",
+                    attachment_type=allure.attachment_type.PNG
+                )
+
+            # 添加失败时的页面信息
+            allure.attach(
+                body=failure_info,
+                name="失败信息",
+                attachment_type=allure.attachment_type.TEXT
+            )
+
+        logger.info(f"失败截图已保存并添加到 Allure 报告: {screenshot_path}")
+
+    except Exception as e:
+        logger.error(f"截图保存失败: {e}")
+
+def get_page_from_item(item):
+    """
+    从测试用例的fixture中获取page对象
+
+    Args:
+        item: pytest测试项对象
+
+    Returns:
+        Page对象或None
+    """
+    # 方法1：直接获取page fixture
+    page = item.funcargs.get("page", None)
+    if page:
+        return page
+
+    # 方法2：遍历所有fixture，查找包含page属性的fixture
+    for fixture_name, fixture_obj in item.funcargs.items():
+        if hasattr(fixture_obj, 'page'):
+            page = getattr(fixture_obj, 'page')
+            logger.info(f"从 {fixture_name} 中获取到page对象")
+            return page
+
+    logger.warning("无法获取page对象")
+    return None
+
+
+def skip_if_nodes_less_than(min_nodes=2):
+    """
+    节点数跳过装饰器
+
+    当物理机节点数小于指定值时，跳过测试用例。
+
+    Args:
+        min_nodes: 最小节点数，默认为2
+
+    Examples:
+        @skip_if_nodes_less_than()
+        def test_function(self):
+            # 节点数小于2时跳过
+            pass
+
+        @skip_if_nodes_less_than(3)
+        def test_function(self):
+            # 节点数小于3时跳过
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            # 直接从 Config 中获取节点信息（由 check_compute_nodes fixture 设置）
+            nodes = Config._config.get('_node_count', "")
+
+            if int(nodes) < min_nodes:
+                logger.warning(f"节点数不足，准备跳过测试")
+                pytest.skip(f"节点数不足，当前节点数: {nodes}，要求最小节点数: {min_nodes}")
+
+            logger.info(f"节点数满足要求，继续执行测试")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+def skip_arch(*arch_value):
+    """
+    架构类型跳过装饰器
+
+    当当前配置的架构类型在指定的列表中时，跳过测试用例。
+
+    Args:
+        *arch_value: 需要跳过测试的架构类型列表 (如 'aarch64', 'x86_64')
+
+    Examples:
+        @skip_arch('aarch64')
+        def test_function(self):
+            pass
+
+        @skip_arch('aarch64', 'x86_64')
+        def test_function(self):
+            pass
+    """
+
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            architecture = Config.get("architecture")
+            if architecture in arch_value:
+                pytest.skip(f"{architecture}架构不支持该测试用例")
+            return method(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+def retry_check(check_func, expected, max_retries=3, interval=5, error_msg=None):
+    """
+    重试检查，直到 check_func() 返回值等于 expected
+
+    Args:
+        check_func: 检查函数，返回需要比较的值
+        expected: 期望值
+        max_retries: 最大重试次数
+        interval: 重试间隔
+        error_msg: 错误消息
+    """
+    for i in range(max_retries):
+        actual = check_func()
+        if actual == expected:
+            return actual
+        if i < max_retries - 1:
+            time.sleep(interval)
+
+    final_msg = error_msg or f"断言失败: 期望 '{expected}', 实际 '{actual}'"
+    raise AssertionError(final_msg)

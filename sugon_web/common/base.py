@@ -2,7 +2,8 @@ import re
 import time
 from functools import wraps
 from typing import Callable
-from playwright.sync_api import expect, Page, Locator
+from playwright.sync_api import Page, Locator
+from sugon_web.common.playwright import expect
 from sugon_web.common.playwright import Playwright
 from sugon_web.config.config import Config
 
@@ -86,8 +87,13 @@ class BasePage(Playwright):
 
     @property
     def popup(self) -> Locator:
-        """公共元素:页面弹窗"""
+        """公共元素:页面顶部弹窗"""
         return self.locator(".el-message__content")
+
+    @property
+    def alert(self) -> Locator:
+        """公共元素:页面右下角弹窗"""
+        return self.get_by_role("alert")
 
     def _find_element(self, locators, element_name="元素", timeout=1000, check_visible=True, check_enabled=False):
         """
@@ -154,6 +160,7 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
+            self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner")
         ]
 
@@ -167,7 +174,7 @@ class BasePage(Playwright):
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置", exact=True)
+        return self.get_by_text("重置", exact=True).first
 
     @property
     def btn_refresh(self) -> Locator:
@@ -185,7 +192,8 @@ class BasePage(Playwright):
         """公共元素: 批量删除按钮"""
         locators = [
             self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除", exact=True).first
+            self.get_by_text("删除", exact=True).first,
+            self.get_by_text("批量删除").first
         ]
 
         return self._find_element(locators, "批量删除按钮")
@@ -195,8 +203,10 @@ class BasePage(Playwright):
         """公共元素:对话框确定按钮"""
         locators = [
             self.get_by_role("dialog").get_by_text("确定", exact=True),
+            self.get_by_role("dialog").locator("span").filter(has_text="确定"),
             self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
-            self.locator("div:nth-child(2) > div > .cloud-button-btn > span"),   # 云硬盘删除对话框
+            self.locator("section").get_by_text("确定"),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").first,   # 云硬盘删除对话框
             self.locator(".sure-footer > div > .cloud-button-btn").first
         ]
 
@@ -259,6 +269,10 @@ class BasePage(Playwright):
                 root_menu = navigation_path[0]
                 self.hover(root_menu)
                 self.click(service)
+                try:
+                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=5000)
+                except:
+                    pass
                 self.wait_for_page_ready()
                 self.logger.info(f"成功导航到服务: {root_menu} -> {service}")
 
@@ -268,6 +282,10 @@ class BasePage(Playwright):
                 self.hover(root_menu)
                 self.hover(category)
                 self.click(service)
+                try:
+                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=5000)
+                except:
+                    pass
                 self.wait_for_page_ready()
                 self.logger.info(f"成功导航到服务: {root_menu} -> {category} -> {service}")
 
@@ -293,17 +311,17 @@ class BasePage(Playwright):
                 - "弹性云服务器"
                 - "虚拟私有云"
         """
-        # 检查是否已经在目标子菜单页面上
-        try:
-            # 查找当前激活的菜单项
-            active_menu = self.locator(".one-tree-active")
-            if active_menu.count() > 0:
-                active_text = active_menu.inner_text().strip()
-                if active_text == submenu:
-                    self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
-                    return
-        except Exception as e:
-            self.logger.debug(f"检查当前菜单状态时出错: {e}")
+        # # 检查是否已经在目标子菜单页面上
+        # try:
+        #     # 查找当前激活的菜单项
+        #     active_menu = self.locator(".one-tree-active")
+        #     if active_menu.count() > 0:
+        #         active_text = active_menu.inner_text().strip()
+        #         if active_text == submenu:
+        #             self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
+        #             return
+        # except Exception as e:
+        #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
@@ -418,7 +436,9 @@ class BasePage(Playwright):
                 if not refresh:
                     # 不刷新模式：直接使用Playwright的高效等待机制
                     timeout_ms = timeout * 1000  # 转换为毫秒
+                    self.wait_for_page_ready() # 等待页面加载完成再查找元素
                     target_row = self.get_row_by_name(name)
+                    expect(target_row.locator(".icon-dengdaizhong")).not_to_be_visible(timeout=timeout_ms)
                     expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
                     self.logger.info(f"资源状态验证成功: {name} -> {status}")
                 else:
@@ -543,10 +563,17 @@ class BasePage(Playwright):
         """公共元素: 资源操作按钮"""
 
         # 定位资源行
-        row = self.locator(f"tr:has-text('{name}')")
+        try:
+            row = self.get_row_by_name(name, "operation")
+            self.logger.info(f"在 operation 区域找到资源行: {name}")
+        except AssertionError:
+            self.logger.debug(f"在 operation 区域未找到 {name}，尝试在 body 区域查找")
+            row = self.get_row_by_name(name, "body")
+            self.logger.info(f"在 body 区域找到资源行: {name}")
 
         # 提供两种定位方式，第二种适用于ecs列表页面
         locators = [
+            row.get_by_text("更多"),
             self.get_by_role("row", name=name).get_by_role("button"),
             row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
         ]
@@ -566,7 +593,7 @@ class BasePage(Playwright):
 
         raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
-    def click_dropdown_option(self, resource_name: str, option_text: str):
+    def click_dropdown_options(self, resource_name: str, option_text: str):
         """
         公共方法：点击指定资源行的下拉菜单选项
 
@@ -577,6 +604,7 @@ class BasePage(Playwright):
         try:
             # 点击指定行资源的操作按钮
             operation_btn=self._btn_operation(resource_name)
+            operation_btn.scroll_into_view_if_needed()
             operation_btn.click()
 
             # 等待下拉菜单出现
@@ -584,9 +612,10 @@ class BasePage(Playwright):
 
             # 方法1：通过 aria-controls 属性精确定位
             try:
-                dropdown_id = operation_btn.evaluate("element => element.getAttribute('aria-controls')")
+                dropdown_id = operation_btn.evaluate("element => element.getAttribute('class')")
+                self.logger.info(f"dropdown_id: {dropdown_id}")
                 if dropdown_id:
-                    specific_dropdown = self.page.locator(f"#{dropdown_id}")
+                    specific_dropdown = self.page.locator(f".{dropdown_id}")
                     option = specific_dropdown.get_by_text(option_text, exact=True)
                     if option.is_visible() and option.is_enabled():
                         option.click()
@@ -602,6 +631,7 @@ class BasePage(Playwright):
                 self.logger.warning(f"主要方法失败，使用备用方案: {e}")
 
                 dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
+                # dropdown_menus = self.page.locator('[class^="cloud-table-dropdown"]')
 
                 # 从后往前遍历，找到最后一个可见的下拉菜单
                 for i in range(dropdown_menus.count() - 1, -1, -1):
@@ -619,12 +649,126 @@ class BasePage(Playwright):
             self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
             raise
 
+    def click_dropdown_option(self, resource_name: str, option_text: str):
+        """
+        公共方法：点击指定资源行的下拉菜单选项（兼容两种方式）
+
+        Args:
+            resource_name: 资源名称
+            option_text: 下拉菜单选项文本（如"删除"、"编辑"等）
+        """
+        try:
+            # 点击指定行资源的操作按钮
+            operation_btn = self._btn_operation(resource_name)
+            operation_btn.hover()
+
+            # 等待下拉菜单出现
+            self.page.wait_for_timeout(1000)
+
+            # 定义支持的下拉菜单选择器
+            dropdown_selectors = [
+                ('[id^="dropdown-menu-"]', 'id'),
+                ('[class^="cloud-table-dropdown"]', 'class')
+            ]
+
+            # 遍历所有选择器，尝试找到并点击选项
+            for selector, selector_type in dropdown_selectors:
+                try:
+                    # 查找所有下拉菜单
+                    dropdown_menus = self.page.locator(selector)
+                    menu_count = dropdown_menus.count()
+
+                    if menu_count == 0:
+                        self.logger.debug(f"使用 {selector_type} 选择器未找到下拉菜单")
+                        continue
+
+                    # 从后往前遍历，找到最后一个可见的下拉菜单
+                    for i in range(menu_count - 1, -1, -1):
+                        menu = dropdown_menus.nth(i)
+                        if menu.is_visible():
+                            # 尝试获取选项
+                            option = menu.get_by_text(option_text, exact=True)
+
+                            if option.count() > 0:
+                                # 检查选项状态
+                                if option.is_visible() and option.is_enabled():
+                                    option.click()
+                                    self.logger.info(
+                                        f"点击资源操作选项: {resource_name} -> {option_text} (使用 {selector_type} 选择器)")
+                                    return
+                                else:
+                                    self.logger.warning(f"选项 '{option_text}' 不可见或不可用")
+                            else:
+                                self.logger.debug(f"当前菜单中未找到选项: {option_text}")
+
+                    # 当前选择器未找到可用选项，继续下一个
+                    self.logger.debug(f"{selector_type} 选择器未找到可用选项，尝试下一个")
+
+                except Exception as e:
+                    self.logger.debug(f"{selector_type} 选择器失败: {e}")
+                    continue
+
+            # 所有选择器都失败
+            raise Exception(f"所有选择器都失败，未找到可用的选项: {option_text}")
+
+        except Exception as e:
+            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
+            raise
+
+    def click_option(self, resource_name: str, option_text: str, t_type="operation"):
+        """
+        公共方法：点击指定资源行的操作选项
+
+        Args:
+            resource_name: 资源名称
+            option_text: 菜单选项文本（如"登录"、"删除"等）
+        """
+        try:
+            # 点击指定行资源的操作按钮
+            operation_btn=self.get_row_by_name(resource_name, t_type)
+            operation_btn.get_by_text(option_text, exact=True).click()
+            self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
+        except Exception as e:
+            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
+            raise e
+
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
-        self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
-        self.page.wait_for_selector(".el-loading-spinner", state='hidden')
+        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
+        # self.page.wait_for_selector(".el-loading-spinner", state='hidden')
+        # 等待所有 .el-loading-spinner 元素隐藏
+        loading_spinners = self.page.locator(".el-loading-spinner")
+        count = loading_spinners.count()
+        if count > 0:
+            for i in range(count):
+                loading_spinners.nth(i).wait_for(state='hidden')
+
+    def wait_for_source_complete(self, name, timeout=180):
+        """等待资源状态加载完成
+
+        Args:
+            name: 资源名称
+            timeout: 超时时间（秒）
+        """
+        timeout_ms = timeout * 1000
+        target_row = self.get_row_by_name(name)
+        # 在该行内定位 .cloud-icon-content 元素
+        loading_icon = target_row.locator(".icon-dengdaizhong")
+        try:
+            # 等待 loading_icon 可见（10秒超时）
+            loading_icon.wait_for(state="visible", timeout=10000)
+            text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
+            # 如果到达这里，说明 loading_icon 出现了，等待其消失
+            expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
+            self.logger.info(f"{name}资源中间态 {text} 出现并消失")
+        except:
+            # loading_icon 未出现或消失超时，静默处理（这是正常情况）
+            self.logger.info(f"{name}资源中间态完成，当前无任务状态")
+
+        # 等待该元素不可见
+        expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
 
     def wait_for_operation_complete(self, timeout=30):
         """等待操作完成
@@ -690,17 +834,44 @@ class BasePage(Playwright):
             rows = []
         return rows
 
-    def get_row_by_name(self, name: str) -> Locator:
-        """公共方法：根据名称查找数据行，用于获取单个或第一个匹配的行（前缀匹配优先）"""
+    def get_row_by_name(self, name: str, t_type: str = "body") -> Locator:
+        """公共方法:根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
+        if t_type == "body":
+            t_body = self.locator(".el-table__body-wrapper")
+        elif t_type == "name":
+            t_body = self.locator(".el-table__fixed")
+        elif t_type == "operation":
+            t_body = self.locator(".el-table__fixed-right")
+        else:
+            raise ValueError(f"不支持的表格类型: {t_type}")
         try:
-            target_row = self.get_by_role("row", name=re.compile(rf"^{re.escape(name)}\s"))
-            if target_row.count() > 0:
-                return target_row
+            # 模式1: 名称后跟空白字符
+            pattern = re.compile(rf"^{re.escape(name)}\s")
+            target_rows = t_body.locator("tr").filter(has_text=pattern)
+            if target_rows.count() > 0:
+                self.logger.debug(f"找到精确匹配 {name} 的数据行(空白字符)")
+                return target_rows.first
+
+            # 模式2: 名称后跟冒号和ID
+            pattern2 = re.compile(rf"^{re.escape(name)}:\w+")
+            target_rows = t_body.locator("tr").filter(has_text=pattern2)
+            if target_rows.count() > 0:
+                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(冒号)")
+                return target_rows.first
+
+            # 模式3: 名称后跟斜杠和ID
+            pattern3 = re.compile(rf"^{re.escape(name)}/\w+")
+            target_rows = t_body.locator("tr").filter(has_text=pattern3)
+            if target_rows.count() > 0:
+                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(斜杠)")
+                return target_rows.first
+
         except Exception as e:
-            self.logger.info(f"前缀匹配失败: {e}")
-        # 如果前缀匹配失败，尝试精确匹配
+            self.logger.debug(f"正则匹配失败: {e}")
+
+        # 如果正则匹配失败,尝试精确匹配a
         try:
-            target_rows = self.locator("tr")
+            target_rows = t_body.locator("tr")
             for i in range(target_rows.count()):
                 current_row = target_rows.nth(i)
                 try:
@@ -708,14 +879,33 @@ class BasePage(Playwright):
                     cells = current_row.locator("td")
                     for j in range(cells.count()):
                         cell_text = cells.nth(j).text_content()
-                        if cell_text and cell_text.strip() == name:
-                            self.logger.info(f"通过遍历找到 '{name}' 的匹配行")
-                            return current_row
+                        if cell_text:
+                            # 第一阶段: 精确匹配
+                            if cell_text.strip() == name:
+                                self.logger.info(f"通过遍历找到 '{name}' 的精确匹配行")
+                                return current_row
+                except Exception as e:
+                    self.logger.debug(f"检查行 {i} 时出错: {e}")
+                    continue
+            # 第二阶段: 如果精确匹配未找到,尝试前缀匹配
+            for i in range(target_rows.count()):
+                current_row = target_rows.nth(i)
+                try:
+                    # 获取所有单元格并检查内容
+                    cells = current_row.locator("td")
+                    for j in range(cells.count()):
+                        cell_text = cells.nth(j).text_content()
+                        if cell_text:
+                            # 前缀匹配: 检查是否以 name 开头
+                            if cell_text.strip().startswith(name):
+                                self.logger.info(f"通过遍历找到 '{name}' 的前缀匹配行(单元格: {cell_text.strip()})")
+                                return current_row
                 except Exception as e:
                     self.logger.debug(f"检查行 {i} 时出错: {e}")
                     continue
         except Exception as e:
-            self.logger.debug(f"遍历表格行失败: {e}")
+            self.logger.info(f"遍历表格行失败: {e}")
+
         # 所有方法都失败
         raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
@@ -732,7 +922,8 @@ class BasePage(Playwright):
     def _get_cell_contents(self, target_row):
         """公共方法：获取单元格内容并进行清洗"""
         cells = target_row.get_by_role("cell").all()
-        cell_contents = [cell.inner_text() for cell in cells]
+        # cell_contents = [cell.inner_text() for cell in cells]
+        cell_contents = [cell.text_content() for cell in cells[:-1]]
         cell_contents = [re.sub(r'\s+', ' ', item).strip() for item in cell_contents]
         self.logger.info(f"页面数据行信息: {cell_contents}, 共{len(cell_contents)}个")
         return cell_contents
@@ -794,6 +985,7 @@ class BasePage(Playwright):
 
         # 获取所有数据行
         all_rows = self.table_rows
+        self.logger.info(f"获取到的数据行{all_rows}")
 
         # 提取列数据
         column_data = []
@@ -801,7 +993,7 @@ class BasePage(Playwright):
             try:
                 cells = row.get_by_role("cell").all()
                 if len(cells) > header_index:
-                    cell_content = cells[header_index].inner_text()
+                    cell_content = cells[header_index].text_content()
                     # 清洗数据，处理HTML中的空白字符、换行符等
                     cleaned_content = re.sub(r'\s+', ' ', cell_content).strip()
                     if cleaned_content:  # 只添加非空内容
@@ -822,7 +1014,7 @@ class BasePage(Playwright):
 
         # 选择指定的行
         for name in names:
-            loc = self.get_by_role("row", name=name).locator("label span").nth(1)
+            loc = self.get_by_role("row", name=name).locator("label span").last # 存在挂载云盘的虚机nth(1)方法不能勾选
             if not loc.is_checked():
                 loc.click()
                 self.logger.info(f"勾选资源 '{name}'")
@@ -862,3 +1054,34 @@ class BasePage(Playwright):
         timeout = timeout * 1000
         expect(target_row).to_contain_text(expected_data, timeout=timeout)
         self.logger.info(f"行 '{name}' 包含期望数据 '{expected_data}'")
+
+
+    def set_table_header(self, names, enable=True):
+        """设置表头列
+
+        Args:
+            names: 列名称
+            enable: 是否展示，默认为True
+        """
+        if isinstance(names, str):
+            names = [names]
+        self.locator(".el-icon-setting").click()
+        for name in names:
+            locs = [
+                self.get_by_label("checkbox-group").get_by_text(name, exact=True),
+                self.get_by_label("checkbox-group").locator("div").filter(has_text=re.compile(fr"^{name}$")),
+                self.get_by_label("设置表头").get_by_text(name, exact=True),
+                self.get_by_text(name, exact=True),
+            ]
+            loc = self._find_element(locs, f"checkbox{name}")
+            if enable and not loc.is_checked():
+                loc.click()
+            elif not enable and loc.is_checked():
+                loc.click()
+        try:
+            self.dialog_confirm.click()
+        except:
+            self.locator(".el-icon-setting").click() # 收起下拉
+
+        self.wait_for_page_ready()
+        self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
