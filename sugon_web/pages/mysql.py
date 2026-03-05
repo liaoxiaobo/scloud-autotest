@@ -265,6 +265,7 @@ class MySQLPage(BasePage):
         sleep(3)
         self.wait_for_page_ready()
         self.btn_create.click()
+        sleep(3)
         dialog = self.get_by_label("新建数据库")
         dialog.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(db_name)
         dialog.get_by_text("确定").click()

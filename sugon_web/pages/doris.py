@@ -419,14 +419,14 @@ class DorisPage(BasePage):
         :param catalog: 数据目录（默认为internal）
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="数据库").click()
-        self.wait_for_page_ready()
+        sleep(3)
         self.locator(".el-icon-plus").click()
 
         dialog = self.get_by_label("新建数据库")
         # 选择catalog
+        sleep(3)
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=catalog).click()
         # 输入数据库名称
