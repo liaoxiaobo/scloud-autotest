@@ -420,6 +420,7 @@ class DorisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库").click()
         self.wait_for_page_ready()
         self.locator(".el-icon-plus").click()
@@ -442,6 +443,7 @@ class DorisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(3)
         self.wait_for_page_ready()
