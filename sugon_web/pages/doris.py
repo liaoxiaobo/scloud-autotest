@@ -419,13 +419,14 @@ class DorisPage(BasePage):
         :param catalog: 数据目录（默认为internal）
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库").click()
-        self.wait_for_page_ready()
+        sleep(3)
         self.locator(".el-icon-plus").click()
 
         dialog = self.get_by_label("新建数据库")
         # 选择catalog
+        sleep(3)
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=catalog).click()
         # 输入数据库名称
@@ -442,6 +443,7 @@ class DorisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(3)
         self.wait_for_page_ready()
@@ -552,7 +554,7 @@ class DorisPage(BasePage):
         self.get_by_role("tab", name="用户").click()
         sleep(2)
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "授权")
+        self.click_option(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
         sleep(2)
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
@@ -572,7 +574,7 @@ class DorisPage(BasePage):
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "解除授权")
+        self.click_option(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=db_name).click()
