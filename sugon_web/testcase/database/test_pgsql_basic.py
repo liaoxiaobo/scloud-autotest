@@ -154,7 +154,7 @@ class TestPgSQLBasic:
             pgsql_page.change_user_privileges(instance_name, user_name, new_password)
 
         with allure_step_log("步骤二：验证修改结果"):
-            pgsql_page.assert_popup_success("修改用户成功")
+            pgsql_page.assert_popup_success("更新用户成功")
             pgsql["user_password"] = new_password
 
     @allure.title("PostgreSQL-批量删除用户")
