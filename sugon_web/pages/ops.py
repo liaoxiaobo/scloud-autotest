@@ -15,8 +15,9 @@ class OpsPage(BasePage):
         self.get_by_title(project).click()
         self.page.wait_for_load_state("networkidle")  # 解决下拉列表数据加载未完成导致的定位元素冲突问题
         self.get_by_placeholder("请选择网络").click()
+        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
         self.page.wait_for_load_state("domcontentloaded")
-        self.page.wait_for_timeout(1000)  # 等待下拉列表数据加载完成
+        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
         self.get_by_placeholder("请选择网络").fill(network)
         self.get_by_text(network, exact=exact).click()
         self.get_by_placeholder("请选择端口").click()
