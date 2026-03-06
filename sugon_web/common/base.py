@@ -87,8 +87,13 @@ class BasePage(Playwright):
 
     @property
     def popup(self) -> Locator:
-        """公共元素:页面弹窗"""
+        """公共元素:页面顶部弹窗"""
         return self.locator(".el-message__content")
+
+    @property
+    def alert(self) -> Locator:
+        """公共元素:页面右下角弹窗"""
+        return self.get_by_role("alert")
 
     def _find_element(self, locators, element_name="元素", timeout=1000, check_visible=True, check_enabled=False):
         """

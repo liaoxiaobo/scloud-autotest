@@ -16,6 +16,29 @@ class TestVPCBasic:
     def test_vpc_create_delete(self, vpc_page, params, ssh_host):
         """测试创建和删除各种类型的虚拟私有云（数据驱动，覆盖字符类型和长度边界值）"""
 
+        # ========== 新增判断逻辑 ==========
+        # 如果 network_type 是 Flat，检查是否已存在 Flat 类型的 VPC
+        if params['network_type'] == 'Flat':
+            logger.info(f"检测到 network_type 为 Flat，正在检查是否已存在 Flat 类型的 VPC...")
+
+            # ✨ 先设置每页显示 100 条，确保能看到所有数据
+            logger.info("设置每页显示 100 条数据")
+            vpc_page.locator("#cloud-container-content").get_by_placeholder("请选择").click()
+            vpc_page.get_by_text("100条/页").click()
+            vpc_page.wait_for_page_ready()  # 等待页面刷新完成
+
+            # 获取"网络类型"列的所有数据
+            network_types = vpc_page.get_column_data('网络类型')
+            logger.info(f"当前网络类型列表: {network_types}")
+
+            # 判断是否包含 flat 字符串（不区分大小写）
+            if any('flat' in nt.lower() for nt in network_types):
+                logger.warning(f"已存在 Flat 类型的 VPC，跳过测试用例")
+                pytest.skip(f"已存在 Flat 类型的 VPC，跳过测试用例")
+            else:
+                logger.info(f"未发现 Flat 类型的 VPC，继续执行测试用例")
+        # ================================
+
         vpc_name = random_data()
         cidr = random_data("cidr")
 
@@ -676,6 +699,109 @@ class TestVPCNetwork:
             ssh_vm.connect(vm2_mfip)
 
             ssh_vm.ping(vm1_ip)
+            logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
+
+        # 步骤5: 清理测试数据
+        with allure_step_log("步骤5: 清理测试数据"):
+            # 手动清理两台虚机
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove([vm1_name, vm2_name])
+            ecs_page.ecs_delete([vm1_name, vm2_name])
+            ecs_page.assert_deleted([vm1_name, vm2_name])
+            logger.info(f"已手动清理虚机: {vm1_name}, {vm2_name}")
+
+
+    @allure.title("双栈网络-同子网的两台虚机互通验证")
+    @pytest.mark.parametrize("vpc", [{
+        "network_type": "Geneve",
+        "enable_ipv6": True
+    }], indirect=True)
+    def test_dual_stack_two_vms_ping(self, vpc, ecs_page, ssh_vm):
+        """
+        测试Flat网络内两台虚拟机通过内网IP互相ping通
+        """
+
+        # vpc fixture 返回的是字典，包含VPC信息
+        vpc_name = vpc['name']
+        vpc_subnet_name = vpc['subnet_name']
+        vpc_network_type = vpc['network_type']
+
+        logger.info(f"Vlan VPC: {vpc_name}, 子网: {vpc_subnet_name}, 网络类型: {vpc_network_type}")
+
+        # 步骤1: 在Vlan VPC的子网中一次性创建两台虚机（count=2）
+        with allure_step_log("步骤1: 在Vlan VPC的子网中创建两台虚机"):
+            vm_base_name = f"{vpc_name}-vm"
+
+            # 一次性创建两台虚机，使用count=2
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_create(
+                name=vm_base_name,
+                count=2,  # 创建2台虚机
+                network=vpc_name,  # 使用Flat VPC
+                subnet=vpc_subnet_name,  # 使用VPC的子网
+                enable_ipv6=True
+            )
+            ecs_page.assert_popup_success("创建实例命令下发成功")
+
+            # 多台虚机时，名称会自动添加序号后缀
+            vm1_name = f"{vm_base_name}-0"
+            vm2_name = f"{vm_base_name}-1"
+
+            # 等待两台虚机创建完成
+            ecs_page.assert_status([vm1_name, vm2_name])
+
+            # 先获取两台虚机的内网IP和项目信息
+            vm1_data = ecs_page.get_row_data(vm1_name)
+            vm1_ip = vm1_data['IP地址'].split("固定: ")[-1].strip()
+            vm1_ipv6 = vm1_data['IP地址'].split("固定: ")[-2].strip()
+            vm1_project = vm1_data['项目名称']
+
+            vm2_data = ecs_page.get_row_data(vm2_name)
+            vm2_ip = vm2_data['IP地址'].split("固定: ")[-1].strip()
+            vm2_ipv6 = vm2_data['IP地址'].split("固定: ")[-2].strip()
+            vm2_project = vm2_data['项目名称']
+
+            logger.info(f"虚机1: {vm1_name}, 内网IP: {vm1_ip}, 项目: {vm1_project}")
+            logger.info(f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, 项目: {vm2_project}")
+
+        # 步骤2: 一起为两台虚机绑定Mfip
+        with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
+            ecs_page.goto_service("网络设施")
+
+            # 绑定第一台虚机的Mfip
+            ecs_page.mfip_create(vm1_project, vpc_name, vm1_ip, exact=False)
+            ecs_page.assert_popup_success()
+
+            # 绑定第二台虚机的Mfip
+            ecs_page.mfip_create(vm2_project, vpc_name, vm2_ip, exact=False)
+            ecs_page.assert_popup_success()
+
+            # 搜索并获取两台虚机的Mfip地址
+            ecs_page.mfip_search(vm1_ip)
+            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+
+            ecs_page.mfip_search(vm2_ip)
+            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+
+            logger.info(f"虚机1 Mfip: {vm1_mfip}")
+            logger.info(f"虚机2 Mfip: {vm2_mfip}")
+
+        # 步骤3: 第一台虚机ping第二台虚机（同子网）
+        with allure_step_log("步骤3: 第一台虚机ping第二台虚机（同子网）"):
+            # 通过第一台虚机的mfip连接，并ping第二台虚机的内网IP
+            ssh_vm.connect(vm1_mfip)
+
+            ssh_vm.ping(vm2_ip)
+            ssh_vm.ping(vm2_ipv6, ipv6=True)
+            logger.info(f"✓ {vm1_name} ping {vm2_ip} 成功")
+
+        # 步骤4: 第二台虚机ping第一台虚机（同子网）
+        with allure_step_log("步骤4: 第二台虚机ping第一台虚机（同子网）"):
+            # 通过第二台虚机的mfip连接，并ping第一台虚机的内网IP
+            ssh_vm.connect(vm2_mfip)
+
+            ssh_vm.ping(vm1_ip)
+            ssh_vm.ping(vm1_ipv6, ipv6=True)
             logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
 
         # 步骤5: 清理测试数据
