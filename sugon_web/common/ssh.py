@@ -109,7 +109,7 @@ class SSH:
         """
         try:
             # 使用 run 方法执行简单命令来测试连接
-            output = self.run('hostname')
+            output = self.run('hostname', timeout=15)
             return bool(output)
         except (SSHException, EOFError):
             return False
