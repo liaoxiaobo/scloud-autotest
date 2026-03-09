@@ -216,35 +216,6 @@ class TestECSBasic:
             md5_new = ssh_vm.run(f"md5sum /home/{name}-1")
             assert md5_new.find("No such file or directory"), f"重建后系统盘数据MD5仍然存在，重建后数据:{md5_new}"
 
-    @allure.title("验证加载/卸载网卡功能")
-    @pytest.mark.parametrize("network_info", load_data('test_ecs_network', "test_ecs.yaml"))
-    def test_ecs_network(self, ecs_page, vm, ssh_vm, network_info):
-        name = vm.get("name")
-        net = network_info.get("net")
-        subnet = network_info.get("subnet")
-        mode = network_info.get("mode")
-        ipv4 = network_info.get("ipv4")
-        ecs_page.goto_service('弹性云服务器')
-
-        with allure_step_log(f"步骤1: {name}加载网卡: 网络{net}，子网{subnet}"):
-            checked_subnet =  ecs_page.ecs_load_network(name, net, subnet, mode, ipv4)
-
-        with allure_step_log("步骤2: 验证加载网卡结果"):
-            ecs_page.assert_popup_success(f"{name}实例，连接{subnet}子网成功", timeout=30)
-            ips = ecs_page.get_row_data(name).get("IP地址").split(':')
-            ip = [item.strip() for item in ips if re.search(fr'{checked_subnet}.\d', item)][0].split(' ')[0].strip()
-            ssh_vm.connect(vm['mfip'])
-            ssh_vm.ping(ip)
-
-        with allure_step_log(f"步骤3: {name}卸载网卡:{ip}"):
-            ecs_page.ecs_uninstall_network(name, ip)
-
-        with allure_step_log("步骤4: 验证加载网卡结果"):
-            ecs_page.assert_popup_success(f"断开网络成功", timeout=60)
-            ecs_page.assert_ecs_info(name, "IP地址", "")
-            ssh_vm.connect(vm['mfip'])
-            ssh_vm.ping(ip, connected=False)
-
     @allure.title("验证绑定/解绑公网IP功能")
     def test_ecs_pub_ip(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
@@ -370,7 +341,7 @@ class TestECSBasic:
             f"主机名未变更，修改后期望主机名:{hostname},实际主机名:{ssh_vm.run('hostname')}"
 
     @allure.title("验证修改VNC显卡类型功能")
-    @pytest.mark.parametrize("vnc_type", ["VGA", "QXL", "Virtio", "None"])
+    @pytest.mark.parametrize("vnc_type", ["VGA", "QXL", "None", "Virtio"])
     def test_ecs_modify_vnc_type(self, ecs_page, vm, ssh_vm, ssh_host, vnc_type):
         """测试修改云服务器的VNC显卡类型功能"""
         name = vm.get("name")
@@ -912,3 +883,35 @@ class TestECSBasic:
                 for agent_type, agent_version in conf.items():
                     except_agent_version[f"{agent_type}版本"] = agent_version
             ecs_page.assert_ecs_details_info(names, info_items=except_agent_version)
+
+    @allure.title("验证加载/卸载网卡功能")
+    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": True}], indirect=True)
+    @pytest.mark.parametrize("network_info", load_data('test_ecs_network', "test_ecs.yaml"))
+    def test_ecs_network(self, ecs_page, vm, ssh_vm, network_info):
+        name = vm.get("name")
+        net = network_info.get("net")
+        subnet = network_info.get("subnet")
+        mode = network_info.get("mode")
+        ipv4 = network_info.get("ipv4")
+        ecs_page.goto_service('弹性云服务器')
+
+        with allure_step_log(f"步骤1: {name}加载网卡: 网络{net}，子网{subnet}"):
+            checked_subnet =  ecs_page.ecs_load_network(name, net, subnet, mode, ipv4)
+
+        with allure_step_log("步骤2: 验证加载网卡结果"):
+            ecs_page.assert_popup_success(f"{name}实例，连接{subnet}子网成功", timeout=30)
+            ips = ecs_page.get_row_data(name).get("IP地址").split(':')
+            ip = [item.strip() for item in ips if re.search(fr'{checked_subnet}.\d', item)][0].split(' ')[0].strip()
+            time.sleep(10)
+            ssh_vm.connect(vm['mfip'])
+            ssh_vm.ping(ip)
+
+        with allure_step_log(f"步骤3: {name}卸载网卡:{ip}"):
+            ecs_page.ecs_uninstall_network(name, ip)
+
+        with allure_step_log("步骤4: 验证加载网卡结果"):
+            ecs_page.assert_popup_success(f"断开网络成功", timeout=60)
+            ecs_page.assert_ecs_info(name, "IP地址", "")
+            time.sleep(10)
+            ssh_vm.connect(vm['mfip'])
+            ssh_vm.ping(ip, connected=False)

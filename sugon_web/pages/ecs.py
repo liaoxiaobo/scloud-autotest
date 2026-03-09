@@ -2426,69 +2426,19 @@ class EcsPage(OpsPage):
         vm_names = self.get_column_data("名称/ID")
         vm_names = [vm_name.split(" ")[0] for vm_name in vm_names if vm_name.startswith(name)]
 
-        loc = self.locator(".cloud-drawer-body .table-main .el-table__header-wrapper .el-checkbox").first
+        # 限定在 dialog/drawer 内
+        loc = self.get_by_role("dialog").locator(".el-table__header-wrapper:not(.el-table__fixed-header-wrapper) .el-checkbox").first
         try:
             loc.click()
             logger.info(f"勾选: {loc}")
         except Exception as e:
-            # 因1230版本设置复选框loc的属性 element is not visible，此处新增且使用强制点击方法
-            logger.warning(f"勾选复选框失败: {e}")
-            self.force_click_element(loc)
+            logger.warning(f"勾选复选框失败")
+            loc.evaluate("element => element.click()")
+            logger.info(f"element.click强制勾选: {loc}")
 
         self.dialog_confirm.click()
         logger.info(f"快照策略: {policy} 绑定云服务器: {vm_names}")
         return vm_names
-
-    def force_click_element(self, locator):
-        """强制点击元素,即使元素不可见
-
-        通过JavaScript修改元素的样式属性,使其可见后再点击
-
-        Args:
-            locator: Playwright Locator对象
-        """
-        try:
-            # 方法1: 先尝试等待元素可见
-            locator.wait_for(state="visible", timeout=5000)
-            locator.click()
-        except Exception as e:
-            self.logger.warning(f"元素不可见,尝试使用JavaScript强制点击")
-
-            try:
-                # 方法2: 使用JavaScript强制点击(不要求元素可见)
-                locator.evaluate("element => element.click()")
-                self.logger.info("通过JavaScript成功强制点击元素")
-            except Exception as e2:
-                self.logger.warning(f"JavaScript点击失败,尝试修改元素样式: {e2}")
-
-                try:
-                    # 方法3: 修改元素样式使其可见
-                    locator.evaluate("""
-                        element => {
-                            element.style.visibility = 'visible';
-                            element.style.display = 'block';
-                            element.style.opacity = '1';
-                            // 如果父元素隐藏,也尝试显示父元素
-                            let parent = element.parentElement;
-                            while (parent) {
-                                if (parent.style.display === 'none') {
-                                    parent.style.display = 'block';
-                                }
-                                parent = parent.parentElement;
-                            }
-                        }
-                    """)
-
-                    # 等待短暂时间让样式生效
-                    time.sleep(0.5)
-
-                    # 再次尝试点击
-                    locator.click()
-                    self.logger.info("通过修改样式成功点击元素")
-
-                except Exception as e3:
-                    self.logger.error(f"所有方法都失败: {e3}")
-                    raise Exception(f"无法点击元素: {e3}")
 
     @submenu("快照策略")
     def ecss_unbind_snapshot_policy(self, vm_name: str, policy: str, vm_type: str = "弹性云服务器"):
