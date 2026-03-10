@@ -1,5 +1,6 @@
 from time import sleep
 import allure
+import pytest
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
@@ -9,6 +10,48 @@ from sugon_web.utils import db_util
 @allure.epic('数据库服务')
 @allure.feature('AnhanDB(for PostgreSQL)')
 class TestPgSQLBasic:
+
+    @allure.title("PostgreSQL-实例升级测试")
+    def test_upgrade_instance(self, pgsql_page, pgsql, ssh_host):
+        """测试PostgreSQL实例从单机升级到高可用，再升级到集群"""
+        instance_name = pgsql["name"]
+
+        # --- 第一阶段：单机 -> 高可用 ---
+        with allure_step_log("步骤一：执行升级操作（单机 -> 高可用）"):
+            pgsql_page.upgrade_instance(instance_name, target_type="高可用")
+            sleep(3)
+            pgsql_page.assert_popup_success("升级")
+
+        with allure_step_log("步骤二：验证升级过程及结果（单机 -> 高可用）"):
+            # 验证状态变为升级中
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            # 验证最终状态变为运行中
+            pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
+            # 验证节点状态变为运行中
+            pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
+            sleep(3)
+            pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=600)
+            # 后端验证：检查新节点是否已创建
+            db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-1")
+
+        # --- 第二阶段：高可用 -> 集群 ---
+        with allure_step_log("步骤三：执行升级操作（高可用 -> 集群）"):
+            pgsql_page.upgrade_instance(instance_name, target_type="集群")
+            sleep(3)
+            pgsql_page.assert_popup_success("升级")
+
+        with allure_step_log("步骤四：验证升级过程及结果（高可用 -> 集群）"):
+            # 验证状态变为升级中
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            # 验证最终状态变为运行中
+            pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
+            # 验证节点状态变为运行中
+            pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
+            sleep(3)
+            pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=600)
+
+            # 后端验证：检查新节点是否已创建
+            db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-2")
 
     @allure.title("PostgreSQL-重命名实例")
     def test_rename_instance(self, pgsql_page, pgsql):
@@ -39,7 +82,7 @@ class TestPgSQLBasic:
         with allure_step_log("步骤一：修改管理员密码"):
             pgsql_page.change_root_password(instance_name, new_password)
         with allure_step_log("步骤二：验证修改密码结果"):
-            pgsql_page.assert_popup_success("执行成功")
+            pgsql_page.assert_popup_success("执行成功", timeout=10)
             pgsql_page.assert_status(instance_name, status="运行中", timeout=300)
 
         with allure_step_log("步骤三：验证新密码生效"):
@@ -232,3 +275,65 @@ class TestPgSQLBasic:
 
         with allure_step_log("步骤二：验证修改结果"):
             pgsql_page.assert_popup_success("修改实例参数成功")
+
+    @allure.title("PostgreSQL-实例管理列表页搜索")
+    def test_instance_search(self, pgsql_page, pgsql):
+        """测试实例管理列表页的搜索功能"""
+        instance_name = pgsql["name"]
+
+        with allure_step_log("步骤一：输入实例名称进行搜索"):
+            pgsql_page.goto_submenu("实例管理")
+            keyword = instance_name[:-2]
+            pgsql_page.search(keyword)
+            pgsql_page.assert_list_contain(keyword, exact_match=False)
+
+        with allure_step_log("步骤二：重置搜索条件"):
+            pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            pgsql_page.wait_for_page_ready()
+            # 断言搜索输入框已清空
+            assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("PostgreSQL-用户列表页搜索")
+    def test_user_search(self, pgsql_page, pgsql):
+        """测试用户列表页的搜索功能"""
+        instance_name = pgsql["name"]
+        user_name = pgsql["user_name"]
+
+        with allure_step_log("步骤一：输入用户名称进行搜索"):
+            pgsql_page.goto_submenu("实例管理")
+            pgsql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+            pgsql_page.wait_for_page_ready()
+            pgsql_page.get_by_role("tab", name="用户").click()
+            pgsql_page.wait_for_page_ready()
+            keyword = user_name[:-2]
+            pgsql_page.search(keyword)
+            pgsql_page.assert_list_contain(keyword, "用户名", exact_match=False)
+
+        with allure_step_log("步骤二：重置搜索条件"):
+            pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            pgsql_page.wait_for_page_ready()
+            # 断言搜索输入框已清空
+            assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("PostgreSQL-实例参数设置页搜索")
+    def test_instance_parameter_search(self, pgsql_page, pgsql):
+        """测试实例参数设置页的搜索功能"""
+        instance_name = pgsql["name"]
+        param_keyword = "archive"
+
+        with allure_step_log("步骤一：输入参数名称进行搜索"):
+            pgsql_page.goto_submenu("实例管理")
+            pgsql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+            pgsql_page.wait_for_page_ready()
+            sleep(2)
+            pgsql_page.get_by_role("tab", name="参数设置").click()
+            sleep(2)
+            pgsql_page.wait_for_page_ready()
+            pgsql_page.search(param_keyword)
+            pgsql_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
+
+        with allure_step_log("步骤二：重置搜索条件"):
+            pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            pgsql_page.wait_for_page_ready()
+            # 断言搜索输入框已清空
+            assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"

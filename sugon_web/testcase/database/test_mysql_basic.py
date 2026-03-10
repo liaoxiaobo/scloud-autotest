@@ -172,7 +172,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证数据库是否创建成功"):
             # The popup is already asserted, now check the list
-            mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+            mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面", timeout=10000)
             mysql_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤三：验证新创建的数据库在后端生效"):
@@ -208,7 +208,7 @@ class TestMySQLBasic:
         with allure_step_log(f"步骤一：在实例 {instance_name} 下批量创建数据库"):
             for db_name in db_names:
                 mysql_page.create_database(instance_name, db_name)
-                mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+                mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面", timeout=10000)
                 mysql_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤二：新创建的数据库均在后端生效"):
