@@ -2,6 +2,7 @@ import ipaddress
 import random
 import pytest
 import allure
+from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.util import random_data, load_data
 
@@ -113,6 +114,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤4: 验证VPC已删除"):
             vpc_page.assert_deleted(vpc_name)
+            expect(vpc_page.alert).to_have_count(0, timeout=10000)  # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
             # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
             logger.info(f"✓ 双栈VPC {vpc_name} 删除成功")
 
