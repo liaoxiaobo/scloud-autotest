@@ -1,5 +1,4 @@
 import allure
-from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, skip_stor
 

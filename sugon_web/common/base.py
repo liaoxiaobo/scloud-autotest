@@ -323,6 +323,17 @@ class BasePage(Playwright):
         # except Exception as e:
         #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
+        # 处理默认收起的菜单
+        menu_left = self.locator("#cloud-menu-left")
+        parent_nodes = menu_left.locator(".one-tree-parent-node")
+        count = parent_nodes.count()
+
+        for i in range(count):
+            parent = parent_nodes.nth(i)
+            # 检查是否已展开（有 one-tree-expand 类表示已展开）
+            is_expanded = parent.evaluate("el => el.classList.contains('one-tree-expand')")
+            if not is_expanded:
+                parent.click()
         # 根据子菜单参数导航到对应页面
         self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
         self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
@@ -967,35 +978,109 @@ class BasePage(Playwright):
         self.logger.info(f"处理后的数据: {result}")
         return result
 
-    def get_column_data(self, header_name: str):
-        """根据表头名称获取该列的所有数据"""
-        self.logger.info(f"获取列数据: {header_name}")
+    def get_column_data(self, header_name: str, deduplicate: bool = True, context: str = "auto"):
+        """根据表头名称获取该列的所有数据
+            Args:
+                header_name: 表头名称
+                deduplicate: 是否处理合并单元格的重复值
+                context: "auto" | "dialog" | "main" | "active-tab"
+                    - auto: 自动判断
+                    - dialog: 优先查找弹窗内的表格
+                    - main: 只查找主页面表格
+                    - active-tab: 只查找当前激活的tab页内的表格
+        """
+        # 根据上下文缩小搜索范围
+        if context == "dialog":
+            # 优先查找弹窗内的表格
+            dialog = self.get_by_role("dialog").filter(has=self.page.locator(".el-table"))
+            if dialog.count() > 0 and dialog.is_visible():
+                search_root = dialog.first
+            else:
+                search_root = self
+        elif context == "active-tab":
+            # 查找当前激活的tab页
+            active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])")
+            if active_tab.count() > 0:
+                search_root = active_tab.first
+            else:
+                search_root = self
+        elif context == "auto":
+            try:
+                dialog = self.locator(".el-tab-pane:not([aria-hidden='true'])")
+                search_root = dialog.first
+            except Exception as e:
+                try:
+                    active_tab = self.get_by_role("dialog").filter(has=self.page.locator(".el-table"))
+                    search_root = active_tab.first
+                except Exception as e:
+                    search_root = self
+        else:
+            search_root = self
+        a = search_root
+        table_wrappers = search_root.locator(".el-table").all()
+        # 获取所有表格包装器，过滤出可见的
+        visible_table = None
+        target_header_index = None
 
-        # 获取表头信息
-        headers = self.table_headers
+        for table in table_wrappers:
+            try:
+                # 检查表格是否可见且有数据
+                if not table.is_visible():
+                    continue
 
-        # 检查目标表头是否存在
-        if header_name not in headers:
-            self.logger.warning(f"表头 '{header_name}' 不存在")
-            return []
+                # 获取该表格的表头
+                header_wrapper = table.locator(".el-table__header-wrapper")
+                if header_wrapper.count() == 0:
+                    continue
 
-        # 获取目标表头的列索引
-        header_index = headers.index(header_name)
-        self.logger.info(f"表头 '{header_name}' 的索引位置: {header_index}")
+                headers = header_wrapper.locator("th").all_text_contents()
 
-        # 获取所有数据行
-        all_rows = self.table_rows
-        self.logger.info(f"获取到的数据行{all_rows}")
+                # 检查是否包含目标表头
+                if header_name in headers:
+                    visible_table = table
+                    target_header_index = headers.index(header_name)
+                    self.logger.info(f"找到包含 '{header_name}' 的可见表格，表头: {headers}")
+                    break
+
+            except Exception as e:
+                self.logger.debug(f"检查表格时出错: {e}")
+                continue
+
+        # 如果没找到包含目标表头的可见表格，使用默认方式
+        if visible_table is None:
+            self.logger.info(f"未找到包含 '{header_name}' 的可见表格，使用默认方式")
+            headers = self.table_headers
+            if header_name not in headers:
+                self.logger.warning(f"表头 '{header_name}' 不存在")
+                return []
+            target_header_index = headers.index(header_name)
+            # 使用默认的 table_rows
+            all_rows = self.table_rows
+        else:
+            # 使用找到的表格的数据行
+            body_wrapper = visible_table.locator(".el-table__body-wrapper")
+            all_rows = body_wrapper.locator("tr").all()
+
+        self.logger.info(f"表头 '{header_name}' 的索引位置: {target_header_index}")
+        self.logger.info(f"获取到的数据行共{len(all_rows)}行")
 
         # 提取列数据
         column_data = []
         for i, row in enumerate(all_rows):
             try:
                 cells = row.get_by_role("cell").all()
-                if len(cells) > header_index:
-                    cell_content = cells[header_index].text_content()
+                if len(cells) > target_header_index:
+                    cell_content = cells[target_header_index].text_content()
                     # 清洗数据，处理HTML中的空白字符、换行符等
                     cleaned_content = re.sub(r'\s+', ' ', cell_content).strip()
+                    # 处理合并单元格导致的重复值
+                    if deduplicate and cleaned_content:
+                        parts = cleaned_content.split()
+                        # 如果所有部分都相同，只保留一个
+                        if len(set(parts)) == 1:
+                            cleaned_content = parts[0]
+                        else:
+                            cleaned_content = cleaned_content
                     if cleaned_content:  # 只添加非空内容
                         column_data.append(cleaned_content)
                         self.logger.debug(f"第{i + 1}行数据: {cleaned_content}")

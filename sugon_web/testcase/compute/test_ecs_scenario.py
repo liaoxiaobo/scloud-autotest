@@ -1,8 +1,6 @@
-import random
-import re
 import pytest
 import allure
-from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, skip_stor, skip_if_nodes_less_than
 
 

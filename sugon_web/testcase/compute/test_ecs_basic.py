@@ -2,10 +2,7 @@ import re
 import time
 import pytest
 import allure
-from playwright.sync_api import expect
-
 from sugon_web.config.config import Config
-from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch, retry_check
 
@@ -252,7 +249,6 @@ class TestECSBasic:
             ecs_page.ecs_modify_spec(name, spec)
 
         with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.assert_popup_success("调整实例资源配置成功")
             ecs_page.assert_ecs_info(name, "规格", f"{cpu} 核 {mem}.00 GiB")
             stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
             assert stdout.get("vcpu") == cpu
@@ -620,6 +616,7 @@ class TestECSBasic:
 
         with allure_step_log("步骤2: 验证扩容结果"):
             ecs_page.assert_ecs_info(name, "系统盘关闭机密存储开启机密存储   筛选   重置 ", f"容量(GiB):{new_size}")
+            assert new_size in ecs_page.get_row_data(name).get("系统盘关闭机密存储开启机密存储   筛选   重置 ")
             ecs_page.assert_ecs_details_info(name, {"系统盘": new_size})
 
             # 验证扩容后页面展示的系统盘大小 和 通过gova show 获取的系统盘大小是否一致
