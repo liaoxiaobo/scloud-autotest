@@ -72,6 +72,26 @@ class PgSQLPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("实例管理")
+    def upgrade_instance(self, name: str, target_type: str = None):
+        """
+        升级PostgreSQL实例
+        :param name: 实例名称
+        :param target_type: 目标实例类型（"高可用" 或 "集群"），如果为None则不进行选择操作直接提交（适用于默认选中的情况）
+        """
+        self.click_dropdown_option(name, "升级")
+        
+        if target_type:
+            # 尝试使用更通用的定位方式，避免依赖动态ID
+            # 优先尝试通过文本定位 label，然后点击
+            try:
+                self.page.locator("label").filter(has_text=target_type).click()
+            except:
+                # 如果失败，尝试直接点击包含该文本的元素
+                self.get_by_text(target_type, exact=True).click()
+
+        self.dialog_confirm.click()
+
+    @submenu("实例管理")
     def batch_delete_instances(self, names: list):
         """
         批量删除PostgreSQL实例

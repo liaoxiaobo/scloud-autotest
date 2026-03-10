@@ -260,8 +260,8 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
-        sleep(3)
-        self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(5)
+        self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(3)
         self.wait_for_page_ready()
         self.btn_create.click()
@@ -279,8 +279,8 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
-        sleep(3)
-        self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(5)
+        self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(5)
         self.wait_for_page_ready()
         self.locator("tr").filter(has_text=db_name).get_by_text("删除").last.click()
@@ -295,8 +295,8 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
-        sleep(3)
-        self.get_by_role("tab", name="数据库", exact=True).click()
+        sleep(5)
+        self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(5)
         self.wait_for_page_ready()
 

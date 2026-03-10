@@ -805,7 +805,7 @@ class BasePage(Playwright):
 
         headers = []
         # 使用更精确的定位器，只获取可见表头
-        header_wrapper = self.locator(".el-table__header-wrapper")  # 页面存在多个表格或弹窗表格，该定位器也会获取到重复表头
+        header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible")
 
         if header_wrapper.count() > 0:
             headers = header_wrapper.locator("th").all_text_contents()
@@ -825,7 +825,7 @@ class BasePage(Playwright):
     def table_rows(self)-> Locator:
         """获取表格中的数据行，返回行定位器列表"""
 
-        locator = self.locator(".el-table__body-wrapper tr")   # 解决tbody tr选择器可能会获取到重复表格的问题
+        locator = self.locator("#cloud-container-content .el-table__body-wrapper:visible tr")
         if locator.count() > 0:
             rows = locator.all()
             self.logger.info(f"成功获取表格行，共{len(rows)}行")

@@ -136,7 +136,7 @@ def mysql(mysql_page):
 def pgsql(pgsql_page):
     """创建一个供整个测试类使用的PostgreSQL实例对象"""
     name = f"pgsql-{random_data()}"
-    instance_type = "集群"
+    instance_type = "单机"
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
     data = {"name": name, "user_name": user_name, "user_password": user_password}

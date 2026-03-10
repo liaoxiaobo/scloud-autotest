@@ -702,7 +702,7 @@ class DorisPage(BasePage):
         self.wait_for_page_ready()
         # 选择BE节点类型
         self.get_by_placeholder("请选择节点类型").click()
-        self.get_by_text("BE节点").click()
+        self.page.locator("body > div.el-select-dropdown:visible li:has-text('BE节点')").click()
         sleep(2)
         # 定位到参数行并点击编辑图标
         self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
@@ -714,7 +714,12 @@ class DorisPage(BasePage):
         dialog.get_by_text("确定").click()
         # 应用更改
         self.get_by_text("应用", exact=True).click()
-        self.get_by_label("提示").get_by_text("确定").click()
+
+        # 尝试点击可能出现的确认对话框
+        try:
+            self.dialog_confirm.click()
+        except:
+            pass
 
     def assert_database_exist(self, db_name: str):
         """
