@@ -24,6 +24,13 @@ evs:
       CPU: "4"
       Mem: "32"
       desc: "修改为内存型4核32G"
+    - spec:
+      spec_type: True
+      classify: "计算型"
+      CPU: "1"
+      Mem: "1"
+      shutdown: True
+      desc: "修改为计算型1核1G"
   test_ecs_operations:
     - param:
       operation: "重启"

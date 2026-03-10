@@ -1,0 +1,79 @@
+ecs_create:
+  test_ecs_create_and_backup:
+  - basic:
+    storage:
+      "系统盘": 100
+      "数据盘":
+        -
+          "vol_type": "zbs-type"
+          "size": "50"
+          "count": "2"
+    network:
+    manage:
+    advanced:
+#  - basic:
+#    storage:
+#      镜像:
+#        来源: 空启动
+#    network:
+#    manage:
+#    advanced:
+#  - basic:
+#    storage:
+#      镜像:
+#        来源: ISO
+#        镜像名称: autotest-yjyrk
+#    network:
+#    manage:
+#    advanced:
+#  - basic:
+#      数量: 2
+#      物理机: controller03
+##      标签:
+##        - autotest
+#    storage:
+##      密钥: UUID
+##      镜像:
+##        来源: 快照
+##        镜像名称: autotest-w4lqz152121
+#    network:
+#    manage:
+#    advanced:
+#  -
+#    basic:
+#      数量: 2
+#      规格:
+#        自定义规格:
+#          "CPU": "4"
+#          "Mem": "8"
+#    storage:
+#    network:
+#    manage:
+#    advanced:
+#      affinity:
+#        - qhz-1
+#        - qhz-2
+#      acceleration: True
+#      priority: 高
+#      ceiling: 0.9
+#      hostname: autotest-12251013
+#      vnc_type: QXL
+#  -
+#    basic:
+#      数量: 1
+#    storage:
+#      "镜像":
+#        "image_source": "镜像"
+#        "os_version": "centos7.9"
+#      "系统盘": 25,
+#      "数据盘":
+#      -
+#        "vol_type": "ceph-type"
+#        "size": "20"
+#        "count": "1"
+#      -
+#        "vol_type": "usan-type"
+#        "size": "30"
+#        "count": "2"
+#    network:
+#    manage:

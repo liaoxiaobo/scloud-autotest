@@ -7,6 +7,7 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'KEY', defaultValue: '', description: '云服务模块、用例过滤关键字（如ecs、evs、vpc）')
+        string(name: 'MARK', defaultValue: '', description: '标签筛选用例（如smoke、not slow）')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
@@ -56,7 +57,10 @@ pipeline {
                     if (params.KEY) {
                         pytestCommand += " -k '${params.KEY}'"
                     }
-
+                    // 标签筛选逻辑（-m 参数）
+                    if (params.MARK) {
+                        pytestCommand += " -m '${params.MARK}'"
+                    }
                     // 添加 RUN_LAST_FAILED 参数
                     if (params.RUN_LAST_FAILED) {
                         pytestCommand += " --lf"

@@ -1,6 +1,5 @@
 import time
 import allure
-from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, only_stor
 
@@ -77,7 +76,6 @@ class TestECSRecycle:
 
         with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
-            ecs_page.wait_for_operation_complete()
             ecs_page.assert_deleted(name)
 
         with allure_step_log("步骤3: 验证删除结果"):

@@ -1,3 +1,4 @@
+import calendar
 import ipaddress
 import os
 import random
@@ -10,6 +11,7 @@ import allure
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from jinja2 import Template
 from typing import List, Dict, Any
 from faker import Faker
 from pathlib import Path
@@ -101,8 +103,17 @@ def load_data(case_name: str, data_file: str = "test_data.yaml") -> List[Dict[st
 
         # 读取YAML文件
         with open(data_path, 'r', encoding='utf-8') as f:
-            all_data = yaml.safe_load(f)
+            content = f.read()
 
+        # 使用 Jinja2 渲染模板（支持 auto_days 等函数）
+        template = Template(content)
+        rendered = template.render(
+            auto_days=auto_days,
+            now=datetime.now()
+        )
+
+        # 解析渲染后的 YAML
+        all_data = yaml.safe_load(rendered)
         # 在所有服务中查找测试用例
         for service, service_data in all_data.items():
             if isinstance(service_data, dict) and case_name in service_data:
@@ -359,6 +370,47 @@ def skip_arch(*arch_value):
         return wrapper
 
     return decorator
+
+
+def auto_days(count: int = 3, exclude_weekday: int = 6) -> list:
+    """随机选择不冲突的日期，支持排除单个或多个星期
+
+    Args:
+        count: 需要选择的日期数量
+        exclude_weekday: 要排除的星期，可以传：
+                        - 单个整数：如 6 表示排除周日
+                        - 列表：如 [5, 6] 表示排除周六和周日
+
+    Returns:
+        日期字符串列表，如 ['5', '12', '25']
+    """
+    now = datetime.now()
+    year, month = now.year, now.month
+    _, last_day = calendar.monthrange(year, month)
+
+    exclude_set = set()
+    if isinstance(exclude_weekday, (list, tuple)):
+        exclude_set.update(exclude_weekday)
+    elif isinstance(exclude_weekday, int):
+        exclude_set.add(exclude_weekday)
+
+    # 收集所有可用日期（不冲突的）
+    available_days = []
+    for day in range(1, last_day + 1):
+        date = datetime(year, month, day)
+        if date.weekday() not in exclude_set:
+            available_days.append(str(day))
+
+    # 随机选择指定数量的日期
+    if len(available_days) <= count:
+        selected_days = available_days
+    else:
+        selected_days = random.sample(available_days, count)
+
+    # 按数字大小排序
+    selected_days = sorted(selected_days, key=int)
+
+    return selected_days
 
 def retry_check(check_func, expected, max_retries=3, interval=5, error_msg=None):
     """
