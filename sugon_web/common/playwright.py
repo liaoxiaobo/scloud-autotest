@@ -297,6 +297,34 @@ class Playwright:
         if count > 0:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
+    def wait_for_operation_complete(self, timeout=30):
+        """等待操作完成
+
+        Args:
+            timeout: 超时时间（秒）
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                # 检查是否有加载中的元素
+                loading_elements = [
+                    self.locator(".el-icon-loading"),
+                    self.locator(".el-button.is-loading")
+                ]
+
+                # 如果没有加载中的元素，认为操作完成
+                if not any(element.count() > 0 for element in loading_elements):
+                    return
+
+                # 等待1秒后重试
+                time.sleep(1)
+            except Exception as e:
+                self.logger.debug(f"等待操作完成时出错: {e}")
+                time.sleep(1)
+
+        # 超时后抛出异常
+        raise AssertionError(f"等待操作完成超时，超过 {timeout} 秒")
 
 class CustomLocator:
     """自定义定位器包装器，用于拦截 Locator 的方法调用"""
@@ -338,6 +366,7 @@ class CustomLocator:
             # 直接在内部 locator 上调用 click
             self._locator.click(**kwargs)
             # 触发等待（确保页面加载完成）
+            self._playwright.wait_for_operation_complete()
             self._playwright.wait_for_page_ready()
         except Exception as e:
             self._logger.error(f"[CustomLocator.click] 点击失败: {e}")
