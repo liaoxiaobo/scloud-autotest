@@ -1126,7 +1126,7 @@ class BackUpPage(BasePage):
 
         if self.get_row_data(name).get("状态") != "已启动":
             self.backup_start_stop(name, "启动")
-            self.assert_popup_success("启动备份任务成功")
+            self.assert_status(name, "已启动")
         self.click_dropdown_option(name, method)
         logger.info(f"操作完成: 备份任务{name} {method}")
 

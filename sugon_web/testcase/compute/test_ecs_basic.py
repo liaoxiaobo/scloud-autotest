@@ -437,7 +437,7 @@ class TestECSBasic:
             # ecs_page.assert_status(name, "创建镜像中")
             ecs_page.assert_status(name)
             ecs_page.goto_submenu("镜像服务")
-            ecs_page.assert_status(image_name, status="可用", refresh=True)
+            ecs_page.assert_status(image_name, status="可用", timeout=600, refresh=True)
 
         with allure_step_log(f"步骤3: 使用镜像{image_name}创建弹性云服务器{name}-1"):
             ecs_page.goto_service("弹性云服务器")

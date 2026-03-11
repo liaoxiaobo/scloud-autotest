@@ -246,7 +246,7 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
+        self.wait_for_operation_complete()
 
     @submenu("回收站")
     def ecs_delete(self, names, secure=False, delete_volume: bool = False, release_ip: bool = False):
@@ -545,11 +545,17 @@ class EcsPage(OpsPage):
         bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
         # 选择公网ip
-        ip_info = bind_dialog.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
-        ip_info.first.click()
+        # 获取所有可用IP行，随机选择一个
+        available_rows = bind_dialog.get_by_role("row").filter(has_text="关闭").all()
+        if not available_rows:
+            raise Exception("没有可用的公网IP")
+        # 随机选择一个IP，降低多线程冲突概率
+        selected_row = random.choice(available_rows)
+        selected_row.get_by_role("radio").click()
+        ip_info = selected_row.get_by_role("cell")
         ip = ip_info.nth(1).text_content()
         self.dialog_confirm.click()
-        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}")
+        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}, 公网ip: {ip}")
         return str(ip)
 
     @submenu("弹性云服务器")
@@ -2191,7 +2197,7 @@ class EcsPage(OpsPage):
         Args:
             name: 删除的标签名称
         """
-        logger.info(f"删除标签: {name}")
+        self.sort_by_header("创建时间", "desc")
         # 点击删除按钮
         self.click_dropdown_option(name, "删除")
         # 确认删除
@@ -2207,8 +2213,7 @@ class EcsPage(OpsPage):
         Args:
             names: 删除的标签名称
         """
-        logger.info(f"删除标签: {names}")
-
+        self.sort_by_header("创建时间", "desc")
         self.select_rows_by_names(names)
 
         # 点击删除按钮
@@ -2227,8 +2232,7 @@ class EcsPage(OpsPage):
             name: 标签名称
             new_name: 新标签名称
         """
-        logger.info(f"编辑{name}标签为{new_name}")
-
+        self.sort_by_header("创建时间", "desc")
         # 点击编辑按钮
         self.click_dropdown_option(name, "编辑")
 
@@ -2254,7 +2258,7 @@ class EcsPage(OpsPage):
             vm_name: 云服务器名称
             label_name: 绑定的标签名称
         """
-        logger.info(f"标签页{label_name}解绑实例: {vm_name}")
+        self.sort_by_header("创建时间", "desc")
         # 点击标签页的操作按钮
         self.click_option(label_name, "查看关联资源")
         # 点击云服务器后的操作按钮
@@ -2276,7 +2280,7 @@ class EcsPage(OpsPage):
             names: 云服务器名称
             label_names: 标签名称
         """
-        logger.info(f"{label_names}批量解绑云服务器: {names}")
+        self.sort_by_header("创建时间", "desc")
         for label_name in label_names:
             self.click_option(label_name, "查看关联资源")
             self.select_rows_by_names(names)

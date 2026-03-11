@@ -423,7 +423,7 @@ def image(ssh_host, ecs_page, request):
     name = params.get('name', random_data())
     backend = params.get('backend', ecs_page.storage_pool)
     if backend.startswith("local"):
-        backend = "local"
+        backend = "local-test"
     image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
     ssh_host.glance_image_create(name, image=image_name, backend=backend)
     yield {"name": name}
@@ -503,7 +503,7 @@ def labels(ecs_page, request):
     with allure_step_log("创建指定数量的标签"):
         for i in range(count):
             # 使用随机数据生成唯一标签名称
-            name = f"{prefix}_{random_data()}"
+            name = f"{prefix}-{random_data()}"
             label_name = ecs_page.create_label(name)
             ecs_page.assert_popup_success("新建标签成功")
             label_names.append(label_name)
@@ -712,6 +712,7 @@ def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
             # 绑定公网IP, 预置数据
             ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_bind_pub_ip(vm_name.get("name"))
+            ecs_page.assert_popup_success(f"执行成功")
             ecs_page.set_table_header("架构")
             row_data = ecs_page.get_row_data(vm_name.get("name"))
             arch = row_data.get("架构x86_64aarch64   筛选   重置 ")
