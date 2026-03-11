@@ -616,6 +616,8 @@ def vpc(vpc_page, request):
     vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
+    expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
+
 
 from sugon_web.pages.ecs_create import EcsCreatePage
 @pytest.fixture(scope="class")
