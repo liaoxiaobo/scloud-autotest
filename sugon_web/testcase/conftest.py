@@ -76,6 +76,8 @@ def volume(evs_page, request):
     host = None
     if evs_page.stor == 'local' and 'vm' in request.fixturenames:
         resource = request.getfixturevalue('vm')
+        if isinstance(resource, list):
+            resource = resource[0]
         host = resource.get('host')
         logger.info(f"检测到存储类型为{evs_page.stor}，从虚机 {resource['name']} 获取 host: {host}")
 

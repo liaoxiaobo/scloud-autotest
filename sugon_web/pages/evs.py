@@ -83,6 +83,7 @@ class EvsPage(BasePage):
         """
         # 点击物理机下拉框
         self.page.locator("form div").filter(has_text="物理机").get_by_placeholder("请选择").click()
+        self.page.wait_for_timeout(3000)
 
         if name is not None:
             # 如果指定了物理机名称，选择指定的物理机
