@@ -30,7 +30,6 @@ class TestECSRecycle:
 
         with allure_step_log("步骤4: 验证恢复结果"):
             ecs_page.goto_service('弹性云服务器')
-            ecs_page.wait_for_operation_complete()
             ecs_page.assert_status(name, refresh=True)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm, timeout=90)
@@ -118,7 +117,6 @@ class TestECSRecycle:
         # 批量删除回收站中的弹性云服务器
         with allure_step_log("步骤3: 批量删除回收站中的弹性云服务器"):
             ecs_page.ecs_recover_batch_delete(ecs_names)
-            ecs_page.wait_for_operation_complete()
 
         with allure_step_log("步骤4: 验证删除结果"):
             ecs_page.wait_for_page_ready()
@@ -141,7 +139,6 @@ class TestECSRecycle:
 
         with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
-            ecs_page.wait_for_operation_complete()
             ecs_page.assert_deleted(name)
 
         with allure_step_log("步骤3: 验证删除成功提示"):

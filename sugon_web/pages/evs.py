@@ -178,7 +178,6 @@ class EvsPage(BasePage):
         # 设置云硬盘大小
         self._input_size.fill(str(size))
         self.dialog_confirm.click()
-        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_remove(self, names):
@@ -316,9 +315,6 @@ class EvsPage(BasePage):
         self.get_by_label("挂载").get_by_text("挂载").nth(1).click()
         # self.locator("span").filter(has_text="挂载").click()
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
-
     @submenu("云硬盘")
     def evs_unmount(self, volume_name, server_name):
         """从指定服务器卸载云硬盘
@@ -336,9 +332,6 @@ class EvsPage(BasePage):
 
         # 确认卸载
         self.get_by_label("卸载").get_by_text("确定").click()
-
-        # 等待操作完成
-        self.wait_for_operation_complete()
 
     @submenu("云硬盘")
     def evs_enable_qos(self, volume_name, read_speed=None, write_speed=None, read_iops=None, write_iops=None):

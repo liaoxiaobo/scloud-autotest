@@ -366,8 +366,8 @@ class CustomLocator:
             # 直接在内部 locator 上调用 click
             self._locator.click(**kwargs)
             # 触发等待（确保页面加载完成）
-            self._playwright.wait_for_operation_complete()
             self._playwright.wait_for_page_ready()
+            self._playwright.wait_for_operation_complete()
         except Exception as e:
             self._logger.error(f"[CustomLocator.click] 点击失败: {e}")
             raise

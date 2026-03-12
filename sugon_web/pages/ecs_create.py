@@ -40,7 +40,6 @@ class EcsCreatePage(OpsPage):
 
         # 点击创建按钮
         self.get_by_text("立即创建").click()
-        self.wait_for_operation_complete()
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
@@ -386,6 +385,8 @@ class EcsCreatePage(OpsPage):
                 self._select_snapshot_image(image_name)
             elif image_source == "ISO":
                 self._select_iso_image(image_name)
+            elif image_source == "云硬盘":
+                self._select_cloud_disk_image(image_name)
             elif image_source == "空启动":
                 pass
             else:
@@ -436,6 +437,18 @@ class EcsCreatePage(OpsPage):
             # 定位并选择ISO行
             self.get_by_role("row", name=iso_name).get_by_role("radio").click()
             logger.info(f"已选择ISO镜像: {iso_name}")
+
+    def _select_cloud_disk_image(self, cloud_disk_name):
+        """来源选择 云盘"""
+        logger.info(f"使用云盘: {cloud_disk_name}")
+
+        # 选择云盘
+        self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
+        self.locator("li").filter(has_text="云盘").click()
+
+        if cloud_disk_name:
+            self.get_by_role("row", name=cloud_disk_name).get_by_role("radio").click()
+            logger.info(f"已选择云盘: {cloud_disk_name}")
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""

@@ -116,7 +116,7 @@ class BackUpPage(BasePage):
             ]
             self._find_element(locs, "重置元素").click()
             self._search_and_select_server(server_name)
-            self.wait_for_operation_complete()
+
             locs = [
                 self.get_by_text("》"),
                 self.locator(".transferButton > div > .cloud-button-btn").first
@@ -163,7 +163,7 @@ class BackUpPage(BasePage):
         """点击下一步按钮"""
 
         self.get_by_text("下一步").click()
-        self.wait_for_operation_complete()
+
         logger.info("点击下一步")
 
     def _backup_policy(
@@ -1052,9 +1052,6 @@ class BackUpPage(BasePage):
         # 确认
         self.dialog_confirm.click()
 
-        # 等待详情页面加载完成
-        self.wait_for_operation_complete()
-
         self.logger.info(f"操作完成: {name}管理云服务器{'添加' if attach else '删除'}云服务器{vms}成功")
 
     @submenu("任务")
@@ -1112,7 +1109,6 @@ class BackUpPage(BasePage):
             self.get_by_placeholder("请选择迁移节点").click()
             self.locator("li").filter(has_text=target).click()
         self.dialog_confirm.click()
-        self.wait_for_operation_complete()
         logger.info(f"操作完成: 备份任务{name} {method}迁移 {target}")
 
     @submenu("任务")
@@ -1189,7 +1185,6 @@ class BackUpPage(BasePage):
         self._click_batch_operation_option(operation)
         if operation == "删除":
             self.dialog_confirm.click()
-            self.wait_for_operation_complete()
         logger.info(f"操作完成: 批量操作{operation}备份任务{names}")
 
     def backup_search(self, keyword):
