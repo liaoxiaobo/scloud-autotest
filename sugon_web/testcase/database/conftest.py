@@ -5,6 +5,7 @@ from sugon_web.pages.login import LoginPage
 from sugon_web.pages.mysql import MySQLPage
 from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.pgsql import PgSQLPage
+from sugon_web.pages.mongodb import MongoDBPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -55,6 +56,14 @@ def pgsql_page(page):
     pgsql_page = PgSQLPage(page)
     pgsql_page.goto_service('AnhanDB(for PostgreSQL)')
     return pgsql_page
+
+
+@pytest.fixture(scope="class")
+def mongodb_page(page):
+    """初始化MongoDB实例管理页面"""
+    mongodb_page = MongoDBPage(page)
+    mongodb_page.goto_service('AnhanDB(for MongoDB)')
+    return mongodb_page
 
 
 @pytest.fixture(scope="class")
@@ -156,3 +165,32 @@ def pgsql(pgsql_page):
     with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享PostgreSQL实例: {name}")
         pgsql_page.delete_instance(data["name"])
+
+@pytest.fixture(scope="class")
+def mongodb(mongodb_page):
+    """创建一个供整个测试类使用的MongoDB实例对象"""
+    name = f"mongo-{random_data()}"
+    instance_type = "副本集"
+    # MongoDB密码规则：大写、小写、数字、特殊字符(!#$%^&*()_+=)至少三种
+    # 这里构造一个符合规则的密码：大写+小写+数字+特殊字符
+    root_password = f"Admin1234#{random_string(k=5)}" 
+    user_name = f"user_{random_string(k=5)}"
+    user_password = f"User1234#{random_string(k=5)}"
+    
+    data = {"name": name, "root_password": root_password, "user_name": user_name, "user_password": user_password}
+    logger.info(f"为测试类创建共享MongoDB实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        mongodb_page.create_instance(name, instance_type, password=root_password)
+        mongodb_page.assert_popup_success("创建实例")
+        mongodb_page.assert_status(name, status="运行中", timeout=1800) # MongoDB创建可能较慢
+
+    with allure_step_log(f"前置操作：创建新用户 {user_name}"):
+        mongodb_page.create_user(name, user_name, user_password)
+        mongodb_page.assert_popup_success("创建用户成功", 10)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享MongoDB实例: {name}")
+        mongodb_page.delete_instance(data["name"])

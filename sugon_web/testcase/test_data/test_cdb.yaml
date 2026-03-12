@@ -70,3 +70,14 @@ pgsql:
         - instance_type: "集群"
           version: "12"
           disk_size: 60
+mongodb:
+    test_create_and_delete_mongodb:
+        - instance_type: "单机"
+          version: "4.4"
+          disk_size: 20
+        - instance_type: "副本集"
+          version: "4.4"
+          disk_size: 20
+        - instance_type: "分片集群"
+          version: "4.4"
+          disk_size: 20
