@@ -1183,31 +1183,25 @@ class BasePage(Playwright):
             self.logger.warning(f"未找到表头: {header_name}")
             return
 
-        caret_wrapper = header_cell.locator(".caret-wrapper")
-        if caret_wrapper.count() == 0:
-            self.logger.warning(f"未找到排序箭头: {header_name}")
-            return
+        # 直接获取 header_cell 自身的 class 属性
+        class_attr = header_cell.get_attribute("class") or ""
 
-        # 获取两个箭头元素
-        ascending_icon = caret_wrapper.locator("i.ascending")
-        descending_icon = caret_wrapper.locator("i.descending")
-
-        # 检查颜色（红色为激活状态）
-        is_asc_active = "rgb(255" in ascending_icon.evaluate("el => getComputedStyle(el).borderBottomColor") if ascending_icon.count() > 0 else False
-        is_desc_active = "rgb(255" in descending_icon.evaluate("el => getComputedStyle(el).borderBottomColor") if descending_icon.count() > 0 else False
+        is_asc_active = "ascending" in class_attr
+        is_desc_active = "descending" in class_attr
 
         # 如果已经是目标排序状态，不再点击
-        if order == "asc" and is_asc_active:
-            self.logger.info(f"已经是 {header_name} 升序排列")
-            return
         if order == "desc" and is_desc_active:
             self.logger.info(f"已经是 {header_name} 降序排列")
             return
+        if order == "asc" and is_asc_active:
+            self.logger.info(f"已经是 {header_name} 升序排列")
+            return
 
         # 点击目标排序箭头
+        caret_wrapper = header_cell.locator(".caret-wrapper")
         if order == "desc":
-            descending_icon.click()
+            caret_wrapper.locator("i.descending").click()
             self.logger.info(f"已按 {header_name} 降序排列")
         else:
-            ascending_icon.click()
+            caret_wrapper.locator("i.ascending").click()
             self.logger.info(f"已按 {header_name} 升序排列")
