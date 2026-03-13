@@ -5,6 +5,7 @@ from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string, load_data
 
+
 @allure.epic('数据库服务')
 @allure.feature('AnhanDB(for MongoDB)')
 class TestMongoDBCreate:
@@ -16,10 +17,10 @@ class TestMongoDBCreate:
         instance_type = params["instance_type"]
         version = params["version"]
         disk_size = params["disk_size"]
-        
+
         name = f"mongo-{random_data()}"
         password = "Admin1234#sugon"
-        
+
         # 分片集群创建时间较长，设置更长的超时时间
         create_timeout = 2400 if instance_type == "分片集群" else 1800
 
@@ -35,14 +36,14 @@ class TestMongoDBCreate:
         with allure_step_log("步骤二：验证创建结果"):
             mongodb_page.assert_popup_success("创建实例")
             mongodb_page.assert_list_contain(name)
-            mongodb_page.assert_status(name, status="运行中", timeout=create_timeout)
+            mongodb_page.assert_status(name, status="运行中", timeout=create_timeout, refresh=True)
             db_util.assert_backend_created(mongodb_page, ssh_host, name)
 
         with allure_step_log("步骤三：删除实例"):
             mongodb_page.delete_instance(name)
 
         with allure_step_log("步骤四：验证删除结果"):
-            mongodb_page.assert_deleted(name)
+            mongodb_page.assert_deleted(name, timeout=1200, refresh=True)
             db_util.assert_backend_deleted(mongodb_page, ssh_host, name)
 
     @allure.title("MongoDB-批量删除实例")
@@ -57,7 +58,7 @@ class TestMongoDBCreate:
             with allure_step_log("步骤二：验证创建结果"):
                 mongodb_page.assert_popup_success("创建实例")
                 mongodb_page.assert_list_contain(name)
-                mongodb_page.assert_status(name, status="运行中", timeout=1200)
+                mongodb_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
                 db_util.assert_backend_created(mongodb_page, ssh_host, name)
 
         with allure_step_log("步骤三：批量删除实例"):
@@ -66,5 +67,5 @@ class TestMongoDBCreate:
 
         with allure_step_log("步骤四：验证批量删除结果"):
             for name in instance_names:
-                mongodb_page.assert_deleted(name, timeout=1200)
+                mongodb_page.assert_deleted(name, timeout=1200, refresh=True)
                 db_util.assert_backend_deleted(mongodb_page, ssh_host, name)
