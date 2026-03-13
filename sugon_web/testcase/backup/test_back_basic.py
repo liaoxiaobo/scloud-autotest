@@ -457,3 +457,23 @@ class TestResumeCreate:
 
             # 验证虚机可用性
             ecs_page.assert_ecs_enable(re_vm, ssh_vm)
+
+@allure.epic('云备份')
+@allure.feature('实例备份')
+@allure.story('备份任务场景')
+class TestBackupScenarios:
+
+    @allure.title("验证创建完成的备份任务迁移后启动")
+    def test_backup_search(self, backup_page, backup_task):
+        enabled_nodes = backup_task.get("backup_nodes")
+        if len(enabled_nodes) < 2:
+            pytest.skip("迁移任务需要至少2个备份节点")
+
+        with allure_step_log("步骤1: 迁移任务"):
+            task_name = backup_task.get("task_name")
+            backup_page.backup_migrate(task_name)
+            backup_page.assert_popup_success("迁移备份任务成功")
+
+        with allure_step_log("步骤2: 启动任务"):
+            backup_page.backup_start_stop(task_name, "启动")
+            backup_page.assert_status(task_name, "已启动")

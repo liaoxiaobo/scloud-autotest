@@ -412,6 +412,40 @@ class TestVPCBasic:
             vpc_page.assert_deleted(target_vips)
             logger.info(f"✓ 批量删除虚拟IP验证通过: {target_vips}")
 
+    @allure.title("虚拟IP-绑定&解绑实例")
+    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm, ssh_vm):
+        """测试虚拟IP绑定和解绑虚拟机实例"""
+
+        # vm fixture 返回的是列表，包含两台虚机的信息
+        vm1_data = vm[0]
+        vm2_data = vm[1]
+
+        vm1_name = vm1_data['name']
+        vm2_name = vm2_data['name']
+        vm1_ip = vm1_data['ip']
+        vm2_ip = vm2_data['ip']
+        vm1_mfip = vm1_data['mfip']
+        vm2_mfip = vm2_data['mfip']
+
+        with allure_step_log("步骤1: 绑定实例vm2"):
+            vpc_page.vip_bind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
+            ssh_vm.connect(vm2_mfip)
+            ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
+
+        with allure_step_log("步骤2: 虚机vm1 ping vip成功"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vip)
+
+        with allure_step_log("步骤3: 解绑实例vm2"):
+            vpc_page.vip_unbind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
+
+        with allure_step_log("步骤4: 虚机vm1 ping vip失败"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vip, connected=False)
+
     @allure.title("虚拟IP-绑定&解绑公网IP")
     def test_vip_bind_eip(self, vpc_page, vip):
 
@@ -421,15 +455,3 @@ class TestVPCBasic:
         # 执行解绑
         vpc_page.vip_unbind_eip(vip)
         vpc_page.assert_popup_success("执行成功")
-
-    @allure.title("虚拟IP-绑定&解绑实例")
-    def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm):
-        """测试虚拟IP绑定和解绑虚拟机实例"""
-
-        with allure_step_log("步骤1: 绑定实例"):
-            vpc_page.vip_bind_instance(vip, vm['name'])
-            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
-
-        with allure_step_log("步骤2: 解绑实例"):
-            vpc_page.vip_unbind_instance(vip, vm['name'])
-            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
