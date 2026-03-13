@@ -74,11 +74,9 @@ class MongoDBPage(BasePage):
                 group = item.locator(".el-radio-button, .el-radio").first
                 group.click()
         else:
-            # 单机或副本集，可能只需要选一次或者默认已选
-            # 如果有规格列表，选第一个
-            spec_radios = self.get_by_role("radio", name=re.compile(r"核.*GiB"))
-            if spec_radios.count() > 0:
-                spec_radios.first.click()
+            # 单机或副本集，选择特定规格: mongodb.d6 mongodb.d6.large 2核 4GiB
+            # 找到包含特定规格文本的行并点击对应的单选框
+            self.page.locator("tr").filter(has_text=re.compile(r"mongodb\.d6\.large")).get_by_role("radio").click()
 
         # --- 确认创建 ---
         sleep(2)
