@@ -182,7 +182,7 @@ def mongodb(mongodb_page):
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
         mongodb_page.create_instance(name, instance_type, password=root_password)
         mongodb_page.assert_popup_success("创建实例")
-        mongodb_page.assert_status(name, status="运行中", timeout=1800) # MongoDB创建可能较慢
+        mongodb_page.assert_status(name, status="运行中", timeout=1800, refresh=True) # MongoDB创建可能较慢
 
     yield data
 
