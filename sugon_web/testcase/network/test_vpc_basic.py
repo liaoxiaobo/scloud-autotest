@@ -455,3 +455,37 @@ class TestVPCBasic:
         # 执行解绑
         vpc_page.vip_unbind_eip(vip)
         vpc_page.assert_popup_success("执行成功")
+
+    @allure.title("虚拟IP-搜索&重置")
+    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    def test_vip_search(self, ecs_page, vpc_page, vip, vm):
+        """测试虚拟IP搜索&重置"""
+
+        # vm fixture 返回的是列表，包含两台虚机的信息
+        vm1_data = vm[0]
+        vm2_data = vm[1]
+
+        vm1_name = vm1_data['name']
+        vm2_name = vm2_data['name']
+
+        with allure_step_log("步骤1: 绑定两台实例"):
+            vpc_page.vip_bind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
+            vpc_page.vip_bind_instance(vip, vm1_name)
+            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
+
+        with allure_step_log("步骤2: 输入实例名称进行搜索"):
+            keyword = vm1_name[:-2]
+            vpc_page.search(keyword)
+            vpc_page.assert_list_contain(keyword, column_name="绑定的实例", exact_match=False)
+
+        with allure_step_log("步骤3: 重置搜索条件"):
+            vpc_page.btn_reset.click()
+            vpc_page.wait_for_page_ready()
+            assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+        with allure_step_log("步骤4: 解除绑定两台实例"):
+            vpc_page.vip_unbind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
+            vpc_page.vip_unbind_instance(vip, vm1_name)
+            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")

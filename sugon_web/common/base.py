@@ -162,7 +162,8 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（参数名称）"),
             self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner"),
-            self.get_by_role("textbox", name="请输入设备名称")
+            self.get_by_role("textbox", name="请输入设备名称"),
+            self.get_by_role("textbox", name="搜索(实例名称)")
         ]
 
         return self._find_element(locators, "搜索框")
@@ -170,12 +171,28 @@ class BasePage(Playwright):
     @property
     def _btn_search(self) -> Locator:
         """公共元素:搜索按钮"""
-        return self.get_by_text("搜索", exact=True)
+        locators = [
+            # 1. 优先查找可见弹窗内的搜索按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("搜索", exact=True),
+            # 2. 查找当前激活 Tab 页签内的搜索按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("搜索", exact=True),
+            # 3. 兜底：查找页面上可见的搜索按钮 (注意：如果页面仍有多个可见搜索按钮，这里可能仍会报错，但上述两步通常能解决问题)
+            self.get_by_text("搜索", exact=True)
+        ]
+        return self._find_element(locators, "搜索按钮")
 
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置", exact=True).first
+        locators = [
+            # 1. 优先查找可见弹窗内的重置按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("重置", exact=True),
+            # 2. 查找当前激活 Tab 页签内的重置按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("重置", exact=True),
+            # 3. 兜底：查找页面上可见的重置按钮
+            self.get_by_text("重置", exact=True).first
+        ]
+        return self._find_element(locators, "重置按钮")
 
     @property
     def btn_refresh(self) -> Locator:
