@@ -74,10 +74,10 @@ mongodb:
     test_create_and_delete_mongodb:
         - instance_type: "单机"
           version: "4.4"
-          disk_size: 20
+          disk_size: 25
         - instance_type: "副本集"
           version: "4.4"
-          disk_size: 30
+          disk_size: 35
         - instance_type: "分片集群"
           version: "4.4"
-          disk_size: 40
+          disk_size: 45
