@@ -162,8 +162,9 @@ class MongoDBPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
-        self.click_option(f"{name}-0", "修改规格", t_type="body")
-        self.page.locator("tr:has-text('{}')".format(specification_name)).get_by_role("radio").click()
+        sleep(3)
+        self.click_option(f"{name}-0", "修改规格")
+        self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
