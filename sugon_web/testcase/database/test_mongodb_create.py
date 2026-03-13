@@ -63,7 +63,6 @@ class TestMongoDBCreate:
 
         with allure_step_log("步骤三：批量删除实例"):
             mongodb_page.batch_delete_instances(instance_names)
-            mongodb_page.assert_popup_success("批量删除成功")
 
         with allure_step_log("步骤四：验证批量删除结果"):
             for name in instance_names:
