@@ -81,6 +81,7 @@ class MongoDBPage(BasePage):
                 spec_radios.first.click()
 
         # --- 确认创建 ---
+        sleep(2)
         self.btn_submit.click()
 
     @submenu("实例管理")
