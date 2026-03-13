@@ -49,8 +49,7 @@ class TestMongoDBCreate:
     def test_batch_delete_mongodb(self, mongodb_page, ssh_host):
         """测试批量删除MongoDB实例"""
         instance_names = [f"mongo-batch-{random_string(5)}", f"mongo-batch-{random_string(5)}"]
-        password = f"Admin1234#{random_string(k=5)}"
-
+        password = "Admin1234#sugon"
         for name in instance_names:
             with allure_step_log(f"步骤一：创建实例: {name}"):
                 mongodb_page.create_instance(name=name, instance_type="单机", password=password)

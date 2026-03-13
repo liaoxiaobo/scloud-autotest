@@ -179,3 +179,55 @@ class TestMongoDBBasic:
             mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
             mongodb_page.wait_for_page_ready()
             assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+    @allure.title("MongoDB-开启和关闭错误日志")
+    def test_toggle_error_log(self, mongodb_page, mongodb):
+        """测试为MongoDB实例开启和关闭错误日志功能"""
+        instance_name = mongodb["name"]
+        with allure_step_log(f"步骤一：为实例 {instance_name} 开启错误日志"):
+            mongodb_page.enable_error_log(instance_name)
+
+        with allure_step_log("步骤二：验证开启结果"):
+            mongodb_page.assert_popup_success("执行成功")
+
+        with allure_step_log(f"步骤三：为实例 {instance_name} 关闭错误日志"):
+            mongodb_page.disable_error_log(instance_name)
+
+        with allure_step_log("步骤四：验证关闭结果"):
+            mongodb_page.assert_popup_success("执行成功")
+
+    @allure.title("MongoDB-实例参数搜索")
+    def test_instance_parameter_search(self, mongodb_page, mongodb):
+        """测试实例参数设置页的搜索功能"""
+        instance_name =  mongodb["name"]
+        param_keyword = "operationProfiling.slowOpThresholdMs"
+
+        with allure_step_log("步骤一：输入参数名称进行搜索"):
+            mongodb_page.goto_submenu("实例管理")
+            mongodb_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+            mongodb_page.wait_for_page_ready()
+            sleep(2)
+            mongodb_page.get_by_role("tab", name="参数设置").click()
+            sleep(2)
+            mongodb_page.wait_for_page_ready()
+            mongodb_page.search(param_keyword)
+            mongodb_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
+
+        with allure_step_log("步骤二：重置搜索条件"):
+            mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            mongodb_page.wait_for_page_ready()
+            assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("MongoDB-实例参数编辑")
+    def test_edit_instance_parameters(self, mongodb_page, mongodb):
+        """测试实例参数的编辑和导出"""
+        instance_name = mongodb["name"]
+        param_name = "operationProfiling.slowOpThresholdMs"
+        param_value = "99"
+
+        with allure_step_log(f"步骤一：编辑实例 {instance_name} 的参数 {param_name} 值为 {param_value}"):
+            mongodb_page.goto_submenu("实例管理")
+            mongodb_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+            mongodb_page.edit_instance_parameter(instance_name, param_name, param_value)
+            # MongoDB 参数应用可能不需要重启，或者根据环境而定
+            mongodb_page.assert_popup_success("修改实例参数成功")
+            mongodb_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
