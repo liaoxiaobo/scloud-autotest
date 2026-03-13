@@ -2,13 +2,14 @@ import re
 from playwright.sync_api import expect
 
 from sugon_web.config.config import Config
+from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data
 
 
-class EcsCreatePage(OpsPage):
+class EcsCreatePage(EcsPage):
 
     @submenu("弹性云服务器")
     # def ecs_create_v2(self, basic, storage, network, manage, machine, numa, other):
@@ -123,9 +124,11 @@ class EcsCreatePage(OpsPage):
         image_info = storage.get("镜像") if storage and storage.get("镜像") else {"来源": "镜像", "镜像名称": "", "ISO": "centos7.9"}
         self._select_image(image_info)
 
-        # 设置系统盘大小
-        size = storage.get("系统盘", 25) if storage and storage.get("系统盘") else 25
-        self._set_sys_volume(size)
+        # 设置系统盘大小（云硬盘来源时不需要设置）
+        image_source = image_info.get("来源", "镜像")
+        if image_source != "云硬盘":
+            size = storage.get("系统盘", 25) if storage and storage.get("系统盘") else 25
+            self._set_sys_volume(size)
 
         # 设置数据盘
         data_disks = storage.get("数据盘") if storage and storage.get("数据盘") else []
@@ -362,7 +365,7 @@ class EcsCreatePage(OpsPage):
         """选择镜像，支持多种来源方式
         Args:
             image_info: {
-                image_source: "镜像" / "空启动" / "快照" / "ISO"
+                image_source: "镜像" / "空启动" / "快照" / "ISO" / "云硬盘"
                 image_name: "镜像名称" / "快照名称" / "ISO名称"
                 os_version: 操作系统版本，默认为"centos7.9"
             }
@@ -422,7 +425,10 @@ class EcsCreatePage(OpsPage):
         # 选择快照
         if snapshot_name:
             # 定位并选择快照行
-            self.get_by_role("row", name=snapshot_name).get_by_role("radio").click()
+            self.get_by_text("选择快照").first.click()
+            row = self.get_row_by_name(snapshot_name)
+            row.get_by_role("radio").click()
+            self.dialog_confirm.click()
             logger.info(f"已选择快照: {snapshot_name}")
 
     def _select_iso_image(self, iso_name):
@@ -439,16 +445,20 @@ class EcsCreatePage(OpsPage):
             logger.info(f"已选择ISO镜像: {iso_name}")
 
     def _select_cloud_disk_image(self, cloud_disk_name):
-        """来源选择 云盘"""
-        logger.info(f"使用云盘: {cloud_disk_name}")
+        """来源选择 云硬盘
 
-        # 选择云盘
-        self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
-        self.locator("li").filter(has_text="云盘").click()
+        Args:
+            cloud_disk_name: 云硬盘名称
+        """
+        # 点击"选择云硬盘"按钮
+        self.get_by_text("选择云硬盘").first.click()
 
         if cloud_disk_name:
-            self.get_by_role("row", name=cloud_disk_name).get_by_role("radio").click()
-            logger.info(f"已选择云盘: {cloud_disk_name}")
+            row = self.get_row_by_name(cloud_disk_name)
+            row.get_by_role("radio").click()
+            # 点击确定按钮
+            self.dialog_confirm.click()
+            logger.info(f"已选择云硬盘: {cloud_disk_name}")
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""

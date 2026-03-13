@@ -11,13 +11,16 @@ ecs_create:
     network:
     manage:
     advanced:
-#  - basic:
-#    storage:
-#      镜像:
-#        来源: 空启动
-#    network:
-#    manage:
-#    advanced:
+  test_ecs_create_from_volume:
+    - basic:
+      storage:
+        镜像:
+          来源: "云硬盘"
+          镜像名称: "{{ volume_name }}"
+      network:
+      manage:
+      advanced:
+
 #  - basic:
 #    storage:
 #      镜像:
