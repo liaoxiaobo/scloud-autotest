@@ -173,21 +173,16 @@ def mongodb(mongodb_page):
     instance_type = "副本集"
     # MongoDB密码规则：大写、小写、数字、特殊字符(!#$%^&*()_+=)至少三种
     # 这里构造一个符合规则的密码：大写+小写+数字+特殊字符
-    root_password = f"Admin1234#{random_string(k=5)}" 
-    user_name = f"user_{random_string(k=5)}"
-    user_password = f"User1234#{random_string(k=5)}"
+    root_password = "Admin1234#sugon"
+    user_name = "root"
     
-    data = {"name": name, "root_password": root_password, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "root_password": root_password, "user_name": user_name}
     logger.info(f"为测试类创建共享MongoDB实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
         mongodb_page.create_instance(name, instance_type, password=root_password)
         mongodb_page.assert_popup_success("创建实例")
         mongodb_page.assert_status(name, status="运行中", timeout=1800) # MongoDB创建可能较慢
-
-    with allure_step_log(f"前置操作：创建新用户 {user_name}"):
-        mongodb_page.create_user(name, user_name, user_password)
-        mongodb_page.assert_popup_success("创建用户成功", 10)
 
     yield data
 

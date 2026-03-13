@@ -18,7 +18,7 @@ class TestMongoDBCreate:
         disk_size = params["disk_size"]
         
         name = f"mongo-{random_data()}"
-        password = f"Admin1234#{random_string(k=5)}"
+        password = "Admin1234#sugon"
         
         # 分片集群创建时间较长，设置更长的超时时间
         create_timeout = 2400 if instance_type == "分片集群" else 1800

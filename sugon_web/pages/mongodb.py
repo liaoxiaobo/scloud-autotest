@@ -207,37 +207,7 @@ class MongoDBPage(BasePage):
         self.click_dropdown_option(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
 
-    @submenu("实例管理")
-    def change_user_password(self, name: str, user_name: str, new_password: str):
-        """
-        修改用户密码
-        :param name: 实例名称
-        :param user_name: 用户名
-        :param new_password: 新密码
-        """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
-        self.click_option(user_name, "修改用户")
-        dialog = self.get_by_label("修改用户")
-        sleep(3)
-        dialog.locator("input[type=\"password\"]").fill(new_password)
-        sleep(3)
-        dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
-        dialog.get_by_text("确定").click()
 
-    @submenu("实例管理")
-    def delete_user(self, name: str, user_name: str):
-        """
-        在指定实例下删除用户
-        :param name: 实例名称
-        :param user_name: 用户名
-        """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
-        self.click_option(user_name, "删除")
-        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def add_whitelist(self, name: str, ip_address: str):

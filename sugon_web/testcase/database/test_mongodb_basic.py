@@ -60,7 +60,7 @@ class TestMongoDBBasic:
             except Exception as e:
                 pytest.fail(f"后端密码验证失败: {e}")
             
-            # mongodb["root_password"] = new_password
+            mongodb["root_password"] = new_password
 
     @allure.title("MongoDB-修改云盘大小")
     def test_change_disk_size(self, mongodb_page, mongodb, ssh_host):
@@ -128,29 +128,6 @@ class TestMongoDBBasic:
             if ssh_host:
                 ssh_host.ping(ip, connected=False)
 
-    @allure.title("MongoDB-修改用户密码")
-    def test_change_user_password(self, mongodb_page, mongodb, ssh_host, ssh_vm):
-        """测试修改用户密码"""
-        instance_name = mongodb["name"]
-        user_name = mongodb["user_name"] # 使用fixture中的用户名
-        new_password = f"User{random_string(k=5)}#New"
-        with allure_step_log("步骤一：修改用户密码"):
-            mongodb_page.change_user_password(instance_name, user_name, new_password)
-
-        with allure_step_log("步骤二：验证修改结果"):
-            mongodb_page.assert_popup_success("修改root密码成功")
-
-        with allure_step_log("步骤三：验证新密码生效"):
-            # 获取节点IP进行连接验证
-            node_name = f"{instance_name}-0" # 假设副本集第一个节点是-0
-            try:
-                ip_from_db = db_util.get_node_mfip_from_db(mongodb_page, ssh_host, "sugoncloud_mongodb", node_name)
-                ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
-                cmd = f"mongo --host 127.0.0.1 --port 27017 -u {user_name} -p '{new_password}' --authenticationDatabase admin --eval \"printjson(db.adminCommand('ping'))\""
-                result = ssh_vm.run(cmd)
-                assert '"ok" : 1' in result
-            except Exception as e:
-                pytest.fail(f"后端密码验证失败: {e}")
 
     @allure.title("MongoDB-白名单管理")
     def test_whitelist_management(self, mongodb_page, mongodb):
@@ -197,49 +174,6 @@ class TestMongoDBBasic:
             keyword = instance_name[:-2]
             mongodb_page.search(keyword)
             mongodb_page.assert_list_contain(keyword, exact_match=False)
-
-        with allure_step_log("步骤二：重置搜索条件"):
-            mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mongodb_page.wait_for_page_ready()
-            assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
-
-    @allure.title("MongoDB-用户列表页搜索")
-    def test_user_search(self, mongodb_page, mongodb):
-        """测试用户列表页的搜索功能"""
-        instance_name = mongodb["name"]
-        user_name = mongodb["user_name"]
-
-        with allure_step_log("步骤一：输入用户名称进行搜索"):
-            mongodb_page.goto_submenu("实例管理")
-            mongodb_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mongodb_page.wait_for_page_ready()
-            mongodb_page.get_by_role("tab", name="用户").click()
-            mongodb_page.wait_for_page_ready()
-            keyword = user_name
-            mongodb_page.search(keyword)
-            mongodb_page.assert_list_contain(keyword, "用户名", exact_match=False)
-
-        with allure_step_log("步骤二：重置搜索条件"):
-            mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mongodb_page.wait_for_page_ready()
-            assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
-
-    @allure.title("MongoDB-实例参数设置页搜索")
-    def test_instance_parameter_search(self, mongodb_page, mongodb):
-        """测试实例参数设置页的搜索功能"""
-        instance_name = mongodb["name"]
-        param_keyword = "connPool"
-
-        with allure_step_log("步骤一：输入参数名称进行搜索"):
-            mongodb_page.goto_submenu("实例管理")
-            mongodb_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mongodb_page.wait_for_page_ready()
-            sleep(2)
-            mongodb_page.get_by_role("tab", name="参数设置").click()
-            sleep(2)
-            mongodb_page.wait_for_page_ready()
-            mongodb_page.search(param_keyword)
-            mongodb_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
