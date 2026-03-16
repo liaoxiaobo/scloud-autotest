@@ -344,8 +344,8 @@ class SSH:
         # 根据 ipv6 参数选择 ping 命令
         ping_cmd = f'ping6 {ip} -c {count}' if ipv6 else f'ping {ip} -c {count}'
 
-        success_pattern = f"{count} packets transmitted, {count} received, 0% packet loss"
-        fail_pattern = f"{count} packets transmitted, 0 received, 100% packet loss"
+        success_pattern = "0% packet loss"
+        fail_pattern = "100% packet loss"
 
         for attempt in range(1, retries + 1):
             stdout = self.run(ping_cmd)
