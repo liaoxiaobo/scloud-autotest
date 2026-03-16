@@ -7,6 +7,7 @@ from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.kms import KmsPage
+from sugon_web.pages.sg import SgPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
@@ -934,3 +935,10 @@ def test_context(request):
 
     expect(vpc_page.alert).not_to_be_visible(timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
     expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
+
+@pytest.fixture(scope="class")
+def sg_page(page):
+    """初始化虚拟私有云页面对象"""
+    vpc_page = SgPage(page)
+    vpc_page.goto_service('安全组')
+    return vpc_page

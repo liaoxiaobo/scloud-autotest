@@ -749,15 +749,16 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_page_ready()
 
-    def bind_mfip(self, ip: str, project="默认项目"):
+    def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
         """虚机绑定mfip
         Args:
             project: 项目名称
+            network: 网络名称
             ip: 公网ip地址
 
         """
         self.goto_service("网络设施")
-        self.mfip_create(project, "Autotest", ip)
+        self.mfip_create(project, network, ip)
         self.assert_popup_success("执行成功")
         self.mfip_search(ip)
         # return self.get_column_data("Mfip 地址")[0]

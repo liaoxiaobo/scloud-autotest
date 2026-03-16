@@ -154,7 +154,7 @@ class EcsCreatePage(EcsPage):
                 self._select_single_network(net_config)
         # 选择安全组
         if network and network.get("安全组"):
-                self._select_security_group(network.get("安全组"))
+            self._select_security_group(network.get("安全组"))
     def _manage_info(self, manage):
         """填写管理配置
 
@@ -551,10 +551,11 @@ class EcsCreatePage(EcsPage):
 
     def _select_security_group(self, security_group):
         if security_group:
+            self.locator("div").filter(has_text=re.compile(r"^default$")).locator("i").click()
             for group in security_group:
-                self.locator("div").filter(has_text=re.compile(r"^default$")).nth(1).click()
-                self.locator("div").filter(has_text=f"default{group}default").locator("i").nth(1).click()
+                self.locator(".el-select__input").first.click()
                 self.locator("li").filter(has_text=group).click()
+            self.page.keyboard.press("Escape") # 收起下拉列表
             logger.info(f"选择安全组: {security_group}")
 
     def _set_login_pwd(self, login_pwd):
