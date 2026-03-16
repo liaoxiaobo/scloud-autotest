@@ -489,3 +489,196 @@ class TestVPCBasic:
             vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
             vpc_page.vip_unbind_instance(vip, vm1_name)
             vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
+
+    @allure.title("端口-创建和删除（自动分配）")
+    def test_port_create_delete_auto_assign(self, vpc_page, vpc):
+        """测试端口的创建和删除（自动分配模式）"""
+
+        vpc_name = vpc['name']
+        subnet_name = vpc['subnet_name']
+
+        with allure_step_log("步骤1: 创建端口（自动分配）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.port_create(
+                vpc_name=vpc_name,
+                subnet_name=subnet_name
+            )
+            vpc_page.assert_popup_success("添加端口成功")
+
+        with allure_step_log("步骤2: 获取新建的端口IP"):
+            # 在当前处于的端口 Tab 页中获取 IP 列表
+            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
+            port_ip = port_list[-1]  # 通常新增的数据在最后一行
+            logger.info(f"自动分配的端口IP: {port_ip}")
+
+        with allure_step_log("步骤3: 删除端口"):
+            vpc_page.port_delete(port_ip)
+
+        with allure_step_log("步骤4: 验证端口已删除"):
+            vpc_page.assert_deleted(port_ip)
+            logger.info(f"✓ 自动分配的端口 {port_ip} 删除成功")
+
+    @allure.title("端口-创建和删除（手动分配-手动输入）")
+    def test_port_create_delete_manual_assign(self, vpc_page, vpc):
+        """测试端口的创建和删除（手动指定IP模式）"""
+
+        vpc_name = vpc['name']
+        subnet_name = vpc['subnet_name']
+        cidr = vpc['cidr']
+        
+        # 根据cidr生成随机ip，避免与网关、已有接口等冲突
+        network = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(network.hosts())
+        # 随机选择一个IP，跳过前20个避免冲突
+        port_ip = str(random.choice(hosts[20:])) if len(hosts) > 30 else str(random.choice(hosts[5:]))
+        logger.info(f"计划手动分配的端口IP: {port_ip}")
+
+        with allure_step_log("步骤1: 创建端口（手动分配）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.port_create(
+                vpc_name=vpc_name,
+                subnet_name=subnet_name,
+                ip_address=port_ip
+            )
+            vpc_page.assert_popup_success("添加端口成功")
+
+        with allure_step_log("步骤2: 删除端口"):
+            vpc_page.port_delete(port_ip)
+
+        with allure_step_log("步骤3: 验证端口已删除"):
+            vpc_page.assert_deleted(port_ip)
+            logger.info(f"✓ 手动分配的端口 {port_ip} 删除成功")
+
+    @allure.title("端口-创建和删除（手动分配-快速选择）")
+    def test_port_create_delete_quick_select(self, vpc_page, vpc):
+        """测试端口的创建和删除（通过快速选择IP模式）"""
+
+        vpc_name = vpc['name']
+        subnet_name = vpc['subnet_name']
+        cidr = vpc['cidr']
+
+        # 根据cidr生成随机ip，避免与网关、已有接口等冲突
+        network = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(network.hosts())
+        # 随机选择一个IP，跳过前20个避免冲突
+        port_ip = str(random.choice(hosts[20:])) if len(hosts) > 30 else str(random.choice(hosts[5:]))
+        logger.info(f"计划手动分配的端口IP: {port_ip}")
+
+        with allure_step_log("步骤1: 创建端口（快速选择IP）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.port_create(
+                vpc_name=vpc_name,
+                subnet_name=subnet_name,
+                ip_address=port_ip,
+                quick_select=True
+            )
+            vpc_page.assert_popup_success("添加端口成功")
+
+        with allure_step_log("步骤2: 获取选中的端口IP"):
+            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
+            port_ip = port_list[-1]
+            logger.info(f"快速选择分配的端口IP: {port_ip}")
+
+        with allure_step_log("步骤3: 删除端口"):
+            vpc_page.port_delete(port_ip)
+
+        with allure_step_log("步骤4: 验证端口已删除"):
+            vpc_page.assert_deleted(port_ip)
+
+    @allure.title("端口-搜索&重置")
+    @pytest.mark.parametrize("port", [{"count": 2}], indirect=True)
+    def test_port_search(self, vpc_page, vpc, port):
+        """测试端口的搜索和重置功能"""
+
+        vpc_name = vpc['name']
+        port_ips = port  # fixture 返回的是 IP 列表
+
+        with allure_step_log("步骤1: 进入端口列表页"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+            vpc_page.wait_for_page_ready()
+            vpc_page.get_by_role("tab", name="端口").click()
+            vpc_page.wait_for_page_ready()
+
+        with allure_step_log("步骤2: 输入端口IP进行搜索"):
+            # 取第一个IP作为搜索关键字
+            keyword = port_ips[0]
+            # 在当前tab页内搜索
+            vpc_page.search(keyword)
+            # 验证搜索结果包含关键字
+            vpc_page.assert_list_contain(keyword, column_name="固定IP", exact_match=True)
+            # 验证另一个IP不在列表中
+            vpc_page.assert_list_not_contain(port_ips[1], column_name="固定IP")
+
+        with allure_step_log("步骤3: 重置搜索条件"):
+            vpc_page.btn_reset.click()
+            vpc_page.wait_for_page_ready()
+            # 验证搜索框已清空
+            assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+            # 验证列表恢复（至少包含之前创建的两个IP）
+            vpc_page.assert_list_contain(port_ips[0], column_name="固定IP")
+            vpc_page.assert_list_contain(port_ips[1], column_name="固定IP")
+
+    @allure.title("端口-批量删除")
+    @pytest.mark.parametrize("port", [{"count": 3}], indirect=True)
+    def test_port_batch_delete(self, vpc_page, vpc, port):
+        """测试端口的批量删除功能"""
+        
+        vpc_name = vpc['name']
+        port_ips = port  # fixture 返回的是 IP 列表
+
+        with allure_step_log("步骤1: 进入端口列表页"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+            vpc_page.wait_for_page_ready()
+            vpc_page.get_by_role("tab", name="端口").click()
+            vpc_page.wait_for_page_ready()
+
+        with allure_step_log("步骤2: 批量删除端口"):
+            # 传入列表进行批量删除
+            vpc_page.port_delete(port_ips)
+
+        with allure_step_log("步骤3: 验证端口已删除"):
+            vpc_page.assert_deleted(port_ips)
+
+    @allure.title("端口-修改IP和MAC")
+    def test_port_edit(self, vpc_page, vpc, port):
+        """测试端口修改IP和MAC功能"""
+        
+        vpc_name = vpc['name']
+        cidr = vpc['cidr']
+        old_ip = port[0]  # fixture默认创建1个端口
+        
+        # 找一个新的可用IP
+        network = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(network.hosts())
+        # 从最后面选一个IP，大概率不会和前面的冲突
+        new_ip = str(hosts[-10])
+        
+        # 生成随机MAC地址 (unicast, locally administered)
+        # 第二个字符必须是 2, 6, A, 或 E
+        mac_hex = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00]
+        for i in range(1, 6):
+            mac_hex[i] = random.randint(0x00, 0xff)
+        new_mac = ':'.join(map(lambda x: "%02x" % x, mac_hex))
+
+        with allure_step_log("步骤1: 进入端口列表页"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+            vpc_page.wait_for_page_ready()
+            vpc_page.get_by_role("tab", name="端口").click()
+            vpc_page.wait_for_page_ready()
+
+        with allure_step_log("步骤2: 修改端口IP和MAC"):
+            logger.info(f"将端口 {old_ip} 修改为 IP: {new_ip}, MAC: {new_mac}")
+            vpc_page.port_edit(old_ip=old_ip, new_ip=new_ip, new_mac=new_mac)
+            vpc_page.assert_popup_success("修改端口成功")
+
+        with allure_step_log("步骤3: 验证修改结果"):
+            # 验证新IP存在于列表中
+            vpc_page.assert_list_contain(new_ip, column_name="固定IP")
+            # 验证新MAC存在于列表中
+            vpc_page.assert_list_contain(new_mac, column_name="MAC地址")
+            
+            # 更新fixture的返回值，以便清理资源时能找到正确的IP
+            port[0] = new_ip

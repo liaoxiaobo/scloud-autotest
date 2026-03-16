@@ -142,3 +142,4 @@ allure-result
 screenshots
 .DS_Store
 environment.properties
+.vscode/

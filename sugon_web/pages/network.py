@@ -498,3 +498,112 @@ class VpcPage(BasePage):
         dialog.get_by_placeholder("请选择").click()
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
+
+    def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
+                    quick_select=True, mac_address: str = None, port_security: bool = False):
+        """
+        在虚拟私有云中创建端口
+
+        Args:
+            vpc_name: 虚拟私有云名称（用于定位VPC列表行并进入详情页）
+            subnet_name: 子网名称
+            ip_address: IPv4地址
+            quick_select: 是否快速选择可用IP地址（默认为True）
+            mac_address: MAC地址
+            port_security: 是否开启端口安全（默认为 False）
+        """
+        self.logger.info(f"开始在 VPC '{vpc_name}' 中创建端口")
+
+        # 1. 查找VPC数据行并点击进入详情，切换到"端口"Tab
+        self.get_row_by_name(vpc_name).locator("a").first.click()
+        self.wait_for_page_ready()
+
+        self.get_by_role("tab", name="端口").click()
+        self.wait_for_page_ready()
+
+        # 2. 点击新建端口 (✅ 复用 BasePage 的公共新建按钮)
+        self.get_by_label("端口", exact=True).get_by_text("新建").click()
+        self.wait_for_page_ready()
+
+        # 3. 选择子网
+        self.get_by_placeholder("请选择子网").click()
+        self.get_by_title(subnet_name).click()
+
+        # 4. 根据ip_address参数判断是否需要填写 IP 和 MAC
+        if ip_address:
+            self.locator("label").filter(has_text="手动分配").click()
+
+            if quick_select:
+                # 快速随机选择一个可用IP地址
+                self.get_by_placeholder("请选择IPv4地址").click()
+                self.page.wait_for_timeout(2000)
+                self.page.wait_for_load_state("domcontentloaded")
+                self.get_by_placeholder("请选择IPv4地址").fill(ip_address)
+                self.page.wait_for_timeout(2000)
+                self.get_by_text(ip_address, exact=True).click()
+            else:
+                # 手动输入IP地址
+                self.locator("label").filter(has_text="手动输入").click()
+                self.get_by_placeholder("请输入IP地址").fill(ip_address)
+
+            if mac_address:
+                self.get_by_placeholder("请按照6c:88:14:dd:25:59格式输入").fill(mac_address)
+
+            if port_security:
+                self.get_by_role("switch").locator("span").click()
+
+        # 5. 提交保存
+        self.get_by_label("新建端口").get_by_text("确定").click()
+        # 也可以使用框架公共的确定按钮: self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    def port_delete(self, names):
+        """
+        删除端口，支持单个和批量操作
+
+        Args:
+            names: 端口标识（字符串ip）或标识列表（列表）
+        """
+        self.logger.info(f"开始删除端口: {names}")
+
+        if isinstance(names, list):
+            # 批量删除模式
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            # 单个删除
+            self.click_option(names, "删除")
+
+        # 2. 弹窗确认删除
+        self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    def port_edit(self, old_ip: str, new_ip: str = None, new_mac: str = None):
+        """
+        修改端口
+
+        Args:
+            old_ip: 需要修改的端口的当前IP地址（用于在列表中定位行）
+            new_ip: 新的IP地址（可选）
+            new_mac: 新的MAC地址（可选）
+        """
+        self.logger.info(f"开始修改端口: {old_ip}")
+
+        # 1. 在列表中找到该端口并点击"修改"
+        self.click_dropdown_option(old_ip, "编辑")
+
+        # 2. 在弹窗中进行修改
+        if new_ip:
+            # 先清空输入框，确保输入新值
+            self.get_by_placeholder("请输入IPv4地址").click()
+            self.get_by_placeholder("请输入IPv4地址").fill(new_ip)
+            self.page.wait_for_timeout(1000)
+            
+        if new_mac:
+            # 匹配以 "请按照" 开头，并包含 "格式输入" 的占位符
+            self.get_by_placeholder(re.compile(r"请按照.*格式输入")).click()
+            self.get_by_placeholder(re.compile(r"请按照.*格式输入")).fill(new_mac)
+
+        # 3. 提交修改
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
