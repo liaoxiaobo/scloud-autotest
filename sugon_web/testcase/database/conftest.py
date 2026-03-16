@@ -5,6 +5,7 @@ from sugon_web.pages.login import LoginPage
 from sugon_web.pages.mysql import MySQLPage
 from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.pgsql import PgSQLPage
+from sugon_web.pages.mongodb import MongoDBPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -55,6 +56,14 @@ def pgsql_page(page):
     pgsql_page = PgSQLPage(page)
     pgsql_page.goto_service('AnhanDB(for PostgreSQL)')
     return pgsql_page
+
+
+@pytest.fixture(scope="class")
+def mongodb_page(page):
+    """初始化MongoDB实例管理页面"""
+    mongodb_page = MongoDBPage(page)
+    mongodb_page.goto_service('AnhanDB(for MongoDB)')
+    return mongodb_page
 
 
 @pytest.fixture(scope="class")
@@ -156,3 +165,31 @@ def pgsql(pgsql_page):
     with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享PostgreSQL实例: {name}")
         pgsql_page.delete_instance(data["name"])
+
+@pytest.fixture(scope="class")
+def mongodb(mongodb_page):
+    """创建一个供整个测试类使用的MongoDB实例对象（副本集和分片集群）"""
+    name = f"mongo-{random_data()}"
+    name1 = f"mongo-shard-{random_data()}"
+    root_password = "Admin1234#sugon"
+    user_name = "root"
+    
+    data = {"name": name, "name1": name1, "root_password": root_password, "user_name": user_name}
+    logger.info(f"为测试类创建共享MongoDB实例: {name}(副本集), {name1}(分片集群)")
+
+    with allure_step_log(f"前置操作：创建共享副本集实例 {name}"):
+        mongodb_page.create_instance(name, "副本集", password=root_password)
+        mongodb_page.assert_popup_success("创建实例")
+        mongodb_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
+
+    with allure_step_log(f"前置操作：创建共享分片集群实例 {name1}"):
+        mongodb_page.create_instance(name1, "分片集群", password=root_password)
+        mongodb_page.assert_popup_success("创建实例")
+        mongodb_page.assert_status(name1, status="运行中", timeout=3600, refresh=True)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例"):
+        logger.info(f"清理共享MongoDB实例: {name}, {name1}")
+        mongodb_page.delete_instance(name1)
+        mongodb_page.delete_instance(name)
