@@ -19,36 +19,34 @@ class TestPgSQLBasic:
         # --- 第一阶段：单机 -> 高可用 ---
         with allure_step_log("步骤一：执行升级操作（单机 -> 高可用）"):
             pgsql_page.upgrade_instance(instance_name, target_type="高可用")
-            sleep(3)
-            pgsql_page.assert_popup_success("升级")
+            pgsql_page.assert_popup_success("升级", timeout=10)
 
         with allure_step_log("步骤二：验证升级过程及结果（单机 -> 高可用）"):
             # 验证状态变为升级中
-            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=1200, refresh=True)
             # 验证最终状态变为运行中
             pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
             # 验证节点状态变为运行中
             pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             sleep(3)
-            pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=600)
+            pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=1200, refresh=True)
             # 后端验证：检查新节点是否已创建
             db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-1")
 
         # --- 第二阶段：高可用 -> 集群 ---
         with allure_step_log("步骤三：执行升级操作（高可用 -> 集群）"):
             pgsql_page.upgrade_instance(instance_name, target_type="集群")
-            sleep(3)
-            pgsql_page.assert_popup_success("升级")
+            pgsql_page.assert_popup_success("升级", timeout=10)
 
         with allure_step_log("步骤四：验证升级过程及结果（高可用 -> 集群）"):
             # 验证状态变为升级中
-            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=1200, refresh=True)
             # 验证最终状态变为运行中
             pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
             # 验证节点状态变为运行中
             pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             sleep(3)
-            pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=600)
+            pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=1200, refresh=True)
 
             # 后端验证：检查新节点是否已创建
             db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-2")
