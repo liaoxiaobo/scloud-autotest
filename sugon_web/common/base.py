@@ -161,7 +161,8 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
             self.get_by_role("textbox", name="搜索（快照名称）"),
-            self.locator(".input-with-select > .el-input__inner")
+            self.locator(".input-with-select > .el-input__inner"),
+            self.get_by_role("textbox", name="请输入设备名称")
         ]
 
         return self._find_element(locators, "搜索框")
@@ -193,7 +194,8 @@ class BasePage(Playwright):
         locators = [
             self.get_by_text("批量删除", exact=True),
             self.get_by_text("删除", exact=True).first,
-            self.get_by_text("批量删除").first
+            self.get_by_text("批量删除").first,
+            self.get_by_label("虚拟IP管理").get_by_text("批量删除")
         ]
 
         return self._find_element(locators, "批量删除按钮")
@@ -207,7 +209,9 @@ class BasePage(Playwright):
             self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
             self.locator("section").get_by_text("确定"),
             self.locator("div:nth-child(2) > div > .cloud-button-btn > span").first,   # 云硬盘删除对话框
-            self.locator(".sure-footer > div > .cloud-button-btn").first
+            self.locator(".sure-footer > div > .cloud-button-btn").first,
+            self.get_by_label("虚拟IP管理").get_by_text("确定", exact=True)
+
         ]
 
         return self._find_element(locators, "对话框'确定'按钮")
@@ -1170,3 +1174,38 @@ class BasePage(Playwright):
 
         self.wait_for_page_ready()
         self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
+
+    def sort_by_header(self, header_name: str, order: str = "desc"):
+        """点击表头进行排序
+
+        Args:
+            header_name: 表头名称，如"创建时间"
+            order: 排序方式，"asc"升序或"desc"降序，默认降序
+        """
+        header_cell = self.get_by_role("cell", name=header_name)
+        if header_cell.count() == 0:
+            self.logger.warning(f"未找到表头: {header_name}")
+            return
+
+        # 直接获取 header_cell 自身的 class 属性
+        class_attr = header_cell.get_attribute("class") or ""
+
+        is_asc_active = "ascending" in class_attr
+        is_desc_active = "descending" in class_attr
+
+        # 如果已经是目标排序状态，不再点击
+        if order == "desc" and is_desc_active:
+            self.logger.info(f"已经是 {header_name} 降序排列")
+            return
+        if order == "asc" and is_asc_active:
+            self.logger.info(f"已经是 {header_name} 升序排列")
+            return
+
+        # 点击目标排序箭头
+        caret_wrapper = header_cell.locator(".caret-wrapper")
+        if order == "desc":
+            caret_wrapper.locator("i.descending").click()
+            self.logger.info(f"已按 {header_name} 降序排列")
+        else:
+            caret_wrapper.locator("i.ascending").click()
+            self.logger.info(f"已按 {header_name} 升序排列")

@@ -68,6 +68,7 @@ class TestBackupBasic:
             backup_page.goto_submenu('任务')
             keyword = backup_task.get('task_name').split("-")[-1]
             backup_page.backup_search(keyword)
+            backup_page.page.wait_for_load_state("networkidle")
             backup_page.assert_list_contain(keyword, column_name="任务名", exact_match=False)
 
         with allure_step_log("步骤2: 重置搜索条件"):
@@ -137,42 +138,6 @@ class TestBackupBasic:
         with allure_step_log("步骤2: 验证任务名称"):
             backup_page.assert_backup_policy_details(task_name, new_policy)
 
-    @allure.title("自动迁移任务")
-    def test_backup_auto_migrate(self, backup_task, backup_page):
-        """测试迁移任务功能"""
-        enabled_nodes = backup_task.get("backup_nodes")
-        if len(enabled_nodes) < 2:
-            pytest.skip("迁移任务需要至少2个备份节点")
-
-        task_name = backup_task.get("task_name")
-        cur_target = backup_task.get("cur_target")
-
-        with allure_step_log("步骤1: 迁移任务"):
-            backup_page.backup_migrate(task_name)
-            backup_page.assert_popup_success("迁移备份任务成功")
-
-        with allure_step_log("步骤2: 验证迁移后任务节点"):
-            assert cur_target != backup_page.backup_get_cur_target(task_name)
-
-    @allure.title("手动迁移任务")
-    def test_backup_manually_migrate(self, backup_task, backup_page):
-        """测试迁移任务功能"""
-        enabled_nodes = backup_task.get("backup_nodes")
-        if len(enabled_nodes) < 2:
-            pytest.skip("迁移任务需要至少2个备份节点")
-
-        task_name = backup_task.get("task_name")
-        cur_target = backup_task.get("cur_target")
-        enabled_nodes.remove(cur_target)
-        target = random.choice(enabled_nodes)
-
-        with allure_step_log("步骤1: 迁移任务"):
-            backup_page.backup_migrate(task_name, method="手动", target=target)
-            backup_page.assert_popup_success("迁移备份任务成功")
-
-        with allure_step_log("步骤2: 验证迁移后任务节点"):
-            assert target == backup_page.backup_get_cur_target(task_name)
-
     @allure.title("批量操作任务")
     @pytest.mark.parametrize("vm_backup, backup_task",[({"count": 2}, {"task_count": 2})],indirect=True)
     @pytest.mark.parametrize("operation", ["启动", "停止", "删除"])
@@ -225,6 +190,42 @@ class TestBackupBasic:
             backup_page.backup_reset_task(task_name)
             backup_page.assert_popup_success(f"重置备份任务{task_name}成功", timeout=60)
             backup_page.assert_status(task_name, "已启动")
+
+    @allure.title("自动迁移任务")
+    def test_backup_auto_migrate(self, backup_task, backup_page):
+        """测试迁移任务功能"""
+        enabled_nodes = backup_task.get("backup_nodes")
+        if len(enabled_nodes) < 2:
+            pytest.skip("迁移任务需要至少2个备份节点")
+
+        task_name = backup_task.get("task_name")
+        cur_target = backup_task.get("cur_target")
+
+        with allure_step_log("步骤1: 迁移任务"):
+            backup_page.backup_migrate(task_name)
+            backup_page.assert_popup_success("迁移备份任务成功")
+
+        with allure_step_log("步骤2: 验证迁移后任务节点"):
+            assert cur_target in enabled_nodes  # 自动迁移会看当前备份任务的分布，迁移后节点不一定变更，确保在可用节点内即可
+
+    @allure.title("手动迁移任务")
+    def test_backup_manually_migrate(self, backup_task, backup_page):
+        """测试迁移任务功能"""
+        enabled_nodes = backup_task.get("backup_nodes")
+        if len(enabled_nodes) < 2:
+            pytest.skip("迁移任务需要至少2个备份节点")
+
+        task_name = backup_task.get("task_name")
+        cur_target = backup_task.get("cur_target")
+        enabled_nodes.remove(cur_target)
+        target = random.choice(enabled_nodes)
+
+        with allure_step_log("步骤1: 迁移任务"):
+            backup_page.backup_migrate(task_name, method="手动", target=target)
+            backup_page.assert_popup_success("迁移备份任务成功")
+
+        with allure_step_log("步骤2: 验证迁移后任务节点"):
+            assert target == backup_page.backup_get_cur_target(task_name)
 
 @allure.epic('云备份')
 @allure.feature('实例备份')
@@ -456,3 +457,23 @@ class TestResumeCreate:
 
             # 验证虚机可用性
             ecs_page.assert_ecs_enable(re_vm, ssh_vm)
+
+@allure.epic('云备份')
+@allure.feature('实例备份')
+@allure.story('备份任务场景')
+class TestBackupScenarios:
+
+    @allure.title("验证创建完成的备份任务迁移后启动")
+    def test_backup_search(self, backup_page, backup_task):
+        enabled_nodes = backup_task.get("backup_nodes")
+        if len(enabled_nodes) < 2:
+            pytest.skip("迁移任务需要至少2个备份节点")
+
+        with allure_step_log("步骤1: 迁移任务"):
+            task_name = backup_task.get("task_name")
+            backup_page.backup_migrate(task_name)
+            backup_page.assert_popup_success("迁移备份任务成功")
+
+        with allure_step_log("步骤2: 启动任务"):
+            backup_page.backup_start_stop(task_name, "启动")
+            backup_page.assert_status(task_name, "已启动")

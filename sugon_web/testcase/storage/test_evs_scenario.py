@@ -198,7 +198,8 @@ class TestEVSScenario:
 
             # 获取云硬盘在云服务器B中的设备名
             mount_info = evs_page.get_row_data(volume["name"]).get("挂载信息")
-            pattern = f'{re.escape(vm_b["name"])}上的([^\\s]+)'
+            # 匹配 sda, vda, xvda 等常见设备名，避免匹配到后续连在一起的 VM 名称
+            pattern = f'{re.escape(vm_b["name"])}上的(sd[a-z]|vd[a-z]|xvd[a-z])'
             match = re.search(pattern, mount_info)
             if match:
                 disk_name_b = match.group(1)

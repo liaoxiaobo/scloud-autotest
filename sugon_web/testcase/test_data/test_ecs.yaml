@@ -27,10 +27,10 @@ evs:
     - spec:
       spec_type: True
       classify: "计算型"
-      CPU: "1"
-      Mem: "1"
+      CPU: "2"
+      Mem: "4"
       shutdown: True
-      desc: "修改为计算型1核1G"
+      desc: "修改为计算型2核4G"
   test_ecs_operations:
     - param:
       operation: "重启"

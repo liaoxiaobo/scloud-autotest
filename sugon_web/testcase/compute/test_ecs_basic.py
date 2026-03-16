@@ -435,13 +435,12 @@ class TestECSBasic:
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
             # ecs_page.assert_status(name, "创建镜像中")
-            ecs_page.assert_status(name)
+            ecs_page.assert_status(name, timeout=600, refresh=True)
             ecs_page.goto_submenu("镜像服务")
-            ecs_page.assert_status(image_name, status="可用", refresh=True)
+            ecs_page.assert_status(image_name, status="可用", timeout=600, refresh=True)
 
         with allure_step_log(f"步骤3: 使用镜像{image_name}创建弹性云服务器{name}-1"):
             ecs_page.goto_service("弹性云服务器")
-            ecs_page.wait_for_operation_complete()
             image_vm = f"{name}-image"
             ecs_page.ecs_create(image_vm, image_name=image_name)
             ecs_page.assert_popup_success("创建实例命令下发成功")
@@ -457,7 +456,6 @@ class TestECSBasic:
         with allure_step_log("步骤5: 清理测试数据"):
             # 删除测试云服务器
             ecs_page.goto_service("弹性云服务器")
-            ecs_page.wait_for_operation_complete()
             ecs_page.ecs_remove(image_vm)
             ecs_page.ecs_delete(name)
             ecs_page.assert_deleted(image_vm)
@@ -687,7 +685,6 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤3: {vm_name}卸载裸磁盘{pool_name}"):
             ecs_page.ecs_unmount_bare_disk(vm_name)
-            ecs_page.wait_for_operation_complete()
             ecs_page.assert_popup_success(f"{vm_name}实例卸载主机设备成功")
 
         with allure_step_log(f"步骤4: 验证卸载裸磁盘结果"):

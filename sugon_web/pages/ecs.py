@@ -84,7 +84,6 @@ class EcsPage(OpsPage):
 
         # 提交创建
         self.get_by_text("立即创建").click()
-        self.wait_for_operation_complete()
         logger.info(f"云服务器创建请求已提交: {name}，数量: {count}")
 
     def _select_cluster(self, cluster):
@@ -281,10 +280,6 @@ class EcsPage(OpsPage):
             logger.info(f"已选择释放云服务器{names}绑定的公网IP")
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
-
-        # 等待操作完成
-        self.wait_for_operation_complete()
-        sleep(6)    # 临时方案: 等待删除弹窗自动关闭，规避元素未消失导致的定位异常
 
     def assert_ecs_info(self, name: str, row_name: str, exception: str):
         """验证云服务器信息
@@ -545,11 +540,17 @@ class EcsPage(OpsPage):
         bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
         # 选择公网ip
-        ip_info = bind_dialog.get_by_role("row").filter(has_text="关闭").first.get_by_role("cell")
-        ip_info.first.click()
+        # 获取所有可用IP行，随机选择一个
+        available_rows = bind_dialog.get_by_role("row").filter(has_text="关闭").all()
+        if not available_rows:
+            raise Exception("没有可用的公网IP")
+        # 随机选择一个IP，降低多线程冲突概率
+        selected_row = random.choice(available_rows)
+        selected_row.get_by_role("radio").click()
+        ip_info = selected_row.get_by_role("cell")
         ip = ip_info.nth(1).text_content()
         self.dialog_confirm.click()
-        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}")
+        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}, 公网ip: {ip}")
         return str(ip)
 
     @submenu("弹性云服务器")
@@ -824,7 +825,6 @@ class EcsPage(OpsPage):
 
             # 点击更多操作按钮
             self.get_by_role("button", name="更多操作").click()
-            self.wait_for_operation_complete()
 
             # 根据操作类型点击相应的选项
             self._click_batch_operation_option(operation)
@@ -832,8 +832,6 @@ class EcsPage(OpsPage):
             # 确认操作
             self._confirm_batch_operation(operation)
 
-            # 等待操作完成
-            self.wait_for_operation_complete()
             logger.info(f"批量操作完成: {operation}, 云服务器: {names}")
 
         except Exception as e:
@@ -943,8 +941,6 @@ class EcsPage(OpsPage):
         # 确认删除
         self.get_by_label("删除", exact=True).get_by_text("确定").click()
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
         logger.info(f"云服务器安全删除请求已提交: {name}")
 
     @submenu("回收站")
@@ -1081,9 +1077,6 @@ class EcsPage(OpsPage):
         # 点击确定按钮创建快照
         self.dialog_confirm.click()
         logger.info(f"云服务器快照创建请求已提交: {name}, {snapshot_name}")
-
-        # 等待操作完成
-        self.wait_for_operation_complete()
 
     @submenu("快照")
     def ecss_search(self, keyword, s_type="快照名称"):
@@ -1351,7 +1344,7 @@ class EcsPage(OpsPage):
 
         # 点击更多操作按钮
         self.get_by_role("button", name="更多操作").click()
-        self.wait_for_operation_complete()
+
         # 选择指定的云服务器并点击批量迁移
         self._click_batch_operation_option(f"批量{migration_type}")
 
@@ -1392,8 +1385,6 @@ class EcsPage(OpsPage):
         # 确认迁移
         # self.get_by_label("批量迁移").get_by_text("确定").click()
         self.dialog_confirm.click()
-        # 等待操作完成
-        self.wait_for_operation_complete()
 
         logger.info(f"批量迁移云服务器下发成功: {names}, 迁移方式: {migration_type}, 带宽: {bandwidth}")
 
@@ -1620,9 +1611,6 @@ class EcsPage(OpsPage):
         self.get_by_label("挂载云硬盘").get_by_text("挂载", exact=True).click()
         logger.info(f"操作完成: 云硬盘{volume_name}挂载到服务器{vm_name}")
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
-
 
     @submenu("弹性云服务器")
     def ecs_unmount_from_server(self, volume_name, vm_name):
@@ -1644,9 +1632,6 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
         logger.info(f"操作完成: 云硬盘{volume_name}从服务器{vm_name}卸载")
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
-
     @submenu("弹性云服务器")
     def ecs_expand_system_disk(self, name: str, new_size: str):
         """扩容弹性云服务器系统盘
@@ -1666,8 +1651,6 @@ class EcsPage(OpsPage):
         # 确认扩容
         self.dialog_confirm.click()
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
         logger.info(f"云服务器系统盘扩容成功: {name}")
 
     @submenu("弹性云服务器")
@@ -1695,8 +1678,6 @@ class EcsPage(OpsPage):
         self.dialog_confirm.click()
         logger.info(f"云服务器{name}的CPU QoS修改请求已提交")
 
-        self.wait_for_operation_complete()
-
     @submenu("弹性云服务器")
     def ecs_batch_set_startup_order(self, names: list, order: int, delay):
         """批量设置云服务器启动顺序
@@ -1723,9 +1704,6 @@ class EcsPage(OpsPage):
 
         # 确认设置
         self.dialog_confirm.click()
-
-        # 等待操作完成
-        self.wait_for_operation_complete()
 
         logger.info(f"批量设置云服务器启动顺序完成: {names}")
 
@@ -1785,9 +1763,6 @@ class EcsPage(OpsPage):
         self.get_by_label("挂载CD-ROM").get_by_text("挂载", exact=True).click()
         logger.info(f"云服务器{name}挂载CD-ROM请求已提交")
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
-
     @submenu("弹性云服务器")
     def ecs_unmount_cdrom(self, name: str, cdrom_name: str = None):
         """
@@ -1811,9 +1786,6 @@ class EcsPage(OpsPage):
         # 点击挂载按钮
         self.dialog_confirm.click()
         logger.info(f"云服务器{name}卸载CD-ROM请求已提交")
-
-        # 等待操作完成
-        self.wait_for_operation_complete()
 
     def assert_ecs_details_info(self, names, info_items: dict, tab: str="详情", sub_tab: str=None):
         """验证云服务器详情页面中的信息
@@ -1894,9 +1866,6 @@ class EcsPage(OpsPage):
         # 确认设置
         self.dialog_confirm.click()
 
-        # 等待操作完成
-        self.wait_for_operation_complete()
-
         logger.info(f"批量设置云服务器关机顺序完成: {names}")
 
     @submenu("弹性云服务器")
@@ -1921,7 +1890,6 @@ class EcsPage(OpsPage):
         if len(boot_order) > 1:
             for i in range(len(boot_order) - 1):
                 self.get_by_role("button", name=" 添加启动项").click()
-                self.wait_for_operation_complete()
 
         for i, boot_device in enumerate(boot_order):
             # 选择启动类型
@@ -1936,7 +1904,6 @@ class EcsPage(OpsPage):
 
         # 确认设置
         self.dialog_confirm.click()
-        self.wait_for_operation_complete()
 
         logger.info(f"云服务器 {name} 启动顺序设置完成")
 
@@ -1970,7 +1937,7 @@ class EcsPage(OpsPage):
         # 点击确定
         time.sleep(2)
         self.dialog_confirm.click()
-        self.wait_for_operation_complete()
+
         logger.info(f"云服务器 {name} 卸载工具请求已提交")
 
     def assert_ecs_tools_installed(self, name: str):
@@ -2191,7 +2158,7 @@ class EcsPage(OpsPage):
         Args:
             name: 删除的标签名称
         """
-        logger.info(f"删除标签: {name}")
+        self.sort_by_header("创建时间", "desc")
         # 点击删除按钮
         self.click_dropdown_option(name, "删除")
         # 确认删除
@@ -2207,8 +2174,7 @@ class EcsPage(OpsPage):
         Args:
             names: 删除的标签名称
         """
-        logger.info(f"删除标签: {names}")
-
+        self.sort_by_header("创建时间", "desc")
         self.select_rows_by_names(names)
 
         # 点击删除按钮
@@ -2227,8 +2193,7 @@ class EcsPage(OpsPage):
             name: 标签名称
             new_name: 新标签名称
         """
-        logger.info(f"编辑{name}标签为{new_name}")
-
+        self.sort_by_header("创建时间", "desc")
         # 点击编辑按钮
         self.click_dropdown_option(name, "编辑")
 
@@ -2254,7 +2219,7 @@ class EcsPage(OpsPage):
             vm_name: 云服务器名称
             label_name: 绑定的标签名称
         """
-        logger.info(f"标签页{label_name}解绑实例: {vm_name}")
+        self.sort_by_header("创建时间", "desc")
         # 点击标签页的操作按钮
         self.click_option(label_name, "查看关联资源")
         # 点击云服务器后的操作按钮
@@ -2276,7 +2241,7 @@ class EcsPage(OpsPage):
             names: 云服务器名称
             label_names: 标签名称
         """
-        logger.info(f"{label_names}批量解绑云服务器: {names}")
+        self.sort_by_header("创建时间", "desc")
         for label_name in label_names:
             self.click_option(label_name, "查看关联资源")
             self.select_rows_by_names(names)
@@ -2642,8 +2607,6 @@ class EcsPage(OpsPage):
                 ip_loc.clear()
                 ip_loc.fill(ip)
 
-
         self.dialog_confirm.click()
-        self.wait_for_operation_complete()
         self.assert_popup_success("执行成功")
         logger.info(f"操作完成: 存储池{pool}, 数量:{count} {ip}")
