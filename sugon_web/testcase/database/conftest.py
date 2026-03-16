@@ -168,24 +168,28 @@ def pgsql(pgsql_page):
 
 @pytest.fixture(scope="class")
 def mongodb(mongodb_page):
-    """创建一个供整个测试类使用的MongoDB实例对象"""
+    """创建一个供整个测试类使用的MongoDB实例对象（副本集和分片集群）"""
     name = f"mongo-{random_data()}"
-    instance_type = "副本集"
-    # MongoDB密码规则：大写、小写、数字、特殊字符(!#$%^&*()_+=)至少三种
-    # 这里构造一个符合规则的密码：大写+小写+数字+特殊字符
+    name1 = f"mongo-shard-{random_data()}"
     root_password = "Admin1234#sugon"
     user_name = "root"
     
-    data = {"name": name, "root_password": root_password, "user_name": user_name}
-    logger.info(f"为测试类创建共享MongoDB实例: {name}")
+    data = {"name": name, "name1": name1, "root_password": root_password, "user_name": user_name}
+    logger.info(f"为测试类创建共享MongoDB实例: {name}(副本集), {name1}(分片集群)")
 
-    with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        mongodb_page.create_instance(name, instance_type, password=root_password)
+    with allure_step_log(f"前置操作：创建共享副本集实例 {name}"):
+        mongodb_page.create_instance(name, "副本集", password=root_password)
         mongodb_page.assert_popup_success("创建实例")
-        mongodb_page.assert_status(name, status="运行中", timeout=1800, refresh=True) # MongoDB创建可能较慢
+        mongodb_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
+
+    with allure_step_log(f"前置操作：创建共享分片集群实例 {name1}"):
+        mongodb_page.create_instance(name1, "分片集群", password=root_password)
+        mongodb_page.assert_popup_success("创建实例")
+        mongodb_page.assert_status(name1, status="运行中", timeout=3600, refresh=True)
 
     yield data
 
-    with allure_step_log(f"后置操作：删除共享实例 {name}"):
-        logger.info(f"清理共享MongoDB实例: {name}")
-        mongodb_page.delete_instance(data["name"])
+    with allure_step_log(f"后置操作：删除共享实例"):
+        logger.info(f"清理共享MongoDB实例: {name}, {name1}")
+        mongodb_page.delete_instance(name1)
+        mongodb_page.delete_instance(name)

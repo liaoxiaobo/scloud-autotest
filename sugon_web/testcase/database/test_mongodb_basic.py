@@ -50,7 +50,7 @@ class TestMongoDBBasic:
 
         with allure_step_log("步骤三：验证新密码生效"):
             # 获取节点IP进行连接验证
-            node_name = f"{instance_name}-0" # 假设副本集第一个节点是-0
+            node_name = f"{instance_name}-0"  # 假设副本集第一个节点是-0
             try:
                 ip_from_db = db_util.get_node_mfip_from_db(mongodb_page, ssh_host, "sugoncloud_mongodb", node_name)
                 ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
@@ -59,7 +59,7 @@ class TestMongoDBBasic:
                 assert '"ok" : 1' in result
             except Exception as e:
                 pytest.fail(f"后端密码验证失败: {e}")
-            
+
             mongodb["root_password"] = new_password
 
     @allure.title("MongoDB-修改云盘大小")
@@ -87,7 +87,7 @@ class TestMongoDBBasic:
         """测试修改MongoDB实例的规格"""
         instance_name = mongodb["name"]
         # 需要确认页面上存在的规格名称
-        specification_name = "mongodb.d6 mongodb.d6.2xlarge 8核" 
+        specification_name = "mongodb.d6 mongodb.d6.2xlarge 8核"
         real_specification = "mongodb.d6.2xlarge"
 
         with allure_step_log("步骤一：执行修改规格操作"):
@@ -108,7 +108,7 @@ class TestMongoDBBasic:
     def test_node_bind_and_unbind_ip(self, mongodb_page, mongodb, ssh_host):
         """测试节点绑定和解绑MongoDB实例的公网IP"""
         instance_name = mongodb["name"]
-        node_name = f"{instance_name}-0" # 假设绑定第一个shard节点
+        node_name = f"{instance_name}-0"  # 假设绑定第一个shard节点
         network = "public_net(基础版)"  # 请根据实际环境修改
 
         with allure_step_log("步骤一：绑定公网IP"):
@@ -127,7 +127,6 @@ class TestMongoDBBasic:
             mongodb_page.assert_popup_success("执行成功")
             if ssh_host:
                 ssh_host.ping(ip, connected=False)
-
 
     @allure.title("MongoDB-白名单管理")
     def test_whitelist_management(self, mongodb_page, mongodb):
@@ -179,6 +178,7 @@ class TestMongoDBBasic:
             mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
             mongodb_page.wait_for_page_ready()
             assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
     @allure.title("MongoDB-开启和关闭错误日志")
     def test_toggle_error_log(self, mongodb_page, mongodb):
         """测试为MongoDB实例开启和关闭错误日志功能"""
@@ -198,7 +198,7 @@ class TestMongoDBBasic:
     @allure.title("MongoDB-实例参数搜索")
     def test_instance_parameter_search(self, mongodb_page, mongodb):
         """测试实例参数设置页的搜索功能"""
-        instance_name =  mongodb["name"]
+        instance_name = mongodb["name"]
         param_keyword = "operationProfiling.slowOpThresholdMs"
 
         with allure_step_log("步骤一：输入参数名称进行搜索"):
@@ -231,3 +231,87 @@ class TestMongoDBBasic:
             # MongoDB 参数应用可能不需要重启，或者根据环境而定
             mongodb_page.assert_popup_success("修改实例参数成功")
             mongodb_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+
+    @allure.title("MongoDB-添加备节点")
+    def test_add_secondary_node(self, mongodb_page, mongodb, ssh_host):
+        """测试为MongoDB副本集实例添加备节点"""
+        instance_name = mongodb["name"]
+
+        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页并点击新建备节点"):
+            mongodb_page.add_secondary_node(instance_name)
+            mongodb_page.assert_popup_success("添加备节点")
+
+        with allure_step_log("步骤二：验证节点状态变化"):
+            # 根据用户描述，新建备节点会多出来两个节点：-3 和 -4
+            # 3和4是同时创建的，先快速验证两者都进入了创建中状态
+            for i in [3, 4]:
+                node_name = f"{instance_name}-{i}"
+                mongodb_page.assert_status(node_name, status="创建中", timeout=300, refresh=True)
+
+            # 再等待两者都进入运行中状态
+            for i in [3, 4]:
+                node_name = f"{instance_name}-{i}"
+                mongodb_page.assert_status(node_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            for i in [3, 4]:
+                db_util.assert_backend_created(mongodb_page, ssh_host, f"{instance_name}-{i}")
+
+    @allure.title("MongoDB-添加只读节点")
+    def test_add_readonly_node(self, mongodb_page, mongodb, ssh_host):
+        """测试为MongoDB副本集实例添加只读节点"""
+        instance_name = mongodb["name"]
+
+        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页并点击新建只读节点"):
+            mongodb_page.add_readonly_node(instance_name)
+            mongodb_page.assert_popup_success("添加只读节点")
+
+        with allure_step_log("步骤二：验证节点状态变化"):
+            # 根据用户描述，新建只读节点会再多出来一个节点：-5
+            node_name = f"{instance_name}-5"
+            mongodb_page.assert_status(node_name, status="创建中", timeout=600, refresh=True)
+            mongodb_page.assert_status(node_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            db_util.assert_backend_created(mongodb_page, ssh_host, node_name)
+
+    @allure.title("MongoDB-分片集群-添加Mongos节点")
+    def test_add_mongos_node(self, mongodb_page, mongodb, ssh_host):
+        """测试为MongoDB分片集群添加Mongos节点"""
+        instance_name = mongodb["name1"]
+
+        with allure_step_log(f"步骤一：为实例 {instance_name} 添加Mongos节点"):
+            mongodb_page.add_mongos_node(instance_name)
+            mongodb_page.assert_popup_success("添加Mongos节点")
+
+        with allure_step_log("步骤二：验证新节点状态变化"):
+            # 原有 0-10，新节点为 11
+            node_name = f"{instance_name}-11"
+            mongodb_page.assert_status(node_name, status="创建中", timeout=600, refresh=True)
+            mongodb_page.assert_status(node_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            db_util.assert_backend_created(mongodb_page, ssh_host, node_name)
+
+    @allure.title("MongoDB-分片集群-调整分片")
+    def test_adjust_shards(self, mongodb_page, mongodb, ssh_host):
+        """测试为MongoDB分片集群调整分片数量"""
+        instance_name = mongodb["name1"]
+
+        with allure_step_log(f"步骤一：为实例 {instance_name} 调整分片数量为 3"):
+            mongodb_page.adjust_shards(instance_name, 3)
+            mongodb_page.assert_popup_success("调整分片")
+
+        with allure_step_log("步骤二：验证新节点状态变化"):
+            # 假设再出现 3 个节点：12, 13, 14
+            for i in [12, 13, 14]:
+                node_name = f"{instance_name}-{i}"
+                mongodb_page.assert_status(node_name, status="创建中", timeout=300, refresh=True)
+            
+            for i in [12, 13, 14]:
+                node_name = f"{instance_name}-{i}"
+                mongodb_page.assert_status(node_name, status="运行中", timeout=2400, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            for i in [12, 13, 14]:
+                db_util.assert_backend_created(mongodb_page, ssh_host, f"{instance_name}-{i}")

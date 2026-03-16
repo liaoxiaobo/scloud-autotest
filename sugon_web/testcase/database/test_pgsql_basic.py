@@ -166,6 +166,23 @@ class TestPgSQLBasic:
             pgsql_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
 
+    @allure.title("PostgreSQL-添加只读节点")
+    def test_add_readonly_node(self, pgsql_page, pgsql, ssh_host):
+        """测试为PostgreSQL实例添加只读节点"""
+        instance_name = pgsql["name"]
+
+        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页并点击新建只读节点"):
+            pgsql_page.add_node(instance_name)
+            pgsql_page.assert_popup_success("添加只读节点")
+
+        with allure_step_log("步骤二：验证节点状态变化"):
+            new_node_name = f"{instance_name}-3"
+            pgsql_page.assert_status(new_node_name, status="创建中", timeout=1200, refresh=True)
+            pgsql_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            db_util.assert_backend_created(pgsql_page, ssh_host, new_node_name)
+
     @allure.title("PostgreSQL-创建用户")
     def test_create_user(self, pgsql_page, pgsql):
         """测试创建用户并授权"""
