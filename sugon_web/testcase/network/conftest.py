@@ -1,8 +1,11 @@
 import pytest
 import ipaddress
 import random
+import time
+from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
+
 
 @pytest.fixture(scope="function")
 def vip(vpc_page, vpc):
@@ -27,6 +30,7 @@ def vip(vpc_page, vpc):
     logger.info(f"清理虚拟IP {vip_address}")
     vpc_page.vip_delete(vip_address)
 
+
 @pytest.fixture(scope="class")
 def sg(sg_page):
     """
@@ -50,3 +54,87 @@ def sg(sg_page):
         sg_page.goto_service("安全组")
         sg_page.sg_delete(sg_name)
         sg_page.assert_deleted(sg_name)
+
+
+@pytest.fixture()
+def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
+    """
+    通用前置准备：分配公网IP、创建安全组、创建虚机并绑定IP
+    支持参数化配置，可通过pytest.mark.parametrize传入参数：
+    - vm_count: 创建虚机数量，默认为2
+    - sg_count: 创建安全组数量，默认为2
+    - fip_count: 分配并绑定公网IP的数量，默认为1
+    """
+    params = getattr(request, 'param', {})
+    vm_count = params.get('vm_count', 2)
+    sg_count = params.get('sg_count', 2)
+    fip_count = params.get('fip_count', 1)
+
+    network_name = vpc.get("name")
+    subnet_name = vpc.get("subnet_name")
+
+    # 1. 分配公网IP
+    if fip_count > 0:
+        with allure_step_log(f"Fixture: 分配 {fip_count} 个公网IP"):
+            ecs_page.assign_ip(count=str(fip_count))
+
+    # 2. 平台创建安全组
+    sgs = []
+    with allure_step_log(f"Fixture: 平台创建 {sg_count} 个安全组"):
+        sg_page.goto_service("安全组")
+        for i in range(sg_count):
+            sg_name = f"autotest-sg{i+1}-{time.strftime('%M%S')}"
+            sg_page.sg_create(sg_name, desc=f"{sg_name}自动化测试")
+            expect(sg_page.popup).to_have_count(0)
+            sgs.append(sg_name)
+
+    # 3. 在同一子网下创建虚机并将它们分发到安全组中
+    vms = []
+    vm_names = []
+    sg_strategy = params.get('sg_strategy', 'unique')  # 默认 'unique'
+
+    with allure_step_log(f"Fixture: 在vpc同一子网下创建 {vm_count} 个虚机 (策略: {sg_strategy})"):
+        ecs_create_page.goto_service("弹性云服务器")
+        for i in range(vm_count):
+            # 根据策略分配安全组
+            if sg_strategy == 'shared':
+                # 所有虚机绑定第一个安全组
+                current_sg = sgs[0]
+            else:
+                # 默认 'unique': 每个虚机循环分配安全组
+                current_sg = sgs[i % len(sgs)]
+
+            network_vm = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [current_sg]}
+            vm_info = ecs_create_page.ecs_create_v2({}, {}, network_vm, {}, {})
+            vm_names.append(vm_info.get("name"))
+
+        for vm_name in vm_names:
+            ecs_create_page.assert_status(vm_name)
+
+            # 获取虚机元数据
+            row_data = ecs_create_page.get_row_data(vm_name)
+            ip_list = row_data["IP地址"].split("固定: ")
+            vm_metadata = {
+                "name": vm_name,
+                "id": row_data["名称/ID"].split(":")[1].strip(),
+                "ip": ip_list[-1].strip(),
+                "row_data": row_data
+            }
+            vms.append(vm_metadata)
+
+    yield {
+        "vms": vms,
+        "sgs": sgs,
+    }
+
+    # 清理释放资源
+    with allure_step_log("Fixture: 清理测试资源"):
+        ecs_create_page.goto_service("弹性云服务器")
+        ecs_create_page.ecs_remove(vm_names)
+        # ecs_delete 时选择释放 IP
+        ecs_create_page.ecs_delete(vm_names, release_ip=True)
+        ecs_create_page.assert_deleted(vm_names)
+
+        sg_page.goto_service("安全组")
+        sg_page.sg_delete(sgs)
+        sg_page.assert_deleted(sgs)

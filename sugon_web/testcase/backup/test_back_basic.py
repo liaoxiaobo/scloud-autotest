@@ -51,6 +51,7 @@ class TestBackupCreate:
             backup_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤2: 验证备份任务创建成功"):
+            backup_page.backup_search(task_name)
             backup_page.assert_status(task_name, "一次性备份", timeout=600)
             backup_page.assert_status(task_name, "立即备份")
             backup_page.assert_status(task_name, "已完成")

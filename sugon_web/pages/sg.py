@@ -197,8 +197,7 @@ class SgPage(BasePage):
 
         # 点击确定
         dialog.get_by_text("确定").click()
-        self.wait_for_page_ready()
-
+        self.assert_popup_success("新建安全组规则成功")
         self.logger.info(f"安全组规则创建完成: {sg_name} -> {protocol} {direction}")
 
     def sg_rule_delete(self, sg_name, direction="入口"):
@@ -212,9 +211,6 @@ class SgPage(BasePage):
         if not hasattr(self, '_in_detail') or not self._in_detail:
             self.goto_sg_detail(sg_name)
             self._in_detail = True
-            
-        # 选择相应的方向标签页（如果需要的话，比如前端是分开的标签页）
-        # self.get_by_text(f"{direction}规则").click()
         
         # 点击第一条规则的删除按钮
         self.get_by_role("row").nth(1).get_by_text("删除").click()
