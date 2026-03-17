@@ -56,7 +56,7 @@ def sg(sg_page):
         sg_page.assert_deleted(sg_name)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="class")
 def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
     """
     通用前置准备：分配公网IP、创建安全组、创建虚机并绑定IP
@@ -73,22 +73,23 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
     network_name = vpc.get("name")
     subnet_name = vpc.get("subnet_name")
 
-    # 1. 分配公网IP
+    # 分配公网IP
     if fip_count > 0:
         with allure_step_log(f"Fixture: 分配 {fip_count} 个公网IP"):
             ecs_page.assign_ip(count=str(fip_count))
 
-    # 2. 平台创建安全组
+    # 平台创建安全组
     sgs = []
     with allure_step_log(f"Fixture: 平台创建 {sg_count} 个安全组"):
         sg_page.goto_service("安全组")
+        timestamp_suffix = str(int(time.time()))[-2:]
         for i in range(sg_count):
-            sg_name = f"autotest-sg{i+1}-{time.strftime('%M%S')}"
+            sg_name = f"autotest-sg{i+1}-{timestamp_suffix}"
             sg_page.sg_create(sg_name, desc=f"{sg_name}自动化测试")
             expect(sg_page.popup).to_have_count(0)
             sgs.append(sg_name)
 
-    # 3. 在同一子网下创建虚机并将它们分发到安全组中
+    # 在同一子网下创建虚机并将它们分发到安全组中
     vms = []
     vm_names = []
     sg_strategy = params.get('sg_strategy', 'unique')  # 默认 'unique'
@@ -105,7 +106,7 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
                 current_sg = sgs[i % len(sgs)]
 
             network_vm = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [current_sg]}
-            vm_info = ecs_create_page.ecs_create_v2({}, {}, network_vm, {}, {})
+            vm_info = ecs_create_page.ecs_create(basic={}, storage={}, network=network_vm, manage={}, advanced={})
             vm_names.append(vm_info.get("name"))
 
         for vm_name in vm_names:
@@ -138,3 +139,24 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
         sg_page.goto_service("安全组")
         sg_page.sg_delete(sgs)
         sg_page.assert_deleted(sgs)
+#
+#
+# @pytest.fixture(autouse=True)
+# def sg_rule_cleanup(sg_page, request):
+#     """
+#     自动使用的 fixture，恢复安全组默认规则。
+#
+#     """
+#     yield
+#
+#     if 'sg_vm_setup' in request.fixturenames:
+#         # 只有当测试用例使用了 sg_vm_setup 这个 class 作用域的 fixture 时才执行
+#         try:
+#             sg_vm_setup_data = request.getfixturevalue('sg_vm_setup')
+#             sgs = sg_vm_setup_data.get("sgs", [])
+#             with allure_step_log(f"Fixture Cleanup: 还原安全组 {sgs} 的规则为默认"):
+#                 for sg_name in sgs:
+#                     # 调用新增加的恢复默认规则方法
+#                     sg_page.sg_rule_restore_defaults(sg_name)
+#         except Exception as e:
+#             logger.error(f"Cleanup fixture failed: {e}")
