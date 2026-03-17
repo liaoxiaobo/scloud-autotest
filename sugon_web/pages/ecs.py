@@ -1724,6 +1724,23 @@ class EcsPage(OpsPage):
         self.wait_for_page_ready()
 
         logger.info(f"成功进入云服务器{name}详情页")
+
+    def ecs_to_sg_tab(self, name, sub_tab="自定义安全组"):
+        """进入虚机详情的安全组页签
+        
+        Args:
+            name: 云服务器名称
+            sub_tab: 子页签名称，默认 "自定义安全组"
+        """
+        self.ecs_to_details(name)
+        # 点击安全组页签
+        self.get_by_role("tab", name="安全组", exact=False).click()
+        if sub_tab:
+            # 使用正则匹配精确文本，处理首尾空格和换行
+            self.locator(".security-group-item").filter(has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")).click()
+        self.wait_for_page_ready()
+        logger.info(f"进入云服务器 {name} 的安全组页签")
+
     def ecs_back_to_list(self):
         """返回云服务器列表页
         """

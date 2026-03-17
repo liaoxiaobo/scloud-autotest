@@ -3,7 +3,6 @@ from playwright.sync_api import expect
 
 from sugon_web.config.config import Config
 from sugon_web.pages.ecs import EcsPage
-from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data
@@ -12,19 +11,44 @@ from sugon_web.utils.util import random_data
 class EcsCreatePage(EcsPage):
 
     @submenu("弹性云服务器")
-    # def ecs_create_v2(self, basic, storage, network, manage, machine, numa, other):
-    def ecs_create_v2(self, basic, storage, network, manage, advanced):
+    def ecs_create(self, basic=None, storage=None, network=None, manage=None, advanced=None, **kwargs):
         """创建云服务器
-        Args:
-            basic: 基本配置
-            storage: 存储配置
-            network: 网络配置
-            manage: 管理配置
-            machine: 物理机设备
-            numa: NUMA配置
-            advanced: 高级配置
-            """
-        logger.info("开始创建云服务器")
+        
+        支持两种调用方式：
+        1. v2 式 (字典传参): ecs_create(basic={}, storage={}, network={}, manage={}, advanced={})
+        2. v1 式 (扁平传参): ecs_create(name, image_source="镜像", count=1, ...)
+        """
+        # 1. 检测并转换参数格式 (如果是 v1 扁平化传参)
+        if isinstance(basic, str) or "name" in kwargs:
+            # 提取 v1 参数
+            v1_name = basic if isinstance(basic, str) else kwargs.get("name")
+            v1_image_source = storage if isinstance(storage, str) else kwargs.get("image_source", "镜像")
+            v1_count = network if isinstance(network, int) else kwargs.get("count", 1)
+            
+            # 其余可能的 v1 参数从 args 偏移或 kwargs 获取 (模仿 EcsPage.ecs_create)
+            v1_network = kwargs.get("network", "Autotest")
+            v1_subnet = kwargs.get("subnet", "Autotest(10")
+            v1_cluster = kwargs.get("cluster", "Autotest")
+            v1_flavor = kwargs.get("flavor", "ecs.c6.large")
+            v1_image_name = kwargs.get("image_name", "")
+            v1_os_version = kwargs.get("os_version", "centos7.9")
+            v1_login_pwd = kwargs.get("login_password", "admin1234@sugon")
+            v1_vnc_pwd = kwargs.get("vnc_password", "sugon@20")
+            v1_sys_size = kwargs.get("sys_size", 25)
+            v1_enable_ipv6 = kwargs.get("enable_ipv6", False)
+
+            # 构造成 v2 的字典结构
+            basic = {"name": v1_name, "数量": v1_count, "集群": v1_cluster, "规格": {"基础规格": v1_flavor}}
+            storage = {
+                "镜像": {"来源": v1_image_source, "镜像名称": v1_image_name, "ISO": v1_os_version},
+                "系统盘": v1_sys_size
+            }
+            network = {
+                "networks": [{"network": v1_network, "subnet": v1_subnet}],
+                "enable_ipv6": v1_enable_ipv6
+            }
+            manage = {"login_type": "密码登录", "login_pwd": v1_login_pwd, "vnc_pwd": v1_vnc_pwd}
+            advanced = {}
 
         # 点击创建按钮
         self.btn_create.click()
@@ -44,6 +68,8 @@ class EcsCreatePage(EcsPage):
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
+    # 保持别名兼容
+    ecs_create_v2 = ecs_create
 
     def _basic_info(self, basic):
         """填写弹性云服务器基本信息
@@ -152,9 +178,14 @@ class EcsCreatePage(EcsPage):
                 # 后续网卡点击"添加网卡"后选择
                 self.get_by_text("添加网卡").click()
                 self._select_single_network(net_config)
-        # 选择安全组
         if network and network.get("安全组"):
             self._select_security_group(network.get("安全组"))
+            
+        # 选择分配IPv6
+        if network and network.get("enable_ipv6"):
+            self.get_by_role("textbox", name="请选择是否分配IPv6地址").click()
+            self.get_by_text("自动分配IPv6地址").nth(2).click()
+            logger.info("已勾选自动分配IPv6地址")
     def _manage_info(self, manage):
         """填写管理配置
 

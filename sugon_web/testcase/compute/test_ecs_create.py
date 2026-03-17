@@ -140,7 +140,7 @@ class TestECSCreate:
             advanced = rendered_params.get('advanced', {})
 
             ecs_create_page.goto_service('弹性云服务器')
-            vm_info = ecs_create_page.ecs_create_v2(basic, storage, network, manage, advanced)
+            vm_info = ecs_create_page.ecs_create(basic, storage, network, manage, advanced)
             vm_name = vm_info.get('name')
 
         with allure_step_log("步骤3: 验证云服务器创建成功"):
