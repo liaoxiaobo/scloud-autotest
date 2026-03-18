@@ -312,6 +312,43 @@ class TestDorisBasic:
             assert service_status == "running", f"Doris BE服务状态异常: {service_status}"
             ssh_vm.close()
 
+    @allure.title("Doris-节点热迁移")
+    def test_doris_node_hot_migration(self, doris_page, doris, ssh_host, ssh_vm):
+        """测试Doris节点的热迁移功能"""
+        instance_name = doris["name"]
+        node_name = f"{instance_name}_fe_node01"
+        password = "admin1234@sugon"
+
+        # 记录迁移前的物理机 (后端校验)
+        old_host = db_util.get_backend_host(doris_page, ssh_host, node_name)
+        allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
+
+        with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
+            selected_host = doris_page.hot_migration(instance_name, node_name)
+
+        with allure_step_log("步骤二：验证迁移结果"):
+            doris_page.assert_popup_success("热迁移命令下发成功")
+            doris_page.assert_status(node_name, status="迁移中", timeout=300, refresh=True)
+            doris_page.assert_status(node_name, status="就绪", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
+            # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
+            new_host = db_util.get_backend_host(doris_page, ssh_host, node_name)
+            allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
+
+            assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
+            if selected_host:
+                # selected_host 是 UI 上选中的名称，后端返回的可能带域名，所以用 in 判断
+                assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
+
+        with allure_step_log("步骤四：验证迁移后数据库连接"):
+            ip_from_db = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=password)
+            # 验证Doris服务是否正常
+            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-fe")
+            assert service_status == "running", f"热迁移后Doris FE服务状态异常: {service_status}"
+            ssh_vm.close()
+
     @allure.title("Doris-创建并删除数据库")
     def test_create_and_delete_database(self, doris_page, doris, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
