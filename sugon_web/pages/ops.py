@@ -1,3 +1,4 @@
+import re
 import time
 import pytest
 from playwright.sync_api import expect
@@ -13,14 +14,16 @@ class OpsPage(BasePage):
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
         self.get_by_title(project).click()
-        self.page.wait_for_load_state("networkidle")  # 解决下拉列表数据加载未完成导致的定位元素冲突问题
+        # 选择项目后会触发接口请求重绘网络列表，此处等待接口请求完成
+        self.page.wait_for_load_state("networkidle")
+
+        # 等待接口返回并渲染网络下拉列表
         self.get_by_placeholder("请选择网络").click()
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.page.wait_for_load_state("domcontentloaded")
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.get_by_placeholder("请选择网络").fill(network)
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.get_by_text(network, exact=True).click()
+        # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
+        dropdown = self.page.locator(".el-select-dropdown:visible")
+        target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$"))
+        target_item.wait_for(state="visible")
+        target_item.click()
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=exact).click()
         self.get_by_text("确定").click()
