@@ -15,10 +15,12 @@ class SgPage(BasePage):
             desc: 安全组描述
         """
         self.btn_create.click()
-        self.get_by_label("新建安全组").locator("input[type=\"text\"]").fill(name)
+        dialog = self.get_by_label("新建安全组")
+        dialog.locator("input[type=\"text\"]").fill(name)
         if desc:
-            self.locator("textarea").fill(desc)
-        self.get_by_label("新建安全组").get_by_text("确定").click()
+            dialog.locator("textarea").fill(desc)
+        dialog.get_by_text("确定").click()
+        self.assert_popup_success("新建安全组成功")
 
     @submenu("安全组")
     def sg_delete(self, sg_names):
@@ -126,7 +128,7 @@ class SgPage(BasePage):
                 target.filter(has_text=value).first.click()
 
     def sg_rule_create(self, sg_name, protocol="所有", direction="出口",
-                       remote_type="安全组", ip_version="IPv4",
+                       remote_type="CIDR", ip_version="IPv4",
                        remote_sg=None, description=None,
                        protocol_type=None, protocol_code=None,
                        port_type=None, port=None, cidr=None, from_list=False, detail_mode=False):
@@ -163,9 +165,6 @@ class SgPage(BasePage):
 
         # 获取创建规则弹窗
         dialog = self.get_by_role("dialog", name="创建规则")
-
-        # 定义一个辅助函数按需选择
-
 
         # 选择协议
         protocol_input = dialog.locator("form div").filter(has_text="协议").get_by_placeholder("请选择", exact=True)
@@ -211,8 +210,9 @@ class SgPage(BasePage):
 
         # 根据远程类型填写对应值
         if remote_type == "安全组" and remote_sg:
-            dialog.locator("form div").filter(has_text="安全组").get_by_placeholder("请选择").click()
-            self.locator("li").filter(has_text=remote_sg).click()
+            # 使用更精确的正则匹配，避免匹配到已选择“安全组”的“远程”下拉框
+            dialog.locator("div").filter(has_text=re.compile(r"^安全组$")).get_by_placeholder("请选择").click()
+            self.locator("li:visible").filter(has_text=remote_sg).first.click()
         elif remote_type == "CIDR" and cidr:
             dialog.get_by_placeholder(re.compile(r"非必填.*如.*0\.0\.0\.0")).fill(cidr)
 

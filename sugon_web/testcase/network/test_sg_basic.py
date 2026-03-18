@@ -797,3 +797,81 @@ class TestSGScenario:
             ecs_page.ecs_remove(vm1_name)
             ecs_page.ecs_delete(vm1_name, release_ip=True)
             ecs_page.assert_deleted(vm1_name)
+
+    @allure.title("验证云服务器详情页管理安全组功能")
+    def test_sg_vm_detail_management(self, ecs_page, sg_page, ecs_create_page, vpc):
+        base_name = random_data()
+        sg1, sg2, sg3 = [f"{base_name}-sg{_}" for _ in range(3)]
+        
+        with allure_step_log(f"步骤1: 创建安全组 {sg1}, {sg2}, {sg3}"):
+            sg_page.goto_service("安全组")
+            sg_page.sg_create(sg1, desc="测试虚机详情页管理安全组")
+            sg_page.sg_rule_create(sg1, direction="入口", remote_type="CIDR", from_list=True)
+            
+            # 创建额外的安全组用于多选测试
+            [sg_page.sg_create(sg, desc=f"{sg}多选测试") for sg in [sg2, sg3]]
+
+        with allure_step_log(f"步骤2: 使用安全组 {sg1} 创建虚机 vm1"):
+            network_name = vpc.get("name")
+            subnet_name = vpc.get("subnet_name")
+            ecs_page.goto_service("弹性云服务器")
+            network = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [sg1]}
+            vm_info = ecs_create_page.ecs_create({}, {}, network, {}, {})
+            vm_name = vm_info.get("name")
+            ecs_page.assert_status(vm_name)
+
+        try:
+            with allure_step_log(f"步骤3: 进入虚机详情安全组tab，验证初始状态"):
+                # 验证 sg1 在绑定列表中
+                ecs_page.ecs_to_sg_tab(vm_name)
+                bound_sgs = ecs_page.ecs_get_bound_security_groups()
+                assert any(sg1 in s for s in bound_sgs), f"期望 {sg1} 在绑定列表中, 实际: {bound_sgs}"
+                
+                # 验证自定义规则下为空
+                ecs_page.ecs_to_sg_tab(vm_name)
+                rules = ecs_page.get_column_data("协议")
+                assert len(rules) == 0, f"期望初始自定义规则为空, 实际: {rules}"
+
+                # 验证 sg1 下规则显示正确
+                ecs_page.ecs_to_sg_tab(vm_name, sub_tab=sg1)
+                rules = ecs_page.get_column_data("协议")
+                assert any("any" in r for r in rules), f"sg1 规则显示不正确, 实际: {rules}"
+
+            with allure_step_log(f"步骤4: 点击设置安全组按钮，选择多个安全组 {sg2}, {sg3}"):
+                ecs_page.ecs_set_security_groups([sg2, sg3], bind=True)
+                # 验证绑定成功
+                bound_sgs = ecs_page.ecs_get_bound_security_groups()
+                assert any(sg2 in s for s in bound_sgs), f"sg2 绑定验证失败: {bound_sgs}"
+                assert any(sg3 in s for s in bound_sgs), f"sg3 绑定验证失败: {bound_sgs}"
+
+            with allure_step_log(f"步骤5: 取消选中安全组 {sg2}, {sg3}"):
+                ecs_page.ecs_set_security_groups([sg2, sg3], bind=False)
+                # 验证取消成功
+                bound_sgs = ecs_page.ecs_get_bound_security_groups()
+                assert not any(sg2 in s for s in bound_sgs), f"sg2 解绑验证失败: {bound_sgs}"
+                assert not any(sg3 in s for s in bound_sgs), f"sg3 解绑验证失败: {bound_sgs}"
+
+            with allure_step_log(f"步骤6: 自定义安全组下创建规则并验证"):
+                ecs_page.ecs_to_sg_tab(vm_name)
+                desc = f"{vm_name}-自定义安全组"
+                ecs_page.ecs_create_custom_sg_rule(protocol="所有", direction="入口", description=desc)
+                # 获取规则列表并断言
+                rules = ecs_page.get_row_data(desc)
+                assert desc in rules.get("描述", ""), f"自定义安全组创建规则验证失败: {rules}"
+
+            with allure_step_log(f"步骤7: 验证安全组列表不显示该自定义安全组"):
+                sg_page.goto_service("安全组")
+                # 自定义安全组不搜素到
+                sg_page.sg_search("自定义安全组")
+                names = sg_page.get_column_data("名称")
+                assert len(names) == 0, f"在列表中发现了意外的自定义安全组: {names}"
+
+        finally:
+            with allure_step_log("步骤8: 删除虚机和安全组"):
+                ecs_page.goto_service("弹性云服务器")
+                ecs_page.ecs_remove(vm_name)
+                ecs_page.ecs_delete(vm_name, release_ip=True)
+                ecs_page.assert_deleted(vm_name, refresh=True)
+                
+                sg_page.goto_service("安全组")
+                sg_page.sg_delete([sg1, sg2, sg3])
