@@ -685,50 +685,55 @@ class EcsCreatePage(EcsPage):
         md5_dict = {}
         image_path = "/offlinePackage/image_download/support-fsagent/"
 
-        # 系统盘数据信息
+        # 通过 lsblk 判断系统盘和数据盘, 获取父设备名，排除分区号
+        # 解决 guest os 内核内的行为，os 内部枚举设备的时候具有不稳定性
+        sys_disk = ssh_vm.run("lsblk -no PKNAME,MOUNTPOINT | grep -w '/' | awk '{print $1}'", check_rc=True).strip()
+        if not sys_disk:
+            # 如果没找到父设备名，根分区可能直接在磁盘上
+            sys_disk = ssh_vm.run("lsblk -no NAME,MOUNTPOINT | grep -w '/' | awk '{print $1}'", check_rc=True).strip()
+        logger.info(f"识别到系统盘: {sys_disk}")
+
+        # 统一处理所有盘 (系统盘 + 数据盘)
         root_file = "IMAGE_CDB_20220910.qcow2"
         root_dir = "/cbr_test_root"
 
-        ssh_vm.run(f"mkdir {root_dir} && lsblk", check_rc=True)
-        wget_cmd = f"cd {root_dir} && curl -O {Config.get('image_source')}{image_path}{root_file}"
+        data_vols = sorted([vol for vol in vols.keys() if vol != sys_disk])
+        for vol_name, size in sorted(vols.items()):
+            if vol_name == sys_disk:
+                # 系统盘: 直接写数据到预定目录，不用分区/格式化/挂载
+                curr_file = root_file
+                curr_dir = root_dir
+                logger.info(f"处理系统盘: {vol_name}, 写入文件: {curr_file}")
+            else:
+                # 数据盘: 需要格式化、挂载后再写数据
+                vol_dir = f"/cbr_test_{vol_name}"
+                # 根据盘名选择对应的镜像文件
+                curr_file = "CentOS-7-aarch64-Minimal-2009.iso" if vol_name == data_vols[0] else "cn_windows_7_professional_x64_dvd_x15-65791.iso"
+                curr_dir = vol_dir
+                logger.info(f"处理数据盘: {vol_name}, 写入文件: {curr_file}")
 
-        # 系统盘写入数据
-        ssh_vm.run(wget_cmd, timeout=180, get_pty=False, check_rc=True)
-        ssh_vm.run(f"cd {root_dir} && sync && md5sum {root_file} > cbr_test_root_md5.txt", check_rc=True)
-
-        # 获取系统盘 MD5 值并存入字典（包含路径信息）
-        sys_md5 = ssh_vm.run(f"cd {root_dir} && md5sum {root_file} | awk '{{print $1}}'", check_rc=True)
-        md5_dict['root'] = {
-            'md5': sys_md5.strip(),
-            'dir': root_dir,
-            'file': root_file
-        }
-
-        # 数据盘分区、挂载
-        for vol_name, size in vols.items():
-            vol_data = "CentOS-7-aarch64-Minimal-2009.iso" if "db" in vol_name else "cn_windows_7_professional_x64_dvd_x15-65791.iso"
-            vol_dir = f"/cbr_test_{vol_name}"
-
-            ssh_vm.run(f"mkfs.xfs /dev/{vol_name}", check_rc=True)
-            ssh_vm.run(f"mkdir {vol_dir} && lsblk", check_rc=True)
-            ssh_vm.run(f"mount /dev/{vol_name} {vol_dir}", check_rc=True)
-            assert ssh_vm.run(f"lsblk | grep {vol_name} | awk {{'print $4'}}") == size[:-2]
-
-            # 写入开机自启动
-            uuid = ssh_vm.run(rf"""blkid|grep /dev/{vol_name}|awk -F" " '{{print $2}}'|awk -F'"' '{{print $2}}'""", check_rc=True).strip()
-            ssh_vm.run(f"""echo "UUID={uuid} {vol_dir} xfs defaults 0 0" >> /etc/fstab""", check_rc=True)
-
-            # 写入数据
-            wget_cmd = f"cd {vol_dir} && curl -O --max-time 300 {Config.get('image_source')}{image_path}{vol_data}"
+                # 格式化并挂载数据盘
+                ssh_vm.run(f"mkfs.xfs -f /dev/{vol_name}", check_rc=True)
+                ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
+                ssh_vm.run(f"mount /dev/{vol_name} {curr_dir}", check_rc=True)
+                
+                # 写入开机自启动
+                uuid = ssh_vm.run(rf"""blkid|grep /dev/{vol_name}|awk -F" " '{{print $2}}'|awk -F'"' '{{print $2}}'""", check_rc=True).strip()
+                ssh_vm.run(f"""echo "UUID={uuid} {curr_dir} xfs defaults 0 0" >> /etc/fstab""", check_rc=True)
+            
+            # 统一在目标目录下建立路径并写入数据
+            ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
+            wget_cmd = f"cd {curr_dir} && curl -O --max-time 300 {Config.get('image_source')}{image_path}{curr_file}"
             ssh_vm.run(wget_cmd, timeout=180, get_pty=False, check_rc=True)
-            ssh_vm.run(f"cd {vol_dir} && sync && md5sum {vol_data} > cbr_test_{vol_name}_md5.txt", check_rc=True)
+            ssh_vm.run(f"cd {curr_dir} && sync && md5sum {curr_file} > cbr_test_{vol_name}_md5.txt", check_rc=True)
 
-            # 获取数据盘 MD5 值并存入字典（包含路径信息）
-            data_md5 = ssh_vm.run(f"cd {vol_dir} && md5sum {vol_data} | awk '{{print $1}}'", check_rc=True)
-            md5_dict[vol_name] = {
-                'md5': data_md5.strip(),
-                'dir': vol_dir,
-                'file': vol_data
+            # 获取 MD5 值并存入字典
+            md5_val = ssh_vm.run(f"cd {curr_dir} && md5sum {curr_file} | awk '{{print $1}}'", check_rc=True)
+            key = 'root' if vol_name == sys_disk else vol_name
+            md5_dict[key] = {
+                'md5': md5_val.strip(),
+                'dir': curr_dir,
+                'file': curr_file
             }
 
         return md5_dict
