@@ -446,7 +446,7 @@ class MongoDBPage(BasePage):
                 break
 
         if not checked_host:
-            self.get_by_label("热迁移").get_by_text("取消").click()
+            self.get_by_role("dialog").get_by_text("取消").click()
             pytest.skip("没有可用的物理机可供迁移")
 
         # 选择迁移速率
@@ -464,7 +464,7 @@ class MongoDBPage(BasePage):
                 logger.info("已点击CPU自动收敛开关")
 
         # 确认热迁移
-        self.get_by_label("热迁移").get_by_text("确定").click()
+        self.get_by_role("dialog").get_by_text("确定").click()
         logger.info(f"已点击确定按钮，开始热迁移 {node_name}")
 
         return checked_host

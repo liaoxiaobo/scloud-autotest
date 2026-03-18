@@ -792,7 +792,7 @@ class DorisPage(BasePage):
                 break
 
         if not checked_host:
-            self.get_by_label("热迁移").get_by_text("取消").click()
+            self.get_by_role("dialog").get_by_text("取消").click()
             import pytest
             pytest.skip("没有可用的物理机可供迁移")
 
@@ -809,6 +809,6 @@ class DorisPage(BasePage):
                 switch_locator.click()
 
         # 确认热迁移
-        self.get_by_label("热迁移").get_by_text("确定").click()
+        self.get_by_role("dialog").get_by_text("确定").click()
 
         return checked_host
