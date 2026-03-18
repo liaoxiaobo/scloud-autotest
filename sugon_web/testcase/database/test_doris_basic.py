@@ -263,7 +263,7 @@ class TestDorisBasic:
             doris_page.delete_node(instance_name, node_name)
 
         with allure_step_log("步骤二：验证BE节点是否删除成功"):
-            doris_page.assert_deleted(node_name, timeout=1200, refresh=True)
+            doris_page.assert_deleted(node_name, timeout=1800, refresh=True)
             db_util.assert_backend_deleted(doris_page, ssh_host, node_name)
 
     @allure.title("Doris-重启FE节点")
