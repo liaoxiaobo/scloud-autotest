@@ -352,3 +352,41 @@ class TestPgSQLBasic:
             pgsql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("PostgreSQL-节点热迁移")
+    def test_pgsql_node_hot_migration(self, pgsql_page, pgsql, ssh_host, ssh_vm):
+        """测试PostgreSQL节点的热迁移功能"""
+        instance_name = pgsql["name"]
+        node_name = f"{instance_name}-0"
+        password = "admin1234@sugon"
+        admin_password = pgsql["admin_password"]
+
+        # 记录迁移前的物理机 (后端校验)
+        old_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+        allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
+
+        with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
+            selected_host = pgsql_page.pgsql_hot_migration(instance_name, node_name)
+
+        with allure_step_log("步骤二：验证迁移结果"):
+            pgsql_page.assert_popup_success("热迁移命令下发成功")
+            pgsql_page.assert_status(node_name, status="迁移中", timeout=300, refresh=True)
+            pgsql_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
+            # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
+            new_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+            allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
+
+            assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
+            if selected_host:
+                # selected_host 是 UI 上选中的名称，后端返回的可能带域名，所以用 in 判断
+                assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
+
+        with allure_step_log("步骤四：验证迁移后数据库连接"):
+            ip_from_db = db_util.get_node_mfip_from_db(pgsql_page, ssh_host, "sugoncloud_pgsql", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=password)
+            cmd_check = f"PGPASSWORD='{admin_password}' psql -U postgres -h127.0.0.1 -c 'SELECT 1;'"
+            result = ssh_vm.run(cmd_check)
+            assert "1 row" in result or "(1 row)" in result, f"热迁移后数据库连接失败: {result}"
+            ssh_vm.close()

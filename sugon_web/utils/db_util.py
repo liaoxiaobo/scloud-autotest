@@ -304,3 +304,33 @@ def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list"
         self.logger.info(f"后端资源 '{name}' 在最后一次检查时已删除。")
     else:
         pytest.fail(f"超时错误：资源 '{name}' 在 {timeout} 秒内未能从后端删除。")
+
+
+def get_backend_host(self, ssh_host, name: str) -> str:
+    """
+    通过 gova list 查询后端资源所在的物理机节点
+    :param self: 页面对象实例
+    :param ssh_host: SSH连接对象 (通常是 master 节点)
+    :param name: 资源名称
+    :return: str 物理机节点名称
+    """
+    try:
+        command = f"gova list -name {name}"
+        result = ssh_host.run(command)
+        self.logger.info(f"gova list 输出:\n{result}")
+
+        # 解析表格，寻找对应的行并提取 NODE 列 (第3列)
+        for line in result.splitlines():
+            if name in line and "|" in line:
+                # 分割并过滤掉空字符串
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                if len(parts) >= 3:
+                    # parts 为 [UUID, NAME, NODE, ...]
+                    host = parts[2]
+                    self.logger.info(f"后端查询到资源 '{name}' 当前所在节点为: {host}")
+                    return host
+
+        return ""
+    except Exception as e:
+        self.logger.error(f"获取后端物理机节点失败: {e}")
+        return ""
