@@ -45,7 +45,6 @@ def sg(sg_page):
     with allure_step_log("创建安全组"):
         sg_page.goto_service("安全组")
         sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
-        sg_page.assert_popup_success("新建安全组成功")
 
     yield sg_name
 

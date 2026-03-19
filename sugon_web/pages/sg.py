@@ -173,7 +173,9 @@ class SgPage(BasePage):
         # 如果选择常用协议，需要进一步选择协议类型
         if protocol == "选择常用协议" and protocol_type:
             protocol_type_input = dialog.get_by_placeholder("请选择协议")
-            self.select_if_not_match(protocol_type_input, protocol_type, exact=False)
+            protocol_type_input.click()  # 确保下拉框展开
+            protocol_type_input.fill(protocol_type)
+            self.locator("li:visible").filter(has_text=re.compile(f"^{protocol_type}$", re.IGNORECASE)).first.click()
 
             # 处理端口配置（定制TCP/UDP协议时需要）
             if "TCP" in protocol_type or "UDP" in protocol_type:
@@ -185,10 +187,10 @@ class SgPage(BasePage):
                     start_port, end_port = port.split("-")
                     start_loc = dialog.locator("div").filter(has_text=re.compile(r"^起始端口号$")).get_by_role("textbox")
                     start_loc.clear()
-                    start_loc.fill(start_port)
+                    start_loc.fill(start_port.strip())
                     end_loc = dialog.locator("div").filter(has_text=re.compile(r"^终止端口号$")).get_by_role("textbox")
                     end_loc.clear()
-                    end_loc.fill(end_port)
+                    end_loc.fill(end_port.strip())
                 elif port:
                     dialog.get_by_placeholder("请输入端口").fill(port)
 
@@ -210,11 +212,12 @@ class SgPage(BasePage):
 
         # 根据远程类型填写对应值
         if remote_type == "安全组" and remote_sg:
-            # 使用更精确的正则匹配，避免匹配到已选择“安全组”的“远程”下拉框
-            dialog.locator("div").filter(has_text=re.compile(r"^安全组$")).get_by_placeholder("请选择").click()
+            # 限制在 .el-form-item 层级查找，避免匹配到包含整个表单的外层 div
+            dialog.locator(".el-form-item").filter(has_text=re.compile(r"^安全组")).get_by_placeholder("请选择").click()
             self.locator("li:visible").filter(has_text=remote_sg).first.click()
         elif remote_type == "CIDR" and cidr:
-            dialog.get_by_placeholder(re.compile(r"非必填.*如.*0\.0\.0\.0")).fill(cidr)
+            # 兼容 IPv4 (非必填 如：0.0.0.0) 和 IPv6 (非必填 如：2000:c000::/64)
+            dialog.get_by_placeholder(re.compile(r"^非必填.*如：")).fill(cidr)
 
         # 填写描述
         if description:
@@ -222,7 +225,9 @@ class SgPage(BasePage):
 
         # 点击确定
         dialog.get_by_text("确定").click()
+
         self.assert_popup_success("新建安全组规则成功")
+
         self.logger.info(
             f"安全组规则创建完成: sg={sg_name}, 方向={direction}, 协议={protocol_type or protocol}, "
             f"远程={remote_type}{f', CIDR={cidr}' if remote_type == 'CIDR' and cidr else ''}"
