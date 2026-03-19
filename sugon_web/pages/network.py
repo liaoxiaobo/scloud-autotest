@@ -456,7 +456,7 @@ class VpcPage(BasePage):
         # 选择公网ip资源池
         dialog = self.get_by_role("dialog", name="绑定公网IP")
         dialog.get_by_placeholder("请选择").click()
-        dialog.get_by_text(network_type).click()
+        self.locator("li").filter(has_text=network_type).click()
         # 随机选择一个EIP（假设列表中有数据）
         available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
         selected_row = random.choice(available_rows)

@@ -449,12 +449,22 @@ class TestVPCBasic:
     @allure.title("虚拟IP-绑定&解绑公网IP")
     def test_vip_bind_eip(self, vpc_page, vip):
 
-        vpc_page.vip_bind_eip(vip)
-        vpc_page.assert_popup_success("执行成功")
+        with allure_step_log("步骤1: 绑定公网IP"):
+            eip = vpc_page.vip_bind_eip(vip)
+            vpc_page.assert_popup_success("执行成功")
 
-        # 执行解绑
-        vpc_page.vip_unbind_eip(vip)
-        vpc_page.assert_popup_success("执行成功")
+        with allure_step_log("步骤2: 验证绑定的公网IP"):
+            data = vpc_page.get_row_data(vip)
+            # 断言绑定的公网ip会显示在列表里，且表头名称为“绑定的公网IP”
+            assert eip in data.get("绑定的公网IP", ""), f"断言失败: 列表项'绑定的公网IP'未找到对应IP {eip}，实际值为: {data.get('绑定的公网IP')}"
+
+        with allure_step_log("步骤3: 解绑公网IP"):
+            vpc_page.vip_unbind_eip(vip)
+            vpc_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤4: 验证解绑后公网IP已移除"):
+            data = vpc_page.get_row_data(vip)
+            assert eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {eip}"
 
     @allure.title("虚拟IP-搜索&重置")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
