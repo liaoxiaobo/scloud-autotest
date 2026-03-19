@@ -55,9 +55,10 @@ class RedisPage(BasePage):
         self.get_by_placeholder("请输入默认用户管理员用户密码").fill(password)
         self.get_by_placeholder("请输入确认密码").fill(password)
 
-        # 端口
-        self.locator("input[type=\"number\"]").click()
-        self.locator("input[type=\"number\"]").fill(str(port))
+        # 端口 (使用特定过滤避免与哨兵端口冲突)
+        port_input = self.locator("div").filter(has_text=re.compile(r"^服务端口$")).get_by_role("spinbutton")
+        port_input.click()
+        port_input.fill(str(port))
 
         # --- 网络设置 ---
         db_util.select_network(self, "请选择网络", network)
@@ -335,7 +336,7 @@ class RedisPage(BasePage):
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
         sleep(2)
-        self.click_option(user_name, "修改")
+        self.click_option(user_name, "修改用户")
         dialog = self.get_by_role("dialog")
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)

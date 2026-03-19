@@ -215,7 +215,7 @@ def redis(redis_page):
     with allure_step_log(f"前置操作：创建共享单机实例 {name}"):
         redis_page.create_instance(name, "单机")
         redis_page.assert_popup_success("创建redis资源成功")
-        redis_page.assert_status(name, status="运行中", timeout=1200)
+        redis_page.assert_status(name, status="运行中", timeout=1200, refresh=True)
 
     with allure_step_log(f"前置操作：创建共享集群实例 {name1}"):
         redis_page.create_instance(name1, "集群")
