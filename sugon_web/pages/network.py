@@ -643,3 +643,143 @@ class VpcPage(BasePage):
         # 3. 提交修改
         self.dialog_confirm.click()
         self.wait_for_page_ready()
+
+    def route_table_edit(self, new_name=None, new_desc=None):
+        """修改路由表的名称和描述（需已在VPC详情页路由表Tab下）
+
+        Args:
+            new_name: 新路由表名称，如果为None则不修改
+            new_desc: 新路由表描述，如果为None则不修改
+        """
+        # 点击路由表名称旁边的编辑图标
+        self.locator(".el-icon-edit").click()
+        self.wait_for_page_ready()
+
+        # 修改名称
+        if new_name is not None:
+            name_input = self.get_by_label("编辑").locator("input[type=\"text\"]")
+            name_input.fill(new_name)
+
+        # 修改描述
+        if new_desc is not None:
+            self.locator("textarea").fill(new_desc)
+
+        # 确认提交
+        self.get_by_label("编辑").get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+    def route_rule_create(self, vpc_name, dest_cidr, next_hop, next_hop_type="ECS实例", ip_version="IPv4", desc=None):
+        """在VPC详情页的路由表tab中新建路由表规则
+        
+        Args:
+            vpc_name: VPC名称
+            dest_cidr: 目的地址，例如 "10.0.13.0/24"
+            next_hop: 下一跳的具体值（如选填的具体实例的IP等）
+            next_hop_type: 下一跳类型，默认为 "ECS实例"，可选 "虚拟IP" 等
+            ip_version: IP版本，可选 "IPv4" 或 "IPv6"
+            desc: 描述信息
+        """
+        # 进入 VPC 详情及路由表 tab 页
+        self.get_row_by_name(vpc_name).locator("a").first.click()
+        self.wait_for_page_ready()
+        
+        self.get_by_role("tab", name="路由表").click()
+        self.wait_for_page_ready()
+
+        # 点击新建路由表规则
+        self.get_by_label("路由表", exact=True).get_by_text("新建").click()
+        self.wait_for_page_ready()
+        
+        # 选择 IP版本
+        if ip_version != "IPv4":
+            self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="IP版本")).get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=ip_version).click()
+            
+        # 填写目的地址
+        self.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
+        
+        # 选择下一跳类型
+        if next_hop_type != "ECS实例":
+            self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="下一跳类型")).get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=re.compile(f"^{next_hop_type}$")).click()
+            
+        # 选择下一跳
+        self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text=re.compile(r"^下一跳$"))).get_by_placeholder("请选择").click()
+        self.locator("li").filter(has_text=next_hop).first.click()
+        
+        # 填写描述
+        if desc:
+            self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="描述")).locator("textarea").fill(desc)
+            
+        # 提交确认
+        self.get_by_label("新建路由表规则").get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+    def route_rule_edit(self, dest_cidr, new_dest_cidr=None, new_next_hop_type=None,
+                        new_next_hop=None, new_ip_version=None, new_desc=None):
+        """修改路由表规则（需已在VPC详情页路由表Tab下）
+
+        Args:
+            dest_cidr: 当前规则的目的地址，用于在列表中定位该行
+            new_dest_cidr: 新目的地址，如果为None则不修改
+            new_next_hop_type: 新下一跳类型，如果为None则不修改
+            new_next_hop: 新下一跳，如果为None则不修改
+            new_ip_version: 新IP版本（"IPv4"/"IPv6"），如果为None则不修改
+            new_desc: 新描述，如果为None则不修改
+        """
+        # 点击该行的"修改"操作
+        self.click_option(dest_cidr, "修改", t_type="body")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_label("修改路由表规则")
+
+        # 修改 IP 版本
+        if new_ip_version is not None:
+            dialog.locator(".el-form-item").filter(
+                has=self.locator("label").filter(has_text="IP版本")
+            ).get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=new_ip_version).click()
+
+        # 修改目的地址
+        if new_dest_cidr is not None:
+            self.get_by_placeholder(re.compile(r"必填")).fill(new_dest_cidr)
+
+        # 修改下一跳类型
+        if new_next_hop_type is not None:
+            dialog.locator(".el-form-item").filter(
+                has=self.locator("label").filter(has_text="下一跳类型")
+            ).get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=re.compile(f"^{new_next_hop_type}$")).click()
+
+        # 修改下一跳
+        if new_next_hop is not None:
+            dialog.locator(".el-form-item").filter(
+                has=self.locator("label").filter(has_text=re.compile(r"^下一跳$"))
+            ).get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=new_next_hop).first.click()
+
+        # 修改描述
+        if new_desc is not None:
+            dialog.locator(".el-form-item").filter(
+                has=self.locator("label").filter(has_text="描述")
+            ).locator("textarea").fill(new_desc)
+
+        # 确认提交
+        dialog.get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+    def route_rule_delete(self, dest_cidrs):
+
+        """删除路由表规则，支持单个和批量操作
+        
+        Args:
+            dest_cidrs: 目的地址字符串，或目的地址列表
+        """
+        if isinstance(dest_cidrs, list):
+            self.select_rows_by_names(dest_cidrs)
+            self.btn_batch_delete.click()
+        else:
+            self.click_option(dest_cidrs, "删除", t_type="body")
+            
+        self.get_by_label("删除").get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()

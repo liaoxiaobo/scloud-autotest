@@ -5,7 +5,7 @@ from sugon_web.utils.logger import allure_step_log, logger
 
 @allure.epic('网络服务')
 @allure.feature('虚拟私有云')
-@allure.story('VPC网络互通性验证')
+@allure.story('业务场景覆盖验证')
 class TestVPCNetwork:
 
     @allure.title("Geneve网络-同子网的两台虚机互通验证")
@@ -489,3 +489,68 @@ class TestVPCNetwork:
             ecs_page.ecs_delete([vm1_name, vm2_name])
             ecs_page.assert_deleted([vm1_name, vm2_name])
             logger.info(f"已手动清理虚机: {vm1_name}, {vm2_name}")
+
+    @allure.title("虚拟IP绑定云服务器及内网连通性验证")
+    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    def test_vip_bind_unbind_instance(self, vpc_page, vip, vm, ssh_vm):
+        """将虚拟IP绑定至云服务器并在系统内配置网卡，通过另一台测试机验证VIP的数据面连通性；随后解绑并验证网络隔离"""
+
+        # vm fixture 返回的是列表，包含两台虚机的信息
+        vm1_data = vm[0]
+        vm2_data = vm[1]
+
+        vm1_name = vm1_data['name']
+        vm2_name = vm2_data['name']
+        vm1_ip = vm1_data['ip']
+        vm2_ip = vm2_data['ip']
+        vm1_mfip = vm1_data['mfip']
+        vm2_mfip = vm2_data['mfip']
+
+        with allure_step_log("步骤1: 将虚拟IP(VIP)绑定至目标后端实例(vm2)，并登录其实例内部网卡(eth0)配置该VIP地址"):
+            vpc_page.vip_bind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
+            ssh_vm.connect(vm2_mfip)
+            ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
+
+        with allure_step_log("步骤2: 登录同子网的另一台测试实例(vm1)，尝试向该VIP发包，确认业务流量互通"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vip)
+
+        with allure_step_log("步骤3: 在控制台解除该虚拟IP(VIP)与后端实例(vm2)的绑定关系"):
+            vpc_page.vip_unbind_instance(vip, vm2_name)
+            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
+
+        with allure_step_log("步骤4: 再次在测试实例(vm1)上向VIP发包，确认解绑后网络流已成功阻断并隔离"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vip, connected=False)
+
+    @allure.title("虚拟IP绑定公网IP及云外连通性验证")
+    def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vip, vm, ssh_vm, ssh_host):
+        """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""
+
+        vm_name = vm['name']
+        vm_mfip = vm['mfip']
+
+        with allure_step_log("步骤1: 将虚拟IP绑定至目标云服务器实例，并登录其实例内部网卡(eth0)配置该VIP地址"):
+            vpc_page.vip_bind_instance(vip, vm_name)
+            vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
+            ssh_vm.connect(vm_mfip)
+            ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
+
+        with allure_step_log("步骤2: 为该虚拟IP(VIP)绑定公网IP"):
+            eip = vpc_page.vip_bind_eip(vip)
+            vpc_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤3: 从后台节点发起对绑定的公网IP的Ping测试，验证公网连通性"):
+            ssh_host.ping(eip)
+
+        with allure_step_log("步骤4: 解绑公网IP与虚拟IP的绑定关系"):
+            vpc_page.vip_unbind_eip(vip)
+            vpc_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤5: 再次从后台节点Ping该公网IP，确认连通性已断开"):
+            ssh_host.ping(eip, connected=False)
+
+        with allure_step_log("步骤6: 解绑虚拟IP与云服务器实例的绑定关系"):
+            vpc_page.vip_unbind_instance(vip, vm_name)
+            vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")

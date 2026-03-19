@@ -163,7 +163,8 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner"),
             self.get_by_role("textbox", name="请输入设备名称"),
-            self.get_by_role("textbox", name="搜索(实例名称)")
+            self.get_by_role("textbox", name="搜索(实例名称)"),
+            self.get_by_placeholder("搜索(目的地址)")   # 路由表规则搜索框
         ]
 
         return self._find_element(locators, "搜索框")
@@ -205,17 +206,29 @@ class BasePage(Playwright):
 
         return self._find_element(locators, "刷新按钮")
 
+    # @property
+    # def btn_batch_delete(self) -> Locator:
+    #     """公共元素: 批量删除按钮"""
+    #     locators = [
+    #         self.get_by_text("批量删除", exact=True),
+    #         self.get_by_text("删除", exact=True).first,
+    #         self.get_by_text("批量删除").first,
+    #         self.get_by_label("虚拟IP管理").get_by_text("批量删除"),
+    #         self.get_by_label("端口", exact=True).get_by_text("批量删除"),
+    #         self.get_by_label("路由表", exact=True).get_by_text("批量删除")
+    #     ]
+
+    #     return self._find_element(locators, "批量删除按钮")
+
     @property
     def btn_batch_delete(self) -> Locator:
         """公共元素: 批量删除按钮"""
         locators = [
-            self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除", exact=True).first,
+            # 1. 优先在当前激活的 Tab 页签内查找（排除隐藏 tab-pane，自动兼容所有 Tab 场景）
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("批量删除", exact=True),
+            # 2. 兜底：在整个页面查找第一个「批量删除」按钮
             self.get_by_text("批量删除").first,
-            self.get_by_label("虚拟IP管理").get_by_text("批量删除"),
-            self.get_by_label("端口", exact=True).get_by_text("批量删除")
         ]
-
         return self._find_element(locators, "批量删除按钮")
 
     @property

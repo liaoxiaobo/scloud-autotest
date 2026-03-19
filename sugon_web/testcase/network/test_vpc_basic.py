@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data
 
 @allure.epic('网络服务')
 @allure.feature('虚拟私有云')
-@allure.story('基本功能操作验证')
+@allure.story('基本功能验证')
 class TestVPCBasic:
 
     @allure.title("虚拟私有云-创建和删除不同类型VPC-{params[case_name]}")
@@ -464,38 +464,24 @@ class TestVPCBasic:
             logger.info(f"✓ 批量删除虚拟IP验证通过: {target_vips}")
 
     @allure.title("虚拟IP-绑定&解绑实例")
-    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
-    def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm, ssh_vm):
-        """测试虚拟IP绑定和解绑虚拟机实例"""
+    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm):
 
-        # vm fixture 返回的是列表，包含两台虚机的信息
-        vm1_data = vm[0]
-        vm2_data = vm[1]
-
-        vm1_name = vm1_data['name']
-        vm2_name = vm2_data['name']
-        vm1_ip = vm1_data['ip']
-        vm2_ip = vm2_data['ip']
-        vm1_mfip = vm1_data['mfip']
-        vm2_mfip = vm2_data['mfip']
-
-        with allure_step_log("步骤1: 绑定实例vm2"):
-            vpc_page.vip_bind_instance(vip, vm2_name)
+        with allure_step_log("步骤1: 绑定实例"):
+            vpc_page.vip_bind_instance(vip, vm['name'])
             vpc_page.assert_popup_success("虚拟IP端口绑定实例成功")
-            ssh_vm.connect(vm2_mfip)
-            ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
 
-        with allure_step_log("步骤2: 虚机vm1 ping vip成功"):
-            ssh_vm.connect(vm1_mfip)
-            ssh_vm.ping(vip)
+        with allure_step_log("步骤2: 验证页面列表已显示绑定的实例"):
+            data = vpc_page.get_row_data(vip)
+            assert vm['name'] in data.get("绑定的实例", ""), f"断言失败: 期望绑定的实例包含 {vm['name']}，实际值为: {data.get('绑定的实例')}"
 
-        with allure_step_log("步骤3: 解绑实例vm2"):
-            vpc_page.vip_unbind_instance(vip, vm2_name)
+        with allure_step_log("步骤3: 解绑实例"):
+            vpc_page.vip_unbind_instance(vip, vm['name'])
             vpc_page.assert_popup_success("虚拟IP端口解绑实例成功")
 
-        with allure_step_log("步骤4: 虚机vm1 ping vip失败"):
-            ssh_vm.connect(vm1_mfip)
-            ssh_vm.ping(vip, connected=False)
+        with allure_step_log("步骤4: 验证页面列表已解绑该实例"):
+            data = vpc_page.get_row_data(vip)
+            assert vm['name'] not in data.get("绑定的实例", ""), f"断言失败: 期望绑定的实例不再包含 {vm['name']}"
 
     @allure.title("虚拟IP-绑定&解绑公网IP")
     def test_vip_bind_eip(self, vpc_page, vip):
@@ -743,3 +729,167 @@ class TestVPCBasic:
             
             # 更新fixture的返回值，以便清理资源时能找到正确的IP
             port[0] = new_ip
+
+
+    @allure.title("路由表-创建和删除规则")
+    def test_route_rule_create_delete(self, vpc_page, vpc, vip):
+        """测试在VPC的路由表中创建和单条删除路由表规则"""
+        
+        vpc_name = vpc['name']
+        dest_cidr = random_data("cidr")
+        desc = "路由表规则单次创建删除测试"
+        
+        with allure_step_log("步骤1: 进入路由表并在VPC详情页新建路由表规则（下一跳为虚拟IP）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.route_rule_create(
+                vpc_name=vpc_name, 
+                dest_cidr=dest_cidr, 
+                next_hop=vip, 
+                next_hop_type="虚拟IP",
+                desc=desc
+            )
+            vpc_page.assert_popup_success("新建路由表规则成功")
+            
+        with allure_step_log("步骤2: 验证路由表规则创建成功，列表呈现对应目的地址和下一跳信息"):
+            # 创建成功后自动会刷新处于路由表列表页
+            data = vpc_page.get_row_data(dest_cidr)
+            assert dest_cidr in data.get("目的地址", ""), f"目的地址断言失败: {data}"
+            assert "虚拟IP" in data.get("下一跳类型", ""), f"下一跳类型断言失败: {data}"
+            assert vip in data.get("下一跳", ""), f"下一跳断言失败: {data}"
+            assert desc in data.get("描述", ""), f"描述断言失败: {data}"
+            
+        with allure_step_log("步骤3: 删除选定的路由表规则"):
+            vpc_page.route_rule_delete(dest_cidrs=dest_cidr)
+            # 在某些系统中，统一弹窗 "删除成功" 或类似提示，如果框架内有自带在此之后断言，也可以直接沿用 assert_deleted
+            
+        with allure_step_log("步骤4: 验证路由表规则已成功从列表中删除"):
+            vpc_page.assert_deleted(dest_cidr)
+
+
+    @allure.title("路由表-批量删除规则")
+    def test_route_rule_batch_delete(self, vpc_page, vpc, vip):
+        """测试在VPC的路由表中批量删除多条路由表规则"""
+        
+        vpc_name = vpc['name']
+        dest_cidrs = []
+        
+        with allure_step_log("步骤1: 在VPC详情页连续新建2条路由表规则"):
+            for i in range(2):
+                dest_cidr = random_data("cidr")
+                dest_cidrs.append(dest_cidr)
+                
+                # 回到 VPC 列表页面起始点，因为 route_rule_create 会先去找名叫 vpc_name 的行
+                vpc_page.goto_service("虚拟私有云")
+                
+                vpc_page.route_rule_create(
+                    vpc_name=vpc_name, 
+                    dest_cidr=dest_cidr, 
+                    next_hop=vip, 
+                    next_hop_type="虚拟IP",
+                    desc=f"批量删除测试规则{i}"
+                )
+                vpc_page.assert_popup_success("新建路由表规则成功")
+
+        with allure_step_log("步骤2: 勾选多条规则执行批量删除路由表规则"):
+            # 由于最后一次 create 完，页面依然留停在 VPC详情 -> 路由表 tab 下，这里可以直接调用 delete
+            vpc_page.route_rule_delete(dest_cidrs=dest_cidrs)
+            
+        with allure_step_log("步骤3: 验证路由表规则批量删除成功，列表中不存在被删除的目的地址"):
+            vpc_page.assert_deleted(dest_cidrs)
+
+    @allure.title("路由表-修改名称和描述")
+    def test_route_table_edit(self, vpc_page, vpc):
+        """测试修改VPC路由表的名称和描述"""
+
+        vpc_name = vpc['name']
+        new_rtb_name = f"{vpc_name}-rtb-edited"
+        new_rtb_desc = "修改后的路由表描述"
+
+        with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+            vpc_page.wait_for_page_ready()
+            vpc_page.get_by_role("tab", name="路由表").click()
+            vpc_page.wait_for_page_ready()
+
+        with allure_step_log("步骤2: 修改路由表名称和描述"):
+            vpc_page.route_table_edit(new_name=new_rtb_name, new_desc=new_rtb_desc)
+            vpc_page.assert_popup_success("修改路由表成功")
+
+        with allure_step_log("步骤3: 验证路由表名称和描述已更新"):
+            vpc_page.get_by_text(new_rtb_name).wait_for()
+            vpc_page.get_by_text(new_rtb_desc).wait_for()
+            logger.info(f"✓ 路由表名称已修改为: {new_rtb_name}")
+            logger.info(f"✓ 路由表描述已修改为: {new_rtb_desc}")
+
+    @allure.title("路由表-搜索&重置规则")
+    def test_route_rule_search(self, vpc_page, vpc):
+        """测试路由表Tab中按目的地址搜索和重置路由表规则（利用VPC默认路由规则）"""
+
+        vpc_name = vpc['name']
+        keyword = vpc['cidr']   # VPC默认路由规则中包含子网CIDR作为目的地址
+
+        with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+            vpc_page.wait_for_page_ready()
+            vpc_page.get_by_role("tab", name="路由表").click()
+            vpc_page.wait_for_page_ready()
+
+        with allure_step_log(f"步骤2: 按目的地址 '{keyword}' 搜索，验证结果包含该规则"):
+            vpc_page.search(keyword)
+            vpc_page.assert_list_contain(keyword, column_name="目的地址", exact_match=True)
+            rows = vpc_page.get_column_data("目的地址")
+            assert len(rows) == 1, f"搜索结果应只有1行，实际有 {len(rows)} 行: {rows}"
+
+        with allure_step_log("步骤3: 重置搜索条件，验证规则列表恢复"):
+            vpc_page.btn_reset.click()
+            vpc_page.wait_for_page_ready()
+            rows = vpc_page.get_column_data("目的地址")
+            assert len(rows) > 1, f"重置后应有多行，实际只有 {len(rows)} 行: {rows}"
+
+    @allure.title("路由表-修改规则")
+    def test_route_rule_edit(self, vpc_page, vpc, vip):
+        """测试修改路由表规则的目的地址、下一跳类型、下一跳和描述"""
+
+        vpc_name = vpc['name']
+        dest_cidr = random_data("cidr")
+        new_dest_cidr = random_data("cidr")
+        new_desc = "修改后的路由表规则描述"
+
+        with allure_step_log("步骤1: 在路由表Tab下创建路由表规则（前置数据）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.route_rule_create(
+                vpc_name=vpc_name,
+                dest_cidr=dest_cidr,
+                next_hop=vip,
+                next_hop_type="虚拟IP",
+                desc="待修改的路由表规则"
+            )
+            vpc_page.assert_popup_success("新建路由表规则成功")
+
+        with allure_step_log("步骤2: 修改路由表规则的目的地址和描述"):
+            # create 完后仍在路由表Tab，直接调用 edit
+            vpc_page.route_rule_edit(
+                dest_cidr=dest_cidr,
+                new_dest_cidr=new_dest_cidr,
+                new_desc=new_desc
+            )
+            vpc_page.assert_popup_success("修改路由规则成功")
+
+        with allure_step_log("步骤3: 验证修改后的数据在列表中正确呈现"):
+            data = vpc_page.get_row_data(new_dest_cidr)
+            assert new_dest_cidr in data.get("目的地址", ""), f"目的地址断言失败: {data}"
+            assert "虚拟IP" in data.get("下一跳类型", ""), f"下一跳类型断言失败: {data}"
+            assert vip in data.get("下一跳", ""), f"下一跳断言失败: {data}"
+            assert new_desc in data.get("描述", ""), f"描述断言失败: {data}"
+
+        with allure_step_log("步骤4: 清理，删除该路由表规则"):
+            vpc_page.route_rule_delete(dest_cidrs=new_dest_cidr)
+            vpc_page.assert_deleted(new_dest_cidr)
+
+
+
+
+
+

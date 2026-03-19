@@ -23,6 +23,13 @@ def vip(vpc_page, vpc):
 
     yield vip_address
 
+    # 确保在正确的 tab 页
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+    vpc_page.wait_for_page_ready()
+    vpc_page.get_by_role("tab", name="虚拟IP管理").click()
+    vpc_page.wait_for_page_ready()
+
     logger.info(f"清理虚拟IP {vip_address}")
     vpc_page.vip_delete(vip_address)
 
