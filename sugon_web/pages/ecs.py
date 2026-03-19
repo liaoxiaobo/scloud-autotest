@@ -524,7 +524,7 @@ class EcsPage(OpsPage):
         logger.info(f"操作完成: 云服务器{name}卸载网: {net}")
 
     @submenu("弹性云服务器")
-    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public"):
+    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public_net"):
         """绑定公网IP
         Args:
             name: 云服务器名称

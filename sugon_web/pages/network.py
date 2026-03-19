@@ -60,7 +60,7 @@ class VpcPage(BasePage):
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
                    network_type="Geneve", gateway_mode="分布式网关",
                    gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
-                   enable_ipv6=False):
+                   enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云
 
         Args:
@@ -78,6 +78,7 @@ class VpcPage(BasePage):
             vlan_id: VLAN ID，范围1-4094，仅当 network_type="Vlan" 时有效
             mac: MAC地址，仅当 network_type="Vlan" 或 "Flat" 时有效
             enable_ipv6: 是否开启IPv6，默认为False（仅当 network_type="Geneve" 时有效）
+            acl_policy: 访问控制策略，默认为None
         """
         # 打开创建页面
         self.btn_create.click()
@@ -125,6 +126,24 @@ class VpcPage(BasePage):
         else:
             ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
             self._input_gateway.fill(ip)
+
+        if acl_policy:
+            # 选择前先清空
+            acl_box = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+            acl_box.hover()
+            # 悬停后出现清除图标
+            clear_icon = acl_box.locator(".el-icon-circle-close")
+            clear_icon.click()
+
+            # 选择ACL策略
+            self.locator("#cloud-container-content").get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=acl_policy).click()
+        else:
+            acl_box = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+            acl_box.hover()
+            # 悬停后出现清除图标
+            clear_icon = acl_box.locator(".el-icon-circle-close")
+            clear_icon.click()
 
         # 如果指定了可用IP，则填写
         if available_ip:
