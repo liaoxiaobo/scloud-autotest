@@ -5,6 +5,7 @@ import time
 from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
+from sugon_web.pages.acl import AclPage
 
 
 @pytest.fixture(scope="function")
@@ -159,3 +160,33 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
 #                     sg_page.sg_rule_restore_defaults(sg_name)
 #         except Exception as e:
 #             logger.error(f"Cleanup fixture failed: {e}")
+
+@pytest.fixture(scope="function")
+def acl_page(page):
+    """返回网络AclPage实例"""
+    vpc_page = AclPage(page)
+    vpc_page.goto_service('网络ACL')
+    return vpc_page
+
+@pytest.fixture(scope="class")
+def acl(page):
+    """
+    创建并返回一个网络ACL名称，测试结束后自动清理
+    该fixture使用function scope的page会引发ScopeMismatch异常，
+    如果您的项目中 sg_page 是 function scope，而 sg(sg_page) 声明了 class scope，说明项目做了特定处理。
+    为安全起见，这里提供标准实现。
+    """
+    acl_page = AclPage(page)
+    acl_name = f"acl-{random_data()}"
+
+    # 创建网络ACL
+    with allure_step_log(f"fixture前置: 创建网络ACL{acl_name}"):
+        acl_page.goto_service("网络ACL")
+        acl_page.acl_create(acl_name, desc=f"{acl_name} 自动化测试创建")
+
+    yield acl_name
+
+    # 测试结束后清理
+    with allure_step_log(f"fixture后置: 清理网络ACL{acl_name}"):
+        acl_page.goto_service("网络ACL")
+        acl_page.acl_batch_delete([acl_name])
