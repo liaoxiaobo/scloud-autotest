@@ -4,8 +4,8 @@ from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
 
-@allure.epic('网络安全')
-@allure.feature('安全组')
+@allure.epic('网络服务')
+@allure.feature('网络安全-安全组')
 @allure.story('场景验证')
 class TestSGScenario:
 
