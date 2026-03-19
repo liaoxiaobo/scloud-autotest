@@ -14,7 +14,7 @@ class TestVPCBasic:
 
     @allure.title("虚拟私有云-创建和删除不同类型VPC-{params[case_name]}")
     @pytest.mark.parametrize("params", load_data('test_vpc_create_delete', data_file='test_network.yaml'))
-    def test_vpc_create_delete(self, vpc_page, params, ssh_host):
+    def test_vpc_create_delete(self, vpc_page, params):
         """测试创建和删除各种类型的虚拟私有云（数据驱动，覆盖字符类型和长度边界值）"""
 
         # ========== 新增判断逻辑 ==========
@@ -62,7 +62,6 @@ class TestVPCBasic:
             assert params['desc'] == data['描述']
             assert params['network_type'].lower() in data['网络类型']
             assert params['subnet_name'] in data['已连接的子网']
-            # ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
 
         with allure_step_log("步骤3: 删除虚拟私有云"):
             vpc_page.vpc_delete(vpc_name)
@@ -70,10 +69,9 @@ class TestVPCBasic:
 
         with allure_step_log("步骤4: 验证虚拟私有云已删除"):
             vpc_page.assert_deleted(vpc_name)
-            # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
 
     @allure.title("虚拟私有云-创建和删除双栈VPC")
-    def test_vpc_dual_stack_create_delete(self, vpc_page, ssh_host):
+    def test_vpc_dual_stack_create_delete(self, vpc_page):
         """测试创建和删除双栈VPC（Geneve类型 + IPv6）"""
 
         vpc_name = random_data()
@@ -105,8 +103,6 @@ class TestVPCBasic:
             # 断言描述
             assert "双栈VPC测试" == data['描述'], f"描述断言失败: 期望 '双栈VPC测试', 实际 {data['描述']}"
 
-            # SSH验证VPC已创建
-            # ssh_host.run(f'openstack network show {vpc_name}', check_rc=True)
             logger.info(f"✓ 双栈VPC {vpc_name} 创建成功")
 
         with allure_step_log("步骤3: 删除虚拟私有云"):
@@ -115,7 +111,6 @@ class TestVPCBasic:
         with allure_step_log("步骤4: 验证VPC已删除"):
             vpc_page.assert_deleted(vpc_name)
             expect(vpc_page.alert).to_have_count(0, timeout=10000)  # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
-            # assert ssh_host.run(f'openstack network list| grep {vpc_name}') == ''
             logger.info(f"✓ 双栈VPC {vpc_name} 删除成功")
 
     @allure.title("虚拟私有云-修改名称和描述")
@@ -191,7 +186,7 @@ class TestVPCBasic:
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("虚拟私有云-批量删除")
-    def test_vpc_batch_delete(self, vpc_page, ssh_host):
+    def test_vpc_batch_delete(self, vpc_page):
         """测试批量删除多个VPC"""
 
         vpc_names = []
@@ -218,7 +213,7 @@ class TestVPCBasic:
             vpc_page.assert_deleted(vpc_names)
 
 
-    @allure.title("虚拟私有云-子网创建和删除（详情页）-{params[case_name]}")
+    @allure.title("子网-创建和删除-{params[case_name]}")
     @pytest.mark.parametrize("params", load_data('test_vpc_subnet_create_delete', data_file='test_network.yaml'))
     def test_vpc_subnet_create_delete(self, vpc, vpc_page, params):
         """测试在VPC详情页中创建和删除子网（数据驱动）"""
@@ -289,7 +284,63 @@ class TestVPCBasic:
             # 此时还在子网tab页，直接断言子网已不在列表中
             vpc_page.assert_deleted(subnet_name)
 
-    @allure.title("虚拟私有云-子网批量删除")
+    @allure.title("子网-修改")
+    def test_vpc_subnet_edit(self, vpc, vpc_page):
+        """测试在VPC详情页中修改子网的所有可修改选项，并通过列表验证"""
+
+        vpc_name = vpc['name']
+        cidr = random_data("cidr")
+        original_subnet_name = f"{vpc_name}-subnet-to-edit"
+        
+        new_subnet_name = f"{vpc_name}-subnet-edited"
+        new_desc = "修改后的子网描述"
+        
+        network = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(network.hosts())
+        # 从该 CIDR 中选取一段作为新的可用 IP 地址池
+        new_available_ip = f"{hosts[10]}-{hosts[20]}"
+        new_dns = "8.8.8.8"
+
+        vpc_page.goto_service("虚拟私有云")
+
+        with allure_step_log("步骤1: 准备测试数据，在VPC详情页创建一个初始子网"):
+            vpc_page.subnet_create_in_detail(
+                vpc_name=vpc_name,
+                subnet_name=original_subnet_name,
+                cidr=cidr,
+                desc="原始子网描述"
+            )
+            vpc_page.assert_popup_success("创建子网成功")
+
+        with allure_step_log("步骤2: 修改子网的名称、描述、IP地址池和DNS"):
+            vpc_page.subnet_edit(
+                subnet_name=original_subnet_name,
+                new_name=new_subnet_name,
+                new_desc=new_desc,
+                new_available_ip=new_available_ip,
+                new_dns=new_dns
+            )
+            vpc_page.assert_popup_success("修改子网成功")
+
+        with allure_step_log("步骤3: 验证子网修改成功（通过子网列表的表头值断言）"):
+            subnet_data = vpc_page.get_row_data(new_subnet_name)
+
+            assert new_subnet_name == subnet_data['名称'], f"名称断言失败: 期望 {new_subnet_name}, 实际 {subnet_data['名称']}"
+            assert new_desc == subnet_data['描述'], f"描述断言失败: 期望 {new_desc}, 实际 {subnet_data['描述']}"
+            
+            # 由于页面上显示的可能是以逗号分隔或者其他形式，使用 in 判断更加稳定，但根据要求完全匹配也是可以的。
+            # 这里按照要求通过列表表头值进行断言：
+            assert new_available_ip in subnet_data.get('IP地址池', ''), f"IP地址池断言失败: 期望包含 {new_available_ip}, 实际 {subnet_data.get('IP地址池', '')}"
+            assert new_dns in subnet_data.get('DNS', ''), f"DNS断言失败: 期望包含 {new_dns}, 实际 {subnet_data.get('DNS', '')}"
+
+        with allure_step_log("步骤4: 清理数据，删除测试子网"):
+            vpc_page.subnet_delete(
+                vpc_name=vpc_name,
+                names=new_subnet_name
+            )
+
+
+    @allure.title("子网-批量删除")
     def test_vpc_subnet_batch_delete(self, vpc, vpc_page):
         """测试批量删除多个子网"""
 

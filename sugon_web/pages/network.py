@@ -387,6 +387,42 @@ class VpcPage(BasePage):
         self.dialog_confirm.click()
         self.wait_for_page_ready()
 
+    def subnet_edit(self, subnet_name, new_name=None, new_desc=None, new_available_ip=None, new_dns=None):
+        """在VPC详情页的子网tab页中修改子网
+
+        Args:
+            subnet_name: 要修改的子网当前名称
+            new_name: 新名称，如果为None则不修改
+            new_desc: 新描述，如果为None则不修改
+            new_available_ip: 新IP地址池，如果为None则不修改
+            new_dns: 新DNS，如果为None则不修改
+        """
+        # 点击编辑按钮 (按钮文本为"修改")
+        self.click_option(subnet_name, "修改", t_type="body")
+        self.wait_for_page_ready()
+
+        # 修改子网名称
+        if new_name is not None:
+            self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(new_name)
+
+        # 修改子网描述
+        if new_desc is not None:
+            # 使用 ^描述 匹配所有以“描述”开头的文本
+            self.locator("div").filter(has_text=re.compile(r"^描述")).get_by_role("textbox").fill(new_desc)
+
+        # 修改可用IP
+        if new_available_ip is not None:
+            self.get_by_role("textbox", name="选填（默认子网内全部IP可用）").fill(new_available_ip)
+
+        # 修改DNS
+        if new_dns is not None:
+            self.get_by_role("textbox", name="选填(默认:114.114.114.114)").fill(new_dns)
+
+        # 提交修改
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+
 
     def vip_create(self, vpc_name, subnet_name, ip_address=None):
         """创建虚拟IP地址
