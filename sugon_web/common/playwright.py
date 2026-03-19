@@ -297,7 +297,7 @@ class Playwright:
         if count > 0:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
-    def wait_for_operation_complete(self, timeout=30):
+    def wait_for_operation_complete(self, timeout=60):
         """等待操作完成
 
         Args:

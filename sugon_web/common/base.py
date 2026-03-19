@@ -785,7 +785,7 @@ class BasePage(Playwright):
         # 等待该元素不可见
         expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
 
-    def wait_for_operation_complete(self, timeout=30):
+    def wait_for_operation_complete(self, timeout=60):
         """等待操作完成
 
         Args:
