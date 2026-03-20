@@ -20,7 +20,7 @@ class TestRedisBasic:
             redis_page.assert_popup_success("升级成功")
 
         with allure_step_log("步骤二：验证升级过程及实例状态"):
-            redis_page.assert_status(instance_name, status="配置中", timeout=1200, refresh=True)
+            redis_page.assert_status(instance_name, status="升级中", timeout=1200, refresh=True)
             redis_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
 
         with allure_step_log("步骤三：后端生效性验证（检查新节点是否创建）"):
@@ -57,6 +57,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤一：重置管理员密码"):
             redis_page.reset_admin_password(instance_name, new_password)
+            redis["password"] = new_password
 
         with allure_step_log("步骤二：验证密码重置结果"):
             redis_page.assert_popup_success("更新用户默认用户密码成功")
@@ -310,9 +311,10 @@ class TestRedisBasic:
                 assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
 
         with allure_step_log("步骤四：验证迁移后数据库连接"):
-            password = "admin1234@sugon"
+            password = redis["password"]
+            vm_password = "admin1234@sugon"
             ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
-            ssh_vm.connect(ip_from_db, port=22022, pwd=password)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=vm_password)
             # 使用原生的 redis-cli ping 来验证该节点连通性，需要带上密码避免 NOAUTH
             cmd_check = f"redis-cli -h 127.0.0.1 -p 6379 -a '{password}' PING"
             result = ssh_vm.run(cmd_check)

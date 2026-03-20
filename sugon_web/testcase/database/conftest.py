@@ -209,7 +209,7 @@ def redis(redis_page):
     """创建一个供整个测试类使用的Redis实例对象（包含一个单机用于升级测试，一个集群用于基础功能测试）"""
     name = f"redis-{random_data()}"
     name1 = f"redis-cluster-{random_data()}"
-    data = {"name": name, "name1": name1}
+    data = {"name": name, "name1": name1, "password": "admin1234@sugon"}
     logger.info(f"为测试类创建共享Redis实例: {name}(单机), {name1}(集群)")
 
     with allure_step_log(f"前置操作：创建共享单机实例 {name}"):
