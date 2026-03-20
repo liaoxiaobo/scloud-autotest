@@ -783,3 +783,253 @@ class VpcPage(BasePage):
             
         self.get_by_label("删除").get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def nat_create(self, name, vpc_name, public_ip_pool="public_net(基础版)", eip=None, desc=""):
+        """创建NAT网关
+        
+        Args:
+            name: NAT网关名称
+            vpc_name: 绑定的VPC名称
+            public_ip_pool: 公网IP资源池
+            eip: 弹性公网IP，如果未提供则随机选择一个可用的
+            desc: 描述信息
+        """
+        # 点击新建按钮
+        self.get_by_text("新建").click()
+        self.wait_for_page_ready()
+        
+        # 填写名称
+        self.locator("form div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(name)
+        
+        # 选择虚拟私有云
+        self.get_by_role("radiogroup").locator("label").filter(has_text="虚拟私有云").click()
+        self.get_by_placeholder("请选择虚拟私有云").click()
+        # self.get_by_text(vpc_name, exact=True).click()
+        self.locator("li").filter(has_text=vpc_name).click()
+        
+        # 选择公网IP资源池
+        self.get_by_placeholder("请选择公网IP资源池").click()
+        self.get_by_text(public_ip_pool).click()
+        
+        # 选择弹性公网IP
+        self.get_by_placeholder("请选择弹性公网IP").click()
+        if eip:
+            self.get_by_text(eip).click()
+        else:
+            # 随机选择一个可用的弹性公网IP
+            self.page.wait_for_timeout(1000)
+            # 假设下拉列表的选项是 li 标签
+            # 找到当前打开的下拉列表中的所有选项并随机选择一个
+            options = self.page.locator(".el-select-dropdown:visible li.el-select-dropdown__item").all()
+            if options:
+                random.choice(options).click()
+            else:
+                self.logger.warning("未找到可用的弹性公网IP")
+                # 如果找不到，随便点一下关闭下拉框
+                self.page.mouse.click(0, 0)
+                
+        # 填写描述
+        if desc:
+            self.locator("textarea").fill(desc)
+            
+        # 点击确定
+        self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def nat_delete(self, names):
+        """删除NAT网关，支持单个和批量操作
+        
+        Args:
+            names: NAT网关名称（字符串）或名称列表（列表）
+        """
+        if isinstance(names, list):
+            # 批量操作模式
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            # 单个操作模式
+            self.click_dropdown_option(names, "删除")
+            
+        # 确认删除
+        self.get_by_label("删除NAT网关").get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def nat_edit(self, name, new_name=None, new_desc=None):
+        """修改NAT网关名称和描述
+
+        Args:
+            name: 当前NAT网关名称（用于定位行）
+            new_name: 新名称，如果为None则不修改
+            new_desc: 新描述，如果为None则不修改
+        """
+        # 点击操作按钮中的"修改"
+        self.click_dropdown_option(name, "修改")
+        self.wait_for_page_ready()
+
+        # 修改名称
+        if new_name is not None:
+            name_input = self.locator("form").locator("input[type=\"text\"]")
+            name_input.click()
+            name_input.fill(new_name)
+
+        # 修改描述
+        if new_desc is not None:
+            self.locator("textarea").click()
+            self.locator("textarea").fill(new_desc)
+
+        # 点击确定
+        self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def nat_unbind_eip(self, name):
+        """解绑NAT网关的弹性公网IP
+
+        Args:
+            name: NAT网关名称
+
+        Returns:
+            str: 被解绑的 EIP 地址（从列表行读取）
+        """
+        # 先获取当前绑定的 EIP（用于后续断言）
+        data = self.get_row_data(name)
+        eip = data.get("弹性公网IP", "")
+
+        # 点击"解绑公网IP"操作
+        self.click_option(name, "解绑公网IP")
+
+        # 在弹窗中确认
+        self.get_by_label("解绑公网IP").get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+        return eip
+
+    @submenu("NAT网关")
+    def nat_bind_eip(self, name, network_type="public_net(基础版)"):
+        """为NAT网关绑定弹性公网IP
+
+        Args:
+            name: NAT网关名称
+            network_type: 公网IP资源池名称，默认 "public_net(基础版)"
+
+        Returns:
+            str: 绑定的 EIP 地址
+        """
+        # 点击"绑定公网IP"操作
+        self.click_option(name, "绑定公网IP")
+
+        dialog = self.get_by_label("绑定公网IP")
+
+        # 选择公网IP资源池
+        dialog.get_by_placeholder("请选择").click()
+        self.get_by_text(network_type).click()
+
+        # # 随机选择一个可用的 EIP（状态为"关闭"表示未绑定）
+        # self.wait_for_page_ready()
+        # available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
+        # 使用 expect 显式等待 EIP 行加载，避免异步渲染导致的空列表竞争条件
+        rows_locator = dialog.get_by_role("row").filter(has_text="关闭")
+        expect(rows_locator.first).to_be_visible(timeout=10000)
+        available_rows = rows_locator.all()
+        if not available_rows:
+            pytest.skip("当前环境无可用的弹性公网IP（状态为'关闭'）")
+        selected_row = random.choice(available_rows)
+        eip = selected_row.get_by_role("cell").nth(1).text_content().strip()
+        selected_row.get_by_role("radio").click()
+
+        # 确认绑定
+        dialog.get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+        return eip
+
+    @submenu("NAT网关")
+    def dnat_rule_create(self, nat_name, ext_port, subnet_cidr, protocol="TCP",
+                         private_ip=None, int_port=None, desc=""):
+        """在NAT网关详情页创建DNAT规则
+
+        Args:
+            nat_name: NAT网关名称（用于点击进入详情页）
+            ext_port: 外部端口，范围 1~32767
+            subnet_cidr: 私有子网 CIDR（用于在下拉框中定位子网选项）
+            protocol: 协议类型，默认 "TCP"，可选 "UDP"/"ALL" 等
+            private_ip: 私网IP，如果为 None 则选择第一个可用选项
+            int_port: 内部端口，范围 1~65535，如果为 None 则不填
+            desc: 描述信息
+        """
+        # 进入 NAT 网关详情页
+        self.get_by_role("cell", name=nat_name).locator("a").click()
+        self.wait_for_page_ready()
+
+        # 切换到 DNAT 规则 Tab
+        self.get_by_role("tab", name="DNAT规则").click()
+        self.wait_for_page_ready()
+
+        # 点击新建
+        self.get_by_text("新建").click()
+        self.wait_for_page_ready()
+
+        # 选择协议
+        self.locator("label").filter(has_text=protocol).click()
+
+        # 填写外部端口
+        self.get_by_placeholder("端口范围1~32767").fill(str(ext_port))
+
+        # 选择私有子网（通过 CIDR 定位）
+        subnet_row = self.locator("form div").filter(has_text=re.compile(r"私有子网"))
+        subnet_row.get_by_placeholder("请选择").click()
+        self.locator("li").filter(has_text=subnet_cidr).first.click()
+
+        # 选择私网IP
+        ip_row = self.locator("form div").filter(has_text=re.compile(r"私网IP"))
+        ip_row.get_by_placeholder("请选择").click()
+        if private_ip:
+            # 等待包含该IP的选项出现后点击
+            ip_option = self.locator("li").filter(has_text=private_ip).first
+            expect(ip_option).to_be_visible(timeout=8000)
+            ip_option.click()
+        else:
+            # 等待并选择第一个可用选项
+            first_option = self.locator(".el-select-dropdown:visible li.el-select-dropdown__item").first
+            expect(first_option).to_be_visible(timeout=8000)
+            if not self.locator(".el-select-dropdown:visible li.el-select-dropdown__item").count():
+                pytest.skip("私网IP下拉无可用选项，请确认子网内有已创建的虚机")
+            first_option.click()
+
+        # 填写内部端口
+        if int_port is not None:
+            self.get_by_placeholder("端口范围1~65535").fill(str(int_port))
+
+        # 填写描述
+        if desc:
+            self.locator("textarea").fill(desc)
+
+        # 提交
+        self.get_by_label("创建DNAT规则").get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+    def dnat_rule_delete(self, ext_ports):
+        """删除DNAT规则，支持单个和批量操作（需已在NAT网关详情页的DNAT规则Tab下）
+
+        Args:
+            ext_ports: 外部端口号（字符串/整数）或外部端口号列表（列表）
+        """
+        if isinstance(ext_ports, list):
+            # 批量删除：将端口号转为字符串列表后勾选
+            self.select_rows_by_names(ext_ports)
+            self.btn_batch_delete.click()
+        else:
+            # 单条删除
+            self.click_option(str(ext_ports), "删除", t_type="body")
+
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+
+
+
+
+

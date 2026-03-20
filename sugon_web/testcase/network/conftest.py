@@ -113,3 +113,52 @@ def port(vpc_page, vpc, request):
                 logger.info("端口清理完成")
             except Exception as e:
                 logger.warning(f"清理端口时出错: {e}")
+
+
+@pytest.fixture(scope="function")
+def nat(vpc_page, vpc, request):
+    """创建一个NAT网关，测试结束后自动删除
+
+    Args:
+        vpc_page: VPC页面对象
+        vpc: VPC fixture，提供 vpc_name
+        request: pytest request对象，可通过 indirect 传入 eip 等参数
+
+    Returns:
+        dict: 包含 nat_name、vpc_name 的字典
+    """
+    from sugon_web.utils.util import random_data
+
+    params = getattr(request, 'param', {})
+    eip = params.get('eip', None)
+    public_ip_pool = params.get('public_ip_pool', 'public_net(基础版)')
+    desc = params.get('desc', 'NAT网关fixture自动创建')
+
+    vpc_name = vpc['name']
+    nat_name = random_data()
+
+    with allure_step_log(f"Setup: 创建NAT网关 {nat_name}"):
+        vpc_page.goto_service("NAT网关")
+        vpc_page.nat_create(
+            name=nat_name,
+            vpc_name=vpc_name,
+            public_ip_pool=public_ip_pool,
+            eip=eip,
+            desc=desc
+        )
+        vpc_page.assert_popup_success("新建NAT网关成功")
+        logger.info(f"NAT网关 {nat_name} 创建成功")
+
+    nat_info = {"name": nat_name}
+    yield nat_info
+
+    # 注意：teardown 从 nat_info['name'] 读取，而不是闭包变量 nat_name
+    # 这样测试里执行 nat['name'] = new_name 后，teardown 能感知到新名称
+    current_name = nat_info['name']
+    with allure_step_log(f"Teardown: 删除NAT网关 {current_name}"):
+        try:
+            vpc_page.goto_service("NAT网关")
+            vpc_page.nat_delete(current_name)
+            logger.info(f"NAT网关 {current_name} 删除成功")
+        except Exception as e:
+            logger.warning(f"清理NAT网关时出错: {e}")
