@@ -22,7 +22,8 @@ class OpsPage(BasePage):
         # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
         dropdown = self.page.locator(".el-select-dropdown:visible")
         target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$"))
-        target_item.wait_for(state="visible")
+        # 接口返回后页面重绘可能存在延迟，导致短暂出现两个同名项，等待直到只有一个匹配项
+        expect(target_item).to_have_count(1)
         target_item.click()
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=exact).click()
