@@ -252,7 +252,7 @@ class Playwright:
         上下文管理器，用于在新标签页中执行操作
 
         Args:
-            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_option(name, "登录")）
+            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_action(name, "登录")）
             wait_for_selector (str): 可选，等待特定选择器元素出现后再返回
             timeout (int): 等待超时时间（毫秒），默认为30秒
             wait_for_load_state (str): 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"

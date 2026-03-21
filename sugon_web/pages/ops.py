@@ -32,7 +32,7 @@ class OpsPage(BasePage):
     @submenu("MFIP")
     def mfip_delete(self, ip: str):
         """删除 MFIP"""
-        self.click_dropdown_option(ip, "删除")
+        self.click_action(ip, "删除")
         self.dialog_confirm.click()
 
 
@@ -84,7 +84,7 @@ class OpsPage(BasePage):
         logger.info(f"磁盘状态: {status}, 磁盘名称: {_disk_name}, 磁盘容量: {_disk_size}")
         if status == "禁用":
             # 定位磁盘行并点击操作按钮
-            self.click_dropdown_option(_disk_name, "启用")
+            self.click_action(_disk_name, "启用")
             # 确认启用
             self.dialog_confirm.click()
             logger.info(f"{node} 的裸磁盘启用请求已提交")
@@ -105,7 +105,7 @@ class OpsPage(BasePage):
         if "禁用" in status:
             for name, sta in zip(names, status):
                 if sta == "禁用":
-                    self.click_option(name, "启用")
+                    self.click_action(name, "启用")
                     self.dialog_confirm.click()
                     self.assert_popup_success("请求成功！")
                     data = self.get_row_data(name)
@@ -119,7 +119,7 @@ class OpsPage(BasePage):
     @submenu("裸磁盘")
     def disable_disk(self, ndoe: str):
         """禁用裸磁盘"""
-        self.click_option(ndoe, "禁用")
+        self.click_action(ndoe, "禁用")
         self.dialog_confirm.click()
 
     @submenu("存储池")
@@ -192,7 +192,7 @@ class OpsPage(BasePage):
     def sync_pool_size(self, name: str):
         """同步存储池配置"""
 
-        self.click_option(name, "同步容量")
+        self.click_action(name, "同步容量")
         # 确认同步
         self.dialog_confirm.click()
 
@@ -205,7 +205,7 @@ class OpsPage(BasePage):
             operation: 操作类型，如"启用"、"禁用"
         """
 
-        self.click_dropdown_option(name, operation)
+        self.click_action(name, operation)
         self.dialog_confirm.click()
         self.assert_popup_success("请求成功！")
 
@@ -215,7 +215,7 @@ class OpsPage(BasePage):
         logger.info(f"删除{name}存储池")
 
         # 点击存储池操作按钮，点击删除
-        self.click_dropdown_option(name, "删除")
+        self.click_action(name, "删除")
 
         # 确认删除
         self.dialog_confirm.click()

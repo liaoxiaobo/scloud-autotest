@@ -239,7 +239,7 @@ class EcsPage(OpsPage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -267,7 +267,7 @@ class EcsPage(OpsPage):
             delete_option = "安全删除" if secure else "删除"
 
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_option(names, delete_option)
+            self.click_action(names, delete_option)
         # 根据参数选择删除选项
         if delete_volume:
             # 选择删除云服务器挂载的数据盘
@@ -312,7 +312,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
             newname: 新的云服务器名称
         """
-        self.click_dropdown_option(name, "编辑")
+        self.click_action(name, "编辑")
         self.get_by_role("textbox", name="请输入实例名称").fill(newname)
         self.dialog_confirm.click()
         logger.info(f"操作完成云服务器{name}: 编辑修改为{newname}")
@@ -327,7 +327,7 @@ class EcsPage(OpsPage):
         logger.info(f"云服务器{name}：登录VNC")
 
         # 使用 trigger_action 参数，确保 expect_page 在点击前开始监听
-        with self.new_tab_context(trigger_action=lambda: self.click_option(name, "登录")) as new_page:
+        with self.new_tab_context(trigger_action=lambda: self.click_action(name, "登录")) as new_page:
             # 输入VNC密码并登录
             try:
                 new_page.locator("#app iframe").content_frame.get_by_label("Password:").fill(vncpwd)
@@ -363,7 +363,7 @@ class EcsPage(OpsPage):
             bit: 重建云主机的操作系统位数
             image: 重建云主机的镜像源
         """
-        self.click_dropdown_option(name, "重建云主机")
+        self.click_action(name, "重建云主机")
         # 选择操作系统版本
         self.get_by_role("textbox", name="请选择操作系统版本").click()
         self.get_by_role("listitem").filter(has_text=version).click()
@@ -389,7 +389,7 @@ class EcsPage(OpsPage):
             encryption: 加密盘：加密密钥
 
         """
-        self.click_dropdown_option(name, "克隆")
+        self.click_action(name, "克隆")
         # 输入克隆名称
         self.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").click()
         self.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(clonename)
@@ -417,7 +417,7 @@ class EcsPage(OpsPage):
             self.locator("label").filter(has_text="密钥").locator("span")
             if encryption and len(encryption) != 0:
                 for key, value in encryption.items():
-                    self.click_dropdown_option(key, "选择密钥")
+                    self.click_action(key, "选择密钥")
                     # 需补充选择密钥步骤
                     self.get_by_text(value).click()
                     self.dialog_confirm.click()
@@ -435,7 +435,7 @@ class EcsPage(OpsPage):
             operation: 操作选项
         """
         try:
-            self.click_dropdown_option(name, operation)
+            self.click_action(name, operation)
         except  Exception as e:
             logger.error(f"云服务器{name}：{operation}失败")
             raise e
@@ -456,7 +456,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
         """
         try:
-            self.click_dropdown_option(name, "重置状态")
+            self.click_action(name, "重置状态")
             self.dialog_confirm.click()
             logger.info(f"操作完成: 云服务器{name}点击重置状态")
         except Exception as e:
@@ -483,7 +483,7 @@ class EcsPage(OpsPage):
         """
         checked_subnet = ""
         try:
-            self.click_dropdown_option(name, "加载网卡")
+            self.click_action(name, "加载网卡")
             # 选择网络
             logger.info(f"云服务器{name}：选择网络{net}")
             self.get_by_role("textbox", name="请选择网络").click()
@@ -516,7 +516,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
             net: 需卸载的网卡
         """
-        self.click_dropdown_option(name, "卸载网卡")
+        self.click_action(name, "卸载网卡")
         # 选择网络
         self.get_by_role("textbox", name="请选择网络").click()
         self.get_by_role("listitem").filter(has_text=net).click()
@@ -531,7 +531,7 @@ class EcsPage(OpsPage):
             subnet: 子网
             pub_net: 公网资源池
         """
-        self.click_dropdown_option(name, "绑定公网IP")
+        self.click_action(name, "绑定公网IP")
         # 选择端口
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
@@ -560,7 +560,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
             IP_addr: 公网ip地址
         """
-        self.click_dropdown_option(name, "解绑公网IP")
+        self.click_action(name, "解绑公网IP")
         self.get_by_role("dialog", name="解除绑定公网IP").get_by_placeholder("请选择").click()
         self.get_by_role("listitem").filter(has_text=IP_addr).click()
         self.get_by_label("解除绑定公网IP", exact=True).get_by_text("确定").click()
@@ -592,7 +592,7 @@ class EcsPage(OpsPage):
                 self.assert_status(name, "关机")
                 need_start = True  # 标记需要恢复开机
 
-            self.click_dropdown_option(name, "修改规格")
+            self.click_action(name, "修改规格")
             self.wait_for_page_ready()
             if spec_type:
                 classify = spec.get("classify", "计算型")
@@ -650,7 +650,7 @@ class EcsPage(OpsPage):
             pwd: 密码
             confirm: 确认密码
         """
-        self.click_dropdown_option(name, "修改密码")
+        self.click_action(name, "修改密码")
         try:
             self.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(pwd)
             self.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(confirm)
@@ -668,7 +668,7 @@ class EcsPage(OpsPage):
             vncpwd: vnc密码
             confirmpwd: 确认vnc密码
         """
-        self.click_dropdown_option(name, "修改VNC密码")
+        self.click_action(name, "修改VNC密码")
         if not self.get_by_role("switch").locator("span").is_enabled():
             self.get_by_role("switch").locator("span").click()
         try:
@@ -687,7 +687,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
             hostname: 主机名
         """
-        self.click_dropdown_option(name, "修改主机名")
+        self.click_action(name, "修改主机名")
         self.get_by_placeholder("请输入主机名称").fill(hostname)
         self.get_by_label("修改主机名").get_by_text("确定").click()
         logger.info(f"操作完成: 云服务器{name}修改主机名为{hostname}")
@@ -700,7 +700,7 @@ class EcsPage(OpsPage):
             time_server: 时间服务器
             interval: 同步间隔
         """
-        self.click_dropdown_option(name, "时间同步服务器")
+        self.click_action(name, "时间同步服务器")
         server_loc = self.get_by_role("textbox", name="例：10.0.13.24或*sugoncloud.")
         server_loc.clear()
         server_loc.fill(time_server)
@@ -725,7 +725,7 @@ class EcsPage(OpsPage):
             self.assert_popup_success(f"{name}实例{operation}成功")
 
     def ecs_bind_unbind_affinity_group(self, name, operation: str, group_name: str):
-        self.click_dropdown_option(name, operation)
+        self.click_action(name, operation)
         self.get_by_role("dialog", name=operation).get_by_placeholder("请选择").click()
         self.get_by_role("listitem").filter(has_text=group_name).click()
         self.dialog_confirm.click()
@@ -740,7 +740,7 @@ class EcsPage(OpsPage):
             image_name: 镜像名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(image_name, "删除")
+        self.click_action(image_name, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -910,7 +910,7 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
         """
-        self.click_option(name, "恢复")
+        self.click_action(name, "恢复")
         self.get_by_label("恢复实例").get_by_text("确定", exact=True).click()
         logger.info(f"恢复弹性云服务器: {name}")
 
@@ -926,7 +926,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始安全删除云服务器: {name}")
 
         # 点击指定云服务器的操作按钮
-        self.click_option(name, "删除")
+        self.click_action(name, "删除")
 
         # 根据参数选择删除选项
         if delete_volume:
@@ -964,7 +964,7 @@ class EcsPage(OpsPage):
             delete_option = "安全删除" if secure else "删除"
 
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, delete_option)
+            self.click_action(names, delete_option)
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -983,7 +983,7 @@ class EcsPage(OpsPage):
         """
         logger.info(f"开始创建云服务器镜像: {imnage_name}")
         # 点击新建镜像
-        self.click_dropdown_option(name, "新建镜像")
+        self.click_action(name, "新建镜像")
 
         # 填写镜像名称
         self.locator("div").filter(has_text=re.compile(r"^镜像名称$")).get_by_role("textbox").fill(imnage_name)
@@ -1037,7 +1037,7 @@ class EcsPage(OpsPage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            # self.click_dropdown_option(names, "删除")
+            # self.click_action(names, "删除")
             self.get_row_by_name(names).get_by_text("删除", exact=True).click()
 
         # 使用BasePage中的通用确认按钮
@@ -1058,7 +1058,7 @@ class EcsPage(OpsPage):
             data_disk: 是否快照数据盘
         """
         # 点击云服务器操作按钮
-        self.click_dropdown_option(name, "新建快照")
+        self.click_action(name, "新建快照")
 
         # 定位快照创建对话框
         dialog = self.get_by_role("dialog")
@@ -1144,7 +1144,7 @@ class EcsPage(OpsPage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(snapshot_names, "删除")
+            self.click_action(snapshot_names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1164,7 +1164,7 @@ class EcsPage(OpsPage):
             new_desc: 新的描述信息
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, "修改")
+        self.click_action(name, "修改")
 
         # 定位对话框中的输入框
         dialog = self.get_by_role("dialog")
@@ -1189,7 +1189,7 @@ class EcsPage(OpsPage):
             snapshot_name: 快照名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_option(snapshot_name, "还原快照")
+        self.click_action(snapshot_name, "还原快照")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1265,7 +1265,7 @@ class EcsPage(OpsPage):
         else:
             # 单个操作模式
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_dropdown_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1290,7 +1290,7 @@ class EcsPage(OpsPage):
             snapshot_data_disk: 是否快照数据盘，默认为False
         """
         # 点击编辑按钮
-        self.click_dropdown_option(name, "编辑")
+        self.click_action(name, "编辑")
 
         # 填写策略名称
         self.get_by_label("修改策略").get_by_role("textbox").fill(new_name)
@@ -1404,7 +1404,7 @@ class EcsPage(OpsPage):
         """
         checked_host = None
         # 点击云服务器操作按钮，选择热迁移
-        self.click_dropdown_option(name, "热迁移")
+        self.click_action(name, "热迁移")
 
         # 选择调度方式
         if m_type == "手动指定":
@@ -1534,7 +1534,7 @@ class EcsPage(OpsPage):
         checked_host = None
 
         # 点击云服务器操作按钮，选择冷迁移
-        self.click_dropdown_option(name, "冷迁移")
+        self.click_action(name, "冷迁移")
         # 选择调度方式
         if m_type == "手动指定":
 
@@ -1599,7 +1599,7 @@ class EcsPage(OpsPage):
             vm_name: 服务器名称
         """
         # 点击挂载云硬盘选项
-        self.click_dropdown_option(vm_name, "挂载云硬盘")
+        self.click_action(vm_name, "挂载云硬盘")
 
         # 搜索云硬盘
         self.get_by_label("挂载云硬盘").get_by_placeholder("搜索（名称）").fill(volume_name)
@@ -1623,7 +1623,7 @@ class EcsPage(OpsPage):
         """
 
         # 点击卸载云硬盘选项
-        self.click_dropdown_option(vm_name, "卸载云硬盘")
+        self.click_action(vm_name, "卸载云硬盘")
 
         # 选择云硬盘
         self.get_by_placeholder("请选择云硬盘").click()
@@ -1644,7 +1644,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始扩容云服务器系统盘: {name}，扩容至: {new_size}GiB")
 
         # 点击下拉菜单中的"系统盘扩容"选项
-        self.click_dropdown_option(name, "系统盘扩容")
+        self.click_action(name, "系统盘扩容")
 
         # 设置新的系统盘大小
         self.get_by_label("系统盘扩容").get_by_role("spinbutton").fill(new_size)
@@ -1666,7 +1666,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始修改云服务器{name}的CPU QoS: 级别={priority}, 权重={ceiling}")
 
         # 点击指定云服务器的操作按钮
-        self.click_dropdown_option(name, "修改CPU QoS")
+        self.click_action(name, "修改CPU QoS")
 
         # 选择CPU QoS级别
         self.get_by_label("修改CPU QoS").get_by_placeholder("请选择").click()
@@ -1974,7 +1974,7 @@ class EcsPage(OpsPage):
         """
         logger.info(f"开始为云服务器{name}挂载CD-ROM: {iso_name}")
         # 点击云服务器操作按钮
-        self.click_dropdown_option(name, "挂载CD-ROM")
+        self.click_action(name, "挂载CD-ROM")
 
         # 等待挂载CD-ROM对话框出现
         self.wait_for_page_ready()
@@ -2005,7 +2005,7 @@ class EcsPage(OpsPage):
         """
         logger.info(f"开始为云服务器{name}卸载CD-ROM: {cdrom_name}")
         # 点击云服务器操作按钮
-        self.click_dropdown_option(name, "卸载CD-ROM")
+        self.click_action(name, "卸载CD-ROM")
 
         # 等待挂载CD-ROM对话框出现
         self.wait_for_page_ready()
@@ -2115,7 +2115,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始设置云服务器 {name} 的启动顺序")
 
         # 点击云服务器的操作按钮
-        self.click_dropdown_option(name, "设置启动项")
+        self.click_action(name, "设置启动项")
 
         # 添加启动项
         if len(boot_order) > 1:
@@ -2146,7 +2146,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
         """
         # 点击操作按钮
-        self.click_dropdown_option(name, "安装工具")
+        self.click_action(name, "安装工具")
 
         self.wait_for_page_ready()
         # 点击安装并进入下一步
@@ -2163,7 +2163,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始为云服务器 {name} 卸载工具")
 
         # 点击操作按钮
-        self.click_dropdown_option(name, "卸载工具")
+        self.click_action(name, "卸载工具")
 
         # 点击确定
         time.sleep(2)
@@ -2187,7 +2187,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始修改云服务器 {name} 的VNC显卡类型为: {vnc_type}")
 
         # 点击云服务器操作按钮，选择修改VNC显卡类型
-        self.click_dropdown_option(name, "修改VNC显卡类型")
+        self.click_action(name, "修改VNC显卡类型")
 
         # 选择VNC显卡类型
         cur_type = self.get_by_placeholder("请选择VNC显卡类型").input_value()
@@ -2212,7 +2212,7 @@ class EcsPage(OpsPage):
         logger.info(f"开始修改云服务器{name}的CPU模式为: {cpu_mode}")
 
         # 点击云服务器操作按钮，选择修改CPU模式
-        self.click_dropdown_option(name, "修改CPU模式")
+        self.click_action(name, "修改CPU模式")
 
         self.get_by_placeholder("请选择CPU模式").first.click()
         # 选择CPU模式
@@ -2242,7 +2242,7 @@ class EcsPage(OpsPage):
         logger.info(f"为云服务器{name}挂载裸磁盘: 存储池={pool_name}")
 
         # 点击挂载裸磁盘选项
-        self.click_dropdown_option(name, "挂载裸磁盘")
+        self.click_action(name, "挂载裸磁盘")
 
         # 选择存储池
         self.get_by_placeholder("请选择存储池").click()
@@ -2269,7 +2269,7 @@ class EcsPage(OpsPage):
         logger.info(f"为云服务器{name}挂载裸磁盘: 裸磁盘={pool_name}")
 
         # 点击挂载裸磁盘选项
-        self.click_dropdown_option(name, "卸载裸磁盘")
+        self.click_action(name, "卸载裸磁盘")
 
         # 选择裸磁盘
         self.get_by_label("卸载裸磁盘").get_by_role("radio").click()
@@ -2290,7 +2290,7 @@ class EcsPage(OpsPage):
         logger.info(f"{bind_text} 标签 {label_names} 到云服务器 '{name}'")
 
         # 点击云服务器的操作按钮
-        self.click_dropdown_option(name, "标签设置")
+        self.click_action(name, "标签设置")
 
         # 选择标签
         for label_name in label_names:
@@ -2391,7 +2391,7 @@ class EcsPage(OpsPage):
         """
         self.sort_by_header("创建时间", "desc")
         # 点击删除按钮
-        self.click_dropdown_option(name, "删除")
+        self.click_action(name, "删除")
         # 确认删除
         self.dialog_confirm.click()
 
@@ -2426,7 +2426,7 @@ class EcsPage(OpsPage):
         """
         self.sort_by_header("创建时间", "desc")
         # 点击编辑按钮
-        self.click_dropdown_option(name, "编辑")
+        self.click_action(name, "编辑")
 
         # 填写标签名称
         self.get_by_label("修改标签").locator("input[type=\"text\"]").fill(new_name)
@@ -2452,7 +2452,7 @@ class EcsPage(OpsPage):
         """
         self.sort_by_header("创建时间", "desc")
         # 点击标签页的操作按钮
-        self.click_option(label_name, "查看关联资源")
+        self.click_action(label_name, "查看关联资源")
         # 点击云服务器后的操作按钮
         self.get_by_label("实例", exact=True).get_by_text("解绑实例标签").click()
         # 确认解绑
@@ -2474,7 +2474,7 @@ class EcsPage(OpsPage):
         """
         self.sort_by_header("创建时间", "desc")
         for label_name in label_names:
-            self.click_option(label_name, "查看关联资源")
+            self.click_action(label_name, "查看关联资源")
             self.select_rows_by_names(names)
             self.get_by_text("批量解绑").click()
             self.dialog_confirm.click()
@@ -2489,7 +2489,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
         """
         # 点击云服务器操作按钮，选择热迁移
-        self.click_dropdown_option(name, "热迁移")
+        self.click_action(name, "热迁移")
 
         self.get_by_role("radio", name="手动指定 󦕟").click()
 
@@ -2512,7 +2512,7 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
         """
-        self.click_dropdown_option(name, "开启录屏")
+        self.click_action(name, "开启录屏")
         self.get_by_label("开启录屏").get_by_text("开启", exact=True).click()
         self.assert_popup_success(f"{name}实例开启录屏成功")
         logger.info(f"实例: {name}开启录屏")
@@ -2523,7 +2523,7 @@ class EcsPage(OpsPage):
         Args:
             name: 云服务器名称
         """
-        self.click_dropdown_option(name, "关闭录屏")
+        self.click_action(name, "关闭录屏")
         self.get_by_label("关闭录屏").get_by_text("关闭", exact=True).click()
         self.assert_popup_success(f"{name}实例禁用录屏成功")
         logger.info(f"实例: {name}实例关闭录屏成功")
@@ -2535,7 +2535,7 @@ class EcsPage(OpsPage):
             name: 云服务器名称
             agent_conf: 代理类型, [{"FsAgent": "manual"}], [{"FsAgent": "manual"},{"DingAgent": "latest"}]
         """
-        self.click_dropdown_option(name, "Agent版本设置")
+        self.click_action(name, "Agent版本设置")
         for conf in agent_conf:
             for agent_type, agent_version in conf.items():
                 self.locator("label").filter(has_text=agent_type).click()
@@ -2600,7 +2600,7 @@ class EcsPage(OpsPage):
             policy: 快照策略名称
             auto_snapshot: 自动快照
         """
-        self.click_dropdown_option(name, "绑定快照策略")
+        self.click_action(name, "绑定快照策略")
 
         self.get_by_label("绑定快照策略").get_by_placeholder("请选择").click()
 
@@ -2623,9 +2623,9 @@ class EcsPage(OpsPage):
         """
         text = "绑定" if bind else "解绑"
         if text == "绑定":
-            self.click_option(policy, f"{text}云服务器")
+            self.click_action(policy, f"{text}云服务器")
         else:
-            self.click_dropdown_option(policy, f"{text}云服务器")
+            self.click_action(policy, f"{text}云服务器")
 
         # 选择云服务器类型
         vm_type_locs = [
@@ -2675,7 +2675,7 @@ class EcsPage(OpsPage):
             policy: 快照策略名称
             vm_type: 云服务器类型
         """
-        self.click_dropdown_option(policy, "解绑云服务器")
+        self.click_action(policy, "解绑云服务器")
 
         self.get_by_role("radiogroup").locator("label").filter(has_text=vm_type)
 
@@ -2698,7 +2698,7 @@ class EcsPage(OpsPage):
             vm_name: 云服务器名称
             policy: 快照策略名称
         """
-        self.click_option(vm_name, "修改策略")
+        self.click_action(vm_name, "修改策略")
 
         self.get_by_label("修改策略").get_by_placeholder("请选择").click()
 
@@ -2716,7 +2716,7 @@ class EcsPage(OpsPage):
         """
 
         enable_text = "开启" if enable else "禁用"
-        self.click_dropdown_option(vm_name, f"{enable_text}自动快照")
+        self.click_action(vm_name, f"{enable_text}自动快照")
 
         self.dialog_confirm.click()
         logger.info(f"云服务器: {vm_name} {enable_text}自动快照成功")
@@ -2736,7 +2736,7 @@ class EcsPage(OpsPage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(vm_name, "删除")
+            self.click_action(vm_name, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()

@@ -165,7 +165,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -214,7 +214,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果不提供则不修改
         """
         # 点击操作按钮
-        self.click_option(name, "修改")
+        self.click_action(name, "修改")
 
         # 修改名称（如果提供）
         if new_name:
@@ -238,7 +238,7 @@ class VpcPage(BasePage):
             str: 生成的授权码
         """
         # 点击操作按钮并选择"生成授权码"
-        self.click_dropdown_option(name, "生成授权码")
+        self.click_action(name, "生成授权码")
 
         # 等待授权码弹窗出现
         self.wait_for_page_ready()
@@ -271,7 +271,7 @@ class VpcPage(BasePage):
         """
 
         # 点击VPC行的操作按钮并选择"新建子网"
-        self.click_option(vpc_name, "新建子网")
+        self.click_action(vpc_name, "新建子网")
 
         # 填写子网名称
         self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(subnet_name)
@@ -402,7 +402,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个删除模式
-            self.click_option(names, "删除", t_type="body")
+            self.click_action(names, "删除", t_type="body")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -419,7 +419,7 @@ class VpcPage(BasePage):
             new_dns: 新DNS，如果为None则不修改
         """
         # 点击编辑按钮 (按钮文本为"修改")
-        self.click_option(subnet_name, "修改", t_type="body")
+        self.click_action(subnet_name, "修改", t_type="body")
         self.wait_for_page_ready()
 
         # 修改子网名称
@@ -496,7 +496,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个删除模式
-            self.click_dropdown_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -509,7 +509,7 @@ class VpcPage(BasePage):
             vip_address: 虚拟IP地址
             network_type: 公网网络类型名称
         """
-        self.click_option(vip_address, "绑定公网IP")
+        self.click_action(vip_address, "绑定公网IP")
         # 选择公网ip资源池
         dialog = self.get_by_role("dialog", name="绑定公网IP")
         dialog.get_by_placeholder("请选择").click()
@@ -525,7 +525,7 @@ class VpcPage(BasePage):
 
     def vip_unbind_eip(self, vip_address):
         """解绑公网IP"""
-        self.click_dropdown_option(vip_address, "解绑公网IP")
+        self.click_action(vip_address, "解绑公网IP")
         self.get_by_role("dialog", name="解除绑定公网IP").get_by_text("确定").click()
 
     def vip_bind_instance(self, vip_address, instance_name):
@@ -535,7 +535,7 @@ class VpcPage(BasePage):
             vip_address: 虚拟IP地址
             instance_name: 实例名称
         """
-        self.click_option(vip_address, "绑定实例")
+        self.click_action(vip_address, "绑定实例")
 
         dialog = self.get_by_role("dialog", name="绑定实例")
         # 在弹窗内进行搜索，而不是使用全局的self.search
@@ -549,7 +549,7 @@ class VpcPage(BasePage):
     def vip_unbind_instance(self, vip_address, instance_name):
         """虚拟IP解绑实例"""
 
-        self.click_dropdown_option(vip_address, "解绑实例")
+        self.click_action(vip_address, "解绑实例")
 
         dialog = self.get_by_role("dialog", name="解绑实例")
         dialog.get_by_placeholder("请选择").click()
@@ -629,7 +629,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个删除
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 2. 弹窗确认删除
         self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
@@ -647,7 +647,7 @@ class VpcPage(BasePage):
         self.logger.info(f"开始修改端口: {old_ip}")
 
         # 1. 在列表中找到该端口并点击"修改"
-        self.click_dropdown_option(old_ip, "编辑")
+        self.click_action(old_ip, "编辑")
 
         # 2. 在弹窗中进行修改
         if new_ip:
@@ -749,7 +749,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果为None则不修改
         """
         # 点击该行的"修改"操作
-        self.click_option(dest_cidr, "修改", t_type="body")
+        self.click_action(dest_cidr, "修改", t_type="body")
         self.wait_for_page_ready()
 
         dialog = self.get_by_label("修改路由表规则")
@@ -800,7 +800,7 @@ class VpcPage(BasePage):
             self.select_rows_by_names(dest_cidrs)
             self.btn_batch_delete.click()
         else:
-            self.click_option(dest_cidrs, "删除", t_type="body")
+            self.click_action(dest_cidrs, "删除", t_type="body")
             
         self.get_by_label("删除").get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
@@ -871,7 +871,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(names, "删除")
+            self.click_action(names, "删除")
             
         # 确认删除
         self.get_by_label("删除NAT网关").get_by_text("确定", exact=True).click()
@@ -887,7 +887,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果为None则不修改
         """
         # 点击操作按钮中的"修改"
-        self.click_dropdown_option(name, "修改")
+        self.click_action(name, "修改")
         self.wait_for_page_ready()
 
         # 修改名称
@@ -920,7 +920,7 @@ class VpcPage(BasePage):
         eip = data.get("弹性公网IP", "")
 
         # 点击"解绑公网IP"操作
-        self.click_option(name, "解绑公网IP")
+        self.click_action(name, "解绑公网IP")
 
         # 在弹窗中确认
         self.get_by_label("解绑公网IP").get_by_text("确定").click()
@@ -940,7 +940,7 @@ class VpcPage(BasePage):
             str: 绑定的 EIP 地址
         """
         # 点击"绑定公网IP"操作
-        self.click_option(name, "绑定公网IP")
+        self.click_action(name, "绑定公网IP")
 
         dialog = self.get_by_label("绑定公网IP")
 
@@ -1044,7 +1044,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单条删除
-            self.click_option(str(ext_ports), "删除", t_type="body")
+            self.click_action(str(ext_ports), "删除", t_type="body")
 
         self.dialog_confirm.click()
         self.wait_for_page_ready()

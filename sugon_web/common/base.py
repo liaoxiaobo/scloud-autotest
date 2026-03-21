@@ -680,72 +680,34 @@ class BasePage(Playwright):
 
         raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
-    def click_dropdown_options(self, resource_name: str, option_text: str):
+    def click_action(self, resource_name: str, option_text: str, t_type: str = "operation"):
         """
-        公共方法：点击指定资源行的下拉菜单选项
+        公共方法：点击指定资源行的操作选项（兼容平铺按钮和下拉菜单模式）
 
         Args:
             resource_name: 资源名称
-            option_text: 下拉菜单选项文本（如"删除"、"编辑"等）
+            option_text: 下拉菜单选项或平铺按钮文本（如"删除"、"编辑"等）
+            t_type: 行查找类型，默认为"operation"
         """
         try:
-            # 点击指定行资源的操作按钮
-            operation_btn=self._btn_operation(resource_name)
-            operation_btn.scroll_into_view_if_needed()
-            operation_btn.click()
-
-            # 等待下拉菜单出现
-            self.page.wait_for_timeout(1000)
-
-            # 方法1：通过 aria-controls 属性精确定位
+            # 1. 尝试直接点击平铺可见的操作按钮
             try:
-                dropdown_id = operation_btn.evaluate("element => element.getAttribute('class')")
-                self.logger.info(f"dropdown_id: {dropdown_id}")
-                if dropdown_id:
-                    specific_dropdown = self.page.locator(f".{dropdown_id}")
-                    option = specific_dropdown.get_by_text(option_text, exact=True)
-                    if option.is_visible() and option.is_enabled():
-                        option.click()
-                        self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
+                operation_row = self.get_row_by_name(resource_name, t_type)
+                option_btn = operation_row.get_by_text(option_text, exact=True)
+                
+                # 有可能找到多个同名文本，遍历尝试点击第一个可见并可用的按钮
+                for i in range(option_btn.count()):
+                    btn = option_btn.nth(i)
+                    if btn.is_visible() and btn.is_enabled():
+                        btn.click()
+                        self.logger.info(f"点击平铺操作选项: {resource_name} -> {option_text}")
                         return
-                    else:
-                        raise Exception(f"选项不可见或不可用: {option_text}")
-                else:
-                    raise Exception("未找到aria-controls属性")
-
+                        
+                self.logger.debug(f"未找到可用且可见的平铺选项: {option_text}，将尝试下拉菜单模式")
             except Exception as e:
-                # 方法2：备用方案 - 找到最后一个可见的下拉菜单
-                self.logger.warning(f"主要方法失败，使用备用方案: {e}")
+                self.logger.debug(f"定位平铺操作选项异常: {e}，将尝试下拉菜单模式")
 
-                dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
-                # dropdown_menus = self.page.locator('[class^="cloud-table-dropdown"]')
-
-                # 从后往前遍历，找到最后一个可见的下拉菜单
-                for i in range(dropdown_menus.count() - 1, -1, -1):
-                    menu = dropdown_menus.nth(i)
-                    if menu.is_visible():
-                        option = menu.get_by_text(option_text, exact=True)
-                        if option.count() > 0 and option.is_visible() and option.is_enabled():
-                            option.click()
-                            self.logger.info(f"通过备用方案点击选项: {resource_name} -> {option_text}")
-                            return
-
-                raise Exception(f"所有方法都失败，未找到可用的选项: {option_text}")
-
-        except Exception as e:
-            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
-            raise
-
-    def click_dropdown_option(self, resource_name: str, option_text: str):
-        """
-        公共方法：点击指定资源行的下拉菜单选项（兼容两种方式）
-
-        Args:
-            resource_name: 资源名称
-            option_text: 下拉菜单选项文本（如"删除"、"编辑"等）
-        """
-        try:
-            # 点击指定行资源的操作按钮
+            # 2. 如果平铺按钮没找到或不可见，尝试基于“更多/操作”按钮通过下拉菜单点击
             operation_btn = self._btn_operation(resource_name)
             operation_btn.hover()
 
@@ -781,7 +743,7 @@ class BasePage(Playwright):
                                 if option.is_visible() and option.is_enabled():
                                     option.click()
                                     self.logger.info(
-                                        f"点击资源操作选项: {resource_name} -> {option_text} (使用 {selector_type} 选择器)")
+                                        f"点击下拉菜单操作选项: {resource_name} -> {option_text} (使用 {selector_type} 选择器)")
                                     return
                                 else:
                                     self.logger.warning(f"选项 '{option_text}' 不可见或不可用")
@@ -796,28 +758,11 @@ class BasePage(Playwright):
                     continue
 
             # 所有选择器都失败
-            raise Exception(f"所有选择器都失败，未找到可用的选项: {option_text}")
+            raise Exception(f"所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: {option_text}")
 
         except Exception as e:
             self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
             raise
-
-    def click_option(self, resource_name: str, option_text: str, t_type="operation"):
-        """
-        公共方法：点击指定资源行的操作选项
-
-        Args:
-            resource_name: 资源名称
-            option_text: 菜单选项文本（如"登录"、"删除"等）
-        """
-        try:
-            # 点击指定行资源的操作按钮
-            operation_btn=self.get_row_by_name(resource_name, t_type)
-            operation_btn.get_by_text(option_text, exact=True).click()
-            self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
-        except Exception as e:
-            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
-            raise e
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
