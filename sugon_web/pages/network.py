@@ -402,7 +402,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个删除模式
-            self.click_action(names, "删除", t_type="body")
+            self.click_action(names, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -419,7 +419,7 @@ class VpcPage(BasePage):
             new_dns: 新DNS，如果为None则不修改
         """
         # 点击编辑按钮 (按钮文本为"修改")
-        self.click_action(subnet_name, "修改", t_type="body")
+        self.click_action(subnet_name, "修改")
         self.wait_for_page_ready()
 
         # 修改子网名称
@@ -749,7 +749,7 @@ class VpcPage(BasePage):
             new_desc: 新描述，如果为None则不修改
         """
         # 点击该行的"修改"操作
-        self.click_action(dest_cidr, "修改", t_type="body")
+        self.click_action(dest_cidr, "修改")
         self.wait_for_page_ready()
 
         dialog = self.get_by_label("修改路由表规则")
@@ -800,7 +800,7 @@ class VpcPage(BasePage):
             self.select_rows_by_names(dest_cidrs)
             self.btn_batch_delete.click()
         else:
-            self.click_action(dest_cidrs, "删除", t_type="body")
+            self.click_action(dest_cidrs, "删除")
             
         self.get_by_label("删除").get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
@@ -1044,7 +1044,7 @@ class VpcPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单条删除
-            self.click_action(str(ext_ports), "删除", t_type="body")
+            self.click_action(str(ext_ports), "删除")
 
         self.dialog_confirm.click()
         self.wait_for_page_ready()

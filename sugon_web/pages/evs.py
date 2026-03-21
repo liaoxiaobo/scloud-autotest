@@ -224,7 +224,7 @@ class EvsPage(BasePage):
             if secure:
                 self.click_action(names, "安全删除")
             else:
-                self.click_action(names, "删除", t_type="body")
+                self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -240,7 +240,7 @@ class EvsPage(BasePage):
             volume_name: 云硬盘名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_action(volume_name, "恢复", t_type="body")
+        self.click_action(volume_name, "恢复")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -501,7 +501,7 @@ class EvsPage(BasePage):
             desc: 云硬盘描述信息，默认为空
         """
         # 点击操作按钮
-        self.click_action(snapshot_name, "创建云硬盘", t_type='body')
+        self.click_action(snapshot_name, "创建云硬盘")
 
         # 填写云硬盘名称
         dialog = self.get_by_role("dialog")
@@ -532,7 +532,7 @@ class EvsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_action(names, "删除", t_type='body')
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -550,7 +550,7 @@ class EvsPage(BasePage):
             new_desc: 新的描述信息
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_action(name, "修改", t_type='body')
+        self.click_action(name, "修改")
 
         # 定位对话框中的输入框
         dialog = self.get_by_role("dialog")
@@ -626,7 +626,7 @@ class EvsPage(BasePage):
         else:
             # 单个操作模式
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_action(names, "删除", t_type='body')
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -647,7 +647,7 @@ class EvsPage(BasePage):
             retention_value: 保留值，数量或天数，默认为1
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_action(name, "修改", t_type='body')
+        self.click_action(name, "修改")
 
         # 填写策略名称
         self.get_by_label("修改策略").get_by_role("textbox").nth(1).fill(name)
@@ -712,7 +712,7 @@ class EvsPage(BasePage):
         else:
             # 单个操作模式
             # 使用BasePage中的通用下拉菜单选项点击方法
-            self.click_action(names, "删除", t_type='body')
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()

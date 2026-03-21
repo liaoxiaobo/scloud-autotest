@@ -646,23 +646,31 @@ class BasePage(Playwright):
                 f"以下资源删除验证失败（可能仍然存在于列表中）: {', '.join(failed_resources)}"
             )
 
+    def _get_interactive_row(self, row: Locator) -> Locator:
+        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
+        try:
+            # 尝试通过 DOM index 获取对应的 fixed-right 行
+            row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
+            fixed_right = self.locator(".el-table__fixed-right .el-table__row").nth(row_index)
+            if fixed_right.count() > 0 and fixed_right.is_visible():
+                return fixed_right
+        except Exception as e:
+            self.logger.debug(f"获取可交互行时出错: {e}")
+        return row
+
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
 
         # 定位资源行
-        try:
-            row = self.get_row_by_name(name, "operation")
-            self.logger.info(f"在 operation 区域找到资源行: {name}")
-        except AssertionError:
-            self.logger.debug(f"在 operation 区域未找到 {name}，尝试在 body 区域查找")
-            row = self.get_row_by_name(name, "body")
-            self.logger.info(f"在 body 区域找到资源行: {name}")
+        row = self.get_row_by_name(name)
+        interactive_row = self._get_interactive_row(row)
+        self.logger.info(f"成功找到资源操作行: {name}")
 
         # 提供两种定位方式，第二种适用于ecs列表页面
         locators = [
-            row.get_by_text("更多"),
+            interactive_row.get_by_text("更多"),
             self.get_by_role("row", name=name).get_by_role("button"),
-            row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
+            interactive_row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
         ]
 
         # 尝试定位
@@ -680,20 +688,20 @@ class BasePage(Playwright):
 
         raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
-    def click_action(self, resource_name: str, option_text: str, t_type: str = "operation"):
+    def click_action(self, resource_name: str, option_text: str):
         """
         公共方法：点击指定资源行的操作选项（兼容平铺按钮和下拉菜单模式）
 
         Args:
             resource_name: 资源名称
             option_text: 下拉菜单选项或平铺按钮文本（如"删除"、"编辑"等）
-            t_type: 行查找类型，默认为"operation"
         """
         try:
             # 1. 尝试直接点击平铺可见的操作按钮
             try:
-                operation_row = self.get_row_by_name(resource_name, t_type)
-                option_btn = operation_row.get_by_text(option_text, exact=True)
+                row = self.get_row_by_name(resource_name)
+                interactive_row = self._get_interactive_row(row)
+                option_btn = interactive_row.get_by_text(option_text, exact=True)
                 
                 # 有可能找到多个同名文本，遍历尝试点击第一个可见并可用的按钮
                 for i in range(option_btn.count()):
@@ -862,16 +870,13 @@ class BasePage(Playwright):
             rows = []
         return rows
 
-    def get_row_by_name(self, name: str, t_type: str = "body") -> Locator:
+    def get_row_by_name(self, name: str) -> Locator:
         """公共方法:根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
-        if t_type == "body":
-            t_body = self.locator(".el-table__body-wrapper")
-        elif t_type == "name":
-            t_body = self.locator(".el-table__fixed")
-        elif t_type == "operation":
-            t_body = self.locator(".el-table__fixed-right")
-        else:
-            raise ValueError(f"不支持的表格类型: {t_type}")
+        t_body = self.locator(".el-table__body-wrapper")
+        # 兼容退化
+        if t_body.count() == 0:
+            t_body = self
+
         try:
             # 模式1: 名称后跟空白字符
             pattern = re.compile(rf"^{re.escape(name)}\s")
