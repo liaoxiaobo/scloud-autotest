@@ -13,7 +13,7 @@ class EcsCreatePage(EcsPage):
     @submenu("弹性云服务器")
     def ecs_create(self, basic=None, storage=None, network=None, manage=None, advanced=None, **kwargs):
         """创建云服务器
-        
+
         支持两种调用方式：
         1. v2 式 (字典传参): ecs_create(basic={}, storage={}, network={}, manage={}, advanced={})
         2. v1 式 (扁平传参): ecs_create(name, image_source="镜像", count=1, ...)
@@ -24,7 +24,7 @@ class EcsCreatePage(EcsPage):
             v1_name = basic if isinstance(basic, str) else kwargs.get("name")
             v1_image_source = storage if isinstance(storage, str) else kwargs.get("image_source", "镜像")
             v1_count = network if isinstance(network, int) else kwargs.get("count", 1)
-            
+
             # 其余可能的 v1 参数从 args 偏移或 kwargs 获取 (模仿 EcsPage.ecs_create)
             v1_network = kwargs.get("network", "Autotest")
             v1_subnet = kwargs.get("subnet", "Autotest(10")
@@ -180,7 +180,7 @@ class EcsCreatePage(EcsPage):
                 self._select_single_network(net_config)
         if network and network.get("安全组"):
             self._select_security_group(network.get("安全组"))
-            
+
         # 选择分配IPv6
         if network and network.get("enable_ipv6"):
             self.get_by_role("textbox", name="请选择是否分配IPv6地址").click()
@@ -716,13 +716,12 @@ class EcsCreatePage(EcsPage):
                 ssh_vm.run(f"mkfs.xfs -f /dev/{vol_name}", check_rc=True)
                 ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
                 ssh_vm.run(f"mount /dev/{vol_name} {curr_dir}", check_rc=True)
-                
+
                 # 写入开机自启动
                 uuid = ssh_vm.run(rf"""blkid|grep /dev/{vol_name}|awk -F" " '{{print $2}}'|awk -F'"' '{{print $2}}'""", check_rc=True).strip()
                 ssh_vm.run(f"""echo "UUID={uuid} {curr_dir} xfs defaults 0 0" >> /etc/fstab""", check_rc=True)
-            
+
             # 统一在目标目录下建立路径并写入数据
-            ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
             wget_cmd = f"cd {curr_dir} && curl -O --max-time 300 {Config.get('image_source')}{image_path}{curr_file}"
             ssh_vm.run(wget_cmd, timeout=180, get_pty=False, check_rc=True)
             ssh_vm.run(f"cd {curr_dir} && sync && md5sum {curr_file} > cbr_test_{vol_name}_md5.txt", check_rc=True)

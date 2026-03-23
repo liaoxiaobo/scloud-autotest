@@ -38,7 +38,7 @@ class TestAclBasic:
     def test_acl_edit(self, acl_page, acl):
         acl_name = acl
         new_name = f"{acl_name}-edit"
-        new_desc = f"巨长的描述：{acl_name}{random_data(length=100)}"
+        new_desc = f"巨长的描述：{acl_name}{random_data(length=260)}"
 
         with allure_step_log(f"步骤1: 选定网络ACL进行修改: {acl_name} -> {new_name}"):
             acl_page.acl_edit(acl_name, new_name=new_name, new_desc=new_desc)

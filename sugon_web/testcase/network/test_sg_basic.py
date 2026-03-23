@@ -1,4 +1,4 @@
-import allure
+﻿import allure
 import pytest
 from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import allure_step_log
@@ -47,7 +47,7 @@ class TestSGBasic:
     def test_sg_edit(self, sg_page, sg):
         sg_name = sg
         new_name = f"{sg_name}-edit"
-        new_desc = f"{sg_name} 编辑后的描述"
+        new_desc = f"巨长描述: {sg_name}{random_data('string', 100)}"
         orig_desc = f"{sg_name}测试安全组"
 
         with allure_step_log(f"步骤1: 编辑安全组名称和描述: {sg_name} -> {new_name}"):

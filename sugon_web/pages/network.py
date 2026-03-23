@@ -127,23 +127,18 @@ class VpcPage(BasePage):
             ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
             self._input_gateway.fill(ip)
 
-        if acl_policy:
-            # 选择前先清空
-            acl_box = self.locator(".el-form-item").filter(has_text="关联ACL策略")
-            acl_box.hover()
-            # 悬停后出现清除图标
-            clear_icon = acl_box.locator(".el-icon-circle-close")
+        # 处理关联ACL策略
+        acl_item = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+        # 悬浮容器显示清空按钮
+        acl_item.hover()
+        clear_icon = acl_item.locator(".el-icon-circle-close")
+        if clear_icon.is_visible():
             clear_icon.click()
 
+        if acl_policy:
             # 选择ACL策略
             self.locator("#cloud-container-content").get_by_placeholder("请选择").click()
             self.locator("li").filter(has_text=acl_policy).click()
-        else:
-            acl_box = self.locator(".el-form-item").filter(has_text="关联ACL策略")
-            acl_box.hover()
-            # 悬停后出现清除图标
-            clear_icon = acl_box.locator(".el-icon-circle-close")
-            clear_icon.click()
 
         # 如果指定了可用IP，则填写
         if available_ip:
@@ -295,6 +290,13 @@ class VpcPage(BasePage):
         #     # 使用默认网关IP（CIDR的第一个可用IP）
         #     ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
         #     self._input_gateway.fill(ip)
+
+        # 处理关联ACL策略
+        acl_item = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+        acl_item.hover()
+        clear_icon = acl_item.locator(".el-icon-circle-close")
+        if clear_icon.is_visible():
+            clear_icon.click()
 
         # 如果提供了ACL策略，则关联ACL
         if acl_policy:
