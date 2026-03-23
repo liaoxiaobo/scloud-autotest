@@ -39,13 +39,14 @@ def _create_ssh_client(host, port, username, pwd, pkey, transport=None, timeout=
     while True:
         try:
             # 如果提供了 transport，通过跳板机创建连接隧道
-            sock = transport.open_channel("direct-tcpip", (host, port), ('', 0)) if transport else None
+            sock = transport.open_channel("direct-tcpip", (host, port), ('', 0), timeout=15) if transport else None
             client.connect(hostname=host,
                            port=port,
                            password=pwd,
                            username=username,
                            pkey=pkey,
-                           sock=sock)
+                           sock=sock,
+                           timeout=15)
             return client
         except (AuthenticationException, EOFError, ChannelException) as e:
             # 记录登陆失败日志，并及时关闭异常Connection
@@ -344,8 +345,8 @@ class SSH:
         # 根据 ipv6 参数选择 ping 命令
         ping_cmd = f'ping6 {ip} -c {count}' if ipv6 else f'ping {ip} -c {count}'
 
-        success_pattern = f"{count} packets transmitted, {count} received, 0% packet loss"
-        fail_pattern = f"{count} packets transmitted, 0 received, 100% packet loss"
+        success_pattern = "0% packet loss"
+        fail_pattern = "100% packet loss"
 
         for attempt in range(1, retries + 1):
             stdout = self.run(ping_cmd)

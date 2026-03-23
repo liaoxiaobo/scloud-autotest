@@ -20,6 +20,8 @@ SERVICE_MAP = {
     '云防火墙': ('资源中心', '网络'),
     '专有网络VPN': ('资源中心', '网络'),
     'NAT网关': ('资源中心', '网络'),
+    '安全组': ('资源中心', '网络'),
+    '网络ACL': ('资源中心', '网络'),
 
     # 存储服务
     '云硬盘': ('资源中心', '存储'),
@@ -306,7 +308,7 @@ class BasePage(Playwright):
                 self.hover(root_menu)
                 self.click(service)
                 try:
-                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=5000)
+                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
                 except:
                     pass
                 self.wait_for_page_ready()
@@ -319,7 +321,7 @@ class BasePage(Playwright):
                 self.hover(category)
                 self.click(service)
                 try:
-                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=5000)
+                    expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
                 except:
                     pass
                 self.wait_for_page_ready()
@@ -594,7 +596,7 @@ class BasePage(Playwright):
                 if not refresh:
                     # 不刷新模式：直接使用Playwright的高效等待机制
                     timeout_ms = timeout * 1000  # 转换为毫秒
-                    resource_row = self.get_by_role("row", name=resource_name)
+                    resource_row = self.get_by_role("row", name=resource_name, exact=True)
                     expect(resource_row).not_to_be_visible(timeout=timeout_ms)
                     self.logger.info(f"资源从列表中删除成功: {resource_name}")
                 else:
@@ -616,7 +618,7 @@ class BasePage(Playwright):
                             first_check = False
 
                             # 定位包含资源名称的表格行
-                            resource_row = self.get_by_role("row", name=resource_name)
+                            resource_row = self.get_by_role("row", name=resource_name, exact=True)
 
                             # 检查行是否不可见（即已删除）
                             if not resource_row.is_visible():
@@ -855,24 +857,20 @@ class BasePage(Playwright):
         # 等待该元素不可见
         expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
 
-    def wait_for_operation_complete(self, timeout=30):
+    def wait_for_operation_complete(self, timeout=60):
         """等待操作完成
 
         Args:
             timeout: 超时时间（秒）
         """
         start_time = time.time()
+        # 组合所有的加载指示器选择器，只检查可见的
+        loading_selector = ".el-icon-loading:visible, .el-button.is-loading:visible"
 
         while time.time() - start_time < timeout:
             try:
-                # 检查是否有加载中的元素
-                loading_elements = [
-                    self.locator(".el-icon-loading"),
-                    self.locator(".el-button.is-loading")
-                ]
-
-                # 如果没有加载中的元素，认为操作完成
-                if not any(element.count() > 0 for element in loading_elements):
+                # 如果没有任何可见的加载标识，认为操作完成
+                if self.page.locator(loading_selector).count() == 0:
                     return
 
                 # 等待1秒后重试

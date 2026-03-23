@@ -524,7 +524,7 @@ class EcsPage(OpsPage):
         logger.info(f"操作完成: 云服务器{name}卸载网: {net}")
 
     @submenu("弹性云服务器")
-    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public"):
+    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public_net"):
         """绑定公网IP
         Args:
             name: 云服务器名称
@@ -749,15 +749,16 @@ class EcsPage(OpsPage):
         # 等待操作完成
         self.wait_for_page_ready()
 
-    def bind_mfip(self, ip: str, project="默认项目"):
+    def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
         """虚机绑定mfip
         Args:
             project: 项目名称
+            network: 网络名称
             ip: 公网ip地址
 
         """
         self.goto_service("网络设施")
-        self.mfip_create(project, "Autotest", ip)
+        self.mfip_create(project, network, ip)
         self.assert_popup_success("执行成功")
         self.mfip_search(ip)
         # return self.get_column_data("Mfip 地址")[0]
@@ -1723,6 +1724,236 @@ class EcsPage(OpsPage):
         self.wait_for_page_ready()
 
         logger.info(f"成功进入云服务器{name}详情页")
+
+    def ecs_to_sg_tab(self, name, sub_tab="自定义安全组"):
+        """进入虚机详情的安全组页签
+
+        Args:
+            name: 云服务器名称
+            sub_tab: 子页签名称，默认 "自定义安全组"
+        """
+        self.ecs_to_details(name)
+        # 点击安全组页签
+        self.get_by_role("tab", name="安全组", exact=False).click()
+        if sub_tab:
+            # 使用正则匹配精确文本，处理首尾空格和换行
+            self.locator(".security-group-item").filter(has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")).click()
+        self.wait_for_page_ready()
+        logger.info(f"进入云服务器 {name} 的安全组页签")
+
+    def ecs_set_security_groups(self, sg_names: list, bind: bool = True):
+        """虚机详情页设置安全组
+        
+        Args:
+            sg_names: 安全组名称列表
+            bind: 绑定/解绑
+        """
+        # 使用更精准的匹配
+        self.get_by_text("设置安全组", exact=True).click()
+        
+        dialog = self.get_by_role("dialog").filter(has_text="安全组设置").last
+        if not dialog.is_visible():
+             dialog = self.get_by_role("dialog").filter(has_text="设置安全组").last
+
+        try:
+            pagination_trigger = dialog.get_by_placeholder("请选择")
+            if pagination_trigger.count() > 0:
+                pagination_trigger.click()
+                # 寻找 50条/页 选项
+                self.locator("li").filter(has_text="50条/页").last.click()
+                self.wait_for_page_ready()
+        except Exception as e:
+            logger.warning(f"尝试设置分页为50失败: {e}")
+
+        for sg in sg_names:
+            # 找到对应行并勾选
+            row = dialog.get_by_role("row", name=re.compile(rf"{re.escape(sg)}")).first
+            checkbox = row.locator(".el-checkbox")
+            
+            # 检查是否已勾选
+            is_checked = "is-checked" in (checkbox.get_attribute("class") or "")
+            if bind and not is_checked:
+                checkbox.click()
+            elif not bind and is_checked:
+                checkbox.click()
+
+        self.dialog_confirm.click()
+
+        # 等待成功提示
+        self.assert_popup_success(re.compile(r"设置安全组成功|操作成功"))
+        self.wait_for_page_ready()
+        logger.info(f"设置安全组完成: {sg_names}, bind={bind}")
+
+    def ecs_get_bound_security_groups(self):
+        """获取已绑定的安全组列表
+        """
+        items = self.locator(".security-group-item").all_text_contents()
+        # 清洗数据，提取安全组名称（通常在括号前或者开头）
+        bound_sgs = []
+        for item in items:
+            # 过滤掉空的或者包含 "自定义安全组" 的通用项
+            name = item.split('(')[0].strip()
+            if name and name not in ["自定义安全组", "安全组"]:
+                bound_sgs.append(name)
+        
+        logger.info(f"当前绑定的安全组: {bound_sgs}")
+        return bound_sgs
+
+    def select_if_not_match(self, locator, value, exact=False):
+        """
+        如果当前选项不匹配，则选择指定值
+
+        Args:
+            locator: 定位器
+            value: 期望值
+            exact: 是否精确匹配，默认 False
+        """
+        if locator.input_value() != value:
+            locator.click()
+            # 增加 visible=True 过滤
+            target = self.locator("li:visible")
+            if exact:
+                target.filter(has_text=re.compile(rf"^{value}$")).first.click()
+            else:
+                target.filter(has_text=value).first.click()
+
+    def ecs_create_custom_sg_rule(self, **kwargs):
+        """在详情页创建自定义安全组规则
+
+        支持从 kwargs 中提取所有安全组规则参数。
+        """
+        # 录制中可能出现多种按钮点击方式
+        btn_locs = [
+            self.get_by_text("创建规则 批量删除").get_by_text("创建规则"),
+            self.get_by_text("创建规则").first,
+        ]
+        self._find_element(btn_locs, "添加/创建规则按钮").first.click()
+
+        # 指定弹窗
+        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"创建规则")).last
+
+        # 提取参数
+        protocol = kwargs.get("protocol", "所有")
+        direction = kwargs.get("direction", "入口")
+        remote_type = kwargs.get("remote_type", "CIDR")
+        ip_version = kwargs.get("ip_version", "IPv4")
+        remote_sg = kwargs.get("remote_sg")
+        description = kwargs.get("description", "")
+        protocol_type = kwargs.get("protocol_type")
+        protocol_code = kwargs.get("protocol_code")
+        port_type = kwargs.get("port_type")
+        port = kwargs.get("port")
+        cidr = kwargs.get("cidr")
+
+        # 选择协议
+        protocol_input = dialog.locator("form div").filter(has_text="协议").get_by_placeholder("请选择", exact=True)
+        self.select_if_not_match(protocol_input, protocol, exact=True)
+
+        # 如果选择常用协议，需要进一步选择协议类型
+        if protocol == "选择常用协议" and protocol_type:
+            protocol_type_input = dialog.get_by_placeholder("请选择协议")
+            self.select_if_not_match(protocol_type_input, protocol_type, exact=False)
+
+            # 处理端口配置（定制TCP/UDP协议时需要）
+            if "TCP" in protocol_type or "UDP" in protocol_type:
+                port_type_input = dialog.locator("div").filter(has_text=re.compile(r"^打开端口")).get_by_placeholder(
+                    "请选择")
+                self.select_if_not_match(port_type_input, port_type, exact=True)
+
+                # 填写端口
+                if port_type == "端口范围" and port and "-" in port:
+                    start_port, end_port = port.split("-")
+                    start_loc = dialog.locator("div").filter(has_text=re.compile(r"^起始端口号$")).get_by_role(
+                        "textbox")
+                    start_loc.clear()
+                    start_loc.fill(start_port)
+                    end_loc = dialog.locator("div").filter(has_text=re.compile(r"^终止端口号$")).get_by_role("textbox")
+                    end_loc.clear()
+                    end_loc.fill(end_port)
+                elif port:
+                    dialog.get_by_placeholder("请输入端口").fill(port)
+
+        # 如果选择手填协议CODE，填写CODE值
+        elif protocol == "手填协议CODE" and protocol_code:
+            dialog.get_by_placeholder("请输入协议CODE").fill(protocol_code)
+
+        # 选择方向
+        direction_input = dialog.locator("div").filter(has_text=re.compile(r"^方向")).get_by_placeholder("请选择")
+        self.select_if_not_match(direction_input, direction, exact=False)
+
+        # 选择远程类型
+        remote_type_input = dialog.locator("div").filter(has_text=re.compile(r"^远程")).get_by_placeholder("请选择")
+        self.select_if_not_match(remote_type_input, remote_type, exact=True)
+
+        # 选择IP版本
+        ip_version_input = dialog.get_by_placeholder("请选择IP版本")
+        self.select_if_not_match(ip_version_input, ip_version, exact=False)
+
+        # 根据远程类型填写对应值
+        if remote_type == "安全组" and remote_sg:
+            # 使用更精确的正则匹配，避免匹配到已选择“安全组”的“远程”下拉框
+            dialog.locator("div").filter(has_text=re.compile(r"^安全组$")).get_by_placeholder("请选择").click()
+            self.locator("li:visible").filter(has_text=remote_sg).first.click()
+        elif remote_type == "CIDR" and cidr:
+            dialog.get_by_placeholder(re.compile(r"非必填.*如.*0\.0\.0\.0")).fill(cidr)
+
+        # 填写描述
+        if description:
+            dialog.locator("textarea").fill(description)
+
+        # 确定并断言
+        dialog.get_by_text("确定", exact=True).click()
+        self.assert_popup_success(re.compile(r"规则操作成功|新建.*成功|操作成功"))
+        self.wait_for_page_ready()
+        logger.info(f"自定义安全组规则创建完成: {kwargs}")
+
+    def ecs_get_custom_sg_rules(self, direction="入口"):
+        """获取自定义安全组规则列表
+        
+        Args:
+            direction: 规则方向，"入口" 或 "出口"
+        """
+        if direction:
+            target_direction = self.get_by_text(direction, exact=True).filter(has_not_text="入口出口")
+            if target_direction.count() > 0:
+                target_direction.first.click()
+                self.wait_for_page_ready()
+
+        # 查找当前激活的tab页中的表格 headers 和 rows
+        active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])", ".active-tab").first
+        headers = [h.strip() for h in active_tab.locator(".el-table__header-wrapper th").all_text_contents() if h.strip()]
+        
+        # 过滤掉可能存在的方向选择器文字
+        headers = [h for h in headers if h not in ["入口", "出口"]]
+
+        row_locators = active_tab.locator(".el-table__body-wrapper tr").all()
+        
+        rules = []
+        for row_locator in row_locators:
+            cell_contents = self._get_cell_contents(row_locator)
+            row_data = dict(zip(headers, cell_contents))
+            
+            rule_data = {}
+            for key, val in row_data.items():
+                if "方向" in key:
+                    rule_data["方向"] = val
+                elif "以太网类型" in key:
+                    rule_data["以太网类型"] = val
+                elif "协议" in key:
+                    rule_data["协议"] = val
+                elif "端口范围" in key:
+                    rule_data["端口范围"] = val
+                elif "远端IP前缀" in key:
+                    rule_data["远端IP前缀"] = val
+                elif "远端安全组" in key:
+                    rule_data["远端安全组"] = val
+                elif "描述" in key:
+                    rule_data["描述"] = val
+            rules.append(rule_data)
+        
+        self.logger.info(f"获取到的云服务器自定义规则列表: {rules}")
+        return rules
+
     def ecs_back_to_list(self):
         """返回云服务器列表页
         """

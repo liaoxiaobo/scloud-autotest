@@ -432,3 +432,24 @@ def retry_check(check_func, expected, max_retries=3, interval=5, error_msg=None)
 
     final_msg = error_msg or f"断言失败: 期望 '{expected}', 实际 '{actual}'"
     raise AssertionError(final_msg)
+
+def render_data(data: dict, **kwargs) -> dict:
+    """
+    使用 Jinja2 渲染字典中的模板变量
+
+    Args:
+        data: 包含 Jinja2 模板变量的字典
+        **kwargs: 要注入的变量
+
+    Returns:
+        渲染后的字典
+    """
+    # 将字典转为 YAML 字符串
+    yaml_str = yaml.dump(data, allow_unicode=True)
+
+    # 使用 Jinja2 渲染
+    template = Template(yaml_str)
+    rendered = template.render(**kwargs)
+
+    # 解析回字典
+    return yaml.safe_load(rendered)

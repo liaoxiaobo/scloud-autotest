@@ -51,6 +51,7 @@ class TestBackupCreate:
             backup_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤2: 验证备份任务创建成功"):
+            backup_page.backup_search(task_name)
             backup_page.assert_status(task_name, "一次性备份", timeout=600)
             backup_page.assert_status(task_name, "立即备份")
             backup_page.assert_status(task_name, "已完成")
@@ -69,6 +70,7 @@ class TestBackupBasic:
             keyword = backup_task.get('task_name').split("-")[-1]
             backup_page.backup_search(keyword)
             backup_page.page.wait_for_load_state("networkidle")
+            backup_page.wait_for_page_ready()
             backup_page.assert_list_contain(keyword, column_name="任务名", exact_match=False)
 
         with allure_step_log("步骤2: 重置搜索条件"):
@@ -457,3 +459,23 @@ class TestResumeCreate:
 
             # 验证虚机可用性
             ecs_page.assert_ecs_enable(re_vm, ssh_vm)
+
+@allure.epic('云备份')
+@allure.feature('实例备份')
+@allure.story('备份任务场景')
+class TestBackupScenarios:
+
+    @allure.title("验证创建完成的备份任务迁移后启动")
+    def test_backup_migrate_start(self, backup_page, backup_task):
+        enabled_nodes = backup_task.get("backup_nodes")
+        if len(enabled_nodes) < 2:
+            pytest.skip("迁移任务需要至少2个备份节点")
+
+        with allure_step_log("步骤1: 迁移任务"):
+            task_name = backup_task.get("task_name")
+            backup_page.backup_migrate(task_name)
+            backup_page.assert_popup_success("迁移备份任务成功")
+
+        with allure_step_log("步骤2: 启动任务"):
+            backup_page.backup_start_stop(task_name, "启动")
+            backup_page.assert_status(task_name, "已启动")

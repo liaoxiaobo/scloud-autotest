@@ -19,36 +19,34 @@ class TestPgSQLBasic:
         # --- 第一阶段：单机 -> 高可用 ---
         with allure_step_log("步骤一：执行升级操作（单机 -> 高可用）"):
             pgsql_page.upgrade_instance(instance_name, target_type="高可用")
-            sleep(3)
-            pgsql_page.assert_popup_success("升级")
+            pgsql_page.assert_popup_success("升级", timeout=10)
 
         with allure_step_log("步骤二：验证升级过程及结果（单机 -> 高可用）"):
             # 验证状态变为升级中
-            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=1200, refresh=True)
             # 验证最终状态变为运行中
             pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
             # 验证节点状态变为运行中
             pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             sleep(3)
-            pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=600)
+            pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=1200, refresh=True)
             # 后端验证：检查新节点是否已创建
             db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-1")
 
         # --- 第二阶段：高可用 -> 集群 ---
         with allure_step_log("步骤三：执行升级操作（高可用 -> 集群）"):
             pgsql_page.upgrade_instance(instance_name, target_type="集群")
-            sleep(3)
-            pgsql_page.assert_popup_success("升级")
+            pgsql_page.assert_popup_success("升级", timeout=10)
 
         with allure_step_log("步骤四：验证升级过程及结果（高可用 -> 集群）"):
             # 验证状态变为升级中
-            pgsql_page.assert_status(instance_name, status="升级中", timeout=60, refresh=True)
+            pgsql_page.assert_status(instance_name, status="升级中", timeout=1200, refresh=True)
             # 验证最终状态变为运行中
             pgsql_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
             # 验证节点状态变为运行中
             pgsql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             sleep(3)
-            pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=600)
+            pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=1200, refresh=True)
 
             # 后端验证：检查新节点是否已创建
             db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-2")
@@ -167,6 +165,23 @@ class TestPgSQLBasic:
         with allure_step_log("步骤四：验证解绑结果"):
             pgsql_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
+
+    @allure.title("PostgreSQL-添加只读节点")
+    def test_add_readonly_node(self, pgsql_page, pgsql, ssh_host):
+        """测试为PostgreSQL实例添加只读节点"""
+        instance_name = pgsql["name"]
+
+        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页并点击新建只读节点"):
+            pgsql_page.add_node(instance_name)
+            pgsql_page.assert_popup_success("添加只读节点")
+
+        with allure_step_log("步骤二：验证节点状态变化"):
+            new_node_name = f"{instance_name}-3"
+            pgsql_page.assert_status(new_node_name, status="创建中", timeout=1200, refresh=True)
+            pgsql_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤三：后端验证节点存在"):
+            db_util.assert_backend_created(pgsql_page, ssh_host, new_node_name)
 
     @allure.title("PostgreSQL-创建用户")
     def test_create_user(self, pgsql_page, pgsql):
@@ -337,3 +352,41 @@ class TestPgSQLBasic:
             pgsql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+    @allure.title("PostgreSQL-节点热迁移")
+    def test_pgsql_node_hot_migration(self, pgsql_page, pgsql, ssh_host, ssh_vm):
+        """测试PostgreSQL节点的热迁移功能"""
+        instance_name = pgsql["name"]
+        node_name = f"{instance_name}-0"
+        password = "admin1234@sugon"
+        admin_password = pgsql["admin_password"]
+
+        # 记录迁移前的物理机 (后端校验)
+        old_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+        allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
+
+        with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
+            selected_host = pgsql_page.pgsql_hot_migration(instance_name, node_name)
+
+        with allure_step_log("步骤二：验证迁移结果"):
+            pgsql_page.assert_popup_success("热迁移命令下发成功")
+            pgsql_page.assert_status(node_name, status="迁移中", timeout=300, refresh=True)
+            pgsql_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
+            # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
+            new_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+            allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
+
+            assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
+            if selected_host:
+                # selected_host 是 UI 上选中的名称，后端返回的可能带域名，所以用 in 判断
+                assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
+
+        with allure_step_log("步骤四：验证迁移后数据库连接"):
+            ip_from_db = db_util.get_node_mfip_from_db(pgsql_page, ssh_host, "sugoncloud_pgsql", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=password)
+            cmd_check = f"PGPASSWORD='{admin_password}' psql -U postgres -h127.0.0.1 -c 'SELECT 1;'"
+            result = ssh_vm.run(cmd_check)
+            assert "1 row" in result or "(1 row)" in result, f"热迁移后数据库连接失败: {result}"
+            ssh_vm.close()

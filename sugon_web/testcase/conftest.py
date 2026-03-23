@@ -678,7 +678,7 @@ def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
         ecs_page.goto_service("弹性云服务器")
         basic, network, manage, advanced = {"数量": vm_count}, {}, {}, {}
         storage = {'系统盘': 25, '数据盘': [{'vol_type': f'{ecs_page.stor}-type', 'size': '25', 'count': '2'}]}
-        vm_info = ecs_create_page.ecs_create_v2(basic, storage, network, manage, advanced) # vm_info={"name": "autotest-jsh212","count": 2}
+        vm_info = ecs_create_page.ecs_create(basic, storage, network, manage, advanced) # vm_info={"name": "autotest-jsh212","count": 2}
         # ecs_page.assert_popup_success("创建实例命令下发成功")
         vm_name = vm_info.get("name")
 

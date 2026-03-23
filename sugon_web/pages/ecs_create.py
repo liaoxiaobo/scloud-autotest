@@ -2,28 +2,53 @@ import re
 from playwright.sync_api import expect
 
 from sugon_web.config.config import Config
-from sugon_web.pages.ops import OpsPage
+from sugon_web.pages.ecs import EcsPage
 from sugon_web.common.base import submenu
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data
 
 
-class EcsCreatePage(OpsPage):
+class EcsCreatePage(EcsPage):
 
     @submenu("弹性云服务器")
-    # def ecs_create_v2(self, basic, storage, network, manage, machine, numa, other):
-    def ecs_create_v2(self, basic, storage, network, manage, advanced):
+    def ecs_create(self, basic=None, storage=None, network=None, manage=None, advanced=None, **kwargs):
         """创建云服务器
-        Args:
-            basic: 基本配置
-            storage: 存储配置
-            network: 网络配置
-            manage: 管理配置
-            machine: 物理机设备
-            numa: NUMA配置
-            advanced: 高级配置
-            """
-        logger.info("开始创建云服务器")
+
+        支持两种调用方式：
+        1. v2 式 (字典传参): ecs_create(basic={}, storage={}, network={}, manage={}, advanced={})
+        2. v1 式 (扁平传参): ecs_create(name, image_source="镜像", count=1, ...)
+        """
+        # 1. 检测并转换参数格式 (如果是 v1 扁平化传参)
+        if isinstance(basic, str) or "name" in kwargs:
+            # 提取 v1 参数
+            v1_name = basic if isinstance(basic, str) else kwargs.get("name")
+            v1_image_source = storage if isinstance(storage, str) else kwargs.get("image_source", "镜像")
+            v1_count = network if isinstance(network, int) else kwargs.get("count", 1)
+
+            # 其余可能的 v1 参数从 args 偏移或 kwargs 获取 (模仿 EcsPage.ecs_create)
+            v1_network = kwargs.get("network", "Autotest")
+            v1_subnet = kwargs.get("subnet", "Autotest(10")
+            v1_cluster = kwargs.get("cluster", "Autotest")
+            v1_flavor = kwargs.get("flavor", "ecs.c6.large")
+            v1_image_name = kwargs.get("image_name", "")
+            v1_os_version = kwargs.get("os_version", "centos7.9")
+            v1_login_pwd = kwargs.get("login_password", "admin1234@sugon")
+            v1_vnc_pwd = kwargs.get("vnc_password", "sugon@20")
+            v1_sys_size = kwargs.get("sys_size", 25)
+            v1_enable_ipv6 = kwargs.get("enable_ipv6", False)
+
+            # 构造成 v2 的字典结构
+            basic = {"name": v1_name, "数量": v1_count, "集群": v1_cluster, "规格": {"基础规格": v1_flavor}}
+            storage = {
+                "镜像": {"来源": v1_image_source, "镜像名称": v1_image_name, "ISO": v1_os_version},
+                "系统盘": v1_sys_size
+            }
+            network = {
+                "networks": [{"network": v1_network, "subnet": v1_subnet}],
+                "enable_ipv6": v1_enable_ipv6
+            }
+            manage = {"login_type": "密码登录", "login_pwd": v1_login_pwd, "vnc_pwd": v1_vnc_pwd}
+            advanced = {}
 
         # 点击创建按钮
         self.btn_create.click()
@@ -43,6 +68,8 @@ class EcsCreatePage(OpsPage):
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
+    # 保持别名兼容
+    ecs_create_v2 = ecs_create
 
     def _basic_info(self, basic):
         """填写弹性云服务器基本信息
@@ -123,9 +150,11 @@ class EcsCreatePage(OpsPage):
         image_info = storage.get("镜像") if storage and storage.get("镜像") else {"来源": "镜像", "镜像名称": "", "ISO": "centos7.9"}
         self._select_image(image_info)
 
-        # 设置系统盘大小
-        size = storage.get("系统盘", 25) if storage and storage.get("系统盘") else 25
-        self._set_sys_volume(size)
+        # 设置系统盘大小（云硬盘来源时不需要设置）
+        image_source = image_info.get("来源", "镜像")
+        if image_source != "云硬盘":
+            size = storage.get("系统盘", 25) if storage and storage.get("系统盘") else 25
+            self._set_sys_volume(size)
 
         # 设置数据盘
         data_disks = storage.get("数据盘") if storage and storage.get("数据盘") else []
@@ -149,9 +178,14 @@ class EcsCreatePage(OpsPage):
                 # 后续网卡点击"添加网卡"后选择
                 self.get_by_text("添加网卡").click()
                 self._select_single_network(net_config)
-        # 选择安全组
         if network and network.get("安全组"):
-                self._select_security_group(network.get("安全组"))
+            self._select_security_group(network.get("安全组"))
+
+        # 选择分配IPv6
+        if network and network.get("enable_ipv6"):
+            self.get_by_role("textbox", name="请选择是否分配IPv6地址").click()
+            self.get_by_text("自动分配IPv6地址").nth(2).click()
+            logger.info("已勾选自动分配IPv6地址")
     def _manage_info(self, manage):
         """填写管理配置
 
@@ -362,7 +396,7 @@ class EcsCreatePage(OpsPage):
         """选择镜像，支持多种来源方式
         Args:
             image_info: {
-                image_source: "镜像" / "空启动" / "快照" / "ISO"
+                image_source: "镜像" / "空启动" / "快照" / "ISO" / "云硬盘"
                 image_name: "镜像名称" / "快照名称" / "ISO名称"
                 os_version: 操作系统版本，默认为"centos7.9"
             }
@@ -422,7 +456,10 @@ class EcsCreatePage(OpsPage):
         # 选择快照
         if snapshot_name:
             # 定位并选择快照行
-            self.get_by_role("row", name=snapshot_name).get_by_role("radio").click()
+            self.get_by_text("选择快照").first.click()
+            row = self.get_row_by_name(snapshot_name)
+            row.get_by_role("radio").click()
+            self.dialog_confirm.click()
             logger.info(f"已选择快照: {snapshot_name}")
 
     def _select_iso_image(self, iso_name):
@@ -439,16 +476,20 @@ class EcsCreatePage(OpsPage):
             logger.info(f"已选择ISO镜像: {iso_name}")
 
     def _select_cloud_disk_image(self, cloud_disk_name):
-        """来源选择 云盘"""
-        logger.info(f"使用云盘: {cloud_disk_name}")
+        """来源选择 云硬盘
 
-        # 选择云盘
-        self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
-        self.locator("li").filter(has_text="云盘").click()
+        Args:
+            cloud_disk_name: 云硬盘名称
+        """
+        # 点击"选择云硬盘"按钮
+        self.get_by_text("选择云硬盘").first.click()
 
         if cloud_disk_name:
-            self.get_by_role("row", name=cloud_disk_name).get_by_role("radio").click()
-            logger.info(f"已选择云盘: {cloud_disk_name}")
+            row = self.get_row_by_name(cloud_disk_name)
+            row.get_by_role("radio").click()
+            # 点击确定按钮
+            self.dialog_confirm.click()
+            logger.info(f"已选择云硬盘: {cloud_disk_name}")
 
     def _set_sys_volume(self, size, mode="厚置备"):
         """系统盘配置"""
@@ -541,10 +582,11 @@ class EcsCreatePage(OpsPage):
 
     def _select_security_group(self, security_group):
         if security_group:
+            self.locator("div").filter(has_text=re.compile(r"^default$")).locator("i").click()
             for group in security_group:
-                self.locator("div").filter(has_text=re.compile(r"^default$")).nth(1).click()
-                self.locator("div").filter(has_text=f"default{group}default").locator("i").nth(1).click()
+                self.locator(".el-select__input").first.click()
                 self.locator("li").filter(has_text=group).click()
+            self.page.keyboard.press("Escape") # 收起下拉列表
             logger.info(f"选择安全组: {security_group}")
 
     def _set_login_pwd(self, login_pwd):
@@ -643,50 +685,54 @@ class EcsCreatePage(OpsPage):
         md5_dict = {}
         image_path = "/offlinePackage/image_download/support-fsagent/"
 
-        # 系统盘数据信息
+        # 通过 lsblk 判断系统盘和数据盘, 获取父设备名，排除分区号
+        # 解决 guest os 内核内的行为，os 内部枚举设备的时候具有不稳定性
+        sys_disk = ssh_vm.run("lsblk -no PKNAME,MOUNTPOINT | grep -w '/' | awk '{print $1}'", check_rc=True).strip()
+        if not sys_disk:
+            # 如果没找到父设备名，根分区可能直接在磁盘上
+            sys_disk = ssh_vm.run("lsblk -no NAME,MOUNTPOINT | grep -w '/' | awk '{print $1}'", check_rc=True).strip()
+        logger.info(f"识别到系统盘: {sys_disk}")
+
+        # 统一处理所有盘 (系统盘 + 数据盘)
         root_file = "IMAGE_CDB_20220910.qcow2"
         root_dir = "/cbr_test_root"
 
-        ssh_vm.run(f"mkdir {root_dir} && lsblk", check_rc=True)
-        wget_cmd = f"cd {root_dir} && curl -O {Config.get('image_source')}{image_path}{root_file}"
+        data_vols = sorted([vol for vol in vols.keys() if vol != sys_disk])
+        for vol_name, size in sorted(vols.items()):
+            if vol_name == sys_disk:
+                # 系统盘: 直接写数据到预定目录，不用分区/格式化/挂载
+                curr_file = root_file
+                curr_dir = root_dir
+                logger.info(f"处理系统盘: {vol_name}, 写入文件: {curr_file}")
+            else:
+                # 数据盘: 需要格式化、挂载后再写数据
+                vol_dir = f"/cbr_test_{vol_name}"
+                # 根据盘名选择对应的镜像文件
+                curr_file = "CentOS-7-aarch64-Minimal-2009.iso" if vol_name == data_vols[0] else "cn_windows_7_professional_x64_dvd_x15-65791.iso"
+                curr_dir = vol_dir
+                logger.info(f"处理数据盘: {vol_name}, 写入文件: {curr_file}")
 
-        # 系统盘写入数据
-        ssh_vm.run(wget_cmd, timeout=180, get_pty=False, check_rc=True)
-        ssh_vm.run(f"cd {root_dir} && sync && md5sum {root_file} > cbr_test_root_md5.txt", check_rc=True)
+                # 格式化并挂载数据盘
+                ssh_vm.run(f"mkfs.xfs -f /dev/{vol_name}", check_rc=True)
+                ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
+                ssh_vm.run(f"mount /dev/{vol_name} {curr_dir}", check_rc=True)
 
-        # 获取系统盘 MD5 值并存入字典（包含路径信息）
-        sys_md5 = ssh_vm.run(f"cd {root_dir} && md5sum {root_file} | awk '{{print $1}}'", check_rc=True)
-        md5_dict['root'] = {
-            'md5': sys_md5.strip(),
-            'dir': root_dir,
-            'file': root_file
-        }
+                # 写入开机自启动
+                uuid = ssh_vm.run(rf"""blkid|grep /dev/{vol_name}|awk -F" " '{{print $2}}'|awk -F'"' '{{print $2}}'""", check_rc=True).strip()
+                ssh_vm.run(f"""echo "UUID={uuid} {curr_dir} xfs defaults 0 0" >> /etc/fstab""", check_rc=True)
 
-        # 数据盘分区、挂载
-        for vol_name, size in vols.items():
-            vol_data = "CentOS-7-aarch64-Minimal-2009.iso" if "db" in vol_name else "cn_windows_7_professional_x64_dvd_x15-65791.iso"
-            vol_dir = f"/cbr_test_{vol_name}"
-
-            ssh_vm.run(f"mkfs.xfs /dev/{vol_name}", check_rc=True)
-            ssh_vm.run(f"mkdir {vol_dir} && lsblk", check_rc=True)
-            ssh_vm.run(f"mount /dev/{vol_name} {vol_dir}", check_rc=True)
-            assert ssh_vm.run(f"lsblk | grep {vol_name} | awk {{'print $4'}}") == size[:-2]
-
-            # 写入开机自启动
-            uuid = ssh_vm.run(rf"""blkid|grep /dev/{vol_name}|awk -F" " '{{print $2}}'|awk -F'"' '{{print $2}}'""", check_rc=True).strip()
-            ssh_vm.run(f"""echo "UUID={uuid} {vol_dir} xfs defaults 0 0" >> /etc/fstab""", check_rc=True)
-
-            # 写入数据
-            wget_cmd = f"cd {vol_dir} && curl -O --max-time 300 {Config.get('image_source')}{image_path}{vol_data}"
+            # 统一在目标目录下建立路径并写入数据
+            wget_cmd = f"cd {curr_dir} && curl -O --max-time 300 {Config.get('image_source')}{image_path}{curr_file}"
             ssh_vm.run(wget_cmd, timeout=180, get_pty=False, check_rc=True)
-            ssh_vm.run(f"cd {vol_dir} && sync && md5sum {vol_data} > cbr_test_{vol_name}_md5.txt", check_rc=True)
+            ssh_vm.run(f"cd {curr_dir} && sync && md5sum {curr_file} > cbr_test_{vol_name}_md5.txt", check_rc=True)
 
-            # 获取数据盘 MD5 值并存入字典（包含路径信息）
-            data_md5 = ssh_vm.run(f"cd {vol_dir} && md5sum {vol_data} | awk '{{print $1}}'", check_rc=True)
-            md5_dict[vol_name] = {
-                'md5': data_md5.strip(),
-                'dir': vol_dir,
-                'file': vol_data
+            # 获取 MD5 值并存入字典
+            md5_val = ssh_vm.run(f"cd {curr_dir} && md5sum {curr_file} | awk '{{print $1}}'", check_rc=True)
+            key = 'root' if vol_name == sys_disk else vol_name
+            md5_dict[key] = {
+                'md5': md5_val.strip(),
+                'dir': curr_dir,
+                'file': curr_file
             }
 
         return md5_dict

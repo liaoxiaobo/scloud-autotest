@@ -759,3 +759,56 @@ class DorisPage(BasePage):
             )
 
 
+    @submenu("实例管理")
+    def hot_migration(self, name, node_name, bandwidth="50%", cpu_auto=True):
+        """
+        Doris节点热迁移
+        :param name: 实例名称
+        :param node_name: 节点名称 (如 f"{name}_fe_node01")
+        :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
+        :param cpu_auto: 是否开启CPU自动收敛
+        """
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.wait_for_page_ready()
+        self.click_dropdown_option(node_name, "热迁移")
+        self.wait_for_page_ready()
+        sleep(2)
+
+        # 选择目标物理机
+        self.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()
+        sleep(1)
+
+        # 获取下拉列表中的所有选项
+        dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+        options = dropdown.locator("li.el-select-dropdown__item")
+
+        checked_host = None
+        count = options.count()
+        for i in range(count):
+            opt = options.nth(i)
+            if "is-disabled" not in opt.get_attribute("class"):
+                checked_host = opt.inner_text().strip().split()[0]
+                opt.click()
+                break
+
+        if not checked_host:
+            self.get_by_role("dialog").get_by_text("取消").click()
+            import pytest
+            pytest.skip("没有可用的物理机可供迁移")
+
+        # 选择迁移速率
+        if bandwidth:
+            self.locator("div").filter(has_text=re.compile(r"^迁移速率")).get_by_placeholder("请选择").click()
+            sleep(1)
+            self.locator("li").filter(has_text=bandwidth).click()
+
+        # 设置CPU自动收敛
+        if cpu_auto:
+            switch_locator = self.get_by_role("switch").locator("span")
+            if switch_locator.is_visible():
+                switch_locator.click()
+
+        # 确认热迁移
+        self.get_by_role("dialog").get_by_text("确定").click()
+
+        return checked_host

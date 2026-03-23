@@ -60,7 +60,7 @@ class VpcPage(BasePage):
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
                    network_type="Geneve", gateway_mode="分布式网关",
                    gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
-                   enable_ipv6=False):
+                   enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云
 
         Args:
@@ -78,6 +78,7 @@ class VpcPage(BasePage):
             vlan_id: VLAN ID，范围1-4094，仅当 network_type="Vlan" 时有效
             mac: MAC地址，仅当 network_type="Vlan" 或 "Flat" 时有效
             enable_ipv6: 是否开启IPv6，默认为False（仅当 network_type="Geneve" 时有效）
+            acl_policy: 访问控制策略，默认为None
         """
         # 打开创建页面
         self.btn_create.click()
@@ -125,6 +126,19 @@ class VpcPage(BasePage):
         else:
             ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
             self._input_gateway.fill(ip)
+
+        # 处理关联ACL策略
+        acl_item = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+        # 悬浮容器显示清空按钮
+        acl_item.hover()
+        clear_icon = acl_item.locator(".el-icon-circle-close")
+        if clear_icon.is_visible():
+            clear_icon.click()
+
+        if acl_policy:
+            # 选择ACL策略
+            self.locator("#cloud-container-content").get_by_placeholder("请选择").click()
+            self.locator("li").filter(has_text=acl_policy).click()
 
         # 如果指定了可用IP，则填写
         if available_ip:
@@ -276,6 +290,13 @@ class VpcPage(BasePage):
         #     # 使用默认网关IP（CIDR的第一个可用IP）
         #     ip = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
         #     self._input_gateway.fill(ip)
+
+        # 处理关联ACL策略
+        acl_item = self.locator(".el-form-item").filter(has_text="关联ACL策略")
+        acl_item.hover()
+        clear_icon = acl_item.locator(".el-icon-circle-close")
+        if clear_icon.is_visible():
+            clear_icon.click()
 
         # 如果提供了ACL策略，则关联ACL
         if acl_policy:
@@ -1029,7 +1050,113 @@ class VpcPage(BasePage):
         self.wait_for_page_ready()
 
 
+    def vip_create(self, vpc_name, subnet_name, ip_address=None):
+        """创建虚拟IP地址
+
+        Args:
+            vpc_name: VPC名称（如 "autotest-cdi"）
+            subnet_name: 子网名称（如 "autotest-01yks"）
+            ip_address: 手动分配的IP地址，如果为None则使用自动分配模式
+        """
+        # 点击VPC名称进入详情页
+        self.get_by_role("row", name=vpc_name).locator("a").click()
+
+        # 点击"虚拟IP管理"tab
+        self.get_by_role("tab", name="虚拟IP管理").click()
+        self.wait_for_page_ready()
+
+        # 点击"申请虚拟IP地址"按钮
+        self.get_by_text("申请虚拟IP地址").first.click()
+
+        # 选择子网
+        self.get_by_label("申请虚拟IP地址").get_by_placeholder("请选择").click()
+        self.locator("li").filter(has_text=subnet_name).click()
+
+        # 根据ip_address参数选择分配方式
+        if ip_address is None:
+            # 自动分配模式（默认）
+            pass  # 默认就是自动分配，不需要额外操作
+        else:
+            # 手动分配模式
+            self.locator("label").filter(has_text="手动分配").click()
+
+            # 只取IP地址的最后一段
+            last_segment = ip_address.split('.')[-1]
+            self.get_by_label("申请虚拟IP地址").get_by_role("textbox").nth(4).fill(last_segment)
+
+        # 点击确定
+        self.get_by_label("申请虚拟IP地址").get_by_text("确定").click()
+        self.wait_for_page_ready()
 
 
+    def vip_delete(self, names):
+        """删除虚拟IP，支持单个和批量操作
 
+        Args:
+            names: VIP名称（字符串）或VIP名称列表（列表）
+        """
+        if isinstance(names, list):
+            # 批量删除模式
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            # 单个删除模式
+            self.click_dropdown_option(names, "删除")
 
+        # 确认删除
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    def vip_bind_eip(self, vip_address, network_type="public_net(基础版)"):
+        """绑定公网IP
+
+        Args:
+            vip_address: 虚拟IP地址
+            network_type: 公网网络类型名称
+        """
+        self.click_option(vip_address, "绑定公网IP")
+        # 选择公网ip资源池
+        dialog = self.get_by_role("dialog", name="绑定公网IP")
+        dialog.get_by_placeholder("请选择").click()
+        dialog.get_by_text(network_type).click()
+        # 随机选择一个EIP（假设列表中有数据）
+        available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
+        selected_row = random.choice(available_rows)
+        selected_row.get_by_role("radio").click()
+        ip_info = selected_row.get_by_role("cell")
+        ip = ip_info.nth(1).text_content()
+        self.dialog_confirm.click()
+        return ip
+
+    def vip_unbind_eip(self, vip_address):
+        """解绑公网IP"""
+        self.click_dropdown_option(vip_address, "解绑公网IP")
+        self.get_by_role("dialog", name="解除绑定公网IP").get_by_text("确定").click()
+
+    def vip_bind_instance(self, vip_address, instance_name):
+        """虚拟IP绑定实例
+
+        Args:
+            vip_address: 虚拟IP地址
+            instance_name: 实例名称
+        """
+        self.click_option(vip_address, "绑定实例")
+
+        dialog = self.get_by_role("dialog", name="绑定实例")
+        # 在弹窗内进行搜索，而不是使用全局的self.search
+        dialog.get_by_role("textbox", name="请输入设备名称").fill(instance_name)
+        dialog.get_by_text("搜索").click()
+        self.wait_for_page_ready()
+        # 选择搜索结果中的第一行
+        dialog.get_by_role("row", name="ID 固定IP 连接设备 状态").locator("span").nth(1).click()
+        dialog.get_by_text("确定").click()
+
+    def vip_unbind_instance(self, vip_address, instance_name):
+        """虚拟IP解绑实例"""
+
+        self.click_dropdown_option(vip_address, "解绑实例")
+
+        dialog = self.get_by_role("dialog", name="解绑实例")
+        dialog.get_by_placeholder("请选择").click()
+        self.get_by_role("listitem").filter(has_text=instance_name).click()
+        dialog.get_by_text("确定").click()
