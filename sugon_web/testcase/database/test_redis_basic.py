@@ -137,21 +137,6 @@ class TestRedisBasic:
             current_spec = db_util.get_specification(redis_page, node_name, ssh_host)
             assert current_spec == real_specification, f"规格修改失败，期望为 {real_specification}，实际为 {current_spec}"
 
-    @allure.title("Redis-切换网络")
-    def test_switch_network(self, redis_page, redis):
-        """测试Redis切换网络功能，覆盖快速选择和手动输入两种情况"""
-        instance_name = redis["name1"]
-
-        with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
-            redis_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
-            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
-
-        with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
-            redis_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
-            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
-            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
-
     @allure.title("Redis-添加分片")
     def test_add_shard(self, redis_page, redis, ssh_host):
         """测试为Redis实例添加分片，并后端验证是否真正创建出新节点"""
@@ -427,3 +412,19 @@ class TestRedisBasic:
         with allure_step_log("步骤四：验证解绑结果"):
             redis_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
+
+    @allure.title("Redis-切换网络")
+    def test_switch_network(self, redis_page, redis):
+        """测试Redis切换网络功能，覆盖快速选择和手动输入两种情况"""
+        instance_name = redis["name1"]
+
+        with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
+            redis_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
+            redis_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.",
+                                      selection_type="手动输入")
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
