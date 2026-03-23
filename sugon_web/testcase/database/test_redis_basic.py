@@ -201,7 +201,7 @@ class TestRedisBasic:
             ssh_vm.close()
 
     @allure.title("Redis-批量新建并删除用户")
-    def test_redis_batch_delete_users(self, redis_page, redis):
+    def test_redis_batch_delete_users(self, redis_page, redis, ssh_host, ssh_vm):
         """测试批量删除用户功能"""
         instance_name = redis["name1"]
         user_names = [f"user_{random_string(k=5)}", f"user_{random_string(k=5)}"]
@@ -217,8 +217,20 @@ class TestRedisBasic:
             for u_name in user_names:
                 redis_page.assert_deleted(u_name)
 
+        with allure_step_log("步骤三：后端验证用户已被批量删除失效"):
+            node_name = f"{instance_name}-0"
+            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
+            
+            for u_name in user_names:
+                cmd_login = f"redis-cli -h 127.0.0.1 -p 6379 --user '{u_name}' --pass '{password}' PING"
+                result_fail = ssh_vm.run(cmd_login, True, True)
+                assert "WRONGPASS" in result_fail['stderr'] or "AUTH failed" in result_fail['stderr'] or "invalid username" in result_fail['stderr'], f"用户 {u_name} 删除验证失败，预期报错 WRONGPASS、AUTH failed 或 invalid username，实际: {result_fail['stderr']}"
+            
+            ssh_vm.close()
+
     @allure.title("Redis-修改用户")
-    def test_redis_modify_user(self, redis_page, redis):
+    def test_redis_modify_user(self, redis_page, redis, ssh_host, ssh_vm):
         """测试修改用户密码功能"""
         instance_name = redis["name1"]
         user_name = f"user_{random_string(k=5)}"
@@ -233,7 +245,23 @@ class TestRedisBasic:
             redis_page.modify_user(instance_name, user_name, new_password)
             redis_page.assert_popup_success("更新用户密码和权限成功,若数据未更新请刷新页面")
 
-        with allure_step_log("步骤三：清理创建的用户"):
+        with allure_step_log("步骤三：后端验证新密码生效"):
+            node_name = f"{instance_name}-0"
+            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
+
+            # 验证新密码可以登录
+            cmd_new = f"redis-cli -h 127.0.0.1 -p 6379 --user '{user_name}' --pass '{new_password}' PING"
+            result_new = ssh_vm.run(cmd_new)
+            assert "PONG" in result_new or "OK" in result_new or "NOPERM" in result_new, f"新密码后端验证失败: {result_new}"
+
+            # 验证旧密码不可用
+            cmd_old = f"redis-cli -h 127.0.0.1 -p 6379 --user '{user_name}' --pass '{old_password}' PING"
+            result_old = ssh_vm.run(cmd_old, True, True)
+            assert "WRONGPASS" in result_old['stderr'] or "AUTH failed" in result_old['stderr'], f"旧密码验证失败，预期报错 WRONGPASS 或 AUTH failed，实际: {result_old['stderr']}"
+            ssh_vm.close()
+
+        with allure_step_log("步骤四：清理创建的用户"):
             redis_page.delete_user(instance_name, user_name)
             redis_page.assert_deleted(user_name)
 
@@ -340,3 +368,65 @@ class TestRedisBasic:
                 new_ip = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
                 allure.attach(f"网络切换后新IP ({node_name}): {new_ip}", name=f"后端IP确认-{node_name}")
                 assert new_ip != "", f"未能获取到节点 {node_name} 网络切换后的新IP"
+
+    @allure.title("Redis-实例绑定和解绑公网IP")
+    def test_instance_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
+        """测试实例绑定和解绑Redis实例的公网IP"""
+        instance_name = redis["name1"]
+        network = "public_net(基础版)"  # 请根据实际环境修改
+
+        with allure_step_log("步骤一：绑定公网IP"):
+            ip = redis_page.instance_ip_binding(instance_name, network=network)
+
+        with allure_step_log("步骤二：验证绑定结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip)
+
+        with allure_step_log("步骤三：解绑公网IP"):
+            redis_page.instance_ip_unbinding(instance_name)
+
+        with allure_step_log("步骤四：验证解绑结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip, connected=False)
+
+    @allure.title("Redis-开启免密登录")
+    def test_toggle_password_free(self, redis_page, redis, ssh_host, ssh_vm):
+        """测试开启Redis实例的免密登录，并进行后端连接验证"""
+        instance_name = redis["name1"]
+        node_name = f"{instance_name}-0"
+        vm_password = "admin1234@sugon"
+
+        with allure_step_log("步骤一：开启免密登录"):
+            redis_page.toggle_password_free(instance_name)
+            redis_page.assert_popup_success("执行成功")
+            # 等待状态稳定
+            redis_page.assert_status(instance_name, status="运行中", timeout=300)
+
+        with allure_step_log("步骤二：后端验证：无需密码连接Redis"):
+            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=vm_password)
+            # 开启免密后，不带 -a 应该也能 PONG
+            cmd_no_auth = f"redis-cli -h 127.0.0.1 -p 6379 PING"
+            result = ssh_vm.run(cmd_no_auth)
+            assert "PONG" in result or "OK" in result, f"开启免密登录后，无需密码连接失败: {result}"
+            ssh_vm.close()
+
+    @allure.title("Redis-节点绑定和解绑公网IP")
+    def test_node_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
+        """测试节点绑定和解绑Redis实例的公网IP"""
+        instance_name = redis["name1"]
+        network = "public_net(基础版)"  # 请根据实际环境修改
+
+        with allure_step_log("步骤一：绑定公网IP"):
+            ip = redis_page.node_ip_binding(instance_name, network=network)
+
+        with allure_step_log("步骤二：验证绑定结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip)
+
+        with allure_step_log("步骤三：解绑公网IP"):
+            redis_page.node_ip_unbinding(instance_name)
+
+        with allure_step_log("步骤四：验证解绑结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip, connected=False)

@@ -536,6 +536,7 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
+        sleep(2)
         self.click_dropdown_option(node_name, "热迁移")
         self.wait_for_page_ready()
         sleep(2)

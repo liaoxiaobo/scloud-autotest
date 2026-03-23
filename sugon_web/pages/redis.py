@@ -119,6 +119,12 @@ class RedisPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("实例管理")
+    def toggle_password_free(self, name):
+        """开启或关闭免密登录"""
+        self.click_dropdown_option(name, "开启免密")
+        self.dialog_confirm.click()
+
+    @submenu("实例管理")
     def scale_instance(self, name, target_spec: str):
         """调整实例规格 (在列表页)"""
         self.click_dropdown_option(name, "调整规格")
@@ -389,3 +395,66 @@ class RedisPage(BasePage):
         # MySQL 和 Redis 对于重置白名单按钮可能在页面呈现或文案一致
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
+    @submenu("实例管理")
+    def instance_ip_binding(self, name: str, network: str = None):
+        """
+        为Redis实例绑定弹性IP (在实例详情页)
+        :param name: 实例名称
+        :param network: 网络名称 (仅绑定时需要)
+        """
+        self.ensure_instance_tab(name)
+        self.get_by_text("绑定公网IP").first.click()
+        self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
+        self.get_by_text(network).click()
+        self.wait_for_page_ready()
+
+        # 选择第一个状态为“关闭”的IP
+        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        ip_address = ip_row.locator("td").nth(1).inner_text()
+        ip_row.locator("label[role='radio']").click()
+
+        self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+
+        return ip_address
+
+    @submenu("实例管理")
+    def instance_ip_unbinding(self, name: str):
+        """
+        为Redis实例解绑弹性IP
+        :param name: 实例名称
+        """
+        self.ensure_instance_tab(name)
+        self.get_by_label("详情").get_by_text("解绑公网IP").click()
+        self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def node_ip_binding(self, name: str, network: str = None):
+        """
+        为Redis节点绑定弹性IP
+        :param name: 实例名称
+        :param network: 网络名称 (仅绑定时需要)
+        """
+        self.ensure_instance_tab(name)
+        self.click_dropdown_option(f"{name}-0", "绑定公网IP")
+        self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
+        self.get_by_text(network).click()
+        self.wait_for_page_ready()
+
+        # 选择第一个状态为“关闭”的IP
+        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        ip_address = ip_row.locator("td").nth(1).inner_text()
+        ip_row.locator("label[role='radio']").click()
+
+        self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+
+        return ip_address
+
+    @submenu("实例管理")
+    def node_ip_unbinding(self, name: str):
+        """
+        为Redis节点解绑弹性IP
+        :param name: 实例名称
+        """
+        self.ensure_instance_tab(name)
+        self.click_dropdown_option(f"{name}-0", "解绑公网IP")
+        self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
