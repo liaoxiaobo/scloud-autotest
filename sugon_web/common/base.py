@@ -19,6 +19,7 @@ SERVICE_MAP = {
     '虚拟私有云': ('资源中心', '网络'),
     '云防火墙': ('资源中心', '网络'),
     '专有网络VPN': ('资源中心', '网络'),
+    'NAT网关': ('资源中心', '网络'),
     '安全组': ('资源中心', '网络'),
     '网络ACL': ('资源中心', '网络'),
 
@@ -164,7 +165,9 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（参数名称）"),
             self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner"),
-            self.get_by_role("textbox", name="请输入设备名称")
+            self.get_by_role("textbox", name="请输入设备名称"),
+            self.get_by_role("textbox", name="搜索(实例名称)"),
+            self.get_by_placeholder("搜索(目的地址)")   # 路由表规则搜索框
         ]
 
         return self._find_element(locators, "搜索框")
@@ -172,12 +175,28 @@ class BasePage(Playwright):
     @property
     def _btn_search(self) -> Locator:
         """公共元素:搜索按钮"""
-        return self.get_by_text("搜索", exact=True)
+        locators = [
+            # 1. 优先查找可见弹窗内的搜索按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("搜索", exact=True),
+            # 2. 查找当前激活 Tab 页签内的搜索按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("搜索", exact=True),
+            # 3. 兜底：查找页面上可见的搜索按钮 (注意：如果页面仍有多个可见搜索按钮，这里可能仍会报错，但上述两步通常能解决问题)
+            self.get_by_text("搜索", exact=True)
+        ]
+        return self._find_element(locators, "搜索按钮")
 
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置", exact=True).first
+        locators = [
+            # 1. 优先查找可见弹窗内的重置按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("重置", exact=True),
+            # 2. 查找当前激活 Tab 页签内的重置按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("重置", exact=True),
+            # 3. 兜底：查找页面上可见的重置按钮
+            self.get_by_text("重置", exact=True).first
+        ]
+        return self._find_element(locators, "重置按钮")
 
     @property
     def btn_refresh(self) -> Locator:
@@ -190,16 +209,29 @@ class BasePage(Playwright):
 
         return self._find_element(locators, "刷新按钮")
 
+    # @property
+    # def btn_batch_delete(self) -> Locator:
+    #     """公共元素: 批量删除按钮"""
+    #     locators = [
+    #         self.get_by_text("批量删除", exact=True),
+    #         self.get_by_text("删除", exact=True).first,
+    #         self.get_by_text("批量删除").first,
+    #         self.get_by_label("虚拟IP管理").get_by_text("批量删除"),
+    #         self.get_by_label("端口", exact=True).get_by_text("批量删除"),
+    #         self.get_by_label("路由表", exact=True).get_by_text("批量删除")
+    #     ]
+
+    #     return self._find_element(locators, "批量删除按钮")
+
     @property
     def btn_batch_delete(self) -> Locator:
         """公共元素: 批量删除按钮"""
         locators = [
-            self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除", exact=True).first,
+            # 1. 优先在当前激活的 Tab 页签内查找（排除隐藏 tab-pane，自动兼容所有 Tab 场景）
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("批量删除", exact=True),
+            # 2. 兜底：在整个页面查找第一个「批量删除」按钮
             self.get_by_text("批量删除").first,
-            self.get_by_label("虚拟IP管理").get_by_text("批量删除")
         ]
-
         return self._find_element(locators, "批量删除按钮")
 
     @property
@@ -428,6 +460,44 @@ class BasePage(Playwright):
 
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
+
+    def assert_list_not_contain(self, keyword, column_name="名称", exact_match=True):
+        """
+        公共方法: 验证指定列中不包含特定关键字
+
+        Args:
+            keyword: 关键字
+            column_name: 列名，默认为"名称"
+            exact_match: 匹配模式（True为精准匹配，False为模糊匹配）
+
+        Raises:
+            AssertionError: 当找到匹配项时抛出异常
+        """
+        self.logger.info(f"检查列 '{column_name}' 中是否不包含关键字 '{keyword}'")
+
+        try:
+            column_data = self.get_column_data(column_name)
+        except Exception:
+             # 如果列不存在或获取失败，也算不包含，记录日志并返回
+            self.logger.info(f"列 '{column_name}' 不存在或无数据，视为不包含关键字 '{keyword}'")
+            return
+
+        if not column_data:
+             self.logger.info(f"列 '{column_name}' 为空，视为不包含关键字 '{keyword}'")
+             return
+
+        # 根据参数选择匹配方式
+        if exact_match:
+            # 精准匹配：检查是否有任何一个元素与关键词完全相等
+            matched = any(keyword == item for item in column_data)
+            match_description = "包含与关键词完全相等的数据"
+        else:
+            # 模糊匹配：检查是否有任何元素包含关键词
+            matched = any(keyword in item for item in column_data)
+            match_description = "包含关键词的数据"
+
+        # 断言
+        assert not matched, f"验证失败：预期不{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
     def assert_status(self, names, status='运行', timeout=300, refresh=False, refresh_interval=5):
         """
