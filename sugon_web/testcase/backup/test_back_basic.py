@@ -70,6 +70,7 @@ class TestBackupBasic:
             keyword = backup_task.get('task_name').split("-")[-1]
             backup_page.backup_search(keyword)
             backup_page.page.wait_for_load_state("networkidle")
+            backup_page.wait_for_page_ready()
             backup_page.assert_list_contain(keyword, column_name="任务名", exact_match=False)
 
         with allure_step_log("步骤2: 重置搜索条件"):
@@ -465,7 +466,7 @@ class TestResumeCreate:
 class TestBackupScenarios:
 
     @allure.title("验证创建完成的备份任务迁移后启动")
-    def test_backup_search(self, backup_page, backup_task):
+    def test_backup_migrate_start(self, backup_page, backup_task):
         enabled_nodes = backup_task.get("backup_nodes")
         if len(enabled_nodes) < 2:
             pytest.skip("迁移任务需要至少2个备份节点")
