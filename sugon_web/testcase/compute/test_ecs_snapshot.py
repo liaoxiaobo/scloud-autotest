@@ -1,8 +1,6 @@
 import time
-
 import pytest
 import allure
-from sugon_web.testcase.conftest import ecs_page
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
@@ -326,7 +324,7 @@ class TestECSS:
         policy = ecss_policy.get("name")
 
         with allure_step_log("步骤1: 虚机绑定快照策略"):
-            ecs_page.ecss_bind_unbind_snapshot_policy(vm_names[0].split("-0")[0], policy)
+            ecs_page.ecss_bind_unbind_snapshot_policy(vm_names[0][:-2], policy)
             ecs_page.goto_submenu("弹性云服务器")
             ecs_page.assert_ecs_details_info(vm_names, {f"{policy}": "已启用"}, tab="快照策略")
 

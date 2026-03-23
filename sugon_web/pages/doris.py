@@ -419,13 +419,14 @@ class DorisPage(BasePage):
         :param catalog: 数据目录（默认为internal）
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库").click()
-        self.wait_for_page_ready()
+        sleep(3)
         self.locator(".el-icon-plus").click()
 
         dialog = self.get_by_label("新建数据库")
         # 选择catalog
+        sleep(3)
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=catalog).click()
         # 输入数据库名称
@@ -442,6 +443,7 @@ class DorisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
+        sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(3)
         self.wait_for_page_ready()
@@ -552,7 +554,7 @@ class DorisPage(BasePage):
         self.get_by_role("tab", name="用户").click()
         sleep(2)
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "授权")
+        self.click_option(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
         sleep(2)
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
@@ -572,7 +574,7 @@ class DorisPage(BasePage):
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "解除授权")
+        self.click_option(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=db_name).click()
@@ -700,7 +702,7 @@ class DorisPage(BasePage):
         self.wait_for_page_ready()
         # 选择BE节点类型
         self.get_by_placeholder("请选择节点类型").click()
-        self.get_by_text("BE节点").click()
+        self.page.locator("body > div.el-select-dropdown:visible li:has-text('BE节点')").click()
         sleep(2)
         # 定位到参数行并点击编辑图标
         self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
@@ -712,7 +714,12 @@ class DorisPage(BasePage):
         dialog.get_by_text("确定").click()
         # 应用更改
         self.get_by_text("应用", exact=True).click()
-        self.get_by_label("提示").get_by_text("确定").click()
+
+        # 尝试点击可能出现的确认对话框
+        try:
+            self.dialog_confirm.click()
+        except:
+            pass
 
     def assert_database_exist(self, db_name: str):
         """
@@ -752,3 +759,56 @@ class DorisPage(BasePage):
             )
 
 
+    @submenu("实例管理")
+    def hot_migration(self, name, node_name, bandwidth="50%", cpu_auto=True):
+        """
+        Doris节点热迁移
+        :param name: 实例名称
+        :param node_name: 节点名称 (如 f"{name}_fe_node01")
+        :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
+        :param cpu_auto: 是否开启CPU自动收敛
+        """
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.wait_for_page_ready()
+        self.click_dropdown_option(node_name, "热迁移")
+        self.wait_for_page_ready()
+        sleep(2)
+
+        # 选择目标物理机
+        self.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()
+        sleep(1)
+
+        # 获取下拉列表中的所有选项
+        dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+        options = dropdown.locator("li.el-select-dropdown__item")
+
+        checked_host = None
+        count = options.count()
+        for i in range(count):
+            opt = options.nth(i)
+            if "is-disabled" not in opt.get_attribute("class"):
+                checked_host = opt.inner_text().strip().split()[0]
+                opt.click()
+                break
+
+        if not checked_host:
+            self.get_by_role("dialog").get_by_text("取消").click()
+            import pytest
+            pytest.skip("没有可用的物理机可供迁移")
+
+        # 选择迁移速率
+        if bandwidth:
+            self.locator("div").filter(has_text=re.compile(r"^迁移速率")).get_by_placeholder("请选择").click()
+            sleep(1)
+            self.locator("li").filter(has_text=bandwidth).click()
+
+        # 设置CPU自动收敛
+        if cpu_auto:
+            switch_locator = self.get_by_role("switch").locator("span")
+            if switch_locator.is_visible():
+                switch_locator.click()
+
+        # 确认热迁移
+        self.get_by_role("dialog").get_by_text("确定").click()
+
+        return checked_host

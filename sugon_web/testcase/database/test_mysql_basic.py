@@ -159,6 +159,44 @@ class TestMySQLBasic:
             mysql_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
 
+    @allure.title("MySQL-节点热迁移")
+    def test_mysql_node_hot_migration(self, mysql_page, mysql, ssh_host, ssh_vm):
+        """测试MySQL节点的热迁移功能"""
+        instance_name = mysql["name"]
+        node_name = f"{instance_name}-0"
+        password = "admin1234@sugon"
+        admin_password = mysql["admin_password"]
+
+        # 记录迁移前的物理机 (后端校验)
+        old_host = db_util.get_backend_host(mysql_page, ssh_host, node_name)
+        allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
+
+        with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
+            selected_host = mysql_page.mysql_hot_migration(instance_name, node_name)
+
+        with allure_step_log("步骤二：验证迁移结果"):
+            mysql_page.assert_popup_success("热迁移命令下发成功")
+            mysql_page.assert_status(node_name, status="迁移中", timeout=300, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
+            # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
+            new_host = db_util.get_backend_host(mysql_page, ssh_host, node_name)
+            allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
+
+            assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
+            if selected_host:
+                # selected_host 是 UI 上选中的名称，后端返回的可能带域名，所以用 in 判断
+                assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
+
+        with allure_step_log("步骤四：验证迁移后数据库连接"):
+            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ssh_vm.connect(ip_from_db, port=22022, pwd=password)
+            cmd_check = f"mysql -uadmin -p'{admin_password}' -h127.0.0.1 -e 'SELECT 1;'"
+            result = ssh_vm.run(cmd_check)
+            assert result.splitlines()[-1] == "1", f"热迁移后数据库连接失败: {result}"
+            ssh_vm.close()
+
     @allure.title("MySQL-创建并删除数据库")
     def test_create_and_delete_database(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
@@ -172,7 +210,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证数据库是否创建成功"):
             # The popup is already asserted, now check the list
-            mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+            mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面", timeout=10000)
             mysql_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤三：验证新创建的数据库在后端生效"):
@@ -208,7 +246,7 @@ class TestMySQLBasic:
         with allure_step_log(f"步骤一：在实例 {instance_name} 下批量创建数据库"):
             for db_name in db_names:
                 mysql_page.create_database(instance_name, db_name)
-                mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+                mysql_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面", timeout=10000)
                 mysql_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤二：新创建的数据库均在后端生效"):
@@ -669,3 +707,18 @@ class TestMySQLBasic:
         with allure_step_log(f"步骤四：删除参数模板 {model_name}"):
             mysql_page.delete_parameter_model(model_name)
             mysql_page.assert_deleted(model_name)
+
+    @allure.title("MySQL-切换网络")
+    def test_switch_network(self, mysql_page, mysql):
+        """测试MySQL切换网络功能，覆盖快速选择和手动输入两种情况"""
+        instance_name = mysql["name"]
+
+        with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
+            mysql_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
+            mysql_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)

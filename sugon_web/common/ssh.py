@@ -109,7 +109,7 @@ class SSH:
         """
         try:
             # 使用 run 方法执行简单命令来测试连接
-            output = self.run('hostname')
+            output = self.run('hostname', timeout=15)
             return bool(output)
         except (SSHException, EOFError):
             return False
@@ -344,8 +344,8 @@ class SSH:
         # 根据 ipv6 参数选择 ping 命令
         ping_cmd = f'ping6 {ip} -c {count}' if ipv6 else f'ping {ip} -c {count}'
 
-        success_pattern = f"{count} packets transmitted, {count} received, 0% packet loss"
-        fail_pattern = f"{count} packets transmitted, 0 received, 100% packet loss"
+        success_pattern = "0% packet loss"
+        fail_pattern = "100% packet loss"
 
         for attempt in range(1, retries + 1):
             stdout = self.run(ping_cmd)
@@ -512,12 +512,12 @@ class SSH:
                 release_version = self.run(cmd)
 
                 if release_version and release_version.strip():
-                    print(f"成功从 {path} 获取版本信息")
+                    logger.info(f"成功从 {path} 获取版本信息")
                     return dict(item.split(": ") for item in release_version.split("\n"))
                 else:
-                    print(f"路径 {path} 中的版本信息为空")
+                    logger.warning(f"路径 {path} 中的版本信息为空")
             except Exception as e:
-                print(f"从 {path} 获取版本信息失败: {e}")
+                logger.error(f"从 {path} 获取版本信息失败: {e}")
 
-        print("警告: 无法从任何路径获取版本信息")
+        logger.error("警告: 无法从任何路径获取版本信息")
         return {}

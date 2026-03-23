@@ -247,37 +247,39 @@ class Playwright:
         return new_page
 
     @contextmanager
-    def new_tab_context(self, wait_for_selector=None, timeout=30000, wait_for_load_state="domcontentloaded"):
+    def new_tab_context(self, trigger_action=None, wait_for_selector=None, timeout=30, wait_for_load_state="domcontentloaded"):
         """
-        上下文管理器，用于在新标签页中执行操作，并在操作完成后自动关闭标签页
+        上下文管理器，用于在新标签页中执行操作
 
         Args:
-            wait_for_selector (str): 可选，等待特定选择器元素出现
+            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_option(name, "登录")）
+            wait_for_selector (str): 可选，等待特定选择器元素出现后再返回
             timeout (int): 等待超时时间（毫秒），默认为30秒
-            wait_for_load_state (str): 等待页面加载状态，默认为"domcontentloaded"
-
-        用法:
-            with page.new_tab_context() as new_page:
-                new_page.goto("https://example.com")
-                # 在新页面上执行操作
-                # 操作完成后，标签页会自动关闭
+            wait_for_load_state (str): 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
         """
-        # 记录原始页面
+        timeoutms = timeout * 1000
         original_page = self.page
+        new_page = None
 
         try:
-            # 切换到新标签页
-            new_page = self.switch_to_new_tab(wait_for_selector, timeout, wait_for_load_state)
+            if trigger_action:
+                # 使用 expect_page 在触发操作前开始监听
+                with self.page.context.expect_page() as new_page_info:
+                    trigger_action()  # 执行触发(打开新页面的操作)
+                    new_page = new_page_info.value  # 等待新页面
+                    self.page = new_page
+            else:
+                # 直接等待已打开的新页面
+                new_page = self.switch_to_new_tab(wait_for_selector, timeoutms, wait_for_load_state)
+
             yield new_page
+
         finally:
             # 确保返回原始页面并关闭新页面
             try:
-                # 切换回原始页面
                 original_page.bring_to_front()
                 self.page = original_page
-
-                # 关闭新页面
-                if new_page != original_page:
+                if new_page and new_page != original_page and not new_page.is_closed():
                     new_page.close()
                     self.logger.info("已自动关闭新标签页")
             except Exception as e:
@@ -295,6 +297,34 @@ class Playwright:
         if count > 0:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
+    def wait_for_operation_complete(self, timeout=60):
+        """等待操作完成
+
+        Args:
+            timeout: 超时时间（秒）
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                # 检查是否有加载中的元素
+                loading_elements = [
+                    self.locator(".el-icon-loading"),
+                    self.locator(".el-button.is-loading")
+                ]
+
+                # 如果没有加载中的元素，认为操作完成
+                if not any(element.count() > 0 for element in loading_elements):
+                    return
+
+                # 等待1秒后重试
+                time.sleep(1)
+            except Exception as e:
+                self.logger.debug(f"等待操作完成时出错: {e}")
+                time.sleep(1)
+
+        # 超时后抛出异常
+        raise AssertionError(f"等待操作完成超时，超过 {timeout} 秒")
 
 class CustomLocator:
     """自定义定位器包装器，用于拦截 Locator 的方法调用"""
@@ -337,6 +367,7 @@ class CustomLocator:
             self._locator.click(**kwargs)
             # 触发等待（确保页面加载完成）
             self._playwright.wait_for_page_ready()
+            self._playwright.wait_for_operation_complete()
         except Exception as e:
             self._logger.error(f"[CustomLocator.click] 点击失败: {e}")
             raise
