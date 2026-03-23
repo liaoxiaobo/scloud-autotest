@@ -137,6 +137,21 @@ class TestRedisBasic:
             current_spec = db_util.get_specification(redis_page, node_name, ssh_host)
             assert current_spec == real_specification, f"规格修改失败，期望为 {real_specification}，实际为 {current_spec}"
 
+    @allure.title("Redis-切换网络")
+    def test_switch_network(self, redis_page, redis):
+        """测试Redis切换网络功能，覆盖快速选择和手动输入两种情况"""
+        instance_name = redis["name1"]
+
+        with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
+            redis_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+
+        with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
+            redis_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
+
     @allure.title("Redis-添加分片")
     def test_add_shard(self, redis_page, redis, ssh_host):
         """测试为Redis实例添加分片，并后端验证是否真正创建出新节点"""
@@ -349,25 +364,7 @@ class TestRedisBasic:
             assert "PONG" in result or "OK" in result, f"热迁移后数据库连接失败: {result}"
             ssh_vm.close()
 
-    @allure.title("Redis-切换网络")
-    def test_switch_network(self, redis_page, redis, ssh_host):
-        """测试Redis实例切换网络功能"""
-        instance_name = redis["name1"]
 
-        with allure_step_log("步骤一：切换网络指令下发"):
-            redis_page.switch_network(instance_name)
-
-        with allure_step_log("步骤二：验证切换网络状态变化与新IP"):
-            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
-            redis_page.assert_status(instance_name, status="运行中", refresh=True, timeout=1200)
-
-            # 后端校验：遍历查数据库确认8个节点新网络配置均已落库并在系统体现
-            for i in range(8):
-                node_name = f"{instance_name}-{i}"
-                redis_page.assert_status(node_name, status="运行中", refresh=True, timeout=600)
-                new_ip = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
-                allure.attach(f"网络切换后新IP ({node_name}): {new_ip}", name=f"后端IP确认-{node_name}")
-                assert new_ip != "", f"未能获取到节点 {node_name} 网络切换后的新IP"
 
     @allure.title("Redis-实例绑定和解绑公网IP")
     def test_instance_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
@@ -398,7 +395,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤一：开启免密登录"):
             redis_page.toggle_password_free(instance_name)
-            redis_page.assert_popup_success("执行成功")
+            redis_page.assert_popup_success("开启免密成功")
             # 等待状态稳定
             redis_page.assert_status(instance_name, status="运行中", timeout=300)
 

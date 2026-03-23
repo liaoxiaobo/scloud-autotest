@@ -424,7 +424,7 @@ class RedisPage(BasePage):
         :param name: 实例名称
         """
         self.ensure_instance_tab(name)
-        self.get_by_label("详情").get_by_text("解绑公网IP").click()
+        self.get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
