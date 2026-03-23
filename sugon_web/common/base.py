@@ -526,7 +526,7 @@ class BasePage(Playwright):
                 if not refresh:
                     # 不刷新模式：直接使用Playwright的高效等待机制
                     timeout_ms = timeout * 1000  # 转换为毫秒
-                    resource_row = self.get_by_role("row", name=resource_name)
+                    resource_row = self.get_by_role("row", name=resource_name, exact=True)
                     expect(resource_row).not_to_be_visible(timeout=timeout_ms)
                     self.logger.info(f"资源从列表中删除成功: {resource_name}")
                 else:
@@ -548,7 +548,7 @@ class BasePage(Playwright):
                             first_check = False
 
                             # 定位包含资源名称的表格行
-                            resource_row = self.get_by_role("row", name=resource_name)
+                            resource_row = self.get_by_role("row", name=resource_name, exact=True)
 
                             # 检查行是否不可见（即已删除）
                             if not resource_row.is_visible():
@@ -787,7 +787,7 @@ class BasePage(Playwright):
         # 等待该元素不可见
         expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
 
-    def wait_for_operation_complete(self, timeout=30):
+    def wait_for_operation_complete(self, timeout=60):
         """等待操作完成
 
         Args:

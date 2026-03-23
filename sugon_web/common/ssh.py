@@ -39,13 +39,14 @@ def _create_ssh_client(host, port, username, pwd, pkey, transport=None, timeout=
     while True:
         try:
             # 如果提供了 transport，通过跳板机创建连接隧道
-            sock = transport.open_channel("direct-tcpip", (host, port), ('', 0)) if transport else None
+            sock = transport.open_channel("direct-tcpip", (host, port), ('', 0), timeout=15) if transport else None
             client.connect(hostname=host,
                            port=port,
                            password=pwd,
                            username=username,
                            pkey=pkey,
-                           sock=sock)
+                           sock=sock,
+                           timeout=15)
             return client
         except (AuthenticationException, EOFError, ChannelException) as e:
             # 记录登陆失败日志，并及时关闭异常Connection

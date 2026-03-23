@@ -1,8 +1,10 @@
 import re
+import pytest
 from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils import db_util
+from sugon_web.utils.logger import logger
 
 
 class MySQLPage(BasePage):
@@ -638,3 +640,124 @@ class MySQLPage(BasePage):
         self.wait_for_page_ready()
         sleep(3)
         self.get_by_text("导出", exact=True).click()
+
+    @submenu("实例管理")
+    def mysql_hot_migration(self, name, node_name, bandwidth="50%", cpu_auto=True):
+        """
+        MySQL节点热迁移
+        :param name: 实例名称
+        :param node_name: 节点名称 (如 f"{name}-0")
+        :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
+        :param cpu_auto: 是否开启CPU自动收敛
+        """
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.wait_for_page_ready()
+        self.click_dropdown_option(node_name, "热迁移")
+        self.wait_for_page_ready()
+        sleep(2)
+
+        # 选择目标物理机
+        # 定位目标物理机选择框并点击
+        self.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()
+        sleep(1)
+        
+        # 获取下拉列表中的所有选项
+        dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+        options = dropdown.locator("li.el-select-dropdown__item")
+        
+        checked_host = None
+        # 尝试选择第一个可用的
+        count = options.count()
+        for i in range(count):
+            opt = options.nth(i)
+            if "is-disabled" not in opt.get_attribute("class"):
+                checked_host = opt.inner_text().strip().split()[0]
+                opt.click()
+                logger.info(f"自动选择并点击可用的物理机: {checked_host}")
+                break
+        
+        if not checked_host:
+            self.get_by_role("dialog").get_by_text("取消").click()
+            pytest.skip("没有可用的物理机可供迁移")
+
+        # 选择迁移速率
+        if bandwidth:
+            self.locator("div").filter(has_text=re.compile(r"^迁移速率")).get_by_placeholder("请选择").click()
+            sleep(1)
+            self.locator("li").filter(has_text=bandwidth).click()
+            logger.info(f"已选择迁移速率: {bandwidth}")
+
+        # 设置CPU自动收敛
+        if cpu_auto:
+            switch_locator = self.get_by_role("switch").locator("span")
+            if switch_locator.is_visible():
+                switch_locator.click()
+                logger.info("已点击CPU自动收敛开关")
+
+        # 确认热迁移
+        self.get_by_role("dialog").get_by_text("确定").click()
+        logger.info(f"已点击确定按钮，开始热迁移 {node_name}")
+        
+        return checked_host
+    @submenu("实例管理")
+    def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.", selection_type: str = "快速选择"):
+        """
+        切换MySQL实例网络
+        :param name: 实例名称
+        :param network: 网络名称
+        :param subnet: 子网名称
+        :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
+        """
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.wait_for_page_ready()
+        self.get_by_label("详情").get_by_text("切换网络").click()
+
+        dialog = self.get_by_label("切换网络")
+
+        # 选择网络 (nth(2) based on user script)
+        dialog.get_by_placeholder("请选择").nth(2).click()
+        self.page.locator("li").filter(has_text=re.compile(rf"^{network}$")).nth(1).click()
+
+        # 选择子网 (nth(3) based on user script)
+        dialog.get_by_placeholder("请选择").nth(3).click()
+        self.page.get_by_text(subnet).nth(1).click()
+
+        # 获取当前可用的IP列表
+        dialog.get_by_placeholder("请选择IP地址").click()
+        sleep(2)
+        dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+        ip_options = dropdown.locator("li.el-select-dropdown__item").all_inner_texts()
+        ip_list = [ip.strip() for ip in ip_options if ip.strip()]
+        logger.info(f"获取到可用IP列表: {ip_list}")
+
+        if selection_type == "快速选择":
+            dialog.locator("label").filter(has_text="快速选择").click()
+            # 重新点击下拉框以重新获得焦点或显示列表
+            dialog.get_by_placeholder("请选择IP地址").click()
+            self.page.locator("li.el-select-dropdown__item").filter(has_text=ip_list[0]).first.click()
+        else:
+            # 手动输入
+            # 隐藏下拉框
+            self.page.keyboard.press("Escape")
+            dialog.locator("label").filter(has_text="手动输入").click()
+            dialog.get_by_placeholder("请输入IP地址").fill(ip_list[0])
+
+        # 节点IP选择 (展开节点列表)
+        arrow_up = self.page.locator(".el-form-item__content > .el-icon-arrow-up")
+        if arrow_up.is_visible():
+            arrow_up.click()
+
+        # 为每个节点输入IP，必须是IP列表中的
+        # 实例使用 ip_list[0]，三个节点依次使用 ip_list[1], ip_list[2], ip_list[3]
+        rows = dialog.locator("tr.el-table__row").all()
+        for i, row in enumerate(rows):
+            if i + 1 < len(ip_list):
+                target_ip = ip_list[i + 1]
+                row.get_by_role("textbox").click()
+                row.get_by_role("textbox").fill(target_ip)
+                logger.info(f"为节点 {i} 分配第 {i+2} 个可用IP: {target_ip}")
+            else:
+                logger.error(f"可用IP不足，无法为节点 {i} 分配IP")
+
+        # 确定
+        dialog.get_by_text("确定").click()

@@ -3,6 +3,7 @@ import ipaddress
 import random
 import time
 from sugon_web.common.playwright import expect
+from sugon_web.pages.sg import SgPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
@@ -31,6 +32,12 @@ def vip(vpc_page, vpc):
     logger.info(f"清理虚拟IP {vip_address}")
     vpc_page.vip_delete(vip_address)
 
+@pytest.fixture(scope="class")
+def sg_page(page):
+    """初始化虚拟私有云页面对象"""
+    vpc_page = SgPage(page)
+    vpc_page.goto_service('安全组')
+    return vpc_page
 
 @pytest.fixture(scope="class")
 def sg(sg_page):
