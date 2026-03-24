@@ -79,7 +79,7 @@ class RedisPage(BasePage):
     @submenu("实例管理")
     def delete_instance(self, name):
         """删除Redis实例"""
-        self.click_dropdown_option(name, "删除")
+        self.click_action(name, "删除")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -94,13 +94,13 @@ class RedisPage(BasePage):
     @submenu("实例管理")
     def restart_instance(self, name):
         """重启Redis实例"""
-        self.click_dropdown_option(name, "重启实例")
+        self.click_action(name, "重启实例")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
     def reset_admin_password(self, name, new_password):
         """重置管理员密码"""
-        self.click_dropdown_option(name, "修改默认用户密码")
+        self.click_action(name, "修改默认用户密码")
         dialog = self.get_by_role("dialog")
         pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^新密码$")).get_by_role("textbox")
         pwd_input.wait_for(state="visible", timeout=5000)
@@ -113,7 +113,7 @@ class RedisPage(BasePage):
     @submenu("实例管理")
     def rename_instance(self, old_name, new_name):
         """修改Redis实例名称"""
-        self.click_dropdown_option(old_name, "修改实例名称")
+        self.click_action(old_name, "修改实例名称")
         dialog = self.get_by_label("修改实例名称")
         dialog.get_by_role("textbox").fill(new_name)
         self.dialog_confirm.click()
@@ -121,13 +121,13 @@ class RedisPage(BasePage):
     @submenu("实例管理")
     def toggle_password_free(self, name):
         """开启或关闭免密登录"""
-        self.click_dropdown_option(name, "开启免密")
+        self.click_action(name, "开启免密")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
     def scale_instance(self, name, target_spec: str):
         """调整实例规格 (在列表页)"""
-        self.click_dropdown_option(name, "调整规格")
+        self.click_action(name, "调整规格")
         dialog = self.get_by_label("调整规格")
         dialog.get_by_text(target_spec).click()
         self.dialog_confirm.click()
@@ -136,14 +136,14 @@ class RedisPage(BasePage):
     def restart_node(self, name: str, node_name: str):
         """重启Redis节点"""
         self.ensure_instance_tab(name)
-        self.click_dropdown_option(node_name, "重启")
+        self.click_action(node_name, "重启")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
     def change_disk_size(self, name: str, node_name: str, new_size: int):
         """修改Redis节点云硬盘大小"""
         self.ensure_instance_tab(name)
-        self.click_dropdown_option(node_name, "修改云硬盘大小")
+        self.click_action(node_name, "修改云硬盘大小")
         dialog = self.get_by_role("dialog")
         spin_button = dialog.get_by_role("spinbutton")
         spin_button.wait_for(state="visible", timeout=5000)
@@ -166,7 +166,7 @@ class RedisPage(BasePage):
         :param name: 实例名称
         :param target_type: 目标实例类型（"高可用" 或 "集群"），如果为None则不进行选择操作直接提交（适用于默认选中的情况）
         """
-        self.click_dropdown_option(name, "升级")
+        self.click_action(name, "升级")
         
         if target_type:
             # 尝试使用更通用的定位方式，避免依赖动态ID
@@ -190,7 +190,7 @@ class RedisPage(BasePage):
     def redis_hot_migration(self, name: str, node_name: str, bandwidth="50%", cpu_auto=True):
         """Redis节点热迁移"""
         self.ensure_instance_tab(name)
-        self.click_dropdown_option(node_name, "热迁移")
+        self.click_action(node_name, "热迁移")
         self.wait_for_page_ready()
         sleep(2)
 
@@ -435,7 +435,7 @@ class RedisPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         """
         self.ensure_instance_tab(name)
-        self.click_dropdown_option(f"{name}-0", "绑定公网IP")
+        self.click_action(f"{name}-0", "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
         self.wait_for_page_ready()
@@ -456,5 +456,5 @@ class RedisPage(BasePage):
         :param name: 实例名称
         """
         self.ensure_instance_tab(name)
-        self.click_dropdown_option(f"{name}-0", "解绑公网IP")
+        self.click_action(f"{name}-0", "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
