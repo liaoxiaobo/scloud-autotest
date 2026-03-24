@@ -713,7 +713,7 @@ class BackUpPage(BasePage):
             task_name: 备份任务名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(task_name, "删除")
+        self.click_action(task_name, "删除")
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
         logger.info(f"备份任务删除请求已提交: {task_name}")
@@ -753,7 +753,7 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -989,7 +989,7 @@ class BackUpPage(BasePage):
             operation: 操作类型，启动/停止
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, operation)
+        self.click_action(name, operation)
         # 断言弹窗成功
         self.assert_popup_success(f"{operation}备份任务成功")
         # 等待页面加载完成
@@ -1010,7 +1010,7 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
 
-        self.click_dropdown_option(name, "修改名称")
+        self.click_action(name, "修改名称")
 
         self.get_by_label("修改名称").get_by_role("textbox").fill(new_name)
 
@@ -1035,7 +1035,7 @@ class BackUpPage(BasePage):
         # 使用BasePage中的通用下拉菜单选项点击方法
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
-        self.click_dropdown_option(name, "管理云服务器")
+        self.click_action(name, "管理云服务器")
         self.wait_for_page_ready()
 
         # 选择虚机类型
@@ -1064,7 +1064,7 @@ class BackUpPage(BasePage):
         """
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
-        self.click_dropdown_option(name, "修改策略")
+        self.click_action(name, "修改策略")
         # 配置备份策略
         policy_type = policy.get("策略类型", "自定义策略")
         time_policy = policy.get("时间策略", {})
@@ -1103,7 +1103,7 @@ class BackUpPage(BasePage):
             method: 迁移方式
             target: 目标项目
         """
-        self.click_dropdown_option(name, "迁移")
+        self.click_action(name, "迁移")
         if method != "自动":
             self.get_by_role("radio", name=method).click()
             self.get_by_placeholder("请选择迁移节点").click()
@@ -1123,7 +1123,7 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") != "已启动":
             self.backup_start_stop(name, "启动")
             self.assert_status(name, "已启动")
-        self.click_dropdown_option(name, method)
+        self.click_action(name, method)
         logger.info(f"操作完成: 备份任务{name} {method}")
 
     @submenu("任务")
@@ -1136,7 +1136,7 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") != "备份中":
             pytest.skip(f"备份任务{name}状态不是备份中，无法重置")
 
-        self.click_dropdown_option(name, "重置任务")
+        self.click_action(name, "重置任务")
 
     def _click_batch_operation_option(self, operation: str):
         """点击批量操作选项
@@ -1215,7 +1215,7 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
@@ -1231,7 +1231,7 @@ class BackUpPage(BasePage):
             name: 备份名称（字符串）或备份名称列表（列表）
         """
 
-        self.click_option(name, "恢复")
+        self.click_action(name, "恢复")
 
         self.assert_popup_success(f"{name}任务找回成功")
         logger.info(f"恢复备份资源请求已提交: {name}")
@@ -1846,7 +1846,7 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(task_names, "删除")
+            self.click_action(task_names, "删除")
         self.dialog_confirm.click()
 
     @submenu("恢复任务")

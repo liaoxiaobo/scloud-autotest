@@ -116,7 +116,7 @@ class TestSGScenario:
 
         with allure_step_log(f"步骤4: 场景(2):删除单个已使用的安全组 {sg_used}"):
             # 点击删除并确认
-            sg_page.click_dropdown_option(sg_used, "删除")
+            sg_page.click_action(sg_used, "删除")
             sg_page.dialog_confirm.click()
 
             # 定位自定义失败弹窗，断言并关闭

@@ -604,6 +604,7 @@ def vpc(vpc_page, request):
     }
 
     # 创建VPC
+    vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_create(**create_kwargs)
     vpc_page.assert_popup_success("创建虚拟私有云成功")
     vpc_page.assert_status(name)

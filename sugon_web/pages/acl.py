@@ -32,7 +32,7 @@ class AclPage(BasePage):
             acl_name: 网络ACL名称（字符串）
         """
 
-        self.click_dropdown_option(acl_name, "删除")
+        self.click_action(acl_name, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -76,10 +76,10 @@ class AclPage(BasePage):
             new_desc: 新描述
         """
         try:
-            self.click_dropdown_option(acl_name, "修改")
+            self.click_action(acl_name, "修改")
         except:
-            self.click_option(acl_name, "修改", t_type="operation")
-            
+            self.click_action(acl_name, "修改")
+
         dialog = self.get_by_role("dialog", name="修改网络ACL")
         if new_name:
             name_input = dialog.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox")
@@ -98,7 +98,7 @@ class AclPage(BasePage):
         if self.get_row_data(acl_name).get("状态") == "开启":
             self.logger.info(f"网络ACL {acl_name} 已开启")
             return
-        self.click_dropdown_option(acl_name, "开启")
+        self.click_action(acl_name, "开启")
         self.dialog_confirm.click()
 
         self.logger.info(f"开启网络ACL完成: {acl_name}")
@@ -109,7 +109,7 @@ class AclPage(BasePage):
         if self.get_row_data(acl_name).get("状态") == "关闭":
             self.logger.info(f"网络ACL {acl_name} 已关闭")
             return
-        self.click_option(acl_name, "关闭")
+        self.click_action(acl_name, "关闭")
 
         self.dialog_confirm.click()
         self.logger.info(f"关闭网络ACL完成: {acl_name}")
@@ -125,7 +125,7 @@ class AclPage(BasePage):
         if isinstance(subnets, str):
             subnets = [subnets]
 
-        self.click_option(acl_name, "关联子网", t_type="operation")
+        self.click_action(acl_name, "关联子网")
 
         self.wait_for_page_ready()
 
@@ -158,7 +158,7 @@ class AclPage(BasePage):
         self.goto_acl_detail(acl_name, tab_name="关联子网")
 
         for subnet in subnets:
-            self.click_option(subnet, "解关联子网", t_type="body")
+            self.click_action(subnet, "解关联子网", t_type="body")
             self.dialog_confirm.click()
 
         self.wait_for_page_ready()

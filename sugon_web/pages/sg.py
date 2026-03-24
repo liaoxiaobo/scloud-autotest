@@ -35,7 +35,7 @@ class SgPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_dropdown_option(sg_names, "删除")
+            self.click_action(sg_names, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
@@ -49,7 +49,7 @@ class SgPage(BasePage):
             new_name: 新名称
             new_desc: 新描述
         """
-        self.click_option(sg_name, "编辑", t_type="body")
+        self.click_action(sg_name, "编辑", t_type="body")
         dialog = self.get_by_role("dialog", name="编辑")
         if new_name:
             dialog.locator("input[type=\"text\"]").fill(new_name)
@@ -66,7 +66,7 @@ class SgPage(BasePage):
             clone_name: 克隆后的新名称
             clone_desc: 克隆后的新描述
         """
-        self.click_dropdown_option(sg_name, "克隆")
+        self.click_action(sg_name, "克隆")
         dialog = self.get_by_role("dialog", name="克隆安全组")
         dialog.locator("input[type=\"text\"]").fill(clone_name)
         if clone_desc:
@@ -152,7 +152,7 @@ class SgPage(BasePage):
 
         if from_list:
             # 在列表页直接点击“创建规则”
-            self.click_option(sg_name, "创建规则", t_type="body")
+            self.click_action(sg_name, "创建规则", t_type="body")
         elif detail_mode:
             # 在详情页/页签中直接创建
             self.btn_create.click()

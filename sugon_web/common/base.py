@@ -6,68 +6,7 @@ from playwright.sync_api import Page, Locator
 from sugon_web.common.playwright import expect
 from sugon_web.common.playwright import Playwright
 from sugon_web.config.config import Config
-
-# 服务导航映射表 - 支持不同层级结构
-SERVICE_MAP = {
-    # 资源中心 -> 二级菜单 -> 服务 (三层结构)
-
-    # 计算服务
-    '弹性云服务器': ('资源中心', '计算'),
-    '裸金属': ('资源中心', '计算'),
-
-    # 网络服务
-    '虚拟私有云': ('资源中心', '网络'),
-    '云防火墙': ('资源中心', '网络'),
-    '专有网络VPN': ('资源中心', '网络'),
-    '安全组': ('资源中心', '网络'),
-    '网络ACL': ('资源中心', '网络'),
-
-    # 存储服务
-    '云硬盘': ('资源中心', '存储'),
-    '对象存储': ('资源中心', '存储'),
-    '对象存储专业版': ('资源中心', '存储'),
-    '文件存储': ('资源中心', '存储'),
-
-
-    # 容器服务
-    '云容器引擎': ('资源中心', '容器'),
-    '应用市场': ('资源中心', '容器'),
-    '容器镜像服务': ('资源中心', '容器'),
-    '服务治理': ('资源中心', '容器'),
-
-    # 数据库服务
-    'AnhanDB(for MySQL)': ('资源中心', '数据库'),
-    'AnhanDB(for PostgreSQL)': ('资源中心', '数据库'),
-    'AnhanDB(for MongoDB)': ('资源中心', '数据库'),
-    '数据仓库 Doris': ('资源中心', '数据库'),
-
-    # 中间件服务
-    'AnhanDB(for Redis)': ('资源中心', '中间件'),
-    '分布式消息服务 Kafka': ('资源中心', '中间件'),
-    '分布式消息服务 RabbitMQ': ('资源中心', '中间件'),
-    '云搜索服务': ('资源中心', '中间件'),
-    '监控服务': ('资源中心', '中间件'),
-
-    # 基础设施 -> 服务 (两层结构)
-    '区域资源': ('基础设施',),
-    '计算设施': ('基础设施',),
-    '网络设施': ('基础设施',),
-    '存储设施': ('基础设施',),
-    '备份设施': ('基础设施',),
-
-    # 运维 -> 服务 (两层结构)
-    '监控': ('运维',),
-    '告警': ('运维',),
-    '消息日志': ('运维',),
-    '智能搜索': ('运维',),
-    '一键巡检': ('运维',),
-    '平台升级': ('运维',),
-
-    # 其它
-    '可信密码模块': ('资源中心',),
-    '大数据计算': ('资源中心',),
-    '备份': ('资源中心',),
-}
+from sugon_web.config.constants import SERVICE_MAP
 
 def submenu(name: str) -> Callable:
     """装饰器：确保在指定的EVS子菜单页面"""
@@ -164,7 +103,9 @@ class BasePage(Playwright):
             self.get_by_role("textbox", name="搜索（参数名称）"),
             self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner"),
-            self.get_by_role("textbox", name="请输入设备名称")
+            self.get_by_role("textbox", name="请输入设备名称"),
+            self.get_by_role("textbox", name="搜索(实例名称)"),
+            self.get_by_placeholder("搜索(目的地址)")   # 路由表规则搜索框
         ]
 
         return self._find_element(locators, "搜索框")
@@ -172,12 +113,28 @@ class BasePage(Playwright):
     @property
     def _btn_search(self) -> Locator:
         """公共元素:搜索按钮"""
-        return self.get_by_text("搜索", exact=True)
+        locators = [
+            # 1. 优先查找可见弹窗内的搜索按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("搜索", exact=True),
+            # 2. 查找当前激活 Tab 页签内的搜索按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("搜索", exact=True),
+            # 3. 兜底：查找页面上可见的搜索按钮 (注意：如果页面仍有多个可见搜索按钮，这里可能仍会报错，但上述两步通常能解决问题)
+            self.get_by_text("搜索", exact=True)
+        ]
+        return self._find_element(locators, "搜索按钮")
 
     @property
     def btn_reset(self) -> Locator:
         """公共元素:重置按钮"""
-        return self.get_by_text("重置", exact=True).first
+        locators = [
+            # 1. 优先查找可见弹窗内的重置按钮
+            self.locator(".el-dialog__wrapper:visible").get_by_text("重置", exact=True),
+            # 2. 查找当前激活 Tab 页签内的重置按钮 (排除隐藏的 tab-pane)
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("重置", exact=True),
+            # 3. 兜底：查找页面上可见的重置按钮
+            self.get_by_text("重置", exact=True).first
+        ]
+        return self._find_element(locators, "重置按钮")
 
     @property
     def btn_refresh(self) -> Locator:
@@ -190,16 +147,29 @@ class BasePage(Playwright):
 
         return self._find_element(locators, "刷新按钮")
 
+    # @property
+    # def btn_batch_delete(self) -> Locator:
+    #     """公共元素: 批量删除按钮"""
+    #     locators = [
+    #         self.get_by_text("批量删除", exact=True),
+    #         self.get_by_text("删除", exact=True).first,
+    #         self.get_by_text("批量删除").first,
+    #         self.get_by_label("虚拟IP管理").get_by_text("批量删除"),
+    #         self.get_by_label("端口", exact=True).get_by_text("批量删除"),
+    #         self.get_by_label("路由表", exact=True).get_by_text("批量删除")
+    #     ]
+
+    #     return self._find_element(locators, "批量删除按钮")
+
     @property
     def btn_batch_delete(self) -> Locator:
         """公共元素: 批量删除按钮"""
         locators = [
-            self.get_by_text("批量删除", exact=True),
-            self.get_by_text("删除", exact=True).first,
+            # 1. 优先在当前激活的 Tab 页签内查找（排除隐藏 tab-pane，自动兼容所有 Tab 场景）
+            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("批量删除", exact=True),
+            # 2. 兜底：在整个页面查找第一个「批量删除」按钮
             self.get_by_text("批量删除").first,
-            self.get_by_label("虚拟IP管理").get_by_text("批量删除")
         ]
-
         return self._find_element(locators, "批量删除按钮")
 
     @property
@@ -429,6 +399,44 @@ class BasePage(Playwright):
         # 断言
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
+    def assert_list_not_contain(self, keyword, column_name="名称", exact_match=True):
+        """
+        公共方法: 验证指定列中不包含特定关键字
+
+        Args:
+            keyword: 关键字
+            column_name: 列名，默认为"名称"
+            exact_match: 匹配模式（True为精准匹配，False为模糊匹配）
+
+        Raises:
+            AssertionError: 当找到匹配项时抛出异常
+        """
+        self.logger.info(f"检查列 '{column_name}' 中是否不包含关键字 '{keyword}'")
+
+        try:
+            column_data = self.get_column_data(column_name)
+        except Exception:
+             # 如果列不存在或获取失败，也算不包含，记录日志并返回
+            self.logger.info(f"列 '{column_name}' 不存在或无数据，视为不包含关键字 '{keyword}'")
+            return
+
+        if not column_data:
+             self.logger.info(f"列 '{column_name}' 为空，视为不包含关键字 '{keyword}'")
+             return
+
+        # 根据参数选择匹配方式
+        if exact_match:
+            # 精准匹配：检查是否有任何一个元素与关键词完全相等
+            matched = any(keyword == item for item in column_data)
+            match_description = "包含与关键词完全相等的数据"
+        else:
+            # 模糊匹配：检查是否有任何元素包含关键词
+            matched = any(keyword in item for item in column_data)
+            match_description = "包含关键词的数据"
+
+        # 断言
+        assert not matched, f"验证失败：预期不{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
+
     def assert_status(self, names, status='运行', timeout=300, refresh=False, refresh_interval=5):
         """
         公共方法：验证页面表格中指定资源的状态是否符合预期，支持单个和批量资源
@@ -576,23 +584,31 @@ class BasePage(Playwright):
                 f"以下资源删除验证失败（可能仍然存在于列表中）: {', '.join(failed_resources)}"
             )
 
+    def _get_interactive_row(self, row: Locator) -> Locator:
+        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
+        try:
+            # 尝试通过 DOM index 获取对应的 fixed-right 行
+            row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
+            fixed_right = self.locator(".el-table__fixed-right .el-table__row").nth(row_index)
+            if fixed_right.count() > 0 and fixed_right.is_visible():
+                return fixed_right
+        except Exception as e:
+            self.logger.debug(f"获取可交互行时出错: {e}")
+        return row
+
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
 
         # 定位资源行
-        try:
-            row = self.get_row_by_name(name, "operation")
-            self.logger.info(f"在 operation 区域找到资源行: {name}")
-        except AssertionError:
-            self.logger.debug(f"在 operation 区域未找到 {name}，尝试在 body 区域查找")
-            row = self.get_row_by_name(name, "body")
-            self.logger.info(f"在 body 区域找到资源行: {name}")
+        row = self.get_row_by_name(name)
+        interactive_row = self._get_interactive_row(row)
+        self.logger.info(f"成功找到资源操作行: {name}")
 
         # 提供两种定位方式，第二种适用于ecs列表页面
         locators = [
-            row.get_by_text("更多"),
+            interactive_row.get_by_text("更多"),
             self.get_by_role("row", name=name).get_by_role("button"),
-            row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
+            interactive_row.locator(".el-dropdown-selfdefine[title='操作']:has(.el-icon-setting)").last   # 组合定位器：title属性 + 类名 + 图标验证
         ]
 
         # 尝试定位
@@ -610,72 +626,34 @@ class BasePage(Playwright):
 
         raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
-    def click_dropdown_options(self, resource_name: str, option_text: str):
+    def click_action(self, resource_name: str, option_text: str):
         """
-        公共方法：点击指定资源行的下拉菜单选项
+        公共方法：点击指定资源行的操作选项（兼容平铺按钮和下拉菜单模式）
 
         Args:
             resource_name: 资源名称
-            option_text: 下拉菜单选项文本（如"删除"、"编辑"等）
+            option_text: 下拉菜单选项或平铺按钮文本（如"删除"、"编辑"等）
         """
         try:
-            # 点击指定行资源的操作按钮
-            operation_btn=self._btn_operation(resource_name)
-            operation_btn.scroll_into_view_if_needed()
-            operation_btn.click()
-
-            # 等待下拉菜单出现
-            self.page.wait_for_timeout(1000)
-
-            # 方法1：通过 aria-controls 属性精确定位
+            # 1. 尝试直接点击平铺可见的操作按钮
             try:
-                dropdown_id = operation_btn.evaluate("element => element.getAttribute('class')")
-                self.logger.info(f"dropdown_id: {dropdown_id}")
-                if dropdown_id:
-                    specific_dropdown = self.page.locator(f".{dropdown_id}")
-                    option = specific_dropdown.get_by_text(option_text, exact=True)
-                    if option.is_visible() and option.is_enabled():
-                        option.click()
-                        self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
+                row = self.get_row_by_name(resource_name)
+                interactive_row = self._get_interactive_row(row)
+                option_btn = interactive_row.get_by_text(option_text, exact=True)
+                
+                # 有可能找到多个同名文本，遍历尝试点击第一个可见并可用的按钮
+                for i in range(option_btn.count()):
+                    btn = option_btn.nth(i)
+                    if btn.is_visible() and btn.is_enabled():
+                        btn.click()
+                        self.logger.info(f"点击平铺操作选项: {resource_name} -> {option_text}")
                         return
-                    else:
-                        raise Exception(f"选项不可见或不可用: {option_text}")
-                else:
-                    raise Exception("未找到aria-controls属性")
-
+                        
+                self.logger.debug(f"未找到可用且可见的平铺选项: {option_text}，将尝试下拉菜单模式")
             except Exception as e:
-                # 方法2：备用方案 - 找到最后一个可见的下拉菜单
-                self.logger.warning(f"主要方法失败，使用备用方案: {e}")
+                self.logger.debug(f"定位平铺操作选项异常: {e}，将尝试下拉菜单模式")
 
-                dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
-                # dropdown_menus = self.page.locator('[class^="cloud-table-dropdown"]')
-
-                # 从后往前遍历，找到最后一个可见的下拉菜单
-                for i in range(dropdown_menus.count() - 1, -1, -1):
-                    menu = dropdown_menus.nth(i)
-                    if menu.is_visible():
-                        option = menu.get_by_text(option_text, exact=True)
-                        if option.count() > 0 and option.is_visible() and option.is_enabled():
-                            option.click()
-                            self.logger.info(f"通过备用方案点击选项: {resource_name} -> {option_text}")
-                            return
-
-                raise Exception(f"所有方法都失败，未找到可用的选项: {option_text}")
-
-        except Exception as e:
-            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
-            raise
-
-    def click_dropdown_option(self, resource_name: str, option_text: str):
-        """
-        公共方法：点击指定资源行的下拉菜单选项（兼容两种方式）
-
-        Args:
-            resource_name: 资源名称
-            option_text: 下拉菜单选项文本（如"删除"、"编辑"等）
-        """
-        try:
-            # 点击指定行资源的操作按钮
+            # 2. 如果平铺按钮没找到或不可见，尝试基于“更多/操作”按钮通过下拉菜单点击
             operation_btn = self._btn_operation(resource_name)
             operation_btn.hover()
 
@@ -711,7 +689,7 @@ class BasePage(Playwright):
                                 if option.is_visible() and option.is_enabled():
                                     option.click()
                                     self.logger.info(
-                                        f"点击资源操作选项: {resource_name} -> {option_text} (使用 {selector_type} 选择器)")
+                                        f"点击下拉菜单操作选项: {resource_name} -> {option_text} (使用 {selector_type} 选择器)")
                                     return
                                 else:
                                     self.logger.warning(f"选项 '{option_text}' 不可见或不可用")
@@ -726,28 +704,11 @@ class BasePage(Playwright):
                     continue
 
             # 所有选择器都失败
-            raise Exception(f"所有选择器都失败，未找到可用的选项: {option_text}")
+            raise Exception(f"所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: {option_text}")
 
         except Exception as e:
             self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
             raise
-
-    def click_option(self, resource_name: str, option_text: str, t_type="operation"):
-        """
-        公共方法：点击指定资源行的操作选项
-
-        Args:
-            resource_name: 资源名称
-            option_text: 菜单选项文本（如"登录"、"删除"等）
-        """
-        try:
-            # 点击指定行资源的操作按钮
-            operation_btn=self.get_row_by_name(resource_name, t_type)
-            operation_btn.get_by_text(option_text, exact=True).click()
-            self.logger.info(f"点击资源操作选项: {resource_name} -> {option_text}")
-        except Exception as e:
-            self.logger.error(f"点击资源操作选项失败: {resource_name} -> {option_text}, 错误: {e}")
-            raise e
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
@@ -847,16 +808,13 @@ class BasePage(Playwright):
             rows = []
         return rows
 
-    def get_row_by_name(self, name: str, t_type: str = "body") -> Locator:
+    def get_row_by_name(self, name: str) -> Locator:
         """公共方法:根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
-        if t_type == "body":
-            t_body = self.locator(".el-table__body-wrapper")
-        elif t_type == "name":
-            t_body = self.locator(".el-table__fixed")
-        elif t_type == "operation":
-            t_body = self.locator(".el-table__fixed-right")
-        else:
-            raise ValueError(f"不支持的表格类型: {t_type}")
+        t_body = self.locator(".el-table__body-wrapper")
+        # 兼容退化
+        if t_body.count() == 0:
+            t_body = self
+
         try:
             # 模式1: 名称后跟空白字符
             pattern = re.compile(rf"^{re.escape(name)}\s")
