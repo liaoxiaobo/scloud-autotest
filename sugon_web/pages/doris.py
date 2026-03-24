@@ -7,7 +7,6 @@ from sugon_web.utils import db_util
 
 class DorisPage(BasePage):
     """Doris实例管理页面对象"""
-
     @submenu("实例管理")
     def create_instance(self, name: str, version: str = "2.1.9", ha_type: str = "读高可用",
                         password: str = "admin1234@sugon", network: str = "Autotest",
