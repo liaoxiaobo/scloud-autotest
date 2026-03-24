@@ -252,7 +252,7 @@ class Playwright:
         上下文管理器，用于在新标签页中执行操作
 
         Args:
-            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_option(name, "登录")）
+            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_action(name, "登录")）
             wait_for_selector (str): 可选，等待特定选择器元素出现后再返回
             timeout (int): 等待超时时间（毫秒），默认为30秒
             wait_for_load_state (str): 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
@@ -297,6 +297,7 @@ class Playwright:
         if count > 0:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
+
     def wait_for_operation_complete(self, timeout=30):
         """等待操作完成
 
@@ -304,17 +305,13 @@ class Playwright:
             timeout: 超时时间（秒）
         """
         start_time = time.time()
+        # 组合所有的加载指示器选择器，只检查可见的
+        loading_selector = ".el-icon-loading:visible, .el-button.is-loading:visible"
 
         while time.time() - start_time < timeout:
             try:
-                # 检查是否有加载中的元素
-                loading_elements = [
-                    self.locator(".el-icon-loading"),
-                    self.locator(".el-button.is-loading")
-                ]
-
-                # 如果没有加载中的元素，认为操作完成
-                if not any(element.count() > 0 for element in loading_elements):
+                # 如果没有任何可见的加载标识，认为操作完成
+                if self.page.locator(loading_selector).count() == 0:
                     return
 
                 # 等待1秒后重试

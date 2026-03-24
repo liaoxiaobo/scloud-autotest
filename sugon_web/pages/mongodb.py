@@ -90,7 +90,7 @@ class MongoDBPage(BasePage):
         删除MongoDB实例
         :param name: 实例名称
         """
-        self.click_dropdown_option(name, "删除")
+        self.click_action(name, "删除")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -112,7 +112,7 @@ class MongoDBPage(BasePage):
         :param old_name: 旧实例名称
         :param new_name: 新实例名称
         """
-        self.click_dropdown_option(old_name, "修改实例名称")
+        self.click_action(old_name, "修改实例名称")
         dialog = self.get_by_label("修改实例名称").get_by_role("textbox")
         dialog.click()
         dialog.fill(new_name)
@@ -125,7 +125,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         :param new_password: 新密码
         """
-        self.click_dropdown_option(name, "修改root密码")
+        self.click_action(name, "修改root密码")
         dialog = self.get_by_role("dialog")
         pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^新密码$")).get_by_role("textbox")
         pwd_input.wait_for(state="visible", timeout=5000)
@@ -145,7 +145,7 @@ class MongoDBPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         # 假设单机/副本集是这个操作，分片集群可能不同
-        self.click_dropdown_option(f"{name}-0", "修改云硬盘大小")
+        self.click_action(f"{name}-0", "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
         spin_button = dialog.get_by_role("spinbutton")
@@ -163,7 +163,7 @@ class MongoDBPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
         sleep(3)
-        self.click_option(f"{name}-0", "修改规格")
+        self.click_action(f"{name}-0", "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
@@ -179,7 +179,7 @@ class MongoDBPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
         self.wait_for_page_ready()
 
-        self.click_dropdown_option(node_name, "绑定公网IP")
+        self.click_action(node_name, "绑定公网IP")
 
         # 使用更精确的dialog定位
         dialog = self.get_by_label("绑定公网IP", exact=True)
@@ -206,7 +206,7 @@ class MongoDBPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
         self.wait_for_page_ready()
 
-        self.click_dropdown_option(node_name, "解绑公网IP")
+        self.click_action(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -351,7 +351,7 @@ class MongoDBPage(BasePage):
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "修改用户")
+        self.click_action(user_name, "修改用户")
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
@@ -368,7 +368,7 @@ class MongoDBPage(BasePage):
         self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
-        self.click_dropdown_option(user_name, "删除")
+        self.click_action(user_name, "删除")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -421,7 +421,7 @@ class MongoDBPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.wait_for_page_ready()
-        self.click_dropdown_option(node_name, "热迁移")
+        self.click_action(node_name, "热迁移")
         self.wait_for_page_ready()
         sleep(2)
 

@@ -1,3 +1,4 @@
+import re
 import time
 import pytest
 from playwright.sync_api import expect
@@ -13,14 +14,17 @@ class OpsPage(BasePage):
         self.btn_create.click()
         self.get_by_placeholder("请选择项目").click()
         self.get_by_title(project).click()
-        self.page.wait_for_load_state("networkidle")  # 解决下拉列表数据加载未完成导致的定位元素冲突问题
+        # 选择项目后会触发接口请求重绘网络列表，此处等待接口请求完成
+        self.page.wait_for_load_state("networkidle")
+
+        # 等待接口返回并渲染网络下拉列表
         self.get_by_placeholder("请选择网络").click()
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.page.wait_for_load_state("domcontentloaded")
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.get_by_placeholder("请选择网络").fill(network)
-        self.page.wait_for_timeout(2000)  # 等待下拉列表数据加载完成
-        self.get_by_text(network, exact=True).click()
+        # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
+        dropdown = self.page.locator(".el-select-dropdown:visible")
+        target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$"))
+        # 接口返回后页面重绘可能存在延迟，导致短暂出现两个同名项，等待直到只有一个匹配项
+        expect(target_item).to_have_count(1)
+        target_item.click()
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=exact).click()
         self.get_by_text("确定").click()
@@ -28,7 +32,7 @@ class OpsPage(BasePage):
     @submenu("MFIP")
     def mfip_delete(self, ip: str):
         """删除 MFIP"""
-        self.click_dropdown_option(ip, "删除")
+        self.click_action(ip, "删除")
         self.dialog_confirm.click()
 
 
@@ -80,7 +84,7 @@ class OpsPage(BasePage):
         logger.info(f"磁盘状态: {status}, 磁盘名称: {_disk_name}, 磁盘容量: {_disk_size}")
         if status == "禁用":
             # 定位磁盘行并点击操作按钮
-            self.click_dropdown_option(_disk_name, "启用")
+            self.click_action(_disk_name, "启用")
             # 确认启用
             self.dialog_confirm.click()
             logger.info(f"{node} 的裸磁盘启用请求已提交")
@@ -101,7 +105,7 @@ class OpsPage(BasePage):
         if "禁用" in status:
             for name, sta in zip(names, status):
                 if sta == "禁用":
-                    self.click_option(name, "启用")
+                    self.click_action(name, "启用")
                     self.dialog_confirm.click()
                     self.assert_popup_success("请求成功！")
                     data = self.get_row_data(name)
@@ -115,7 +119,7 @@ class OpsPage(BasePage):
     @submenu("裸磁盘")
     def disable_disk(self, ndoe: str):
         """禁用裸磁盘"""
-        self.click_option(ndoe, "禁用")
+        self.click_action(ndoe, "禁用")
         self.dialog_confirm.click()
 
     @submenu("存储池")
@@ -188,7 +192,7 @@ class OpsPage(BasePage):
     def sync_pool_size(self, name: str):
         """同步存储池配置"""
 
-        self.click_option(name, "同步容量")
+        self.click_action(name, "同步容量")
         # 确认同步
         self.dialog_confirm.click()
 
@@ -201,7 +205,7 @@ class OpsPage(BasePage):
             operation: 操作类型，如"启用"、"禁用"
         """
 
-        self.click_dropdown_option(name, operation)
+        self.click_action(name, operation)
         self.dialog_confirm.click()
         self.assert_popup_success("请求成功！")
 
@@ -211,7 +215,7 @@ class OpsPage(BasePage):
         logger.info(f"删除{name}存储池")
 
         # 点击存储池操作按钮，点击删除
-        self.click_dropdown_option(name, "删除")
+        self.click_action(name, "删除")
 
         # 确认删除
         self.dialog_confirm.click()
