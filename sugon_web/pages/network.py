@@ -292,17 +292,18 @@ class VpcPage(BasePage):
         #     self._input_gateway.fill(ip)
 
         # 处理关联ACL策略
-        acl_item = self.locator(".el-form-item").filter(has_text="关联ACL策略")
-        acl_item.hover()
-        clear_icon = acl_item.locator(".el-icon-circle-close")
-        if clear_icon.is_visible():
-            clear_icon.click()
+        acl_item = self.get_by_role("dialog", name="新建子网").locator(".el-form-item").filter(has_text="关联ACL策略")
+        acl_select = acl_item.locator(".el-select")
+        acl_select.hover()
+        acl_select.locator(".el-icon-circle-close").click(timeout=1000)
 
         # 如果提供了ACL策略，则关联ACL
         if acl_policy:
-            # 查找ACL策略下拉框并选择
-            acl_selector = self.locator("div").filter(has_text=f"关联ACL策略{acl_policy}")
-            acl_selector.locator("i").nth(1).click()
+            # 展开下拉框
+            # acl_selector = self.locator("div").filter(has_text=f"关联ACL策略{acl_policy}")
+            # acl_selector.locator("i").nth(1).click()
+            self.get_by_role("dialog", name="新建子网").get_by_placeholder("请选择").click()
+            self.get_by_text(acl_policy).click()
 
         # 如果指定了可用IP，则填写
         if available_ip:

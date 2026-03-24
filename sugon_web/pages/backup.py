@@ -808,6 +808,7 @@ class BackUpPage(BasePage):
                         self.logger.info(f"验证成功 {k}[{i}]: {policy_text}")
         else:
             self.get_by_role("tab", name=tab).click()
+            sleep(2) # 等待页面加载
             for k, v in policy_infos.items():
                 self.assert_list_contain(v, k)
 
