@@ -49,7 +49,7 @@ class SgPage(BasePage):
             new_name: 新名称
             new_desc: 新描述
         """
-        self.click_action(sg_name, "编辑", t_type="body")
+        self.click_action(sg_name, "编辑")
         dialog = self.get_by_role("dialog", name="编辑")
         if new_name:
             dialog.locator("input[type=\"text\"]").fill(new_name)
@@ -152,7 +152,7 @@ class SgPage(BasePage):
 
         if from_list:
             # 在列表页直接点击“创建规则”
-            self.click_action(sg_name, "创建规则", t_type="body")
+            self.click_action(sg_name, "创建规则")
         elif detail_mode:
             # 在详情页/页签中直接创建
             self.btn_create.click()

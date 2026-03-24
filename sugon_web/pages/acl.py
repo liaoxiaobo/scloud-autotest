@@ -158,7 +158,7 @@ class AclPage(BasePage):
         self.goto_acl_detail(acl_name, tab_name="关联子网")
 
         for subnet in subnets:
-            self.click_action(subnet, "解关联子网", t_type="body")
+            self.click_action(subnet, "解关联子网")
             self.dialog_confirm.click()
 
         self.wait_for_page_ready()
