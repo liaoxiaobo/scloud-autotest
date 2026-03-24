@@ -127,7 +127,7 @@ class TestVPCNetwork:
             ecs_page.assert_deleted(vm2_name)
             logger.info(f"已手动清理虚机: {vm2_name}")
 
-    @allure.title("Vlan网络-同子网的两台虚机互通验证")
+    @allure.title("分布式Vlan网络-同子网的两台虚机互通验证")
     @pytest.mark.parametrize("vpc", [{
         "network_type": "Vlan",
         "gateway_mode": "分布式网关",
@@ -278,7 +278,7 @@ class TestVPCNetwork:
     #         ssh_vm.ping(vm1_ip)
     #         logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
 
-    @allure.title("Vlan网络-同子网的两台虚机互通验证（集中式网关）")
+    @allure.title("集中式Vlan网络-同子网的两台虚机互通验证")
     @pytest.mark.parametrize("vpc", [{
         "network_type": "Vlan",
         "gateway_mode": "集中式网关",
@@ -490,7 +490,7 @@ class TestVPCNetwork:
             ecs_page.assert_deleted([vm1_name, vm2_name])
             logger.info(f"已手动清理虚机: {vm1_name}, {vm2_name}")
 
-    @allure.title("虚拟IP绑定云服务器及内网连通性验证")
+    @allure.title("虚拟IP-绑定云服务器及内网连通性验证")
     @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
     def test_vip_bind_unbind_instance(self, vpc_page, vip, vm, ssh_vm):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，通过另一台测试机验证VIP的数据面连通性；随后解绑并验证网络隔离"""
@@ -524,7 +524,7 @@ class TestVPCNetwork:
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vip, connected=False)
 
-    @allure.title("虚拟IP绑定公网IP及云外连通性验证")
+    @allure.title("虚拟IP-绑定公网IP及云外连通性验证")
     def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vip, vm, ssh_vm, ssh_host):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""
 

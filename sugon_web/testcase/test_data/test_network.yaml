@@ -74,3 +74,26 @@ network:
       gateway_ip: "10.0.201.1"
       available_ip: "10.0.201.10-10.0.201.100"
       dns: "8.8.8.8"
+
+  # DNAT规则创建和删除测试 - 数据驱动
+  test_dnat_rule_create_delete:
+    # 覆盖协议TCP，公网端口边界最小，私网端口边界最小
+    - case_name: "TCP协议-内部外部端口最小边界-普通描述"
+      protocol: "TCP"
+      ext_port: 1
+      int_port: 1
+      desc: "TCP协议最小端口测试"
+
+    # 覆盖协议UDP，公网端口最大限制，私网端口最大限制，描述达到最大字符长度255
+    - case_name: "UDP协议-内部外部端口最大边界-最大描述长度"
+      protocol: "UDP"
+      ext_port: 32767
+      int_port: 65535
+      desc: "这是一个很长的描述，用于测试系统对长文本的处理能力，包含中文字符和特殊符号！@#￥%……&*（）"
+
+    # 常规测试
+    - case_name: "TCP协议-常规端口-无描述"
+      protocol: "TCP"
+      ext_port: 8080
+      int_port: 80
+      desc: ""

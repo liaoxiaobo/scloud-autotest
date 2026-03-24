@@ -1032,6 +1032,61 @@ class VpcPage(BasePage):
         self.get_by_label("创建DNAT规则").get_by_text("确定").click()
         self.wait_for_page_ready()
 
+    @submenu("NAT网关")
+    def dnat_rule_edit(self, nat_name, ext_port, new_ext_port=None, new_protocol=None,
+                       new_private_ip=None, new_int_port=None, new_desc=None):
+        """在NAT网关详情页修改DNAT规则
+
+        Args:
+            nat_name: NAT网关名称（用于点击进入详情页）
+            ext_port: 需要修改的公网端口（用于定位规则行）
+            new_ext_port: 新公网端口
+            new_protocol: 新协议类型，如 "TCP"/"UDP"/"ALL"
+            new_private_ip: 新私网IP
+            new_int_port: 新内部端口
+            new_desc: 新描述
+        """
+        # 进入 NAT 网关详情页
+        self.get_by_role("cell", name=nat_name).locator("a").click()
+        self.wait_for_page_ready()
+
+        # 切换到 DNAT 规则 Tab
+        self.get_by_role("tab", name="DNAT规则").click()
+        self.wait_for_page_ready()
+
+        # 打开修改弹窗
+        self.click_action(str(ext_port), "修改")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_label("修改DNAT规则")
+
+        # 修改协议
+        if new_protocol:
+            dialog.locator("label").filter(has_text=new_protocol).click()
+
+        # 修改公网端口
+        if new_ext_port is not None:
+            dialog.get_by_placeholder("端口范围1~32767").fill(str(new_ext_port))
+
+        # 修改私网IP
+        if new_private_ip:
+            ip_row = dialog.locator("form div").filter(has_text=re.compile(r"私网IP"))
+            ip_row.get_by_placeholder("请选择").click()
+            ip_option = self.locator("li").filter(has_text=new_private_ip).first
+            expect(ip_option).to_be_visible(timeout=8000)
+            ip_option.click()
+
+        # 修改内部端口
+        if new_int_port is not None:
+            dialog.get_by_placeholder("端口范围1~65535").fill(str(new_int_port))
+
+        # 修改描述
+        if new_desc is not None:
+            dialog.locator("textarea").fill(new_desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
     def dnat_rule_delete(self, ext_ports):
         """删除DNAT规则，支持单个和批量操作（需已在NAT网关详情页的DNAT规则Tab下）
 
