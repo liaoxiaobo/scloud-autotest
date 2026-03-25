@@ -225,7 +225,7 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
     sgs = []
     with allure_step_log(f"Fixture: 平台创建 {sg_count} 个安全组"):
         sg_page.goto_service("安全组")
-        timestamp_suffix = time.strftime("M%S")
+        timestamp_suffix = time.strftime("%M%S")
         for i in range(sg_count):
             sg_name = f"autotest-sg{i + 1}-{timestamp_suffix}"
             sg_page.sg_create(sg_name, desc=f"{sg_name}自动化测试")

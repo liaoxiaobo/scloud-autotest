@@ -789,7 +789,8 @@ class BackUpPage(BasePage):
         """
         self.backup_to_details(name)
         if tab == "详情":
-            sleep(2)
+            # 等待“基本信息”标题出现，确保详情页面已加载
+            self.locator(".detail-page-title").filter(has_text="基本信息").wait_for(state="visible", timeout=5000)
             infos = self.policy_to_assert_dict(policy_infos)
             self.logger.info(f"infos: {infos}")
             # 逐个验证信息项
@@ -808,7 +809,7 @@ class BackUpPage(BasePage):
                         self.logger.info(f"验证成功 {k}[{i}]: {policy_text}")
         else:
             self.get_by_role("tab", name=tab).click()
-            sleep(2) # 等待页面加载
+            self.locator(".el-tab-pane:not([aria-hidden='true']) .el-table__row").first.wait_for(state="visible", timeout=5000)
             for k, v in policy_infos.items():
                 self.assert_list_contain(v, k)
 
@@ -1254,14 +1255,22 @@ class BackUpPage(BasePage):
 
     def _get_tree_item(self, server_name: str):
         """获取虚机的备份数据节点"""
-        tree_item = self.get_by_role("treeitem", name=re.compile(f".*{server_name}")).first
+        # 改进定位器：确保定位到包含服务器名称的树节点
+        tree_item = self.get_by_role("treeitem", name=re.compile(rf".*{re.escape(server_name)}")).first
         # 检查 class 属性是否包含 is-expanded
-        class_attr = tree_item.get_attribute("class")
+        class_attr = tree_item.get_attribute("class") or ""
         if "is-expanded" not in class_attr:
-            tree_item.click()
+            # 优先点击展开图标，避免误触勾选框
+            expand_icon = tree_item.locator(".el-tree-node__expand-icon").first
+            if expand_icon.is_visible() and "is-leaf" not in (expand_icon.get_attribute("class") or ""):
+                expand_icon.click()
+            else:
+                tree_item.click()
+            # 等待子节点加载并展开
+            self.page.wait_for_timeout(500)
         else:
             logger.debug(f"备份数据节点已展开，跳过点击: {server_name}")
-        # 获取所有子节点
+        # 获取所有子节点（限制在当前展开的节点下）
         return tree_item.locator(".el-tree-node__children .custom-tree-node")
 
     def get_backup_data(self, server_name: str):
@@ -1304,9 +1313,9 @@ class BackUpPage(BasePage):
 
             for i in range(count):
                 child_node = child_nodes.nth(i)
-                node_text = child_node.inner_text()
+                node_text = child_node.inner_text().split("\n")[0].strip()
                 logger.info(f"检查备份数据节点[{i}]: {node_text}")
-                checkbox = child_node.locator("xpath=preceding-sibling::label/span")
+                checkbox = child_node.locator("xpath=../label")
 
                 # 检查是否可以勾选
                 if not (checkbox.is_visible() and checkbox.is_enabled()):
@@ -1317,13 +1326,13 @@ class BackUpPage(BasePage):
                     continue
 
                 # 找到目标节点，点击勾选
-                checkbox.evaluate("el => el.click()")
+                checkbox.click(force=True)
                 logger.info(f"已选择备份数据节点: {node_text}")
                 break
         else:
-            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").first
-            checkbox.evaluate("el => el.click()")
-            self.logger.info(f"已选择全部备份数据节点: {server_name}")
+            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").nth(1)
+            checkbox.click(force=True)
+            logger.info(f"已选择全部备份数据节点: {server_name}")
         time.sleep(1) # 等待删除按钮状态变为可点击
         self.locator(".cloud-button .cloud-button-btn").filter(has_text="删除").click()
         self.dialog_confirm.click()
@@ -1806,10 +1815,12 @@ class BackUpPage(BasePage):
 
         for i in indices:
             child_node = child_nodes.nth(i)
-            node_text = child_node.inner_text()
-            node_text = node_text.split("\n")[0]
+            # 处理节点文本，去除图标字符和空格
+            node_text = child_node.inner_text().split("\n")[0].strip()
             logger.info(f"检查备份数据节点[{i}]: {node_text}")
-            checkbox = child_node.locator("xpath=preceding-sibling::label/span")
+            
+            # 定位勾选框：点击 label 标签通常比点击内部 span 更稳定
+            checkbox = child_node.locator("xpath=../label")
 
             # 检查是否可以勾选
             if not (checkbox.is_visible() and checkbox.is_enabled()):
@@ -1820,8 +1831,7 @@ class BackUpPage(BasePage):
                 continue
 
             # 找到目标节点，点击勾选
-            checkbox.evaluate("el => el.click()")
-            # checkbox.click()
+            checkbox.click(force=True)
             logger.info(f"选择{target_desc}备份数据，节点[{i}]: {node_text}")
             return
 
