@@ -532,3 +532,51 @@ class AclPage(BasePage):
         
         self.wait_for_page_ready()
         self.logger.info(f"网络ACL开启规则完成: {acl_name} -> {tab_name}")
+
+    def acl_rule_batch_operation(self, acl_name, direction="入方向", rule_matches=None, rules=None, operation="开启"):
+        """批量操作网络ACL规则
+
+        Args:
+            acl_name: 网络ACL名称
+            direction: 规则方向，"入方向" 或 "出方向"
+            rule_matches: 规则匹配条件列表 (List of dict)
+            rules: 同 rule_matches，为了兼容性
+            operation: 操作名称，例如 "开启"、"关闭"、"删除"
+        """
+        tab_name = f"{direction}规则"
+        self.goto_acl_detail(acl_name, tab_name=tab_name)
+
+        target_rules = rule_matches or rules
+        if not target_rules:
+            self.logger.warning("未提供需要操作的规则列表")
+            return
+
+        # 遍历匹配规则并勾选
+        for rule in target_rules:
+            row = self._get_rule_target_row(**rule)
+            # 点击复选框
+            checkbox = row.locator(".el-checkbox")
+            if checkbox.count() > 0:
+                checkbox.first.click()
+            else:
+                # 兼容性：如果没找到 el-checkbox，尝试通过 cell 查找
+                row.locator("td").first.click()
+
+        # 点击批量操作
+        self.get_by_role("button", name="批量操作").click()
+        
+        # 处理操作文本，如果没带“批量”，则补全
+        op_text = operation if operation.startswith("批量") else f"批量{operation}"
+        
+        # 点击具体的批量操作项
+        self.get_by_text(op_text, exact=True).click()
+
+        # 处理确认弹窗
+        # 批量删除和某些批量关闭会有确认框
+        self.page.wait_for_timeout(1000)
+        confirm_btn = self.page.locator(".el-message-box__btns .el-button--primary, .dialog-box-footer .cloud-button-btn:has-text('确定')").first
+        if confirm_btn.is_visible():
+            confirm_btn.click()
+            self.wait_for_page_ready()
+        
+        self.logger.info(f"网络ACL规则{op_text}完成: {acl_name} -> {len(target_rules)} 条规则")

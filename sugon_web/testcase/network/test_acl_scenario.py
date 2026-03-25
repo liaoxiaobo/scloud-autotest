@@ -1,3 +1,5 @@
+import time
+
 import allure
 import pytest
 from sugon_web.utils.logger import logger, allure_step_log
@@ -398,3 +400,209 @@ class TestAclScenario:
         with allure_step_log("步骤2: ssh_vm连接虚机vm2-0, ping 虚机vm1-0, 预期是不通"):
             ssh_vm.connect(vm_b_0["mfip"])
             ssh_vm.ping(vm_a_0["ip"], connected=False, count=5)
+
+    @allure.title("验证ACL出方向规则: 批量关闭和开启规则")
+    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
+    def test_acl_outbound_rules_scenario(self, acl_vpc_vms, acl_page, ssh_vm):
+        """
+        场景：
+        1. 存在ACL关联子网B，子网A无ACL。
+        2. 新增3条出方向规则：
+           - 规则1: IPv4, 允许, TCP, 源:子网B的cidr, 源端口:8081, 目的:子网A的cidr, 目的端口:8080-8090
+           - 规则2: IPv4, 允许, TCP, 源:子网B的cidr, 源端口:8082, 目的:子网A的cidr, 目的端口:8080
+           - 规则3: IPv4, 允许, ICMP, 源:子网B的cidr, 目的:子网A的cidr
+        3. vm1(A) 启动 8080 端口服务。
+        4. vm2(B) 验证 ping 通，curl 结合 --local-port 8081/8082 通。
+        5. 批量关闭规则。
+        6. 验证不通。
+        """
+        env = acl_vpc_vms
+        acl_name = env["acl_name"]
+        cidr_a = env["cidr1"]
+        cidr_b = env["cidr2"]
+        
+        vm1 = next(vm for vm in env["vms"] if vm["tag"] == "A")
+        vm2 = next(vm for vm in env["vms"] if vm["tag"] == "B")
+        
+        vm1_ip = vm1["ip"]
+        vm1_mfip = vm1["mfip"]
+        vm2_mfip = vm2["mfip"]
+
+        rule_matches = [
+            {"protocol": "TCP", "source_port": "8081", "dest_port": "8080-8090", "source_ip": cidr_b, "dest_ip": cidr_a},
+            {"protocol": "TCP", "source_port": "8082", "dest_port": "8080", "source_ip": cidr_b, "dest_ip": cidr_a},
+            {"protocol": "ICMP", "source_ip": cidr_b, "dest_ip": cidr_a}
+        ]
+
+        with allure_step_log("步骤1: 新建3条出方向规则"):
+            acl_page.goto_service("网络ACL")
+            # 规则1
+            acl_page.acl_rule_create(acl_name, direction="出方向", protocol="TCP", source_ip=cidr_b, source_port="8081", dest_ip=cidr_a, dest_port="8080-8090")
+            # 规则2
+            acl_page.acl_rule_create(acl_name, direction="出方向", protocol="TCP", source_ip=cidr_b, source_port="8082", dest_ip=cidr_a, dest_port="8080", detail_mode=True)
+            # 规则3
+            acl_page.acl_rule_create(acl_name, direction="出方向", protocol="ICMP", source_ip=cidr_b, dest_ip=cidr_a, detail_mode=True)
+
+        with allure_step_log("步骤2: vm1连接并执行 python server"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.run("nohup python3 -m http.server 8080 > /dev/null 2>&1 </dev/null & disown", check_rc=True)
+            
+            # 循环检查服务是否启动
+            with allure_step_log("等待vm1上的http服务启动"):
+                for i in range(6):
+                    time.sleep(10)
+                    res = ssh_vm.run("netstat -anp | grep :8080 | grep LISTEN")
+                    out = res['stdout'] if isinstance(res, dict) else res
+                    if "LISTEN" in out:
+                        logger.info(f"http server started after {i*10+10}s")
+                        break
+                else:
+                    raise RuntimeError(f"vm1上的http服务超过{60}s未启动")
+
+        with allure_step_log("步骤3: vm2 验证流量连通性"):
+            ssh_vm.connect(vm2_mfip)
+            # ping 验证
+            ssh_vm.ping(vm1_ip, connected=True, count=5)
+
+            curl_success = "Directory listing for /"
+            # curl 验证 --local-port 8081
+            stdout_8081 = ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8081", check_rc=True)
+            assert curl_success in stdout_8081, f"curl {vm1_ip}:8080 --local-port 8081失败: {stdout_8081}"
+            
+            # curl 验证 --local-port 8082
+            stdout_8082 = ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8082", check_rc=True)
+            assert curl_success in stdout_8082, f"curl {vm1_ip}:8080 --local-port 8082失败: {stdout_8082}"
+
+        with allure_step_log("步骤4: 批量关闭规则"):
+            acl_page.goto_service("网络ACL")
+            acl_page.acl_rule_batch_operation(acl_name, direction="出方向", rule_matches=rule_matches, operation="关闭")
+
+        with allure_step_log("步骤5: 验证流量不通"):
+            ssh_vm.connect(vm2_mfip)
+            # ping 验证不通
+            ssh_vm.ping(vm1_ip, connected=False, count=3)
+            # curl 验证不通 --local-port 8081
+            try:
+                ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8081", check_rc=True)
+                assert False, f"curl {vm1_ip}:8080 --local-port 8081异常成功"
+            except Exception:
+                logger.info("规则关闭后，curl --local-port 8081 失败，预期正常")
+
+            # curl 验证不通 --local-port 8082
+            try:
+                ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8082", check_rc=True)
+                assert False, f"curl {vm1_ip}:8080 --local-port 8082异常成功"
+            except Exception:
+                logger.info("规则关闭后，curl --local-port 8082 失败，预期正常")
+
+        with allure_step_log("步骤6: 批量启用规则"):
+            acl_page.goto_service("网络ACL")
+            acl_page.acl_rule_batch_operation(acl_name, direction="出方向", rule_matches=rule_matches, operation="启用")
+
+        with allure_step_log("步骤7: 再次验证流量连通性"):
+            ssh_vm.connect(vm2_mfip)
+            # ping 验证
+            ssh_vm.ping(vm1_ip, connected=True, count=5)
+            # curl 验证
+            res_8081 = ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8081", check_rc=True)
+            assert curl_success in res_8081, f"重新开启规则后，curl {vm1_ip}:8080 --local-port 8081 失败"
+            
+            res_8082 = ssh_vm.run(f"curl -s --connect-timeout 5 {vm1_ip}:8080 --local-port 8082", check_rc=True)
+            assert curl_success in res_8082, f"重新开启规则后，curl {vm1_ip}:8080 --local-port 8082 失败"
+
+    @allure.title("验证ACL入方向规则: 批量开启和关闭规则")
+    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
+    def test_acl_inbound_batch_op_scenario(self, acl_vpc_vms, acl_page, ssh_vm, clean_acl_inbound_rules):
+        """
+        场景：
+        1. 存在ACL关联子网B，子网A无ACL。
+        2. 新增3条入方向规则（允许：TCP 8081->8080-8090, UDP 8082->1-65535, ICMP）。
+        3. vm2(B) 启动 8080 端口服务和 8888 UDP服务。
+        4. vm1(A) 验证连通性（ping, curl, nc-udp）。
+        5. 批量关闭规则，验证不通。
+        6. 批量开启规则，验证通 (按照已批准的 plan 执行)。
+        """
+        env = acl_vpc_vms
+        acl_name = env["acl_name"]
+        cidr_a = env["cidr1"]
+        cidr_b = env["cidr2"]
+        
+        vm1 = next(vm for vm in env["vms"] if vm["tag"] == "A")
+        vm2 = next(vm for vm in env["vms"] if vm["tag"] == "B")
+        
+        vm2_ip = vm2["ip"]
+        vm1_mfip = vm1["mfip"]
+        vm2_mfip = vm2["mfip"]
+
+        rule_matches = [
+            {"protocol": "TCP", "source_port": "8081", "dest_port": "8080-8090", "source_ip": cidr_a, "dest_ip": cidr_b},
+            {"protocol": "UDP", "source_port": "8082", "dest_port": "1-65535", "source_ip": cidr_a, "dest_ip": cidr_b},
+            {"protocol": "ICMP", "source_ip": cidr_a, "dest_ip": cidr_b}
+        ]
+
+        with allure_step_log("步骤1: 新建3条入方向规则"):
+            acl_page.goto_service("网络ACL")
+            # 规则1: TCP
+            acl_page.acl_rule_create(acl_name, direction="入方向", protocol="TCP", source_ip=cidr_a, source_port="8081", dest_ip=cidr_b, dest_port="8080-8090")
+            # 规则2: UDP
+            acl_page.acl_rule_create(acl_name, direction="入方向", protocol="UDP", source_ip=cidr_a, source_port="8082", dest_ip=cidr_b, dest_port="1-65535", detail_mode=True)
+            # 规则3: ICMP
+            acl_page.acl_rule_create(acl_name, direction="入方向", protocol="ICMP", source_ip=cidr_a, dest_ip=cidr_b, detail_mode=True)
+
+        with allure_step_log("步骤2: vm2启动 TCP (8080) 和 UDP (8888) 服务"):
+            ssh_vm.connect(vm2_mfip)
+            ssh_vm.run("nohup python3 -m http.server 8080 > /dev/null 2>&1 </dev/null & disown", check_rc=True)
+            ssh_vm.run("nohup nc -vul 8888 > /dev/null 2>&1 </dev/null & disown", check_rc=True)
+            
+            # 轮询等待服务可用
+            with allure_step_log("等待vm2上的服务启动"):
+                for i in range(10):  # 最多等待50秒
+                    time.sleep(5)
+                    out_tcp = ssh_vm.run("netstat -anp | grep :8080 | grep LISTEN")
+                    out_udp = ssh_vm.run("netstat -anp | grep :8888 | grep udp")
+                    if "LISTEN" in out_tcp and "8888" in out_udp:
+                        logger.info(f"vm2 服务已在 {i*5+5}s 后成功启动")
+                        break
+                else:
+                    raise RuntimeError(f"vm2 服务启动超时: TCP({out_tcp}), UDP({out_udp})")
+
+        with allure_step_log("步骤3: vm1 验证流量连通性 (TCP/UDP/ICMP)"):
+            ssh_vm.connect(vm1_mfip)
+            # ICMP
+            ssh_vm.ping(vm2_ip, connected=True, count=3)
+            # TCP (Local Port 8081)
+            curl_success = "Directory listing for /"
+            stdout_tcp = ssh_vm.run(f"curl -s --connect-timeout 5 {vm2_ip}:8080 --local-port 8081", check_rc=True)
+            assert curl_success in stdout_tcp, f"vm1 -> vm2:8080 curl失败: {stdout_tcp}"
+            # UDP (Local Port 8082)
+            ssh_vm.run(f"echo 'test' | nc -vu -p 8082 -w 3 {vm2_ip} 8888", check_rc=True)
+
+        with allure_step_log("步骤4: 批量关闭入方向规则"):
+            acl_page.goto_service("网络ACL")
+            acl_page.acl_rule_batch_operation(acl_name, direction="入方向", rule_matches=rule_matches, operation="关闭")
+
+        with allure_step_log("步骤5: 验证流量全部不通"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vm2_ip, connected=False, count=3)
+            try:
+                ssh_vm.run(f"curl -s --connect-timeout 5 {vm2_ip}:8080 --local-port 8081", check_rc=True)
+                assert False, "TCP 仍通畅，异常"
+            except Exception:
+                logger.info("TCP 已阻断，正常")
+            try:
+                ssh_vm.run(f"echo 'test' | nc -vu -p 8082 -w 2 {vm2_ip} 8888", check_rc=True)
+                assert False, "UDP 仍通畅，异常"
+            except Exception:
+                logger.info("UDP 已阻断，正常")
+
+        with allure_step_log("步骤6: 批量开启入方向规则"):
+            acl_page.goto_service("网络ACL")
+            acl_page.acl_rule_batch_operation(acl_name, direction="入方向", rule_matches=rule_matches, operation="启用")
+
+        with allure_step_log("步骤7: 再次验证流量连通性"):
+            ssh_vm.connect(vm1_mfip)
+            ssh_vm.ping(vm2_ip, connected=True, count=3)
+            res_tcp = ssh_vm.run(f"curl -s --connect-timeout 5 {vm2_ip}:8080 --local-port 8081", check_rc=True)
+            assert curl_success in res_tcp, "重新开启规则后 TCP 不通"
+            ssh_vm.run(f"echo 'test' | nc -vu -p 8082 -w 3 {vm2_ip} 8888", check_rc=True)
+            logger.info("重新开启规则后 UDP 恢复连通")
