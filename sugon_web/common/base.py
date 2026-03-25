@@ -589,7 +589,9 @@ class BasePage(Playwright):
         try:
             # 尝试通过 DOM index 获取对应的 fixed-right 行
             row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
-            fixed_right = self.locator(".el-table__fixed-right .el-table__row").nth(row_index)
+            # 限制在当前行所属的表格容器内查找固定列，防止在有多个表格时（如 Doris）匹配到错误的行
+            table = row.locator("xpath=ancestor::div[contains(@class, 'el-table')][1]")
+            fixed_right = table.locator(".el-table__fixed-right .el-table__row").nth(row_index)
             if fixed_right.count() > 0 and fixed_right.is_visible():
                 return fixed_right
         except Exception as e:
@@ -778,8 +780,8 @@ class BasePage(Playwright):
         """获取表头信息，返回表头列表"""
 
         headers = []
-        # 使用更精确的定位器，只获取可见表头
-        header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible")
+        # 使用更精确的定位器，只获取第一个可见表头，防止多个表格时表头信息合并（如 Doris）
+        header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible").first
 
         if header_wrapper.count() > 0:
             headers = header_wrapper.locator("th").all_text_contents()
@@ -788,7 +790,7 @@ class BasePage(Playwright):
             self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
             # 备用方案：如果找不到特定class的表头，使用原有方式
             if self.locator("thead").count() > 0:
-                headers = self.locator("thead th").all_text_contents()
+                headers = self.locator("thead:visible th").first.all_text_contents() # also prefer first visible
                 self.logger.info(f"使用备用方式获取表头信息: {headers}, 共{len(headers)}个")
             else:
                 self.logger.error(f"未找到任何表头信息")
