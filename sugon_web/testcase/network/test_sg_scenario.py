@@ -555,7 +555,7 @@ class TestSGScenario:
 
     @allure.title("验证云服务器详情页自定义安全组规则绑定与生效性")
     @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 1, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_vm_binding_connectivity(self, ecs_page, sg_page, ssh_vm, ssh_host, ecs_create_page, vpc, sg_vm_setup):
+    def test_sg_vm_binding_connectivity(self, ecs_page, sg_page, ssh_vm, ecs_create_page, vpc, sg_vm_setup):
         vm1 = sg_vm_setup["vms"][0]
         sg1, sg2 = sg_vm_setup["sgs"]
         network_name = vpc.get("name")
@@ -578,12 +578,12 @@ class TestSGScenario:
             ecs_create_page.goto_service("弹性云服务器")
             network_vm1 = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [sg2]}
             vm1_info = ecs_create_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network_vm1, {}, {})
-            vm1_name = vm1_info.get("name")
-            ecs_create_page.assert_status(vm1_name)
-            vm2_ip = ecs_page.get_row_data(vm1_name)["IP地址"].split("固定: ")[1].strip()
+            vm2_name = vm1_info.get("name")
+            ecs_create_page.assert_status(vm2_name)
+            vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
-        with allure_step_log(f"步骤3: 进入虚机vm1详情页，验证安全组信息"):
-            ecs_page.ecs_to_sg_tab(vm1_name)
+        with allure_step_log(f"步骤3: 进入虚机vm2详情页，验证安全组信息"):
+            ecs_page.ecs_to_sg_tab(vm2_name)
             # 验证显示绑定 sg1
             expect(ecs_page.get_by_text(sg2, exact=True)).to_be_visible()
 
@@ -593,25 +593,24 @@ class TestSGScenario:
             ssh_vm.ping(vm2_ip, connected=False)
 
         with allure_step_log(f"步骤5: 在vm2的安全组页签下，创建入方向规则，放行ipv4所有流量"):
-            sg_page.goto_service("安全组")
-            sg_page.goto_sg_detail(sg2)
-            sg_page.sg_rule_create(
-                sg_name=sg2,
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_to_sg_tab(vm2_name)
+            # 在自定义安全组下创建规则
+            ecs_page.ecs_create_custom_sg_rule(
                 protocol="所有",
                 direction="入口",
                 remote_type="CIDR",
                 ip_version="IPv4",
-                description="详情页创建规则",
-                detail_mode=True
+                description="详情页创建自定义规则"
             )
 
         with allure_step_log(f"步骤6: 再次从vm1对vm2发起ping请求，预期：可以ping通"):
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vm2_ip, connected=True)
 
-        with allure_step_log(f"步骤7: 删除刚才创建的入方向规则，并验证连通性"):
+        with allure_step_log(f"步骤7: 删除刚才创建的入方向规则，验证不通"):
             # 在详情页中删除
-            sg_page.sg_rule_delete(sg1, direction="入口", detail_mode=True)
+            ecs_page.ecs_delete_custom_sg_rule(description="详情页创建自定义规则")
 
             # 记录此时如果不通需要一些时间生效
             ecs_page.page.wait_for_timeout(2000)
@@ -621,9 +620,9 @@ class TestSGScenario:
 
         with allure_step_log("清理资源: 删除手动创建的 vm2"):
             ecs_page.goto_service("弹性云服务器")
-            ecs_page.ecs_remove(vm1_name)
-            ecs_page.ecs_delete(vm1_name, release_ip=True)
-            ecs_page.assert_deleted(vm1_name)
+            ecs_page.ecs_remove(vm2_name)
+            ecs_page.ecs_delete(vm2_name, release_ip=True)
+            ecs_page.assert_deleted(vm2_name)
 
     @allure.title("验证云服务器详情页自定义安全组页面功能")
     def test_sg_vm_detail_management(self, ecs_page, sg_page, ecs_create_page, vpc):
