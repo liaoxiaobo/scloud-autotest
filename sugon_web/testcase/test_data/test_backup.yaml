@@ -746,7 +746,7 @@ backup:
           网络: "Autotest"
           子网: "Autotest(1"
         规格配置:
-          规格: "ecs.c6.large"
+          规格: "ecs.c6.Autotest"
         管理配置:
           登录方式: "密码登录"
           登录密码: "sugon@20"
@@ -770,7 +770,7 @@ backup:
           网络: "Autotest"
           子网: "Autotest(1"
         规格配置:
-          规格: "ecs.c6.large"
+          规格: "ecs.c6.Autotest"
         管理配置:
           登录方式: "密码登录"
           登录密码: "sugon@20"
@@ -793,7 +793,7 @@ backup:
           网络: "Autotest"
           子网: "Autotest(1"
         规格配置:
-          规格: "ecs.c6.large"
+          规格: "ecs.c6.Autotest"
         管理配置:
           登录方式: "密码登录"
           登录密码: "sugon@20"
@@ -816,7 +816,7 @@ backup:
           网络: "Autotest"
           子网: "Autotest(1"
         规格配置:
-          规格: "ecs.c6.large"
+          规格: "ecs.c6.Autotest"
         管理配置:
           登录方式: "密码登录"
           登录密码: "sugon@20"

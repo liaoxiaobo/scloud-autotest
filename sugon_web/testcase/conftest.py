@@ -168,7 +168,7 @@ def vm(ecs_page, request):
             network=network,
             subnet=subnet,
             cluster=cluster,
-            flavor="ecs.c6.large",
+            flavor="ecs.c6.Autotest",
             image_name="",
             os_version="centos7.9",
             login_password="admin1234@sugon",
