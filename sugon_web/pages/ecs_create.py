@@ -29,7 +29,7 @@ class EcsCreatePage(EcsPage):
             v1_network = kwargs.get("network", "Autotest")
             v1_subnet = kwargs.get("subnet", "Autotest(10")
             v1_cluster = kwargs.get("cluster", "Autotest")
-            v1_flavor = kwargs.get("flavor", "ecs.c6.large")
+            v1_flavor = kwargs.get("flavor", "ecs.c6.Autotest")
             v1_image_name = kwargs.get("image_name", "")
             v1_os_version = kwargs.get("os_version", "centos7.9")
             v1_login_pwd = kwargs.get("login_password", "admin1234@sugon")
@@ -98,7 +98,7 @@ class EcsCreatePage(EcsPage):
             self.get_by_role("spinbutton").first.fill(str(count))
 
         # 选择规格
-        flavor_info = basic.get("规格") if basic and basic.get("规格") else {"基础规格": "ecs.c6.large"}
+        flavor_info = basic.get("规格") if basic and basic.get("规格") else {"基础规格": "ecs.c6.Autotest"}
         self._select_flavor(flavor_info)
 
         # 选择集群
