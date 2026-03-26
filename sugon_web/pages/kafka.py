@@ -101,6 +101,7 @@ class KafkaPage(BasePage):
         """批量删除Kafka实例"""
         for name in names:
             self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
+        sleep(3)
         self.get_by_text("批量删除").click()
         self.dialog_confirm.click()
 
