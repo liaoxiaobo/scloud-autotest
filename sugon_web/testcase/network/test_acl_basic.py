@@ -129,6 +129,75 @@ class TestAclBasic:
             acl_page.acl_batch_delete(acl_names)
             acl_page.assert_deleted(acl_names)
 
+    @allure.title("验证批量开启和关闭网络ACL及流量生效情况")
+    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
+    def test_acl_batch_op_connectivity(self, acl_vpc_vms, acl_page, ssh_vm):
+        """
+        前置：存在至少3个ACL实例，如ACL1、ACL2、ACL3，vpc下的两个子网A和子网B，两个子网下分别各存在一台云服务器实例vma、vmb。ACL1已关联子网B。
+        步骤1：ACL1下新建入方向规则（允许 Sub A -> Sub B）
+        步骤2：ssh_vm连接虚机vma，ping虚机vmb。预期是通。ssh_vm连接虚机vmb，ping虚机vma,预期是不通。
+        步骤3：批量关闭前置创建的3个ACL。重复步骤2，预期是均不通。
+        步骤4：批量开启3个acl,重复步骤2，预期是a能通b，b不能通a。
+        """
+        env = acl_vpc_vms
+        acl_name = env["acl_name"]
+        
+        vma = next(vm for vm in env["vms"] if vm["tag"] == "A")
+        vmb = next(vm for vm in env["vms"] if vm["tag"] == "B")
+        
+        # 步骤1: 新组建3个ACL的批量环境
+        base_name = random_data()
+        extra_acl_names = [f"acl-extra-{base_name}-{i}" for i in range(2)]
+        all_acl_names = [acl_name] + extra_acl_names
+        
+        try:
+            with allure_step_log(f"前置: 创建额外的ACL {extra_acl_names}"):
+                for name in extra_acl_names:
+                    acl_page.acl_create(name)
+
+            with allure_step_log("步骤1: ACL1下新建入方向规则 (允许 Sub A -> Sub B)"):
+                acl_page.goto_service("网络ACL")
+                acl_page.acl_rule_create(
+                    acl_name=acl_name,
+                    source_ip=env["cidr1"],
+                    dest_ip=env["cidr2"],
+                    description="Batch Test: Allow Sub1 to Sub2"
+                )
+
+            with allure_step_log("步骤2: 虚机A 能ping通虚机B, 虚机B 不能ping通虚机A"):
+                ssh_vm.connect(vma["mfip"])
+                ssh_vm.ping(vmb["ip"], connected=True, count=5)
+                ssh_vm.connect(vmb["mfip"])
+                ssh_vm.ping(vma["ip"], connected=False, count=5)
+
+            with allure_step_log(f"步骤3: 批量关闭网络ACL {all_acl_names}"):
+                acl_page.goto_service("网络ACL")
+                acl_page.acl_batch_disable(all_acl_names)
+                
+                with allure_step_log("验证关闭后流量均不通"):
+                    ssh_vm.connect(vma["mfip"])
+                    ssh_vm.ping(vmb["ip"], connected=False, count=5)
+                    ssh_vm.connect(vmb["mfip"])
+                    ssh_vm.ping(vma["ip"], connected=False, count=5)
+
+            with allure_step_log(f"步骤4: 批量开启网络ACL {all_acl_names}"):
+                acl_page.goto_service("网络ACL")
+                acl_page.acl_batch_enable(all_acl_names)
+                
+                with allure_step_log("验证开启后流量恢复 (A->B通, B->A不通)"):
+                    ssh_vm.connect(vma["mfip"])
+                    ssh_vm.ping(vmb["ip"], connected=True, count=5)
+                    ssh_vm.connect(vmb["mfip"])
+                    ssh_vm.ping(vma["ip"], connected=False, count=5)
+
+        finally:
+            with allure_step_log("清理: 删除额外的ACL"):
+                try:
+                    acl_page.goto_service("网络ACL")
+                    acl_page.acl_batch_delete(extra_acl_names)
+                except:
+                    pass
+
     @allure.title("验证网络ACL关联/解关联子网功能")
     def test_acl_subnet_management(self, acl_page, acl, vpc):
         acl_name = acl

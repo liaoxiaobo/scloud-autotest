@@ -356,7 +356,7 @@ def _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params):
             network_type="Geneve",
             acl_policy=vpc_acl_name
         )
-        vpc_page.assert_status(vpc_name)
+        vpc_page.assert_status(vpc_name, refresh=True)
 
     # 创建sub2，并关联ACL
     sub2_acl_name = acl if params.get('sub2_acl', False) else None
