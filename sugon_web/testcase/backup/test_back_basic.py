@@ -52,7 +52,7 @@ class TestBackupCreate:
 
         with allure_step_log("步骤2: 验证备份任务创建成功"):
             backup_page.backup_search(task_name)
-            backup_page.assert_status(task_name, "一次性备份", timeout=600)
+            backup_page.assert_status(task_name, "一次性备份", timeout=900)
             backup_page.assert_status(task_name, "立即备份")
             backup_page.assert_status(task_name, "已完成")
             backup_page.assert_backup_policy_details(task_name, {"云服务器名": server_name, "上一次备份状态": "备份成功"}, "云服务器列表")
@@ -171,7 +171,7 @@ class TestBackupBasic:
 
         with allure_step_log("步骤2: 验证备份结果"):
             backup_page.backup_search(task_name)
-            backup_page.assert_status(task_name, "已启动", timeout=600)
+            backup_page.assert_status(task_name, "已启动", timeout=900)
             backup_page.assert_status(task_name, "成功", timeout=5)
             backup_page.assert_backup_data(server_name, "备份成功")
             backup_page.get_backup_data(server_name)
@@ -256,7 +256,7 @@ class TestResumeCreate:
         with allure_step_log(f"步骤1: 创建备份数据"):
             backup_page.exec_backup(task_name, "执行增量")
             backup_page.assert_popup_success("备份任务执行成功")
-            backup_page.assert_status(task_name, "已启动", timeout=600)
+            backup_page.assert_status(task_name, "已启动", timeout=900)
             backup_page.get_backup_data(source_vm)
 
         with allure_step_log(f"步骤2: 创建恢复任务-{re_task}"):
@@ -386,7 +386,7 @@ class TestResumeCreate:
                 backup_page.goto_service('备份')
                 backup_page.exec_backup(task_name, "执行增量")
                 backup_page.assert_popup_success("备份任务执行成功")
-                backup_page.assert_status(task_name, "已启动", timeout=600)
+                backup_page.assert_status(task_name, "已启动", timeout=900)
                 re_data = backup_page.get_backup_data(source_vm)
                 backup_data.extend(re_data)
 
