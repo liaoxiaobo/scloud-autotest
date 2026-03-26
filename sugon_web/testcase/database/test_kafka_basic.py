@@ -119,36 +119,6 @@ class TestKafkaBasic:
             if selected_host:
                 assert selected_host in new_host, f"热迁移失败，期望 {selected_host}，实际 {new_host}"
 
-    @allure.title("Kafka-切换网络")
-    def test_switch_network(self, kafka_page, kafka):
-        instance_name = kafka["name"]
-
-        with allure_step_log("步骤一：切换网络 - 快速选择"):
-            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            if result == "close_service":
-                kafka_page.assert_popup_success("执行成功")
-                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
-                result = kafka_page.switch_network(
-                    instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择"
-                )
-
-            assert result == "switch_network"
-            kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
-            kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
-
-        with allure_step_log("步骤二：切换网络 - 手动输入"):
-            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
-            if result == "close_service":
-                kafka_page.assert_popup_success("执行成功")
-                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
-                result = kafka_page.switch_network(
-                    instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入"
-                )
-
-            assert result == "switch_network"
-            kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
-            kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
-
     @allure.title("Kafka-修改云硬盘大小")
     def test_change_disk_size(self, kafka_page, kafka, ssh_host):
         instance_name = kafka["name"]
@@ -278,3 +248,33 @@ class TestKafkaBasic:
             kafka_page.ensure_instance_tab(instance_name, "Topic管理")
             for topic_name in topic_names:
                 kafka_page.assert_list_not_contain(topic_name, column_name="Topic名称")
+
+    @allure.title("Kafka-切换网络")
+    def test_switch_network(self, kafka_page, kafka):
+        instance_name = kafka["name"]
+
+        with allure_step_log("步骤一：切换网络 - 快速选择"):
+            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
+            if result == "close_service":
+                kafka_page.assert_popup_success("执行成功")
+                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
+                result = kafka_page.switch_network(
+                    instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择"
+                )
+
+            assert result == "switch_network"
+            kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
+            kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
+
+        with allure_step_log("步骤二：切换网络 - 手动输入"):
+            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
+            if result == "close_service":
+                kafka_page.assert_popup_success("执行成功")
+                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
+                result = kafka_page.switch_network(
+                    instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入"
+                )
+
+            assert result == "switch_network"
+            kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
+            kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)

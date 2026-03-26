@@ -61,12 +61,15 @@ class KafkaPage(BasePage):
                 switch.click()
 
             try:
-                self.get_by_placeholder("请输入admin管理员密码").fill(password)
-                self.get_by_placeholder("请输入确认密码").fill(password)
+                self.locator("div").filter(has_text=re.compile(r"^管理员密码")).get_by_role("textbox").fill(password)
+                self.locator("div").filter(has_text=re.compile(r"^确认密码")).get_by_role("textbox").fill(password)
             except Exception:
-                password_inputs = self.locator("input[placeholder*='密码']")
-                password_inputs.nth(0).fill(password)
-                password_inputs.nth(1).fill(password)
+                self.get_by_placeholder("请输入admin管理员用户密码").fill(password)
+                confirm_input = self.get_by_placeholder("请输入确认密码")
+                if confirm_input.count() > 0:
+                    confirm_input.fill(password)
+                else:
+                    self.locator("input[type='password']").nth(1).fill(password)
 
         # 网络设置
         db_util.select_network(self, "请选择网络", network)
