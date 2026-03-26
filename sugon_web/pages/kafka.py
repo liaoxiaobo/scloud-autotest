@@ -175,6 +175,47 @@ class KafkaPage(BasePage):
         self.page.locator("div.el-dialog:visible").last.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
+    def add_node(self, name: str):
+        """为Kafka实例新增节点"""
+        self.ensure_instance_tab(name)
+        self.get_by_label("详情").get_by_text("新增节点", exact=True).click()
+        self.get_by_label("新增节点").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def add_whitelist(self, name: str, ip_address: str):
+        """为Kafka实例添加白名单"""
+        self.ensure_instance_tab(name, "白名单")
+        self.get_by_text("添加", exact=True).click()
+        self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
+        self.get_by_label("添加白名单").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def delete_whitelist(self, name: str, ip_address: str):
+        """为Kafka实例删除单个白名单"""
+        self.ensure_instance_tab(name, "白名单")
+        self.locator("span").filter(has_text=ip_address).locator("i").click()
+        self.get_by_label("移除").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def batch_delete_whitelist(self, name: str, ip_addresses: list):
+        """为Kafka实例批量删除白名单"""
+        self.ensure_instance_tab(name, "白名单")
+        sleep(2)
+        self.wait_for_page_ready()
+        self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
+        self.get_by_placeholder("请选择要删除的白名单").click()
+        for ip in ip_addresses:
+            self.page.locator("li", has_text=ip).click()
+        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def reset_whitelist(self, name: str):
+        """为Kafka实例重置白名单"""
+        self.ensure_instance_tab(name, "白名单")
+        self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
+        self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
     def change_specification(self, name: str, specification_name: str):
         """修改Kafka实例规格"""
         self.ensure_instance_tab(name)
