@@ -1,0 +1,39 @@
+slb:
+  test_slb_create_orthogonal:
+    - case_desc: "V1, 开启HA, 自动分配"
+      version: "V1"
+      ha_enable: true
+      ip_type: "自动分配"
+
+    - case_desc: "V1, 关闭HA, 快速选择"
+      version: "V1"
+      ha_enable: false
+      ip_type: "快速选择"
+      slb_desc: ""
+
+    - case_desc: "V1, 开启HA, 手动输入"
+      version: "V1"
+      ha_enable: true
+      ip_type: "手动输入"
+
+    - case_desc: "V2, 关闭HA, 自动分配"
+      version: "V2"
+      ha_enable: false
+      ip_type: "自动分配"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+      slb_desc: "SLB_Description_Boundary_Test_255_Characters_Start_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX_End"
+
+    - case_desc: "V2, 开启HA, 快速选择"
+      version: "V2"
+      ha_enable: true
+      ip_type: "快速选择"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+
+    - case_desc: "V2, 关闭HA, 手动输入"
+      version: "V2"
+      ha_enable: false
+      ip_type: "手动输入"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"

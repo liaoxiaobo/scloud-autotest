@@ -7,6 +7,7 @@ from sugon_web.pages.sg import SgPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
+from sugon_web.pages.slb import SlbPage
 
 @pytest.fixture(scope="function")
 def vip(vpc_page, vpc):
@@ -496,3 +497,68 @@ def clean_acl_outbound_rules(acl_page, acl_in_out_bound_rules):
     """跟 acl_in_out_bound_rules 配套使用的类级别清理，测试末尾一次性执行出方向清理 (Class 级别)"""
     yield
     _do_clean_acl_outbound_rules(acl_page, acl_in_out_bound_rules["acl_name"])
+
+@pytest.fixture(scope="class")
+def slb_page(page):
+    """初始化负载均衡页面对象"""
+    slb_page = SlbPage(page)
+    slb_page.goto_service("负载均衡")
+    return slb_page
+
+
+@pytest.fixture(scope="function")
+def slb(slb_page, vpc, request):
+    """
+    创建并返回一个负载均衡名称，测试结束后自动清理
+    
+    可通过 pytest.mark.parametrize("slb", [{"version": "V1", ...}], indirect=True) 传参：
+    - version: "V1" 或 "V2" (默认 "V2")
+    - ha_enable: True 或 False (默认 False)
+    - ip_type: "自动分配", "快速选择", "手动输入" (默认 "自动分配")
+    - ip_address: 手动分配时的 IP 地址。如果不提供且 ip_type 为手动，则动态获取
+    - cluster: V2 时的集群名称 (默认 "Autotest")
+    - spec: V2 时的规格 (默认 "slb.d6.large 2核 4GiB 内网带宽")
+    """
+    params = getattr(request, 'param', {})
+    version = params.get('version', "V2")
+    ha_enable = params.get('ha_enable', False)
+    ip_type = params.get('ip_type', "自动分配")
+    ip_address = params.get('ip_address', None)
+    cluster = params.get('cluster', "Autotest") if version == "V2" else None
+    spec = params.get('spec', "slb.d6.large 2核 4GiB 内网带宽") if version == "V2" else None
+
+    # 动态处理 IP（如果 ip_type 是手动但没给明确 IP）
+    if ip_type in ["快速选择", "手动输入"] and not ip_address:
+        cidr = vpc['cidr']
+        network = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(network.hosts())
+        # 避开前10个和最后10个地址以防网关或系统保留 IP 冲突
+        safe_hosts = hosts[10:-10] if len(hosts) > 20 else hosts
+        ip_address = str(random.choice(safe_hosts))
+
+    slb_name = f"slb-{random_data()}"
+
+    with allure_step_log(f"Setup: 创建负载均衡 {slb_name}"):
+        slb_page.goto_service("负载均衡")
+        slb_page.slb_create(
+            name=slb_name,
+            version=version,
+            ha_enable=ha_enable,
+            ip_type=ip_type,
+            ip_address=ip_address,
+            vpc=vpc['name'],
+            cluster=cluster,
+            spec=spec
+        )
+        # 等待创建成功并验证状态入运行中
+        slb_page.assert_status(slb_name, status="运行中")
+
+    yield slb_name
+
+    with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):
+        try:
+            slb_page.goto_service("负载均衡")
+            slb_page.slb_delete(slb_name)
+            slb_page.assert_deleted(slb_name)
+        except Exception as e:
+            logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
