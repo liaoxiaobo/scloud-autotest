@@ -7,6 +7,7 @@ from sugon_web.pages.doris import DorisPage
 from sugon_web.pages.pgsql import PgSQLPage
 from sugon_web.pages.mongodb import MongoDBPage
 from sugon_web.pages.redis import RedisPage
+from sugon_web.pages.kafka import KafkaPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -73,6 +74,14 @@ def redis_page(page):
     redis_page = RedisPage(page)
     redis_page.goto_service('AnhanDB(for Redis)')
     return redis_page
+
+
+@pytest.fixture(scope="class")
+def kafka_page(page):
+    """初始化Kafka实例管理页面"""
+    kafka_page = KafkaPage(page)
+    kafka_page.goto_service('分布式消息服务 Kafka')
+    return kafka_page
 
 
 @pytest.fixture(scope="class")
@@ -228,3 +237,22 @@ def redis(redis_page):
         logger.info(f"清理共享Redis实例: {name}, {name1}")
         redis_page.delete_instance(name1)
         redis_page.delete_instance(name)
+
+
+@pytest.fixture(scope="class")
+def kafka(kafka_page):
+    """创建一个供整个测试类使用的Kafka实例对象"""
+    name = f"kafka-{random_data()}"
+    data = {"name": name}
+    logger.info(f"为测试类创建共享Kafka实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        kafka_page.create_instance(name=name)
+        kafka_page.assert_popup_success("Kafka实例创建成功")
+        kafka_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享Kafka实例: {name}")
+        kafka_page.delete_instance(name)

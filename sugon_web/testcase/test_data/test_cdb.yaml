@@ -107,3 +107,13 @@ redis:
         - instance_type: "集群"
           version: "6.2.5"
           disk_size: 55
+kafka:
+    test_create_and_delete_kafka:
+        - version: "2.4.1"
+          security_mode: false
+        - version: "2.4.0"
+          security_mode: false
+        - version: "2.4.1"
+          security_mode: true
+        - version: "2.4.0"
+          security_mode: true

@@ -171,8 +171,8 @@ class TestMongoDBBasic:
         """测试修改MongoDB实例的规格"""
         instance_name = mongodb["name"]
         # 需要确认页面上存在的规格名称
-        specification_name = "mongodb.d6 mongodb.d6.2xlarge 8核"
-        real_specification = "mongodb.d6.2xlarge"
+        specification_name = "mongodb.d6 mongodb.d6.xlarge 4核"
+        real_specification = "mongodb.d6.xlarge"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             mongodb_page.change_specification(instance_name, specification_name)

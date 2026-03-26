@@ -143,8 +143,8 @@ class TestDorisBasic:
     def test_change_specification(self, doris_page, doris, ssh_host):
         """测试修改Doris节点的规格"""
         instance_name = doris["name"]
-        specification_name = "doris.d1 doris.d1.8c16g 8核"  # 请根据实际情况修改目标规格
-        real_specification = "doris.d1.8c16g"
+        specification_name = "doris.d1 doris.d1.4c8g 4核"
+        real_specification = "doris.d1.4c8g"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             doris_page.change_specification(instance_name, specification_name, node_type="be")
