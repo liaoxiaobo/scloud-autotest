@@ -84,8 +84,8 @@ class TestMySQLBasic:
     def test_change_specification(self, mysql_page, mysql, ssh_host):
         """测试修改MySQL实例的规格"""
         instance_name = mysql["name"]
-        specification_name = "mysql.d6 mysql.d6.2xlarge 8核"  # 请根据实际情况修改目标规格
-        real_specification = "mysql.d6.2xlarge"
+        specification_name = "mysql.d6 mysql.d6.xlarge 4核"
+        real_specification = "mysql.d6.xlarge"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             mysql_page.change_specification(instance_name, specification_name)

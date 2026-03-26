@@ -122,8 +122,8 @@ class TestRedisBasic:
         node_name = f"{instance_name}-0"
 
         # 目标规格信息
-        specification_name = "redis.d6.2xlarge"
-        real_specification = "redis.d6.2xlarge"
+        specification_name = "redis.d6.xlarge"
+        real_specification = "redis.d6.xlarge"
 
         with allure_step_log("步骤一：修改规格"):
             redis_page.change_specification(instance_name, specification_name)
