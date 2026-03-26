@@ -314,7 +314,7 @@ class RedisPage(BasePage):
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
         sleep(2)
-        self.click_option(user_name, "删除")
+        self.click_action(user_name, "删除")
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -342,7 +342,7 @@ class RedisPage(BasePage):
         self.get_by_role("tab", name="用户").click()
         self.wait_for_page_ready()
         sleep(2)
-        self.click_option(user_name, "修改用户")
+        self.click_action(user_name, "修改用户")
         dialog = self.get_by_role("dialog")
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
