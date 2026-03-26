@@ -354,7 +354,7 @@ class TestRedisBasic:
     @allure.title("Redis-实例绑定和解绑公网IP")
     def test_instance_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
         """测试实例绑定和解绑Redis实例的公网IP"""
-        instance_name = redis["name1"]
+        instance_name = redis["name"]
         network = "public_net(基础版)"  # 请根据实际环境修改
 
         with allure_step_log("步骤一：绑定公网IP"):
@@ -396,7 +396,7 @@ class TestRedisBasic:
     @allure.title("Redis-节点绑定和解绑公网IP")
     def test_node_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
         """测试节点绑定和解绑Redis实例的公网IP"""
-        instance_name = redis["name1"]
+        instance_name = redis["name"]
         network = "public_net(基础版)"  # 请根据实际环境修改
 
         with allure_step_log("步骤一：绑定公网IP"):
