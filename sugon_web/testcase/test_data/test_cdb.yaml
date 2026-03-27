@@ -81,3 +81,39 @@ mongodb:
         - instance_type: "分片集群"
           version: "4.4"
           disk_size: 45
+redis:
+    test_create_and_delete_redis:
+        - instance_type: "单机"
+          version: "6.2.17"
+          disk_size: 20
+        - instance_type: "主备"
+          version: "6.2.17"
+          disk_size: 30
+        - instance_type: "高可用"
+          version: "6.2.17"
+          disk_size: 40
+        - instance_type: "集群"
+          version: "6.2.17"
+          disk_size: 50
+        - instance_type: "单机"
+          version: "6.2.5"
+          disk_size: 25
+        - instance_type: "主备"
+          version: "6.2.5"
+          disk_size: 35
+        - instance_type: "高可用"
+          version: "6.2.5"
+          disk_size: 45
+        - instance_type: "集群"
+          version: "6.2.5"
+          disk_size: 55
+kafka:
+    test_create_and_delete_kafka:
+        - version: "2.4.1"
+          security_mode: false
+        - version: "2.4.0"
+          security_mode: false
+        - version: "2.4.1"
+          security_mode: true
+        - version: "2.4.0"
+          security_mode: true

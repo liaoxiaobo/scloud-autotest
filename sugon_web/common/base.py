@@ -587,13 +587,25 @@ class BasePage(Playwright):
     def _get_interactive_row(self, row: Locator) -> Locator:
         """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
         try:
-            # 尝试通过 DOM index 获取对应的 fixed-right 行
+            # 1. 获取当前行在所属 tbody 中的物理索引
             row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
-            fixed_right = self.locator(".el-table__fixed-right .el-table__row").nth(row_index)
-            if fixed_right.count() > 0 and fixed_right.is_visible():
-                return fixed_right
+
+            # 2. 获取当前所属表格在页面所有 el-table 中的索引，用于解决多表格共存时的定位偏移
+            table_index = row.evaluate("""
+                el => {
+                    const table = el.closest('.el-table');
+                    if (!table) return -1;
+                    return Array.from(document.querySelectorAll('.el-table')).indexOf(table);
+                }
+            """)
+
+            if table_index != -1:
+                # 3. 在对应的表格内根据索引定位固定列中心对应的行
+                fixed_right = self.locator(".el-table").nth(table_index).locator(".el-table__fixed-right .el-table__row").nth(row_index)
+                if fixed_right.count() > 0 and fixed_right.is_visible():
+                    return fixed_right
         except Exception as e:
-            self.logger.debug(f"获取可交互行时出错: {e}")
+            self.logger.debug(f"通过索引获取可交互行时出错: {e}")
         return row
 
     def _btn_operation(self, name):
@@ -778,8 +790,8 @@ class BasePage(Playwright):
         """获取表头信息，返回表头列表"""
 
         headers = []
-        # 使用更精确的定位器，只获取可见表头
-        header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible")
+        # 使用更精确的定位器，只获取第一个可见表头，防止多个表格时表头信息合并（如 Doris）
+        header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible").first
 
         if header_wrapper.count() > 0:
             headers = header_wrapper.locator("th").all_text_contents()
@@ -788,7 +800,7 @@ class BasePage(Playwright):
             self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
             # 备用方案：如果找不到特定class的表头，使用原有方式
             if self.locator("thead").count() > 0:
-                headers = self.locator("thead th").all_text_contents()
+                headers = self.locator("thead:visible th").first.all_text_contents() # also prefer first visible
                 self.logger.info(f"使用备用方式获取表头信息: {headers}, 共{len(headers)}个")
             else:
                 self.logger.error(f"未找到任何表头信息")
@@ -921,8 +933,21 @@ class BasePage(Playwright):
             self.logger.error(f"获取数据行失败: {str(e)}")
             raise
 
-        # 获取表头和单元格内容
-        headers = self.table_headers
+        # 获取目标行所属表格的索引，以确保获取与之匹配的表头
+        table_index = target_row.evaluate("""
+            el => {
+                const table = el.closest('.el-table');
+                if (!table) return -1;
+                return Array.from(document.querySelectorAll('.el-table')).indexOf(table);
+            }
+        """)
+
+        # 获取当前表格对应的表头，兜底使用全局 table_headers
+        if table_index != -1:
+            headers = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper th").all_text_contents()
+        else:
+            headers = self.table_headers
+
         cell_contents = self._get_cell_contents(target_row)
 
         # 组合数据，将表头和单元格内容对应起来

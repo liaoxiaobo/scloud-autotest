@@ -113,8 +113,8 @@ class TestPgSQLBasic:
     def test_change_specification(self, pgsql_page, pgsql, ssh_host):
         """测试修改PostgreSQL实例的规格"""
         instance_name = pgsql["name"]
-        specification_name = "云数据库标准型 postgresql.d6.2xlarge 8核"
-        real_specification = "postgresql.d6.2xlarge"
+        specification_name = "云数据库标准型 postgresql.d6.xlarge 4核"
+        real_specification = "postgresql.d6.xlarge"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             pgsql_page.change_specification(instance_name, specification_name)

@@ -22,7 +22,7 @@ class EcsPage(OpsPage):
             network="Autotest",
             subnet="Autotest(10",
             cluster="Autotest",
-            flavor="ecs.c6.large",
+            flavor="ecs.c6.Autotest",
             image_name="",
             os_version="centos7.9",
             login_password="admin1234@sugon",
@@ -39,7 +39,7 @@ class EcsPage(OpsPage):
             network: 网络，默认为"Autotest"
             subnet: 子网，默认为"Autotest(10"
             cluster: 集群，默认为"Autotest"
-            flavor: 规格，默认为"ecs.c6.large"
+            flavor: 规格，默认为"ecs.c6.Autotest"
             image_name: 镜像名称，默认为空（使用storage_pool）
             os_version: 操作系统版本，默认为"centos7.9"
             login_password: 登录密码，默认为"admin1234@sugon"

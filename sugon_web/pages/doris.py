@@ -8,6 +8,14 @@ from sugon_web.utils import db_util
 class DorisPage(BasePage):
     """Doris实例管理页面对象"""
 
+    def _select_min_node_spec(self, section_name: str):
+        """在指定节点配置区域选择最小规格"""
+        section_index = 0 if section_name == "FE节点配置" else 1
+        self.get_by_text("选择节点规格", exact=True).nth(section_index).click()
+        dialog = self.get_by_role("dialog").last
+        dialog.get_by_role("radio").first.click()
+        dialog.get_by_text("确定", exact=True).click()
+
     @submenu("实例管理")
     def create_instance(self, name: str, version: str = "2.1.9", ha_type: str = "读高可用",
                         password: str = "admin1234@sugon", network: str = "Autotest",
@@ -63,6 +71,9 @@ class DorisPage(BasePage):
         # FE节点配置 - 高可用类型
         self.get_by_role("radio", name=ha_type).click()
 
+        # FE节点规格选择
+        self._select_min_node_spec("FE节点配置")
+
         # FE节点数据盘类型 - 在配置区域的第3个"请选择"（索引为2）
         fe_disk_dropdown = self.locator("form").filter(
             has_text="配置 专有网络 大小写策略 用户名 密码 确认密码 FE"
@@ -97,6 +108,9 @@ class DorisPage(BasePage):
         # BE节点数据盘大小
         self.get_by_role("spinbutton").nth(2).click()
         self.get_by_role("spinbutton").nth(2).fill(str(be_disk_size))
+
+        # BE节点规格选择
+        self._select_min_node_spec("BE节点配置")
 
         # --- 确认创建 ---
         self.btn_submit.click()

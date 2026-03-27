@@ -1694,10 +1694,10 @@ class BackUpPage(BasePage):
 
         Args:
             config: 规格配置字典
-                - 规格: 规格名称，如"ecs.c6.large"
+                - 规格: 规格名称，如"ecs.c6.Autotest"
         """
         # 使用中文键从字典获取值
-        flavor = config.get("规格", "ecs.c6.large")
+        flavor = config.get("规格", "ecs.c6.Autotest")
         flavor_type = flavor.split(".")[1][0]
         # 搜索并选择规格
         self.search(flavor)

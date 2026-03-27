@@ -23,7 +23,7 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             doris_page.assert_popup_success("修改实例名称成功")
             doris_page.assert_list_contain(renamed_name)
-            doris_page.assert_status(renamed_name, status="就绪")
+            doris_page.assert_status(renamed_name, status="就绪", refresh=True)
 
         with allure_step_log("步骤三：重命名实例回退"):
             doris_page.rename_instance(renamed_name, instance_name)
@@ -31,7 +31,7 @@ class TestDorisBasic:
         with allure_step_log("步骤四：验证重命名回退结果"):
             doris_page.assert_popup_success("修改实例名称成功")
             doris_page.assert_list_contain(instance_name)
-            doris_page.assert_status(instance_name, status="就绪")
+            doris_page.assert_status(instance_name, status="就绪", refresh=True)
 
     @allure.title("Doris-重置管理员密码")
     def test_reset_admin_password(self, doris_page, doris, ssh_host, ssh_vm):
@@ -44,7 +44,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：验证密码重置结果"):
             doris_page.assert_popup_success("执行成功")
-            doris_page.assert_status(instance_name, status="就绪", timeout=300)
+            doris_page.assert_status(instance_name, status="就绪", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}_fe_node01"
@@ -73,7 +73,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤四：验证状态重置结果"):
             doris_page.assert_popup_success("实例数据库状态重置成功")
-            doris_page.assert_status(instance_name, status="就绪", timeout=1200)
+            doris_page.assert_status(instance_name, status="就绪", timeout=1200, refresh=True)
 
         with allure_step_log("步骤三：启动实例"):
             doris_page.start_instance(instance_name)
@@ -135,16 +135,16 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证调整结果"):
             node_name = f"{instance_name}_fe_node01"
             doris_page.assert_popup_success("调整云硬盘中")
-            doris_page.assert_status(node_name, status="调整云硬盘中", timeout=1200)
-            doris_page.assert_status(node_name, status="就绪", timeout=500)
+            doris_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
+            doris_page.assert_status(node_name, status="就绪", timeout=500, refresh=True)
             assert db_util.get_disk_size(doris_page, node_name, ssh_host) == new_disk_size
 
     @allure.title("Doris-修改节点规格")
     def test_change_specification(self, doris_page, doris, ssh_host):
         """测试修改Doris节点的规格"""
         instance_name = doris["name"]
-        specification_name = "doris.d1 doris.d1.8c16g 8核"  # 请根据实际情况修改目标规格
-        real_specification = "doris.d1.8c16g"
+        specification_name = "doris.d1 doris.d1.4c8g 4核"
+        real_specification = "doris.d1.4c8g"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             doris_page.change_specification(instance_name, specification_name, node_type="be")
@@ -152,8 +152,8 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证规格是否修改成功"):
             node_name = f"{instance_name}_be_node01"
             doris_page.assert_popup_success("调整规格中")
-            doris_page.assert_status(node_name, status="调整规格中", timeout=1200)
-            doris_page.assert_status(node_name, status="就绪", timeout=5000)
+            doris_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
+            doris_page.assert_status(node_name, status="就绪", timeout=5000, refresh=True)
             assert db_util.get_specification(doris_page, node_name, ssh_host) == real_specification
 
     @allure.title("Doris-节点绑定和解绑公网IP")

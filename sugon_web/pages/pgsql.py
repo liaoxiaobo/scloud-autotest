@@ -62,6 +62,9 @@ class PgSQLPage(BasePage):
         # 数据盘大小
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))
 
+        # 规格选择（默认选择列表中的第一个规格）
+        self.locator(".el-table__body-wrapper").get_by_role("radio").first.click()
+
         # --- 确认创建 ---
         self.btn_submit.click()
 
