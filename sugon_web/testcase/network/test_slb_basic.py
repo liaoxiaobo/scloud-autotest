@@ -54,3 +54,53 @@ class TestSlbCreate:
             slb_page.assert_deleted(slb_name)
 
 
+    @allure.title("监听器创建: {params[case_desc]}")
+    @pytest.mark.parametrize("params", load_data("test_slb_listener_create", "test_slb.yaml"))
+    def test_slb_listener_create(self, slb_page, slb, params):
+        """
+        测试不同协议下的监听器创建，覆盖 TCP, UDP, HTTP。暂未覆盖 HTTPS (单向/双向认证)
+        """
+        lb_name = f"lb-{params['protocol'].lower()}-{params['port']}"
+        
+        # 准备 HTTPS 特定参数
+        # kwargs = {}
+        # if params['protocol'] == "HTTPS":
+        #     kwargs.update({
+        #         "auth_mode": params.get("auth_mode", "单向认证"),
+        #         "cert_type": params.get("cert_type", "国际服务器证书"),
+        #         "server_cert": params.get("server_cert"),
+        #         "ca_cert": params.get("ca_cert"),
+        #         "http_redirect": params.get("http_redirect", False),
+        #         "redirect_port": params.get("redirect_port")
+        #     })
+
+        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建 {params['protocol']} 监听器 {lb_name}"):
+            slb_page.slb_lb_create(
+                slb_name=slb,
+                lb_name=lb_name,
+                protocol=params["protocol"],
+                port=params["port"],
+                pool_name=params.get("pool_name"),
+                balance_method=params.get("balance_method", "轮询"),
+                health_check=params.get("health_check", False),
+                session_persistence=params.get("session_persistence", False),
+                session_type=params.get("session_type"),
+                health_type=params.get("health_type"),
+                health_max_retries=params.get("health_max_retries"),
+                health_timeout=params.get("health_timeout"),
+                health_interval=params.get("health_interval"),
+                http_method=params.get("http_method"),
+                url_path=params.get("url_path"),
+                # **kwargs
+            )
+
+        with allure_step_log("步骤2: 验证监听器创建成功"):
+            # 验证弹出框成功提示
+            slb_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
+            
+            # 验证监听器是否在左侧列表显示 (slb_lb_create 执行完后应该仍在详情页的监听器Tab)
+            slb_page.assert_listener_exists(lb_name)
+
+        with allure_step_log(f"步骤3: 删除监听器 {lb_name}"):
+            slb_page.slb_lb_delete(slb, lb_name)
+            slb_page.assert_popup_success(f"删除监听器 {lb_name} 成功")

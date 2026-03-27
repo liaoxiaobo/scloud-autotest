@@ -506,7 +506,7 @@ def slb_page(page):
     return slb_page
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="class")
 def slb(slb_page, vpc, request):
     """
     创建并返回一个负载均衡名称，测试结束后自动清理
@@ -561,4 +561,4 @@ def slb(slb_page, vpc, request):
             slb_page.slb_delete(slb_name)
             slb_page.assert_deleted(slb_name)
         except Exception as e:
-            logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
+            logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
