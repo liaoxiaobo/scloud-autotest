@@ -10,8 +10,6 @@ import ipaddress
 class VpcPage(BasePage):
     """虚拟私有云页面类"""
 
-    EIP_COLUMN_CANDIDATES = ("IP地址", "公网IP", "弹性公网IP")
-
     @property
     def _input_name(self):
         """VPC名称输入框"""
@@ -558,57 +556,15 @@ class VpcPage(BasePage):
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
 
-    def _get_eip_column_name(self):
-        """获取弹性公网IP列表中的公网IP列名"""
-        for column_name in self.EIP_COLUMN_CANDIDATES:
-            try:
-                if self.get_column_data(column_name):
-                    return column_name
-            except Exception:
-                continue
-
-        for column_name in self.EIP_COLUMN_CANDIDATES:
-            try:
-                headers = self.table_headers
-                if column_name in headers:
-                    return column_name
-            except Exception:
-                continue
-
-        raise AssertionError(f"未找到弹性公网IP列表列，候选列名: {self.EIP_COLUMN_CANDIDATES}")
-
     def _get_eip_list(self):
         """获取当前列表中的弹性公网IP"""
-        column_name = self._get_eip_column_name()
-        raw_values = self.get_column_data(column_name)
+        raw_values = self.get_column_data("IP地址")
         eips = []
         for value in raw_values:
             match = re.search(r"((?:\d{1,3}\.){3}\d{1,3})(?!\.)", value)
             if match:
                 eips.append(match.group())
         return eips
-
-    def _get_eip_rows(self):
-        """获取当前页弹性公网IP及其状态"""
-        rows = []
-        for row in self.table_rows:
-            try:
-                row_data = self.get_row_data_by_locator(row)
-            except Exception:
-                continue
-
-            ip_value = ""
-            status_value = ""
-            for key, value in row_data.items():
-                if "IP地址" in key:
-                    ip_value = value
-                if "状态" in key:
-                    status_value = value
-
-            match = re.search(r"((?:\d{1,3}\.){3}\d{1,3})(?!\.)", ip_value)
-            if match:
-                rows.append({"ip": match.group(), "status": status_value})
-        return rows
 
     def _open_eip_allocate_dialog(self):
         """打开分配公网IP弹窗并返回弹窗定位器。"""
@@ -651,7 +607,14 @@ class VpcPage(BasePage):
 
     @submenu("弹性公网IPv4")
     def eip_allocate(self, pool: str = "public_net(基础版)", count: int = 1, method: str = "快速选择", ip: str = None):
-        """分配弹性公网IP并返回本次新分配的IP列表"""
+        """分配弹性公网IP并返回本次新分配的IP列表
+
+        Args:
+            pool: 资源池名称
+            count: 分配数量，当前仅支持 1
+            method: 分配模式，支持“快速选择”“手动输入”
+            ip: 指定分配的公网IP，快速选择和手动输入模式均可传入
+        """
         dialog = self._open_eip_allocate_dialog()
 
         dialog.get_by_placeholder("请选择").first.click()
@@ -706,7 +669,11 @@ class VpcPage(BasePage):
 
     @submenu("弹性公网IPv4")
     def eip_release(self, ips):
-        """释放弹性公网IP，支持单个和批量操作"""
+        """释放弹性公网IP，支持单个和批量操作
+
+        Args:
+            ips: 单个公网IP字符串或公网IP列表
+        """
         if isinstance(ips, str):
             for action_name in ("释放公网IP", "释放"):
                 try:
@@ -734,17 +701,6 @@ class VpcPage(BasePage):
 
         self.dialog_confirm.click()
         self.wait_for_page_ready()
-
-    @submenu("弹性公网IPv4")
-    def assert_eip_list_contain(self, keyword: str, exact_match: bool = True):
-        """断言弹性公网IP列表包含指定IP"""
-        eips = self._get_eip_list()
-        if exact_match:
-            matched = keyword in eips
-            assert matched, f"验证失败：期望弹性公网IP列表包含 '{keyword}'，实际: {eips}"
-        else:
-            matched = all(keyword in item for item in eips)
-            assert matched, f"验证失败：期望弹性公网IP列表模糊包含 '{keyword}'，实际: {eips}"
 
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
                     quick_select=True, mac_address: str = None, port_security: bool = False):
