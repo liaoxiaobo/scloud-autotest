@@ -4,6 +4,7 @@ import random
 import time
 from sugon_web.common.playwright import expect
 from sugon_web.pages.sg import SgPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
@@ -204,6 +205,44 @@ def sg_page(page):
     vpc_page = SgPage(page)
     vpc_page.goto_service('安全组')
     return vpc_page
+
+
+@pytest.fixture(scope="class")
+def qos_page(page):
+    """初始化网络QoS页面对象"""
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service("网络QoS")
+    return vpc_page
+
+
+@pytest.fixture(scope="function")
+def qos(qos_page):
+    """创建并返回一个网络QoS，测试结束后自动清理"""
+    qos_info = {
+        "name": f"qos-{random_data()}",
+        "send_rate": 10,
+        "recv_rate": 20,
+        "desc": "网络QoS fixture 自动创建",
+    }
+
+    with allure_step_log("Setup: 创建网络QoS"):
+        qos_page.qos_create(
+            name=qos_info["name"],
+            send_rate=qos_info["send_rate"],
+            recv_rate=qos_info["recv_rate"],
+            desc=qos_info["desc"]
+        )
+        qos_page.assert_popup_success()
+
+    yield qos_info
+
+    with allure_step_log(f"Teardown: 删除网络QoS {qos_info['name']}"):
+        try:
+            qos_page.goto_service("网络QoS")
+            qos_page.qos_delete(qos_info["name"])
+            qos_page.assert_deleted(qos_info["name"])
+        except Exception as e:
+            logger.warning(f"清理网络QoS时出错: {e}")
 
 @pytest.fixture(scope="class")
 def sg(sg_page):
