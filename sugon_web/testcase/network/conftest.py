@@ -9,6 +9,36 @@ from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
 
 @pytest.fixture(scope="function")
+def eip(vpc_page, request):
+    """创建并返回弹性公网IP，测试结束后自动清理"""
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)
+    pool = params.get('pool', 'public_net(基础版)')
+    method = params.get('method', '快速选择')
+    ip = params.get('ip')
+
+    with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
+        created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+
+    yield created_ips[0] if count == 1 else created_ips
+
+    with allure_step_log(f"Teardown: 释放弹性公网IP {created_ips}"):
+        if not created_ips:
+            return
+        try:
+            current_ips = created_ips if isinstance(created_ips, list) else [created_ips]
+            for current_ip in current_ips:
+                vpc_page.search(current_ip)
+                if vpc_page.get_eip_list():
+                    vpc_page.eip_release(current_ip)
+                    vpc_page.assert_deleted(current_ip)
+                vpc_page.btn_reset.click()
+                vpc_page.wait_for_page_ready()
+        except Exception as e:
+            logger.warning(f"清理弹性公网IP时出错: {e}")
+
+
+@pytest.fixture(scope="function")
 def vip(vpc_page, vpc):
     """创建一个手动分配的虚拟IP"""
     vpc_name = vpc['name']

@@ -5,6 +5,12 @@ import allure
 from sugon_web.utils.util import random_data, load_data
 from sugon_web.utils.logger import allure_step_log, logger
 
+
+def _get_snat_public_ip(data):
+    """兼容页面可能使用的不同公网 IP 列名。"""
+    return data.get("弹性公网IP", "") or data.get("公网IP", "")
+
+
 @allure.epic('网络服务')
 @allure.feature('NAT网关')
 @allure.story('基本功能验证')
@@ -148,6 +154,154 @@ class TestNAT:
             logger.info(f"绑定后行数据: {data}")
             assert new_eip in data.get("弹性公网IP", ""), \
                 f"绑定后断言失败: 期望'弹性公网IP'包含 {new_eip}, 实际 {data.get('弹性公网IP')}"
+
+    @allure.title("SNAT规则-创建和删除-{params[case_name]}")
+    @pytest.mark.parametrize("params", [
+        {"case_name": "所有源地址", "source_type": "所有", "source_value_mode": "all"},
+        {"case_name": "子网源地址", "source_type": "子网", "source_value_mode": "subnet"},
+        {"case_name": "私网IP源地址", "source_type": "私网IP", "source_value_mode": "private_ip"},
+        {"case_name": "自定义源地址", "source_type": "自定义", "source_value_mode": "custom"},
+    ])
+    def test_snat_rule_create_delete(self, vpc_page, nat, vpc, request, params):
+        """测试在NAT网关详情页创建和删除不同源地址类型的SNAT规则"""
+        nat_name = nat['name']
+        source_type = params["source_type"]
+        source_value_mode = params["source_value_mode"]
+        desc = f"SNAT规则{params['case_name']}创建删除测试"
+
+        if source_value_mode == "all":
+            source_value = None
+            source_address = "0.0.0.0/0"
+        elif source_value_mode == "subnet":
+            source_value = vpc["cidr"]
+            source_address = source_value
+        elif source_value_mode == "private_ip":
+            vm_data = request.getfixturevalue("vm")
+            source_value = {"subnet_cidr": vpc["cidr"], "private_ip": vm_data["ip"]}
+            source_address = vm_data["ip"]
+        else:
+            source_value = random_data("cidr")
+            source_address = source_value
+
+        with allure_step_log(f"步骤1: 进入NAT网关详情页，创建{params['case_name']}的SNAT规则"):
+            vpc_page.goto_service("NAT网关")
+            vpc_page.snat_rule_create(
+                nat_name=nat_name,
+                source_type=source_type,
+                source_value=source_value,
+                desc=desc
+            )
+            vpc_page.assert_popup_success("新建SNAT规则成功")
+
+        with allure_step_log("步骤2: 验证SNAT规则列表数据"):
+            data = vpc_page.get_row_data(source_address)
+            logger.info(f"SNAT规则行数据: {data}")
+            assert source_address in data.get("源地址", ""), \
+                f"源地址断言失败: 期望包含 {source_address}, 实际 {data.get('源地址')}"
+            assert desc in data.get("描述", ""), \
+                f"描述断言失败: 期望包含 {desc}, 实际 {data.get('描述')}"
+
+        with allure_step_log("步骤3: 删除SNAT规则"):
+            vpc_page.snat_rule_delete(source_address)
+
+        with allure_step_log("步骤4: 验证SNAT规则已删除"):
+            vpc_page.assert_deleted(source_address)
+
+    @allure.title("SNAT规则-修改私有子网和描述")
+    def test_snat_rule_edit(self, vpc_page, nat):
+        """测试在NAT网关详情页修改SNAT规则的源地址和描述"""
+        nat_name = nat['name']
+        old_source_address = "0.0.0.0/0"
+        new_source_address = random_data("cidr")
+        old_desc = "SNAT规则修改前描述"
+        new_desc = "SNAT规则修改后描述"
+
+        with allure_step_log("步骤1: 新建一条SNAT规则"):
+            vpc_page.goto_service("NAT网关")
+            vpc_page.snat_rule_create(
+                nat_name=nat_name,
+                source_type="所有",
+                desc=old_desc
+            )
+            vpc_page.assert_popup_success("新建SNAT规则成功")
+
+        with allure_step_log("步骤2: 修改SNAT规则的源地址和描述"):
+            vpc_page.goto_service("NAT网关")
+            vpc_page.snat_rule_edit(
+                nat_name=nat_name,
+                source_address=old_source_address,
+                new_source_type="自定义",
+                new_source_value=new_source_address,
+                new_desc=new_desc
+            )
+            vpc_page.assert_popup_success("修改SNAT规则成功")
+
+        with allure_step_log("步骤3: 验证SNAT规则修改结果"):
+            data = vpc_page.get_row_data(new_source_address)
+            logger.info(f"修改后SNAT规则行数据: {data}")
+            assert new_source_address in data.get("源地址", ""), \
+                f"源地址断言失败: 期望包含 {new_source_address}, 实际 {data.get('源地址')}"
+            assert new_desc in data.get("描述", ""), \
+                f"描述断言失败: 期望包含 {new_desc}, 实际 {data.get('描述')}"
+
+        with allure_step_log("步骤4: 清理测试数据"):
+            vpc_page.snat_rule_delete(new_source_address)
+            vpc_page.assert_deleted(new_source_address)
+
+    @allure.title("SNAT规则-批量删除")
+    def test_snat_rule_batch_delete(self, vpc_page, nat):
+        """测试在NAT网关详情页批量删除SNAT规则"""
+        nat_name = nat['name']
+        source_addresses = [
+            random_data("cidr"),
+            random_data("cidr")
+        ]
+
+        with allure_step_log("步骤1: 创建2条SNAT规则"):
+            vpc_page.goto_service("NAT网关")
+            for source_address in source_addresses:
+                vpc_page.snat_rule_create(
+                    nat_name=nat_name,
+                    source_type="自定义",
+                    source_value=source_address,
+                    desc=f"SNAT批量删除测试{source_address}"
+                )
+                vpc_page.assert_popup_success("新建SNAT规则成功")
+
+        with allure_step_log("步骤2: 批量删除SNAT规则"):
+            vpc_page.snat_rule_delete(source_addresses)
+
+        with allure_step_log("步骤3: 验证SNAT规则已删除"):
+            vpc_page.assert_deleted(source_addresses)
+
+    @allure.title("SNAT规则-搜索和重置")
+    def test_snat_rule_search_reset(self, vpc_page, nat):
+        """测试在NAT网关详情页搜索和重置SNAT规则"""
+        nat_name = nat['name']
+        source_address = "0.0.0.0/0"
+
+        with allure_step_log("步骤1: 进入NAT网关详情页，创建一个SNAT规则"):
+            vpc_page.goto_service("NAT网关")
+            vpc_page.snat_rule_create(
+                nat_name=nat_name,
+                source_type="所有",
+                desc="SNAT搜索重置测试"
+            )
+            vpc_page.assert_popup_success("新建SNAT规则成功")
+
+        with allure_step_log("步骤2: 按源地址进行搜索"):
+            vpc_page.search(source_address)
+            vpc_page.assert_list_contain(source_address, column_name="源地址")
+
+        with allure_step_log("步骤3: 重置搜索条件"):
+            vpc_page.btn_reset.click()
+            vpc_page.wait_for_page_ready()
+            assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
+        with allure_step_log("步骤4: 验证重置后列表恢复并清理测试数据"):
+            vpc_page.assert_list_contain(source_address, column_name="源地址")
+            vpc_page.snat_rule_delete(source_address)
+            vpc_page.assert_deleted(source_address)
 
     @allure.title("DNAT规则-创建和删除-{params[case_name]}")
     @pytest.mark.parametrize("params", load_data('test_dnat_rule_create_delete', data_file='test_network.yaml'))

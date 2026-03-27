@@ -10,6 +10,8 @@ import ipaddress
 class VpcPage(BasePage):
     """虚拟私有云页面类"""
 
+    EIP_COLUMN_CANDIDATES = ("IP地址", "公网IP", "弹性公网IP")
+
     @property
     def _input_name(self):
         """VPC名称输入框"""
@@ -556,6 +558,194 @@ class VpcPage(BasePage):
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
 
+    def _get_eip_column_name(self):
+        """获取弹性公网IP列表中的公网IP列名"""
+        for column_name in self.EIP_COLUMN_CANDIDATES:
+            try:
+                if self.get_column_data(column_name):
+                    return column_name
+            except Exception:
+                continue
+
+        for column_name in self.EIP_COLUMN_CANDIDATES:
+            try:
+                headers = self.table_headers
+                if column_name in headers:
+                    return column_name
+            except Exception:
+                continue
+
+        raise AssertionError(f"未找到弹性公网IP列表列，候选列名: {self.EIP_COLUMN_CANDIDATES}")
+
+    def _get_eip_list(self):
+        """获取当前列表中的弹性公网IP"""
+        column_name = self._get_eip_column_name()
+        raw_values = self.get_column_data(column_name)
+        eips = []
+        for value in raw_values:
+            match = re.search(r"((?:\d{1,3}\.){3}\d{1,3})(?!\.)", value)
+            if match:
+                eips.append(match.group())
+        return eips
+
+    def _get_eip_rows(self):
+        """获取当前页弹性公网IP及其状态"""
+        rows = []
+        for row in self.table_rows:
+            try:
+                row_data = self.get_row_data_by_locator(row)
+            except Exception:
+                continue
+
+            ip_value = ""
+            status_value = ""
+            for key, value in row_data.items():
+                if "IP地址" in key:
+                    ip_value = value
+                if "状态" in key:
+                    status_value = value
+
+            match = re.search(r"((?:\d{1,3}\.){3}\d{1,3})(?!\.)", ip_value)
+            if match:
+                rows.append({"ip": match.group(), "status": status_value})
+        return rows
+
+    def _open_eip_allocate_dialog(self):
+        """打开分配公网IP弹窗并返回弹窗定位器。"""
+        self.get_by_text("分配公网IP").first.click()
+        dialog = self.get_by_label("分配公网IP")
+        expect(dialog).to_be_visible(timeout=8000)
+        return dialog
+
+    def _get_eip_allocate_ip_options(self, dialog):
+        """获取分配公网IP弹窗中的可选IP列表。"""
+        form_item = dialog.locator(".el-form-item").filter(has_text="IP").last
+        ip_select = form_item.locator(".el-input").first
+        expect(ip_select).to_be_visible(timeout=8000)
+        ip_select.click()
+
+        visible_ips = self.locator("body *").evaluate_all(
+            """
+            (elements) => {
+                const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const result = [];
+                for (const el of elements) {
+                    if (!isVisible(el)) continue;
+                    const text = (el.textContent || '').trim();
+                    if (/^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(text) && !result.includes(text)) {
+                        result.push(text);
+                    }
+                }
+                return result;
+            }
+            """
+        )
+        current_ips = set(self._get_eip_list())
+        candidate_ips = [ip for ip in visible_ips if ip not in current_ips]
+        return candidate_ips or visible_ips
+
+    @submenu("弹性公网IPv4")
+    def get_eip_list(self):
+        """获取当前列表中的弹性公网IP"""
+        return self._get_eip_list()
+
+    @submenu("弹性公网IPv4")
+    def eip_allocate(self, pool: str = "public_net(基础版)", count: int = 1, method: str = "快速选择", ip: str = None):
+        """分配弹性公网IP并返回本次新分配的IP列表"""
+        dialog = self._open_eip_allocate_dialog()
+
+        dialog.get_by_placeholder("请选择").first.click()
+        self.locator("li").filter(has_text=pool).click()
+
+        dialog.get_by_placeholder("请选择").nth(1).click()
+        self.locator("li").filter(has_text=re.compile(rf"^{count}$")).last.click()
+
+        selected_ips = []
+        if count == 1:
+            if method == "快速选择":
+                available_ips = self._get_eip_allocate_ip_options(dialog)
+                assert available_ips, "快速选择模式下未获取到可选公网IP"
+                selected_ip = ip or available_ips[0]
+                if ip is None:
+                    self.page.keyboard.press("ArrowDown")
+                    self.page.keyboard.press("Enter")
+                else:
+                    option_locator = self.get_by_text(selected_ip, exact=True)
+                    for i in range(option_locator.count()):
+                        option = option_locator.nth(i)
+                        if option.is_visible():
+                            option.click(force=True)
+                            break
+                    else:
+                        raise AssertionError(f"快速选择模式下未找到可点击的公网IP选项: {selected_ip}")
+                selected_ips = [selected_ip]
+            elif method == "手动输入":
+                if ip is None:
+                    dialog.get_by_text("快速选择", exact=True).click()
+                    available_ips = self._get_eip_allocate_ip_options(dialog)
+                    assert available_ips, "手动输入模式下未获取到可输入的公网IP"
+                    ip = available_ips[0]
+                    dialog.get_by_text("手动输入", exact=True).click()
+
+                dialog.get_by_text("手动输入", exact=True).click()
+                ip_loc = dialog.locator(".el-form-item").filter(has_text=re.compile(r"^\*?\s*IP")).get_by_role("textbox")
+                ip_loc.clear()
+                ip_loc.fill(ip)
+                selected_ips = [ip]
+            else:
+                raise AssertionError(f"不支持的分配模式: {method}")
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+        expect(dialog).not_to_be_visible(timeout=10000)
+
+        if selected_ips:
+            return selected_ips
+
+        raise AssertionError("当前仅支持数量为1的弹性公网IP精确分配场景")
+
+    @submenu("弹性公网IPv4")
+    def eip_release(self, ips):
+        """释放弹性公网IP，支持单个和批量操作"""
+        if isinstance(ips, str):
+            for action_name in ("释放公网IP", "释放"):
+                try:
+                    self.click_action(ips, action_name)
+                    break
+                except Exception:
+                    continue
+            else:
+                raise AssertionError(f"未找到公网IP {ips} 的释放操作")
+        else:
+            self.select_rows_by_names(ips)
+            batch_buttons = [
+                self.get_by_text("批量释放公网IP", exact=True),
+                self.get_by_text("批量释放公网IP").first,
+            ]
+            for btn in batch_buttons:
+                try:
+                    if btn.is_visible() and btn.is_enabled():
+                        btn.click()
+                        break
+                except Exception:
+                    continue
+            else:
+                raise AssertionError("未找到'批量释放公网IP'按钮")
+
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    @submenu("弹性公网IPv4")
+    def assert_eip_list_contain(self, keyword: str, exact_match: bool = True):
+        """断言弹性公网IP列表包含指定IP"""
+        eips = self._get_eip_list()
+        if exact_match:
+            matched = keyword in eips
+            assert matched, f"验证失败：期望弹性公网IP列表包含 '{keyword}'，实际: {eips}"
+        else:
+            matched = all(keyword in item for item in eips)
+            assert matched, f"验证失败：期望弹性公网IP列表模糊包含 '{keyword}'，实际: {eips}"
+
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
                     quick_select=True, mac_address: str = None, port_security: bool = False):
         """
@@ -1030,6 +1220,126 @@ class VpcPage(BasePage):
 
         # 提交
         self.get_by_label("创建DNAT规则").get_by_text("确定").click()
+        self.wait_for_page_ready()
+
+    def _nat_open_detail_tab(self, nat_name, tab_name):
+        """进入 NAT 网关详情并切换到指定 Tab。"""
+        self.get_by_role("cell", name=nat_name).locator("a").click()
+        self.wait_for_page_ready()
+        self.get_by_role("tab", name=tab_name).click()
+        self.wait_for_page_ready()
+
+    def _select_form_option_by_label(self, form_root, label_pattern, option_text=None):
+        """在表单中按标签选择下拉框选项，未指定 option_text 时默认选择第一个可用项。"""
+        form_item = form_root.locator(".el-form-item").filter(
+            has=self.locator("label").filter(has_text=label_pattern)
+        )
+        dropdown = form_item.get_by_placeholder("请选择")
+        dropdown.click()
+
+        if option_text:
+            option = self.locator("li").filter(has_text=option_text).first
+            expect(option).to_be_visible(timeout=8000)
+            option.click()
+            return option_text
+
+        first_option = self.locator(".el-select-dropdown:visible li.el-select-dropdown__item").first
+        expect(first_option).to_be_visible(timeout=8000)
+        selected_text = first_option.text_content().strip()
+        first_option.click()
+        return selected_text
+
+    def _snat_fill_source(self, dialog, source_type, source_value=None):
+        """填写 SNAT 规则源地址。"""
+        dialog.get_by_role("radio", name=source_type).click()
+
+        if source_value is None:
+            return
+
+        if source_type == "私网IP" and isinstance(source_value, dict):
+            dropdowns = dialog.get_by_placeholder("请选择")
+            visible_dropdowns = [dropdowns.nth(i) for i in range(dropdowns.count()) if dropdowns.nth(i).is_visible()]
+
+            if len(visible_dropdowns) < 2:
+                raise AssertionError("私网IP类型未找到足够的下拉框，期望至少包含子网和私网IP两个选择框")
+
+            visible_dropdowns[0].click()
+            subnet_option = self.locator("li").filter(has_text=source_value["subnet_cidr"]).first
+            expect(subnet_option).to_be_visible(timeout=8000)
+            subnet_option.click()
+
+            visible_dropdowns[1].click()
+            ip_option = self.locator("li").filter(has_text=source_value["private_ip"]).first
+            expect(ip_option).to_be_visible(timeout=8000)
+            ip_option.click()
+            return
+
+        select_locator = dialog.get_by_placeholder("请选择")
+        if select_locator.count() > 0:
+            for i in range(select_locator.count()):
+                dropdown = select_locator.nth(i)
+                if dropdown.is_visible():
+                    dropdown.click()
+                    option = self.locator("li").filter(has_text=source_value).first
+                    expect(option).to_be_visible(timeout=8000)
+                    option.click()
+                    return
+
+        inputs = dialog.locator("input:not([disabled]):not([type='radio'])")
+        for i in range(inputs.count()):
+            input_box = inputs.nth(i)
+            if input_box.is_visible():
+                input_box.fill(source_value)
+                return
+
+        raise AssertionError(f"未找到可填写的SNAT源地址输入控件，source_type={source_type}, source_value={source_value}")
+
+    @submenu("NAT网关")
+    def snat_rule_create(self, nat_name, source_type="所有", source_value=None, desc=""):
+        """在 NAT 网关详情页创建 SNAT 规则。"""
+        self._nat_open_detail_tab(nat_name, "SNAT规则")
+
+        self.get_by_text("新建").click()
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"创建SNAT规则")).last
+
+        self._snat_fill_source(dialog, source_type, source_value)
+
+        if desc and dialog.locator("textarea").count() > 0:
+            dialog.locator("textarea").fill(desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def snat_rule_edit(self, nat_name, source_address, new_source_type=None, new_source_value=None, new_desc=None):
+        """在 NAT 网关详情页修改 SNAT 规则。"""
+        self._nat_open_detail_tab(nat_name, "SNAT规则")
+
+        self.click_action(source_address, "修改")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"SNAT规则")).last
+
+        if new_source_type is not None:
+            self._snat_fill_source(dialog, new_source_type, new_source_value)
+
+        if new_desc is not None and dialog.locator("textarea").count() > 0:
+            dialog.locator("textarea").fill(new_desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    def snat_rule_delete(self, source_addresses):
+        """删除 SNAT 规则，支持单个和批量操作（需已在 NAT 网关详情页的 SNAT 规则 Tab 下）。"""
+        if isinstance(source_addresses, list):
+            self.select_rows_by_names(source_addresses)
+            self.btn_batch_delete.click()
+        else:
+            self.click_action(str(source_addresses), "删除")
+
+        self.dialog_confirm.click()
         self.wait_for_page_ready()
 
     @submenu("NAT网关")
