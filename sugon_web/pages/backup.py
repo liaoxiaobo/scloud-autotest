@@ -789,7 +789,8 @@ class BackUpPage(BasePage):
         """
         self.backup_to_details(name)
         if tab == "详情":
-            sleep(2)
+            # 等待“基本信息”标题出现，确保详情页面已加载
+            self.locator(".detail-page-title").filter(has_text="基本信息").wait_for(state="visible", timeout=5000)
             infos = self.policy_to_assert_dict(policy_infos)
             self.logger.info(f"infos: {infos}")
             # 逐个验证信息项
@@ -808,6 +809,7 @@ class BackUpPage(BasePage):
                         self.logger.info(f"验证成功 {k}[{i}]: {policy_text}")
         else:
             self.get_by_role("tab", name=tab).click()
+            self.locator(".el-tab-pane:not([aria-hidden='true']) .el-table__row").first.wait_for(state="visible", timeout=5000)
             for k, v in policy_infos.items():
                 self.assert_list_contain(v, k)
 
@@ -1253,15 +1255,89 @@ class BackUpPage(BasePage):
 
     def _get_tree_item(self, server_name: str):
         """获取虚机的备份数据节点"""
-        tree_item = self.get_by_role("treeitem", name=re.compile(f".*{server_name}")).first
-        # 检查 class 属性是否包含 is-expanded
-        class_attr = tree_item.get_attribute("class")
-        if "is-expanded" not in class_attr:
-            tree_item.click()
-        else:
-            logger.debug(f"备份数据节点已展开，跳过点击: {server_name}")
-        # 获取所有子节点
-        return tree_item.locator(".el-tree-node__children .custom-tree-node")
+        # 改进定位器：确保定位到包含服务器名称的树节点
+        tree_item = self.get_by_role("treeitem", name=re.compile(rf".*{re.escape(server_name)}")).first
+        child_nodes = tree_item.locator(".el-tree-node__children .custom-tree-node")
+        self._ensure_tree_item_expanded(tree_item, child_nodes, server_name)
+        return child_nodes
+
+    def _ensure_tree_item_expanded(self, tree_item, child_nodes, server_name: str):
+        """确保树节点已展开并且子节点已经加载出来"""
+        for attempt in range(3):
+            class_attr = tree_item.get_attribute("class") or ""
+            child_count = child_nodes.count()
+            if "is-expanded" in class_attr and child_count > 0:
+                if attempt > 0:
+                    logger.info(f"备份数据节点展开成功: {server_name}，共找到 {child_count} 个子节点")
+                else:
+                    logger.debug(f"备份数据节点已展开，跳过点击: {server_name}")
+                return
+
+            if "is-expanded" in class_attr:
+                self.page.wait_for_timeout(500)
+                continue
+
+            expand_icon = tree_item.locator(".el-tree-node__expand-icon").first
+            expand_icon_class = expand_icon.get_attribute("class") or ""
+            if expand_icon.is_visible() and "is-leaf" not in expand_icon_class:
+                expand_icon.click(force=True)
+            else:
+                tree_item.locator(".el-tree-node__content").first.click(force=True)
+            self.page.wait_for_timeout(500)
+
+        logger.warning(f"备份数据节点可能未完全展开: {server_name}，当前找到 {child_nodes.count()} 个子节点")
+
+    def _is_tree_node_checked(self, child_node) -> bool:
+        """判断树节点是否已勾选"""
+        tree_item = child_node.locator("xpath=ancestor::*[@role='treeitem'][1]")
+        if (tree_item.get_attribute("aria-checked") or "").lower() == "true":
+            return True
+
+        checked_locators = [
+            tree_item.locator(".el-checkbox__input.is-checked").first,
+            tree_item.locator("label.is-checked").first,
+            tree_item.locator("input[type='checkbox']:checked").first,
+        ]
+        return any(locator.count() > 0 for locator in checked_locators)
+
+    def _click_tree_node_checkbox(self, child_node, node_text: str) -> bool:
+        """勾选树节点，兼容不同 DOM 结构"""
+        if self._is_tree_node_checked(child_node):
+            logger.info(f"备份数据节点已处于勾选状态: {node_text}")
+            return True
+
+        tree_item = child_node.locator("xpath=ancestor::*[@role='treeitem'][1]")
+        candidates = [
+            ("同级label", child_node.locator("xpath=../label").first),
+            ("同级checkbox", child_node.locator("xpath=../label//span[contains(@class,'el-checkbox__inner')]").first),
+            ("树节点label", tree_item.locator(".el-tree-node__content label.el-checkbox").first),
+            ("树节点checkbox", tree_item.locator(".el-tree-node__content .el-checkbox__inner").first),
+        ]
+
+        for name, checkbox in candidates:
+            if checkbox.count() == 0:
+                continue
+
+            try:
+                checkbox.scroll_into_view_if_needed()
+            except Exception:
+                pass
+
+            try:
+                if not checkbox.is_visible():
+                    continue
+                checkbox.click(force=True)
+                self.page.wait_for_timeout(300)
+            except Exception as exc:
+                logger.debug(f"勾选备份数据节点失败，定位器[{name}]，节点: {node_text}，原因: {exc}")
+                continue
+
+            if self._is_tree_node_checked(child_node):
+                logger.info(f"勾选备份数据节点成功，定位器[{name}]，节点: {node_text}")
+                return True
+
+        logger.warning(f"未能勾选备份数据节点: {node_text}")
+        return False
 
     def get_backup_data(self, server_name: str):
         """获取虚机的备份数据
@@ -1303,26 +1379,23 @@ class BackUpPage(BasePage):
 
             for i in range(count):
                 child_node = child_nodes.nth(i)
-                node_text = child_node.inner_text()
+                node_text = child_node.inner_text().split("\n")[0].strip()
                 logger.info(f"检查备份数据节点[{i}]: {node_text}")
-                checkbox = child_node.locator("xpath=preceding-sibling::label/span")
-
-                # 检查是否可以勾选
-                if not (checkbox.is_visible() and checkbox.is_enabled()):
-                    continue
 
                 # 检查是否匹配（使用完整文本）
                 if backup_data not in node_text:
                     continue
 
                 # 找到目标节点，点击勾选
-                checkbox.evaluate("el => el.click()")
-                logger.info(f"已选择备份数据节点: {node_text}")
-                break
+                if self._click_tree_node_checkbox(child_node, node_text):
+                    logger.info(f"已选择备份数据节点: {node_text}")
+                    break
+            else:
+                raise Exception(f"未找到可勾选的匹配备份数据: {backup_data}")
         else:
-            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").first
-            checkbox.evaluate("el => el.click()")
-            self.logger.info(f"已选择全部备份数据节点: {server_name}")
+            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").nth(1)
+            checkbox.click(force=True)
+            logger.info(f"已选择全部备份数据节点: {server_name}")
         time.sleep(1) # 等待删除按钮状态变为可点击
         self.locator(".cloud-button .cloud-button-btn").filter(has_text="删除").click()
         self.dialog_confirm.click()
@@ -1805,24 +1878,18 @@ class BackUpPage(BasePage):
 
         for i in indices:
             child_node = child_nodes.nth(i)
-            node_text = child_node.inner_text()
-            node_text = node_text.split("\n")[0]
+            # 处理节点文本，去除图标字符和空格
+            node_text = child_node.inner_text().split("\n")[0].strip()
             logger.info(f"检查备份数据节点[{i}]: {node_text}")
-            checkbox = child_node.locator("xpath=preceding-sibling::label/span")
-
-            # 检查是否可以勾选
-            if not (checkbox.is_visible() and checkbox.is_enabled()):
-                continue
 
             # 如果传入了backup_data，检查是否匹配
             if backup_data and backup_data not in node_text:
                 continue
 
             # 找到目标节点，点击勾选
-            checkbox.evaluate("el => el.click()")
-            # checkbox.click()
-            logger.info(f"选择{target_desc}备份数据，节点[{i}]: {node_text}")
-            return
+            if self._click_tree_node_checkbox(child_node, node_text):
+                logger.info(f"选择{target_desc}备份数据，节点[{i}]: {node_text}")
+                return
 
         # 没找到
         if backup_data:

@@ -871,6 +871,7 @@ def cleanup_resume_data(ecs_page, backup_page):
     if resume_tasks:
         try:
             with allure_step_log(f"清理恢复任务: {resume_tasks}"):
+                backup_page.goto_service('备份')
                 backup_page.delete_resume_task(resume_tasks)
         except Exception as e:
             logger.warning(f"清理恢复任务失败: {resume_tasks}, 错误: {e}")

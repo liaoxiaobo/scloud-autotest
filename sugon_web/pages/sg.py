@@ -131,7 +131,7 @@ class SgPage(BasePage):
                        remote_type="CIDR", ip_version="IPv4",
                        remote_sg=None, description=None,
                        protocol_type=None, protocol_code=None,
-                       port_type=None, port=None, cidr=None, from_list=False, detail_mode=False):
+                       port_type=None, port=None, cidr=None, from_list=True, detail_mode=False):
         """创建安全组规则
 
         Args:
@@ -152,6 +152,7 @@ class SgPage(BasePage):
 
         if from_list:
             # 在列表页直接点击“创建规则”
+            self.goto_service("安全组")
             self.click_action(sg_name, "创建规则")
         elif detail_mode:
             # 在详情页/页签中直接创建

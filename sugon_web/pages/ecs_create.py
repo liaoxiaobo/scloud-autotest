@@ -368,6 +368,7 @@ class EcsCreatePage(EcsPage):
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
+        self.page.wait_for_load_state("networkidle")
         self.get_by_text(self.storage_pool, exact=True).click()
         logger.info(f"已选择存储池: {self.storage_pool}")
 

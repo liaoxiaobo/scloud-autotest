@@ -104,6 +104,7 @@ class EcsPage(OpsPage):
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
+        self.page.wait_for_load_state("networkidle")
         self.get_by_text(self.storage_pool, exact=True).click()
         logger.info(f"已选择存储池: {self.storage_pool}")
 
@@ -1906,6 +1907,23 @@ class EcsPage(OpsPage):
         self.assert_popup_success(re.compile(r"规则操作成功|新建.*成功|操作成功"))
         self.wait_for_page_ready()
         logger.info(f"自定义安全组规则创建完成: {kwargs}")
+
+    def ecs_delete_custom_sg_rule(self, description=None):
+        """在详情页删除指定的自定义安全组规则
+        Args:
+            description: 规则描述，用于精确定位某条规则
+        """
+        if description:
+            # 使用描述查找对应行并点击删除
+            self.click_action(description, "删除")
+        else:
+            # 如果没提供描述，默认删除第一条规则（兼容原有逻辑）
+            active_pane = self.locator(".el-tab-pane:not([aria-hidden='true'])").first
+            target_row = active_pane.locator(".el-table__row").first
+            target_row.get_by_text("删除").click()
+
+        self.dialog_confirm.click()
+        logger.info(f"自定义安全组规则删除完成: description={description}")
 
     def ecs_get_custom_sg_rules(self, direction="入口"):
         """获取自定义安全组规则列表

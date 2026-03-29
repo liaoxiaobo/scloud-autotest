@@ -1,0 +1,104 @@
+slb:
+  test_slb_create_orthogonal:
+    - case_desc: "V1, 开启HA, 自动分配"
+      version: "V1"
+      ha_enable: true
+      ip_type: "自动分配"
+
+    - case_desc: "V1, 关闭HA, 快速选择"
+      version: "V1"
+      ha_enable: false
+      ip_type: "快速选择"
+      slb_desc: ""
+
+    - case_desc: "V1, 开启HA, 手动输入"
+      version: "V1"
+      ha_enable: true
+      ip_type: "手动输入"
+
+    - case_desc: "V2, 关闭HA, 自动分配"
+      version: "V2"
+      ha_enable: false
+      ip_type: "自动分配"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+      slb_desc: "SLB_Description_Boundary_Test_255_Characters_Start_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX_End"
+
+    - case_desc: "V2, 开启HA, 快速选择"
+      version: "V2"
+      ha_enable: true
+      ip_type: "快速选择"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+
+    - case_desc: "V2, 关闭HA, 手动输入"
+      version: "V2"
+      ha_enable: false
+      ip_type: "手动输入"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+
+  test_slb_listener_create:
+    - case_desc: "TCP, 轮询, 健康检查激活(详细配置)"
+      protocol: "TCP"
+      port: 80
+      pool_name: "pool-tcp"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "TCP"
+      health_max_retries: 3
+      health_timeout: 5
+      health_interval: 20
+
+    - case_desc: "UDP, 源IP, 健康检查禁用"
+      protocol: "UDP"
+      port: 53
+      pool_name: "pool-udp"
+      balance_method: "源IP"
+      health_check: false
+
+#    - case_desc: "HTTP, 加权轮询, 健康检查激活, 会话保持禁用"
+#      protocol: "HTTP"
+#      port: 8080
+#      pool_name: "pool-http"
+#      balance_method: "加权轮询"
+#      health_check: true
+#      health_type: "HTTP"
+#      session_persistence: false
+#      session_type: "SOURCE IP"
+#
+#    - case_desc: "HTTP, 轮询, 健康检查激活, 会话保持激活(SOURCE IP)"
+#      protocol: "HTTP"
+#      port: 80
+#      pool_name: "pool-http-cookie"
+#      balance_method: "轮询"
+#      health_check: true
+#      health_type: "HTTP"
+#      session_persistence: true
+#      session_type: "SOURCE IP"
+
+#    - case_desc: "HTTPS, 单向认证, 国际证书, HTTP重定向"
+#      protocol: "HTTPS"
+#      port: 443
+#      auth_mode: "单向认证"
+#      cert_type: "国际服务器证书"
+#      server_cert: "tst"
+#      http_redirect: true
+#      redirect_port: 80
+#      pool_name: "pool-https-1"
+#      balance_method: "轮询"
+#      health_check: true
+#      session_persistence: true
+#
+#    - case_desc: "HTTPS, 双向认证, 国际+国密双证书, CA证书"
+#      protocol: "HTTPS"
+#      port: 444
+#      auth_mode: "双向认证"
+#      cert_type: ["国际服务器证书", "国密服务器证书"]
+#      server_cert: {"国际": "tst", "国密": "tst-gm"}
+#      ca_cert: "ca-tst"
+#      http_redirect: false
+#      pool_name: "pool-https-2"
+#      balance_method: "源IP"
+#      health_check: true
+#      session_persistence: false

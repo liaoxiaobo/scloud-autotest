@@ -56,15 +56,60 @@ class TestAclBasic:
             acl_page.assert_list_contain(acl_name, exact_match=False)
             acl_page.acl_search_reset()
 
-    @allure.title("验证开启和关闭单条网络ACL")
-    def test_acl_enable_disable(self, acl_page, acl):
-        acl_name = acl
+    @allure.title("验证开启和关闭单条网络ACL及流量生效情况")
+    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
+    def test_acl_enable_disable(self, acl_vpc_vms, acl_page, ssh_vm):
+        env = acl_vpc_vms
+        acl_name = env["acl_name"]
         
-        with allure_step_log(f"步骤1: 尝试关闭已开启或默认创建的网络ACL"):
-            acl_page.acl_disable(acl_name)
+        vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
+        vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
+        
+        vm_a_ip = vm_a_info["ip"]
+        vm_b_ip = vm_b_info["ip"]
+        vm_a_mfip = vm_a_info["mfip"]
+        vm_b_mfip = vm_b_info["mfip"]
 
-        with allure_step_log(f"步骤2: 重新开启网络ACL"):
-            acl_page.acl_enable(acl_name)
+        try:
+            with allure_step_log("步骤1: ACL下新建入方向规则"):
+                acl_page.goto_service("网络ACL")
+                acl_page.acl_rule_create(
+                    acl_name=acl_name,
+                    source_ip=env["cidr1"],
+                    dest_ip=env["cidr2"],
+                    description="Allow Sub1 to Sub2"
+                )
+
+            with allure_step_log("步骤2: 生效验证: 虚机A 能ping通虚机B, 虚机B 不能ping通虚机A"):
+                ssh_vm.connect(vm_a_mfip)
+                ssh_vm.ping(vm_b_ip, connected=True, count=5)
+                ssh_vm.connect(vm_b_mfip)
+                ssh_vm.ping(vm_a_ip, connected=False, count=5)
+
+            with allure_step_log("步骤3: 关闭ACL,虚机A、B不能互通"):
+                acl_page.acl_disable(acl_name)
+                ssh_vm.connect(vm_a_mfip)
+                ssh_vm.ping(vm_b_ip, connected=False, count=5)
+                ssh_vm.connect(vm_b_mfip)
+                ssh_vm.ping(vm_a_ip, connected=False, count=5)
+
+            with allure_step_log("步骤4: 重新开启ACL"):
+                acl_page.acl_enable(acl_name)
+                ssh_vm.connect(vm_a_mfip)
+                ssh_vm.ping(vm_b_ip, connected=True, count=5)
+
+            with allure_step_log("步骤5: 验证重新开启后: 虚机B ping 虚机A,期望可以ping通"):
+                ssh_vm.connect(vm_b_mfip)
+                ssh_vm.ping(vm_a_ip, connected=True, count=5)
+
+        finally:
+            with allure_step_log("清理: 删除测试创建的入方向规则"):
+                try:
+                    acl_page.goto_service("网络ACL")
+                    acl_page.acl_rule_delete(acl_name, direction="入方向")
+                except Exception as e:
+                    from sugon_web.utils.logger import logger
+                    logger.warning(f"删除规则失败: {e}")
 
     @allure.title("验证批量开启、关闭和删除网络ACL功能")
     def test_acl_batch_operations(self, acl_page):
@@ -83,6 +128,17 @@ class TestAclBasic:
         with allure_step_log(f"步骤4: 批量删除测试临时生成的网络ACL"):
             acl_page.acl_batch_delete(acl_names)
             acl_page.assert_deleted(acl_names)
+
+    @allure.title("验证网络ACL关联/解关联子网功能")
+    def test_acl_subnet_management(self, acl_page, acl, vpc):
+        acl_name = acl
+        subnet_name = vpc["subnet_name"]
+
+        with allure_step_log(f"步骤1: 将网络ACL {acl_name} 关联至子网 {subnet_name}"):
+            acl_page.acl_associate_subnet(acl_name, subnets=[subnet_name])
+
+        with allure_step_log(f"步骤2: 从网络ACL {acl_name} 中解关联子网 {subnet_name}"):
+            acl_page.acl_disassociate_subnet(acl_name, subnets=[subnet_name])
 
     @allure.title("验证网络ACL关联/解关联子网功能")
     def test_acl_subnet_management(self, acl_page, acl, vpc):
