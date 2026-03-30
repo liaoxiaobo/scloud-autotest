@@ -5,10 +5,13 @@ import time
 from sugon_web.common.playwright import expect
 from sugon_web.pages.sg import SgPage
 from sugon_web.pages.network import VpcPage
+from sugon_web.pages.ecs import EcsPage
+from sugon_web.pages.ecs_create import EcsCreatePage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
 from sugon_web.pages.slb import SlbPage
+from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
 def eip(vpc_page, request):
@@ -200,7 +203,7 @@ def nat(vpc_page, vpc, request):
         except Exception as e:
             logger.warning(f"清理NAT网关时出错: {e}")
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def sg_page(page):
     """初始化虚拟私有云页面对象"""
     vpc_page = SgPage(page)
@@ -208,7 +211,7 @@ def sg_page(page):
     return vpc_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def qos_page(page):
     """初始化网络QoS页面对象"""
     vpc_page = VpcPage(page)
@@ -246,13 +249,16 @@ def qos(qos_page):
             logger.warning(f"清理网络QoS时出错: {e}")
 
 @pytest.fixture(scope="class")
-def sg(sg_page):
+def sg(browser_context, config):
     """
     创建并返回一个安全组名称，测试结束后自动清理
 
     Yields:
         str: 安全组名称，测试用例执行后自动清理
     """
+    page = _create_logged_in_page(browser_context, config)
+    sg_page = SgPage(page)
+    sg_page.goto_service('安全组')
     sg_name = random_data()
 
     # 创建安全组
@@ -267,10 +273,11 @@ def sg(sg_page):
         sg_page.goto_service("安全组")
         sg_page.sg_delete(sg_name)
         sg_page.assert_deleted(sg_name)
+    page.close()
 
 
 @pytest.fixture(scope="class")
-def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
+def sg_vm_setup(browser_context, config, vpc, request):
     """
     通用前置准备：分配公网IP、创建安全组、创建虚机并绑定IP
     支持参数化配置，可通过pytest.mark.parametrize传入参数：
@@ -278,6 +285,11 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
     - sg_count: 创建安全组数量，默认为2
     - fip_count: 分配并绑定公网IP的数量，默认为1
     """
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    sg_page = SgPage(page)
+    ecs_create_page = EcsCreatePage(page)
+
     params = getattr(request, 'param', {})
     vm_count = params.get('vm_count', 2)
     sg_count = params.get('sg_count', 2)
@@ -352,6 +364,7 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
         sg_page.goto_service("安全组")
         sg_page.sg_delete(sgs)
         sg_page.assert_deleted(sgs)
+        page.close()
 #
 #
 # @pytest.fixture(autouse=True)
@@ -374,7 +387,7 @@ def sg_vm_setup(ecs_page, sg_page, ecs_create_page, vpc, request):
 #         except Exception as e:
 #             logger.error(f"Cleanup fixture failed: {e}")
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def acl_page(page):
     """返回网络AclPage实例"""
     vpc_page = AclPage(page)
@@ -382,13 +395,14 @@ def acl_page(page):
     return vpc_page
 
 @pytest.fixture(scope="class")
-def acl(page):
+def acl(browser_context, config):
     """
     创建并返回一个网络ACL名称，测试结束后自动清理
     该fixture使用function scope的page会引发ScopeMismatch异常，
     如果您的项目中 sg_page 是 function scope，而 sg(sg_page) 声明了 class scope，说明项目做了特定处理。
     为安全起见，这里提供标准实现。
     """
+    page = _create_logged_in_page(browser_context, config)
     acl_page = AclPage(page)
     acl_name = f"acl-{random_data()}"
 
@@ -403,6 +417,7 @@ def acl(page):
     with allure_step_log(f"fixture后置: 清理网络ACL{acl_name}"):
         acl_page.goto_service("网络ACL")
         acl_page.acl_batch_delete([acl_name])
+    page.close()
 
 def _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params):
     """提取的预置环境核心逻辑，支持给不同scope的fixture复用"""
@@ -441,10 +456,10 @@ def _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params):
     # 放开安全组入方向所有流量 (IPv4 & IPv6)
     with allure_step_log(f"前置步骤3: 在安全组 {sg} 中放开所有入方向流量"):
         rules = sg_page.sg_get_all_rules(sg_name=sg)
-        
+
         has_ipv4 = any(r.get("方向", "") == "入口" and r.get("以太网类型", "") == "IPv4" for r in rules)
         has_ipv6 = any(r.get("方向", "") == "入口" and r.get("以太网类型", "") == "IPv6" for r in rules)
-        
+
         if not has_ipv4:
             sg_page.sg_rule_create(sg_name=sg, direction="入口", protocol="所有", ip_version="IPv4", remote_type="CIDR", from_list=False, detail_mode=True)
         if not has_ipv6:
@@ -515,13 +530,18 @@ def acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, request):
 
 
 @pytest.fixture(scope="class")
-def acl_in_out_bound_rules(acl, sg, vpc_page, sg_page, ecs_create_page):
+def acl_in_out_bound_rules(browser_context, config, acl, sg):
     """
     专门为具备复杂内外网规则场景定制的 class 级别夹具：
     固化了参数，确保该 fixture 在类中仅运行且缓存一次，不再需要用例进行 parametrize
     """
+    page = _create_logged_in_page(browser_context, config)
+    vpc_page = VpcPage(page)
+    sg_page = SgPage(page)
+    ecs_create_page = EcsCreatePage(page)
     params = {"vpc_acl": False, "sub2_acl": True, "vms_per_subnet": 2}
     yield from _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params)
+    page.close()
 
 def _do_clean_acl_inbound_rules(acl_page, acl_name):
     """执行清理ACL入方向规则的核心逻辑"""
@@ -543,10 +563,15 @@ def clean_acl_inbound_rules(acl_page, acl_vpc_vms):
     _do_clean_acl_inbound_rules(acl_page, acl_vpc_vms["acl_name"])
 
 @pytest.fixture(scope="class")
-def clean_acl_inbound_rules_4vms(acl_page, acl_in_out_bound_rules):
+def clean_acl_inbound_rules_4vms(browser_context, config, acl_in_out_bound_rules):
     """跟 acl_vpc_vms_4vms 配套使用的类级别清理，测试末尾一次性执行清理 (Class 级别)"""
     yield
-    _do_clean_acl_inbound_rules(acl_page, acl_in_out_bound_rules["acl_name"])
+    page = _create_logged_in_page(browser_context, config)
+    acl_page = AclPage(page)
+    try:
+        _do_clean_acl_inbound_rules(acl_page, acl_in_out_bound_rules["acl_name"])
+    finally:
+        page.close()
 
 def _do_clean_acl_outbound_rules(acl_page, acl_name):
     """执行清理ACL出方向规则的核心逻辑"""
@@ -562,12 +587,17 @@ def _do_clean_acl_outbound_rules(acl_page, acl_name):
             logger.warning(f"清理ACL出方向规则失败: {e}")
 
 @pytest.fixture(scope="class")
-def clean_acl_outbound_rules(acl_page, acl_in_out_bound_rules):
+def clean_acl_outbound_rules(browser_context, config, acl_in_out_bound_rules):
     """跟 acl_in_out_bound_rules 配套使用的类级别清理，测试末尾一次性执行出方向清理 (Class 级别)"""
     yield
-    _do_clean_acl_outbound_rules(acl_page, acl_in_out_bound_rules["acl_name"])
+    page = _create_logged_in_page(browser_context, config)
+    acl_page = AclPage(page)
+    try:
+        _do_clean_acl_outbound_rules(acl_page, acl_in_out_bound_rules["acl_name"])
+    finally:
+        page.close()
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def slb_page(page):
     """初始化负载均衡页面对象"""
     slb_page = SlbPage(page)
@@ -576,10 +606,10 @@ def slb_page(page):
 
 
 @pytest.fixture(scope="class")
-def slb(slb_page, vpc, request):
+def slb(browser_context, config, vpc, request):
     """
     创建并返回一个负载均衡名称，测试结束后自动清理
-    
+
     可通过 pytest.mark.parametrize("slb", [{"version": "V1", ...}], indirect=True) 传参：
     - version: "V1" 或 "V2" (默认 "V2")
     - ha_enable: True 或 False (默认 False)
@@ -588,6 +618,9 @@ def slb(slb_page, vpc, request):
     - cluster: V2 时的集群名称 (默认 "Autotest")
     - spec: V2 时的规格 (默认 "slb.d6.large 2核 4GiB 内网带宽")
     """
+    page = _create_logged_in_page(browser_context, config)
+    slb_page = SlbPage(page)
+    slb_page.goto_service("负载均衡")
     params = getattr(request, 'param', {})
     version = params.get('version', "V2")
     ha_enable = params.get('ha_enable', False)
@@ -631,3 +664,5 @@ def slb(slb_page, vpc, request):
             slb_page.assert_deleted(slb_name)
         except Exception as e:
             logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
+        finally:
+            page.close()

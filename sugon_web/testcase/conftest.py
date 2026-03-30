@@ -9,6 +9,7 @@ from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, load_data
+from sugon_web.conftest import _create_logged_in_page
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -32,7 +33,7 @@ def close_dialog_before_test(page):
 
     yield
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def login_page(page):
     """初始化登录页对象"""
     login_page = LoginPage(page)
@@ -40,7 +41,7 @@ def login_page(page):
     return login_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def evs_page(page):
     """初始化云硬盘页对象"""
     evs_page = EvsPage(page)
@@ -108,14 +109,14 @@ def volume(evs_page, request):
     evs_page.assert_deleted(volume["name"])
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ecs_page(page):
     """初始化弹性云服务器页对象"""
     ecs_page = EcsPage(page)
     ecs_page.goto_service('弹性云服务器')
     return ecs_page
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
@@ -123,7 +124,7 @@ def ops_page(page):
     return ops_page
 
 @pytest.fixture(scope="class")
-def vm(ecs_page, request):
+def vm(browser_context, config, request):
     """初始化弹性云服务器数据
 
     支持参数化配置，可通过pytest.mark.parametrize传入参数：
@@ -140,6 +141,10 @@ def vm(ecs_page, request):
     - 如果创建一台虚机：返回字典类型的虚机信息
     - 如果创建多台虚机：返回字典列表，每个字典包含一台虚机的信息
     """
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    ecs_page.goto_service('弹性云服务器')
+
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
@@ -230,6 +235,7 @@ def vm(ecs_page, request):
     ecs_page.ecs_remove(vm_names)
     ecs_page.ecs_delete(vm_names)
     ecs_page.assert_deleted(vm_names)
+    page.close()
 
 @pytest.fixture()
 def evss_policy(evs_page):
@@ -493,7 +499,10 @@ def pool(ops_page, vm, request):
         logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
 
 @pytest.fixture(scope="class")
-def labels(ecs_page, request):
+def labels(browser_context, config, request):
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    ecs_page.goto_service('弹性云服务器')
     params = getattr(request, 'param', {})
     count = params.get('count', 1)  # 默认创建1个标签
 
@@ -521,6 +530,8 @@ def labels(ecs_page, request):
             logger.info(f"标签清理完成: {label_names}")
         except Exception as e:
             logger.warning(f"清理标签时出错: {e}")
+        finally:
+            page.close()
 
 
 @pytest.fixture()
@@ -543,7 +554,7 @@ def affinity(ecs_page, request):
     yield label_names
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def vpc_page(page):
     """初始化虚拟私有云页面对象"""
     vpc_page = VpcPage(page)
@@ -552,7 +563,7 @@ def vpc_page(page):
 
 
 @pytest.fixture(scope="class")
-def vpc(vpc_page, request):
+def vpc(browser_context, config, request):
     """
     创建并返回一个VPC资源数据，测试结束后自动清理
 
@@ -583,7 +594,9 @@ def vpc(vpc_page, request):
     Yields:
         dict: VPC信息字典，测试用例执行后自动清理
     """
-
+    page = _create_logged_in_page(browser_context, config)
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service('虚拟私有云')
 
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
@@ -620,10 +633,11 @@ def vpc(vpc_page, request):
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
+    page.close()
 
 
 from sugon_web.pages.ecs_create import EcsCreatePage
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ecs_create_page(page):
     """初始化云硬盘页对象"""
     ecs_create_page = EcsCreatePage(page)
@@ -631,7 +645,7 @@ def ecs_create_page(page):
     return ecs_create_page
 
 from sugon_web.pages.backup import BackUpPage
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def backup_page(page):
     """初始化备份任务页对象"""
 
@@ -640,7 +654,7 @@ def backup_page(page):
     return backup_page
 
 @pytest.fixture(scope="class")
-def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
+def vm_backup(browser_context, config, ssh_vm, request):
     """
     创建并返回虚拟机备份数据，支持批量创建，测试结束后自动清理
 
@@ -648,6 +662,11 @@ def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
         request.param: 可选参数
             - count: 创建虚机数量，默认为1
     """
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    ecs_create_page = EcsCreatePage(page)
+    ecs_page.goto_service('弹性云服务器')
+
     params = getattr(request, 'param', {})
     vm_count = params.get('count', 1)
 
@@ -738,10 +757,11 @@ def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
         ecs_page.ecs_remove(vm_names)
         ecs_page.ecs_delete(vm_names, delete_volume=True, release_ip=True)
         ecs_page.assert_deleted(vm_names)
+        page.close()
 
 
 @pytest.fixture(scope="class")
-def backup_task(backup_page, vm_backup, request):
+def backup_task(browser_context, config, vm_backup, request):
     """
     创建并返回备份任务数据，支持批量创建，测试结束后自动清理
 
@@ -753,6 +773,10 @@ def backup_task(backup_page, vm_backup, request):
             - task_count: 创建任务数量，默认为1，不能超过虚机数量
             - policy: 备份策略配置
     """
+    page = _create_logged_in_page(browser_context, config)
+    backup_page = BackUpPage(page)
+    backup_page.goto_service('备份')
+
     params = getattr(request, 'param', {})
     task_count = params.get('task_count', 1)  # 默认创建1个任务
 
@@ -820,6 +844,7 @@ def backup_task(backup_page, vm_backup, request):
                 backup_page.backup_data_delete(vm_name)
         except Exception as e:
             logger.warning(f'清理 {vm_name} 备份数据失败, 错误: {e}')
+    page.close()
 
 
 @pytest.fixture
@@ -891,7 +916,7 @@ def cleanup_resume_data(ecs_page, backup_page):
 
 
 @pytest.fixture(scope="class")
-def backup_with_full_backup(backup_task, backup_page, ssh_vm, ecs_page):
+def backup_with_full_backup(browser_context, config, backup_task, ssh_vm):
     """
     执行全量备份并返回备份数据的 fixture
 
@@ -903,6 +928,10 @@ def backup_with_full_backup(backup_task, backup_page, ssh_vm, ecs_page):
             - source_md5: 原始数据MD5
             - backup_data: 备份数据标识列表
     """
+    page = _create_logged_in_page(browser_context, config)
+    backup_page = BackUpPage(page)
+    backup_page.goto_service('备份')
+
     task_name = backup_task.get("task_name")
     source_vm = backup_task.get("server_names")
     source_mfip = backup_task.get("source_mfip")
@@ -927,6 +956,7 @@ def backup_with_full_backup(backup_task, backup_page, ssh_vm, ecs_page):
         "backup_data": backup_data,
         "original_arch": original_arch,
     }
+    page.close()
 @pytest.fixture(scope="function")
 def test_context(request):
     """用于在测试用例各步骤间传递数据的上下文"""

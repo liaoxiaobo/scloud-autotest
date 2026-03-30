@@ -1,6 +1,5 @@
 import allure
 import pytest
-
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.mysql import MySQLPage
 from sugon_web.pages.doris import DorisPage
@@ -10,6 +9,7 @@ from sugon_web.pages.redis import RedisPage
 from sugon_web.pages.kafka import KafkaPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
+from sugon_web.conftest import _create_logged_in_page
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -27,7 +27,7 @@ def close_dialog_before_test(page):
 
     yield
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def login_page(page):
     """初始化登录页对象"""
     login_page = LoginPage(page)
@@ -36,7 +36,7 @@ def login_page(page):
 
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def mysql_page(page):
     """初始化MySQL实例管理页面"""
     mysql_page = MySQLPage(page)
@@ -44,7 +44,7 @@ def mysql_page(page):
     return mysql_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def doris_page(page):
     """初始化Doris实例管理页面"""
     doris_page = DorisPage(page)
@@ -52,7 +52,7 @@ def doris_page(page):
     return doris_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def pgsql_page(page):
     """初始化PostgreSQL实例管理页面"""
     pgsql_page = PgSQLPage(page)
@@ -60,7 +60,7 @@ def pgsql_page(page):
     return pgsql_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def mongodb_page(page):
     """初始化MongoDB实例管理页面"""
     mongodb_page = MongoDBPage(page)
@@ -68,7 +68,7 @@ def mongodb_page(page):
     return mongodb_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def redis_page(page):
     """初始化Redis实例管理页面"""
     redis_page = RedisPage(page)
@@ -76,7 +76,7 @@ def redis_page(page):
     return redis_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def kafka_page(page):
     """初始化Kafka实例管理页面"""
     kafka_page = KafkaPage(page)
@@ -85,8 +85,11 @@ def kafka_page(page):
 
 
 @pytest.fixture(scope="class")
-def doris(doris_page):
+def doris(browser_context, config):
     """创建一个供整个测试类使用的Doris实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    doris_page = DorisPage(page)
+    doris_page.goto_service('数据仓库 Doris')
     name = f"doris-{random_data()}"
     admin_password = "admin1234@sugon"  # Doris默认密码
     db_name = f"autodb_{random_string(k=5)}"
@@ -124,10 +127,15 @@ def doris(doris_page):
         logger.info(f"清理共享Doris实例: {name}")
         doris_page.delete_instance(data["name"])
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def mysql(mysql_page):
+def mysql(browser_context, config):
     """创建一个供整个测试类使用的MySQL实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    mysql_page = MySQLPage(page)
+    mysql_page.goto_service('AnhanDB(for MySQL)')
     name = random_data()
     type = "集群"
     db_name = f"autodb-{random_string(k=5)}"
@@ -158,10 +166,15 @@ def mysql(mysql_page):
         # 在删除前，确保页面在实例列表页，防止在详情页删除失败
         mysql_page.delete_instance(data["name"])
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def pgsql(pgsql_page):
+def pgsql(browser_context, config):
     """创建一个供整个测试类使用的PostgreSQL实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    pgsql_page = PgSQLPage(page)
+    pgsql_page.goto_service('AnhanDB(for PostgreSQL)')
     name = f"pgsql-{random_data()}"
     instance_type = "单机"
     user_name = f"user_{random_string(k=5)}"
@@ -184,9 +197,14 @@ def pgsql(pgsql_page):
         logger.info(f"清理共享PostgreSQL实例: {name}")
         pgsql_page.delete_instance(data["name"])
 
+    page.close()
+
 @pytest.fixture(scope="class")
-def mongodb(mongodb_page):
+def mongodb(browser_context, config):
     """创建一个供整个测试类使用的MongoDB实例对象（副本集和分片集群）"""
+    page = _create_logged_in_page(browser_context, config)
+    mongodb_page = MongoDBPage(page)
+    mongodb_page.goto_service('AnhanDB(for MongoDB)')
     name = f"mongo-{random_data()}"
     name1 = f"mongo-shard-{random_data()}"
     root_password = "Admin1234#sugon"
@@ -212,10 +230,15 @@ def mongodb(mongodb_page):
         mongodb_page.delete_instance(name1)
         mongodb_page.delete_instance(name)
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def redis(redis_page):
+def redis(browser_context, config):
     """创建一个供整个测试类使用的Redis实例对象（包含一个单机用于升级测试，一个集群用于基础功能测试）"""
+    page = _create_logged_in_page(browser_context, config)
+    redis_page = RedisPage(page)
+    redis_page.goto_service('AnhanDB(for Redis)')
     name = f"redis-{random_data()}"
     name1 = f"redis-cluster-{random_data()}"
     data = {"name": name, "name1": name1, "password": "admin1234@sugon"}
@@ -238,10 +261,15 @@ def redis(redis_page):
         redis_page.delete_instance(name1)
         redis_page.delete_instance(name)
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def kafka(kafka_page):
+def kafka(browser_context, config):
     """创建一个供整个测试类使用的Kafka实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    kafka_page = KafkaPage(page)
+    kafka_page.goto_service('分布式消息服务 Kafka')
     name = f"kafka-{random_data()}"
     data = {"name": name}
     logger.info(f"为测试类创建共享Kafka实例: {name}")
@@ -256,3 +284,5 @@ def kafka(kafka_page):
     with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享Kafka实例: {name}")
         kafka_page.delete_instance(name)
+
+    page.close()
