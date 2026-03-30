@@ -1,5 +1,6 @@
 import threading
 import time
+import shlex
 from paramiko import SSHClient, AutoAddPolicy, RSAKey, SSHException, AuthenticationException, ChannelException, Ed25519Key
 from sugon_web.config.config import Config
 from sugon_web.utils.util import get_file_abspath
@@ -190,6 +191,53 @@ class SSH:
         if len(result) == 1:
             return result['stdout']
         return result
+
+    def wait_resource_deleted(self, names, check_command, timeout=600, interval=5):
+        """
+        轮询等待资源从后端彻底删除，支持单个或多个资源名称。
+
+        :param names: 资源名称（字符串）或资源名称列表（列表）
+        :param check_command: 查询资源的命令，如 "cinder list"、"gova list"
+        :param timeout: 每个资源的超时时间（秒）
+        :param interval: 轮询间隔时间（秒）
+        """
+        resource_names = [names] if isinstance(names, str) else list(names)
+
+        for resource_name in resource_names:
+            end_time = time.time() + timeout
+            grep_command = f"{check_command} | grep -F -- {shlex.quote(resource_name)}"
+            logger.info(f"开始轮询检查资源是否已删除: {resource_name}")
+
+            while time.time() < end_time:
+                result = self.run(grep_command)
+                if result == "":
+                    logger.info(f"资源已成功删除: {resource_name}")
+                    break
+
+                logger.debug(f"资源仍存在，{interval} 秒后重试: {resource_name}")
+                time.sleep(interval)
+            else:
+                final_result = self.run(grep_command)
+                if final_result == "":
+                    logger.info(f"资源在最后一次检查时已删除: {resource_name}")
+                else:
+                    raise AssertionError(
+                        f"超时错误：资源 '{resource_name}' 在 {timeout} 秒内未能从后端删除。\n"
+                        f"检查命令: {check_command}\n"
+                        f"当前结果:\n{final_result}"
+                    )
+
+    def wait_volume_deleted(self, names, timeout=600, interval=5):
+        """轮询等待云硬盘从 Cinder 后端彻底删除。"""
+        self.wait_resource_deleted(names, check_command="cinder list", timeout=timeout, interval=interval)
+
+    def wait_vm_deleted(self, names, timeout=600, interval=5):
+        """轮询等待虚机从 Gova 后端彻底删除。"""
+        self.wait_resource_deleted(names, check_command="gova list", timeout=timeout, interval=interval)
+
+    def wait_image_deleted(self, names, timeout=600, interval=5):
+        """轮询等待镜像从 Glance 后端彻底删除。"""
+        self.wait_resource_deleted(names, check_command="glance image-list", timeout=timeout, interval=interval)
 
     def get_file(self, remotepath, localpath):
         """

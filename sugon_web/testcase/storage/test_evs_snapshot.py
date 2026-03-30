@@ -104,7 +104,7 @@ class TestEVSS:
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
-            assert ssh_host.run(f"cinder list| grep {name}") == ""
+            ssh_host.wait_volume_deleted(name)
 
     @allure.title("快照策略-创建&删除")
     @pytest.mark.parametrize("params", load_data('test_create_policies'))

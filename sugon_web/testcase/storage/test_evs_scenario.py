@@ -83,7 +83,7 @@ class TestEVSScenario:
             evs_page.evs_remove(volume_b_name)
             evs_page.evs_delete(volume_b_name)
             evs_page.assert_deleted(volume_b_name)
-            assert ssh_host.run(f"cinder list| grep {volume_b_name}") == ""
+            ssh_host.wait_volume_deleted(volume_b_name)
 
             # 删除快照
             evs_page.goto_submenu("快照")
@@ -156,7 +156,7 @@ class TestEVSScenario:
             evs_page.evs_remove(volume_b_name)
             evs_page.evs_delete(volume_b_name)
             evs_page.assert_deleted(volume_b_name)
-            assert ssh_host.run(f"cinder list| grep {volume_b_name}") == ""
+            ssh_host.wait_volume_deleted(volume_b_name)
 
             # 卸载云硬盘A
             ssh_vm.run(f"umount /dev/{disk_name}")

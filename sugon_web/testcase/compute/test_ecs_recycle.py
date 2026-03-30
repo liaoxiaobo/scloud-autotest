@@ -71,7 +71,6 @@ class TestECSRecycle:
             ecs_page.ecs_create(name=name)
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
-            ecs_id = ecs_page.get_row_data(name).get("名称/ID").split(':')[1]
 
         with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
@@ -80,7 +79,7 @@ class TestECSRecycle:
         with allure_step_log("步骤3: 验证删除结果"):
             ecs_page.ecs_recover_delete(name)
             ecs_page.assert_deleted(name)
-            assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
+            ssh_host.wait_vm_deleted(name)
 
 
     @allure.title("批量删除弹性云服务器")
@@ -121,9 +120,8 @@ class TestECSRecycle:
         with allure_step_log("步骤4: 验证删除结果"):
             ecs_page.wait_for_page_ready()
             # 验证弹性云服务器已彻底删除
-            for name, ecs_id in zip(ecs_names, ids):
-                ecs_page.assert_deleted(name)
-                assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
+            ecs_page.assert_deleted(ecs_names)
+            ssh_host.wait_vm_deleted(ecs_names)
 
     @only_stor('xstor')
     @allure.title("安全删除功能验证")
@@ -135,7 +133,6 @@ class TestECSRecycle:
             ecs_page.ecs_create(name=name)
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
-            ecs_id = ecs_page.get_row_data(name).get("名称/ID").split(':')[1]
 
         with allure_step_log(f"步骤2: 删除云服务器{name}"):
             ecs_page.ecs_remove(name)
@@ -152,4 +149,4 @@ class TestECSRecycle:
         with allure_step_log("步骤5: 验证资源已完全删除"):
             # 验证资源已完全删除
             ecs_page.assert_deleted(name)
-            assert ssh_host.run(f"gova show {ecs_id}").count("不存在或已删除"), f"删除后云服务器{name}仍存在"
+            ssh_host.wait_vm_deleted(name)

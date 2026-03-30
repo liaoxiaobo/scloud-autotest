@@ -28,8 +28,7 @@ class TestEVSBasic:
                 volume_names.append(f"{base_name}-{i}")
 
             # 验证所有云硬盘创建成功
-            for name in volume_names:
-                evs_page.assert_status(name, status="可用")
+            evs_page.assert_status(volume_names, status="可用")
 
         with allure_step_log("步骤2: 批量回收云硬盘"):
             evs_page.evs_remove(volume_names)
@@ -40,9 +39,8 @@ class TestEVSBasic:
             # evs_page.assert_popup_success()
 
         # 验证云硬盘已彻底删除
-        for name in volume_names:
-            evs_page.assert_deleted(name)
-        assert ssh_host.run(f"cinder list| grep {base_name}") == ""
+        evs_page.assert_deleted(volume_names)
+        ssh_host.wait_volume_deleted(volume_names)
 
     @allure.title("云硬盘-列表页搜索&重置")
     def test_volume_search(self, evs_page, volume):
@@ -84,7 +82,7 @@ class TestEVSBasic:
             evs_page.evs_remove(clone_name)
             evs_page.evs_delete(clone_name)
             evs_page.assert_deleted(clone_name)
-            assert ssh_host.run(f"cinder list| grep {clone_name}") == ""
+            ssh_host.wait_volume_deleted(clone_name)
 
     @allure.title("云硬盘-扩容")
     @pytest.mark.parametrize("params", load_data('test_volume_expand'))
@@ -172,7 +170,7 @@ class TestEVSBasic:
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
-            assert ssh_host.run(f"cinder list| grep {name}") == ""
+            ssh_host.wait_volume_deleted(name)
 
     @allure.title("云硬盘-重置状态")
     def test_volume_reset_status(self, evs_page, volume, ssh_host):
@@ -249,4 +247,4 @@ class TestEVSBasic:
         with allure_step_log("步骤3: 安全删除云硬盘"):
             evs_page.evs_delete(name, secure=True)
             evs_page.assert_deleted(name)
-            assert ssh_host.run(f"cinder list| grep {name}") == ""
+            ssh_host.wait_volume_deleted(name)

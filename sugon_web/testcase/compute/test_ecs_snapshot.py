@@ -41,7 +41,7 @@ class TestECSS:
 
         with allure_step_log("步骤4: 验证快照已删除"):
             ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
-            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+            ssh_host.wait_image_deleted(snapshot_name)
 
     @allure.title("验证批量删除快照")
     def test_ecs_batch_snapshot(self, ecs_page, vm, ssh_host):
@@ -73,7 +73,7 @@ class TestECSS:
 
         with allure_step_log("步骤4: 验证所有快照已删除"):
             ecs_page.assert_deleted(snapshot_names, refresh=True)
-            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+            ssh_host.wait_image_deleted(snapshot_names)
 
     @allure.title("验证修改快照")
     @pytest.mark.parametrize("params", load_data('test_modify'))
