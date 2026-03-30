@@ -4,10 +4,41 @@ import random
 import time
 from sugon_web.common.playwright import expect
 from sugon_web.pages.sg import SgPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
 from sugon_web.pages.slb import SlbPage
+
+@pytest.fixture(scope="function")
+def eip(vpc_page, request):
+    """创建并返回弹性公网IP，测试结束后自动清理"""
+    params = getattr(request, 'param', {})
+    count = params.get('count', 1)
+    pool = params.get('pool', 'public_net(基础版)')
+    method = params.get('method', '快速选择')
+    ip = params.get('ip')
+
+    with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
+        created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+
+    yield created_ips[0] if count == 1 else created_ips
+
+    with allure_step_log(f"Teardown: 释放弹性公网IP {created_ips}"):
+        if not created_ips:
+            return
+        try:
+            current_ips = created_ips if isinstance(created_ips, list) else [created_ips]
+            for current_ip in current_ips:
+                vpc_page.search(current_ip)
+                if vpc_page.get_eip_list():
+                    vpc_page.eip_release(current_ip)
+                    vpc_page.assert_deleted(current_ip)
+                vpc_page.btn_reset.click()
+                vpc_page.wait_for_page_ready()
+        except Exception as e:
+            logger.warning(f"清理弹性公网IP时出错: {e}")
+
 
 @pytest.fixture(scope="function")
 def vip(vpc_page, vpc):
@@ -175,6 +206,44 @@ def sg_page(page):
     vpc_page = SgPage(page)
     vpc_page.goto_service('安全组')
     return vpc_page
+
+
+@pytest.fixture(scope="class")
+def qos_page(page):
+    """初始化网络QoS页面对象"""
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service("网络QoS")
+    return vpc_page
+
+
+@pytest.fixture(scope="function")
+def qos(qos_page):
+    """创建并返回一个网络QoS，测试结束后自动清理"""
+    qos_info = {
+        "name": f"qos-{random_data()}",
+        "send_rate": 10,
+        "recv_rate": 20,
+        "desc": "网络QoS fixture 自动创建",
+    }
+
+    with allure_step_log("Setup: 创建网络QoS"):
+        qos_page.qos_create(
+            name=qos_info["name"],
+            send_rate=qos_info["send_rate"],
+            recv_rate=qos_info["recv_rate"],
+            desc=qos_info["desc"]
+        )
+        qos_page.assert_popup_success()
+
+    yield qos_info
+
+    with allure_step_log(f"Teardown: 删除网络QoS {qos_info['name']}"):
+        try:
+            qos_page.goto_service("网络QoS")
+            qos_page.qos_delete(qos_info["name"])
+            qos_page.assert_deleted(qos_info["name"])
+        except Exception as e:
+            logger.warning(f"清理网络QoS时出错: {e}")
 
 @pytest.fixture(scope="class")
 def sg(sg_page):

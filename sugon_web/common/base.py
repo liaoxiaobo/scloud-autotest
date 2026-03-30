@@ -100,6 +100,7 @@ class BasePage(Playwright):
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
+            self.get_by_role("textbox", name="搜索（公网IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
             self.get_by_role("textbox", name="搜索（快照名称）"),
             self.locator(".input-with-select > .el-input__inner"),

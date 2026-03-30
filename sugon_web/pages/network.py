@@ -557,6 +557,152 @@ class VpcPage(BasePage):
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
 
+    def _get_eip_list(self):
+        """获取当前列表中的弹性公网IP"""
+        raw_values = self.get_column_data("IP地址")
+        eips = []
+        for value in raw_values:
+            match = re.search(r"((?:\d{1,3}\.){3}\d{1,3})(?!\.)", value)
+            if match:
+                eips.append(match.group())
+        return eips
+
+    def _open_eip_allocate_dialog(self):
+        """打开分配公网IP弹窗并返回弹窗定位器。"""
+        self.get_by_text("分配公网IP").first.click()
+        dialog = self.get_by_label("分配公网IP")
+        expect(dialog).to_be_visible(timeout=8000)
+        return dialog
+
+    def _get_eip_allocate_ip_options(self, dialog):
+        """获取分配公网IP弹窗中的可选IP列表。"""
+        form_item = dialog.locator(".el-form-item").filter(has_text="IP").last
+        ip_select = form_item.locator(".el-input").first
+        expect(ip_select).to_be_visible(timeout=8000)
+        ip_select.click()
+
+        visible_ips = self.locator("body *").evaluate_all(
+            """
+            (elements) => {
+                const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const result = [];
+                for (const el of elements) {
+                    if (!isVisible(el)) continue;
+                    const text = (el.textContent || '').trim();
+                    if (/^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(text) && !result.includes(text)) {
+                        result.push(text);
+                    }
+                }
+                return result;
+            }
+            """
+        )
+        current_ips = set(self._get_eip_list())
+        candidate_ips = [ip for ip in visible_ips if ip not in current_ips]
+        return candidate_ips or visible_ips
+
+    @submenu("弹性公网IPv4")
+    def get_eip_list(self):
+        """获取当前列表中的弹性公网IP"""
+        return self._get_eip_list()
+
+    @submenu("弹性公网IPv4")
+    def eip_allocate(self, pool: str = "public_net(基础版)", count: int = 1, method: str = "快速选择", ip: str = None):
+        """分配弹性公网IP并返回本次新分配的IP列表
+
+        Args:
+            pool: 资源池名称
+            count: 分配数量，当前仅支持 1
+            method: 分配模式，支持“快速选择”“手动输入”
+            ip: 指定分配的公网IP，快速选择和手动输入模式均可传入
+        """
+        dialog = self._open_eip_allocate_dialog()
+
+        dialog.get_by_placeholder("请选择").first.click()
+        self.locator("li").filter(has_text=pool).click()
+
+        dialog.get_by_placeholder("请选择").nth(1).click()
+        self.locator("li").filter(has_text=re.compile(rf"^{count}$")).last.click()
+
+        selected_ips = []
+        if count == 1:
+            if method == "快速选择":
+                available_ips = self._get_eip_allocate_ip_options(dialog)
+                assert available_ips, "快速选择模式下未获取到可选公网IP"
+                selected_ip = ip or available_ips[0]
+                if ip is None:
+                    self.page.keyboard.press("ArrowDown")
+                    self.page.keyboard.press("Enter")
+                else:
+                    option_locator = self.get_by_text(selected_ip, exact=True)
+                    for i in range(option_locator.count()):
+                        option = option_locator.nth(i)
+                        if option.is_visible():
+                            option.click(force=True)
+                            break
+                    else:
+                        raise AssertionError(f"快速选择模式下未找到可点击的公网IP选项: {selected_ip}")
+                selected_ips = [selected_ip]
+            elif method == "手动输入":
+                if ip is None:
+                    dialog.get_by_text("快速选择", exact=True).click()
+                    available_ips = self._get_eip_allocate_ip_options(dialog)
+                    assert available_ips, "手动输入模式下未获取到可输入的公网IP"
+                    ip = available_ips[0]
+                    dialog.get_by_text("手动输入", exact=True).click()
+
+                dialog.get_by_text("手动输入", exact=True).click()
+                ip_loc = dialog.locator(".el-form-item").filter(has_text=re.compile(r"^\*?\s*IP")).get_by_role("textbox")
+                ip_loc.clear()
+                ip_loc.fill(ip)
+                selected_ips = [ip]
+            else:
+                raise AssertionError(f"不支持的分配模式: {method}")
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+        expect(dialog).not_to_be_visible(timeout=10000)
+
+        if selected_ips:
+            return selected_ips
+
+        raise AssertionError("当前仅支持数量为1的弹性公网IP精确分配场景")
+
+    @submenu("弹性公网IPv4")
+    def eip_release(self, ips):
+        """释放弹性公网IP，支持单个和批量操作
+
+        Args:
+            ips: 单个公网IP字符串或公网IP列表
+        """
+        if isinstance(ips, str):
+            for action_name in ("释放公网IP", "释放"):
+                try:
+                    self.click_action(ips, action_name)
+                    break
+                except Exception:
+                    continue
+            else:
+                raise AssertionError(f"未找到公网IP {ips} 的释放操作")
+        else:
+            self.select_rows_by_names(ips)
+            batch_buttons = [
+                self.get_by_text("批量释放公网IP", exact=True),
+                self.get_by_text("批量释放公网IP").first,
+            ]
+            for btn in batch_buttons:
+                try:
+                    if btn.is_visible() and btn.is_enabled():
+                        btn.click()
+                        break
+                except Exception:
+                    continue
+            else:
+                raise AssertionError("未找到'批量释放公网IP'按钮")
+
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
                     quick_select=True, mac_address: str = None, port_security: bool = False):
         """
@@ -1033,6 +1179,181 @@ class VpcPage(BasePage):
         self.get_by_label("创建DNAT规则").get_by_text("确定").click()
         self.wait_for_page_ready()
 
+    def _nat_open_detail_tab(self, nat_name, tab_name):
+        """进入 NAT 网关详情并切换到指定 Tab。"""
+        self.get_by_role("cell", name=nat_name).locator("a").click()
+        self.wait_for_page_ready()
+        self.get_by_role("tab", name=tab_name).click()
+        self.wait_for_page_ready()
+
+    def _select_form_option_by_label(self, form_root, label_pattern, option_text=None):
+        """在表单中按标签选择下拉框选项，未指定 option_text 时默认选择第一个可用项。"""
+        form_item = form_root.locator(".el-form-item").filter(
+            has=self.locator("label").filter(has_text=label_pattern)
+        )
+        dropdown = form_item.get_by_placeholder("请选择")
+        dropdown.click()
+
+        if option_text:
+            option = self.locator("li").filter(has_text=option_text).first
+            expect(option).to_be_visible(timeout=8000)
+            option.click()
+            return option_text
+
+        first_option = self.locator(".el-select-dropdown:visible li.el-select-dropdown__item").first
+        expect(first_option).to_be_visible(timeout=8000)
+        selected_text = first_option.text_content().strip()
+        first_option.click()
+        return selected_text
+
+    def _snat_fill_source(self, dialog, source_type, source_value=None):
+        """填写 SNAT 规则源地址。"""
+        dialog.get_by_role("radio", name=source_type).click()
+
+        if source_value is None:
+            return
+
+        if source_type == "私网IP" and isinstance(source_value, dict):
+            dropdowns = dialog.get_by_placeholder("请选择")
+            visible_dropdowns = [dropdowns.nth(i) for i in range(dropdowns.count()) if dropdowns.nth(i).is_visible()]
+
+            if len(visible_dropdowns) < 2:
+                raise AssertionError("私网IP类型未找到足够的下拉框，期望至少包含子网和私网IP两个选择框")
+
+            visible_dropdowns[0].click()
+            subnet_option = self.locator("li").filter(has_text=source_value["subnet_cidr"]).first
+            expect(subnet_option).to_be_visible(timeout=8000)
+            subnet_option.click()
+
+            visible_dropdowns[1].click()
+            ip_option = self.locator("li").filter(has_text=source_value["private_ip"]).first
+            expect(ip_option).to_be_visible(timeout=8000)
+            ip_option.click()
+            return
+
+        select_locator = dialog.get_by_placeholder("请选择")
+        if select_locator.count() > 0:
+            for i in range(select_locator.count()):
+                dropdown = select_locator.nth(i)
+                if dropdown.is_visible():
+                    dropdown.click()
+                    option = self.locator("li").filter(has_text=source_value).first
+                    expect(option).to_be_visible(timeout=8000)
+                    option.click()
+                    return
+
+        inputs = dialog.locator("input:not([disabled]):not([type='radio'])")
+        for i in range(inputs.count()):
+            input_box = inputs.nth(i)
+            if input_box.is_visible():
+                input_box.fill(source_value)
+                return
+
+        raise AssertionError(f"未找到可填写的SNAT源地址输入控件，source_type={source_type}, source_value={source_value}")
+
+    @submenu("NAT网关")
+    def snat_rule_create(self, nat_name, source_type="所有", source_value=None, desc=""):
+        """在 NAT 网关详情页创建 SNAT 规则。"""
+        self._nat_open_detail_tab(nat_name, "SNAT规则")
+
+        self.get_by_text("新建").click()
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"创建SNAT规则")).last
+
+        self._snat_fill_source(dialog, source_type, source_value)
+
+        if desc and dialog.locator("textarea").count() > 0:
+            dialog.locator("textarea").fill(desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def snat_rule_edit(self, nat_name, source_address, new_source_type=None, new_source_value=None, new_desc=None):
+        """在 NAT 网关详情页修改 SNAT 规则。"""
+        self._nat_open_detail_tab(nat_name, "SNAT规则")
+
+        self.click_action(source_address, "修改")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"SNAT规则")).last
+
+        if new_source_type is not None:
+            self._snat_fill_source(dialog, new_source_type, new_source_value)
+
+        if new_desc is not None and dialog.locator("textarea").count() > 0:
+            dialog.locator("textarea").fill(new_desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    def snat_rule_delete(self, source_addresses):
+        """删除 SNAT 规则，支持单个和批量操作（需已在 NAT 网关详情页的 SNAT 规则 Tab 下）。"""
+        if isinstance(source_addresses, list):
+            self.select_rows_by_names(source_addresses)
+            self.btn_batch_delete.click()
+        else:
+            self.click_action(str(source_addresses), "删除")
+
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    @submenu("NAT网关")
+    def dnat_rule_edit(self, nat_name, ext_port, new_ext_port=None, new_protocol=None,
+                       new_private_ip=None, new_int_port=None, new_desc=None):
+        """在NAT网关详情页修改DNAT规则
+
+        Args:
+            nat_name: NAT网关名称（用于点击进入详情页）
+            ext_port: 需要修改的公网端口（用于定位规则行）
+            new_ext_port: 新公网端口
+            new_protocol: 新协议类型，如 "TCP"/"UDP"/"ALL"
+            new_private_ip: 新私网IP
+            new_int_port: 新内部端口
+            new_desc: 新描述
+        """
+        # 进入 NAT 网关详情页
+        self.get_by_role("cell", name=nat_name).locator("a").click()
+        self.wait_for_page_ready()
+
+        # 切换到 DNAT 规则 Tab
+        self.get_by_role("tab", name="DNAT规则").click()
+        self.wait_for_page_ready()
+
+        # 打开修改弹窗
+        self.click_action(str(ext_port), "修改")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_label("修改DNAT规则")
+
+        # 修改协议
+        if new_protocol:
+            dialog.locator("label").filter(has_text=new_protocol).click()
+
+        # 修改公网端口
+        if new_ext_port is not None:
+            dialog.get_by_placeholder("端口范围1~32767").fill(str(new_ext_port))
+
+        # 修改私网IP
+        if new_private_ip:
+            ip_row = dialog.locator("form div").filter(has_text=re.compile(r"私网IP"))
+            ip_row.get_by_placeholder("请选择").click()
+            ip_option = self.locator("li").filter(has_text=new_private_ip).first
+            expect(ip_option).to_be_visible(timeout=8000)
+            ip_option.click()
+
+        # 修改内部端口
+        if new_int_port is not None:
+            dialog.get_by_placeholder("端口范围1~65535").fill(str(new_int_port))
+
+        # 修改描述
+        if new_desc is not None:
+            dialog.locator("textarea").fill(new_desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
     def dnat_rule_delete(self, ext_ports):
         """删除DNAT规则，支持单个和批量操作（需已在NAT网关详情页的DNAT规则Tab下）
 
@@ -1049,3 +1370,100 @@ class VpcPage(BasePage):
 
         self.dialog_confirm.click()
         self.wait_for_page_ready()
+
+    @submenu("网络QoS")
+    def qos_create(self, name, send_rate, recv_rate, desc=""):
+        """创建网络QoS。"""
+        self.btn_create.click()
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_label("新建QoS")
+        if dialog.count() == 0:
+            dialog = self.get_by_label("新建网络QoS")
+        if dialog.count() == 0:
+            dialog = self.get_by_role("dialog")
+
+        dialog.locator(".el-input__inner").nth(0).fill(name)
+        self._set_qos_rate(dialog, "发送速率", send_rate)
+        self._set_qos_rate(dialog, "接收速率", recv_rate)
+        if desc:
+            dialog.locator("textarea").fill(desc)
+
+        submit_btn = dialog.get_by_text("立即创建", exact=True)
+        if submit_btn.count() > 0 and submit_btn.first.is_visible():
+            submit_btn.click()
+        else:
+            self.btn_submit.click()
+        self.wait_for_page_ready()
+
+    def _set_qos_rate(self, dialog, field_name, value):
+        """设置网络QoS速率；value 为 None 时保持不限速。"""
+        item = dialog.locator(".el-form-item").filter(has_text=re.compile(field_name)).first
+        checkbox = item.locator(".el-checkbox").first
+        checkbox_input = item.locator("input[type=\"checkbox\"]").first
+        rate_input = item.locator(".el-input__inner:visible").first
+
+        if value is None:
+            if checkbox_input.count() > 0 and not checkbox_input.is_checked():
+                checkbox.click()
+            return
+
+        if checkbox_input.count() > 0 and checkbox_input.is_checked():
+            checkbox.locator(".el-checkbox__input").click(force=True)
+
+        if rate_input.is_disabled():
+            checkbox.locator(".el-checkbox__input").click(force=True)
+
+        rate_input.fill(str(value))
+
+    @submenu("网络QoS")
+    def qos_edit(self, name, new_name=None, new_send_rate=None, new_recv_rate=None, new_desc=None):
+        """修改网络QoS。"""
+        try:
+            self.click_action(name, "修改")
+        except Exception:
+            self.click_action(name, "编辑")
+        self.wait_for_page_ready()
+
+        dialog = self.get_by_label("修改QoS")
+        if dialog.count() == 0:
+            dialog = self.get_by_label("编辑QoS")
+        if dialog.count() == 0:
+            dialog = self.get_by_role("dialog")
+
+        if new_name is not None:
+            dialog.locator(".el-input__inner").nth(0).fill(new_name)
+
+        if new_send_rate is not None:
+            self._set_qos_rate(dialog, "发送速率", new_send_rate)
+        if new_recv_rate is not None:
+            self._set_qos_rate(dialog, "接收速率", new_recv_rate)
+        if new_desc is not None:
+            dialog.locator("textarea").fill(new_desc)
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+
+    @submenu("网络QoS")
+    def qos_delete(self, names):
+        """删除网络QoS，支持单个和批量操作。"""
+        if isinstance(names, list):
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+        else:
+            self.click_action(names, "删除")
+
+        self.dialog_confirm.click()
+        self.wait_for_page_ready()
+
+    @submenu("网络QoS")
+    def qos_search(self, keyword):
+        """搜索网络QoS。"""
+        self.search(keyword)
+
+    @submenu("网络QoS")
+    def qos_search_reset(self):
+        """重置网络QoS搜索条件。"""
+        self.btn_reset.click()
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(1000)
