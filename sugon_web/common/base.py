@@ -236,7 +236,7 @@ class BasePage(Playwright):
         """
         if service not in SERVICE_MAP:
             self.logger.error(f"未知的服务: {service}，请检查服务名称或更新导航映射表")
-            return False
+            raise AssertionError(f"未知的服务: {service}")
 
         try:
             navigation_path = SERVICE_MAP[service]
@@ -268,13 +268,13 @@ class BasePage(Playwright):
 
             else:
                 self.logger.error(f"服务 {service} 的导航路径配置错误: {navigation_path}")
-                return False
+                raise AssertionError(f"服务 {service} 的导航路径配置错误: {navigation_path}")
 
             return True
 
         except Exception as e:
             self.logger.error(f"导航到服务 {service} 失败: {e}")
-            return False
+            raise AssertionError(f"导航到服务 {service} 失败: {e}") from e
 
     def goto_submenu(self, submenu):
         """公共方法: 切换当前服务页面的子菜单
