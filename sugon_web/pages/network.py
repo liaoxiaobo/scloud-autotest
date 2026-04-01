@@ -543,8 +543,17 @@ class VpcPage(BasePage):
         dialog.get_by_role("textbox", name="请输入设备名称").fill(instance_name)
         dialog.get_by_text("搜索").click()
         self.wait_for_page_ready()
-        # 选择搜索结果中的第一行
-        dialog.get_by_role("row", name="ID 固定IP 连接设备 状态").locator("span").nth(1).click()
+
+        rows = dialog.locator(".el-table__body-wrapper tr")
+        if rows.count() == 0:
+            raise AssertionError(f"未找到可绑定实例: {instance_name}，请确认实例与VIP位于同一VPC且已创建完成")
+
+        target_row = rows.first
+        checkbox = target_row.locator(".el-checkbox__inner").first
+        if checkbox.count() == 0:
+            raise AssertionError(f"未找到实例 '{instance_name}' 对应的可勾选项")
+
+        checkbox.click()
         dialog.get_by_text("确定").click()
 
     def vip_unbind_instance(self, vip_address, instance_name):

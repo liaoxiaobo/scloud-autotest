@@ -151,12 +151,12 @@ def vm(browser_context, config, request):
     root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
-    # ✅ 如果引用了vpc fixture，自动获取网络和子网信息
-    if 'vpc' in request.fixturenames:
+    # ✅ 如果引用了 vpc 或依赖 vpc 的 vip fixture，自动复用同一个网络和子网
+    if 'vpc' in request.fixturenames or 'vip' in request.fixturenames:
         vpc_data = request.getfixturevalue('vpc')
         network = vpc_data['name']  # VPC名称就是网络名称
         subnet = vpc_data['subnet_name']
-        logger.info(f"检测到vpc fixture，使用VPC网络: {network}, 子网: {subnet}")
+        logger.info(f"检测到与VPC相关的fixture，使用VPC网络: {network}, 子网: {subnet}")
     else:
         network = params.get('network', 'Autotest')
         subnet = params.get('subnet', 'Autotest(10')
