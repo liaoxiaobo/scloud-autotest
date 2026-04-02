@@ -58,49 +58,172 @@ class TestSlbCreate:
     @pytest.mark.parametrize("params", load_data("test_slb_listener_create", "test_slb.yaml"))
     def test_slb_listener_create(self, slb_page, slb, params):
         """
-        测试不同协议下的监听器创建，覆盖 TCP, UDP, HTTP。暂未覆盖 HTTPS (单向/双向认证)
+        测试不同协议下的监听器创建，当前覆盖 TCP、UDP、HTTP。
+        HTTPS 和 ACL 参数暂未做参数化覆盖，保留参数组装入口，便于扩展。
         """
         lb_name = f"lb-{params['protocol'].lower()}-{params['port']}"
-        
-        # 准备 HTTPS 特定参数
-        # kwargs = {}
-        # if params['protocol'] == "HTTPS":
-        #     kwargs.update({
-        #         "auth_mode": params.get("auth_mode", "单向认证"),
-        #         "cert_type": params.get("cert_type", "国际服务器证书"),
-        #         "server_cert": params.get("server_cert"),
-        #         "ca_cert": params.get("ca_cert"),
-        #         "http_redirect": params.get("http_redirect", False),
-        #         "redirect_port": params.get("redirect_port")
-        #     })
+        create_kwargs = {
+            "slb_name": slb,
+            "lb_name": lb_name,
+            "protocol": params["protocol"],
+            "port": params["port"],
+            "desc": params.get("desc", f"Autotest listener {lb_name}"),
+            "acl_enable": params.get("acl_enable", False),
+            "access_policy": params.get("access_policy"),
+            "ip_group": params.get("ip_group"),
+            "pool_name": params.get("pool_name"),
+            "balance_method": params.get("balance_method", "轮询"),
+            "health_check": params.get("health_check", False),
+            "session_persistence": params.get("session_persistence", False),
+            "session_type": params.get("session_type"),
+            "health_type": params.get("health_type"),
+            "health_max_retries": params.get("health_max_retries"),
+            "health_timeout": params.get("health_timeout"),
+            "health_interval": params.get("health_interval"),
+            "http_method": params.get("http_method"),
+            "url_path": params.get("url_path"),
+            "auth_mode": params.get("auth_mode", "单向认证"),
+            "cert_type": params.get("cert_type", "国际服务器证书"),
+            "server_cert": params.get("server_cert"),
+            "ca_cert": params.get("ca_cert"),
+            "http_redirect": params.get("http_redirect", False),
+            "redirect_port": params.get("redirect_port"),
+        }
 
         with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建 {params['protocol']} 监听器 {lb_name}"):
-            slb_page.slb_lb_create(
-                slb_name=slb,
-                lb_name=lb_name,
-                protocol=params["protocol"],
-                port=params["port"],
-                pool_name=params.get("pool_name"),
-                balance_method=params.get("balance_method", "轮询"),
-                health_check=params.get("health_check", False),
-                session_persistence=params.get("session_persistence", False),
-                session_type=params.get("session_type"),
-                health_type=params.get("health_type"),
-                health_max_retries=params.get("health_max_retries"),
-                health_timeout=params.get("health_timeout"),
-                health_interval=params.get("health_interval"),
-                http_method=params.get("http_method"),
-                url_path=params.get("url_path"),
-                # **kwargs
-            )
+            slb_page.slb_lb_create(**create_kwargs)
 
         with allure_step_log("步骤2: 验证监听器创建成功"):
             # 验证弹出框成功提示
             slb_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
-            
+
             # 验证监听器是否在左侧列表显示 (slb_lb_create 执行完后应该仍在详情页的监听器Tab)
             slb_page.assert_listener_exists(lb_name)
 
         with allure_step_log(f"步骤3: 删除监听器 {lb_name}"):
             slb_page.slb_lb_delete(slb, lb_name)
             slb_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
+
+    @allure.title("通过SLB列表页进入监听器详情页")
+    def test_goto_lb_detail_from_slb_list(self, slb_page, slb):
+        lb_name = f"lb-tcp-{random_data()}"
+
+        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建监听器 {lb_name}"):
+            slb_page.slb_lb_create(
+                slb_name=slb,
+                lb_name=lb_name,
+                protocol="TCP",
+                port=80,
+                desc=f"Autotest listener {lb_name}",
+                pool_name=f"pool-{random_data()}",
+                balance_method="轮询",
+                health_check=False
+            )
+            slb_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
+            slb_page.assert_listener_exists(lb_name)
+
+        with allure_step_log(f"步骤2: 从SLB列表页进入监听器 {lb_name} 详情页"):
+            slb_page.slb_list_goto_lb_detail(slb, lb_name)
+            slb_page.assert_listener_exists(lb_name)
+            slb_page.assert_lb_basic_info(lb_name)
+
+        with allure_step_log(f"步骤3: 删除监听器 {lb_name}"):
+            slb_page.slb_lb_delete(slb, lb_name)
+            slb_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
+
+    @allure.title("SLB删除前存在监听器时删除失败，删除监听器后可删除SLB")
+    def test_slb_delete_with_lb(self, slb_page, slb):
+        lb_name = f"lb-tcp-{random_data()}"
+
+        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建监听器 {lb_name}"):
+            slb_page.slb_lb_create(
+                slb_name=slb,
+                lb_name=lb_name,
+                protocol="TCP",
+                port=80,
+                desc=f"Autotest listener {lb_name}",
+                pool_name=f"pool-{random_data()}",
+                balance_method="轮询",
+                health_check=False
+            )
+            slb_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
+            slb_page.assert_listener_exists(lb_name)
+
+        with allure_step_log(f"步骤2: 删除仍存在监听器的负载均衡 {slb}，校验失败提示"):
+            slb_page.goto_submenu("负载均衡（基础版）")
+            slb_page.slb_delete(slb)
+            slb_page.assert_dialog_error("该负载均衡存在监听器,不允许删除", "共删除1项，删除失败1项")
+
+        with allure_step_log(f"步骤3: 进入负载均衡 {slb} 详情删除监听器 {lb_name}"):
+            slb_page.goto_slb_detail(slb, "监听器")
+            slb_page.slb_lb_delete(slb, lb_name)
+            slb_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
+
+        with allure_step_log(f"步骤4: 再次删除负载均衡 {slb}"):
+            slb_page.goto_service("负载均衡")
+            slb_page.slb_delete(slb)
+            slb_page.assert_deleted(slb)
+
+    @allure.title("监听器详情编辑名称")
+    def test_lb_detail_edit_name(self, slb_page, lb):
+        original_name = lb["name"]
+        new_name = f"{original_name}-edit"
+
+        with allure_step_log(f"步骤1: 进入监听器 {original_name} 详情页"):
+            self._goto_listener_detail(slb_page, lb["slb_name"], original_name)
+
+        with allure_step_log(f"步骤2: 将监听器名称从 {original_name} 修改为 {new_name}"):
+            slb_page.lb_edit_basic_info(original_name, "name", new_name=new_name)
+            lb["name"] = new_name
+
+        with allure_step_log("步骤3: 校验名称修改结果"):
+            slb_page.assert_listener_exists(new_name)
+            slb_page.assert_lb_basic_info(new_name)
+
+    @allure.title("监听器详情编辑描述")
+    def test_lb_detail_edit_description(self, slb_page, lb):
+        new_desc = "autotest listener description"
+
+        with allure_step_log(f"步骤1: 修改监听器 {lb['name']} 的描述"):
+            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(lb["name"], "description", new_desc=new_desc)
+            lb["desc"] = new_desc
+
+        with allure_step_log("步骤2: 校验描述修改结果"):
+            slb_page.assert_lb_basic_info(new_desc)
+
+    @allure.title("监听器详情编辑前端端口")
+    def test_lb_detail_edit_frontend_protocol_port(self, slb_page, lb):
+        new_port = 65535
+
+        with allure_step_log(f"步骤1: 将监听器 {lb['name']} 的端口修改为 {new_port}"):
+            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(lb["name"], "port", protocol="TCP", port=new_port)
+            slb_page.assert_popup_success()
+            lb["port"] = new_port
+
+        with allure_step_log("步骤2: 校验端口修改结果"):
+            slb_page.assert_lb_basic_info(f"TCP/{new_port}")
+
+    @allure.title("监听器详情编辑访问控制")
+    def test_lb_detail_edit_access_control(self, slb_page, lb, ip_group):
+        with allure_step_log(f"步骤1: 为监听器 {lb['name']} 启用访问控制"):
+            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(
+                lb["name"],
+                "access_control",
+                enable=True,
+                access_policy="白名单",
+                ip_group=ip_group["name"],
+            )
+            slb_page.assert_popup_success()
+
+        with allure_step_log("步骤2: 校验访问控制开启结果"):
+            slb_page.assert_lb_basic_info("白名单")
+
+        with allure_step_log("步骤3: 关闭访问控制，避免影响 IP 地址组清理"):
+            slb_page.lb_edit_basic_info(lb["name"], "access_control", enable=False)
+            slb_page.assert_popup_success()
+
+        with allure_step_log("步骤4: 校验访问控制关闭结果"):
+            slb_page.assert_lb_basic_info("允许所有IP访问")

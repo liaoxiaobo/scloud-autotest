@@ -11,6 +11,7 @@ from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.acl import AclPage
 from sugon_web.pages.slb import SlbPage
+from sugon_web.pages.ip_group import IpGroupPage
 from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
@@ -638,7 +639,7 @@ def slb(browser_context, config, vpc, request):
         safe_hosts = hosts[10:-10] if len(hosts) > 20 else hosts
         ip_address = str(random.choice(safe_hosts))
 
-    slb_name = f"slb-{random_data()}"
+    slb_name = params.get("name", f"slb-{random_data()}")
 
     with allure_step_log(f"Setup: 创建负载均衡 {slb_name}"):
         slb_page.goto_service("负载均衡")
@@ -666,3 +667,104 @@ def slb(browser_context, config, vpc, request):
             logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
         finally:
             page.close()
+
+@pytest.fixture(scope="class")
+def lb(browser_context, config, slb, request):
+    """
+    按需创建并返回一个默认的监听器实例字典，在整个类内共享复用测试结束后自动清理。
+    可以通过 pytest.mark.parametrize("lb", [{"port": 81}], indirect=True) 传参定制。
+    """
+    page = _create_logged_in_page(browser_context, config)
+    slb_page = SlbPage(page)
+    slb_page.goto_service("负载均衡")
+    params = getattr(request, "param", {})
+
+    params.setdefault("slb_name", slb)
+    params.setdefault("protocol", "TCP")
+    params.setdefault("port", 80)
+
+    protocol = params["protocol"]
+    params.setdefault("lb_name", f"lb-{protocol.lower()}-{random_data()}")
+    params.setdefault("pool_name", f"pool-{random_data()}")
+
+    if params.get("desc") is None:
+        params["desc"] = f"Autotest listener {params['lb_name']}"
+
+    params.setdefault("health_check", False)
+
+    lb_name = params["lb_name"]
+
+    with allure_step_log(f"Setup: 创建默认监听器 {lb_name}"):
+        slb_page.slb_lb_create(**params)
+        slb_page.assert_popup_success()
+        slb_page.assert_listener_exists(lb_name)
+
+    listener_info = {
+        "slb_name": params["slb_name"],
+        "name": params["lb_name"],
+        "protocol": params["protocol"],
+        "port": params["port"],
+        "desc": params["desc"],
+        "pool_name": params["pool_name"],
+        "acl_enable": params.get("acl_enable", False),
+        "access_policy": params.get("access_policy"),
+        "ip_group": params.get("ip_group"),
+    }
+
+    yield listener_info
+
+    with allure_step_log(f"Teardown: 删除监听器 {listener_info['name']}"):
+        try:
+            current_name = listener_info["name"]
+            slb_page.goto_service("负载均衡")
+            slb_page.goto_slb_detail(listener_info["slb_name"], "监听器")
+            slb_page.assert_listener_exists(current_name)
+            slb_page.slb_lb_delete(listener_info["slb_name"], current_name)
+            slb_page.assert_popup_success()
+        except Exception as exc:
+            logger.warning(f"listener cleanup failed: {current_name}, error={exc}")
+        finally:
+            page.close()
+
+
+@pytest.fixture(scope="function")
+def ip_group_page(page):
+    """初始化 IP 地址组页面对象。"""
+    page_obj = IpGroupPage(page)
+    page_obj.goto_service("负载均衡")
+    return page_obj
+
+
+@pytest.fixture(scope="class")
+def ip_group(ip_group_page, request):
+    """创建 IP 地址组，并在测试结束后自动清理。"""
+    params = getattr(request, "param", {})
+    group_info = {
+        "name": f"ipg-{random_data()}",
+        "ip_addresses": ["10.10.10.10"],
+        "desc": "IP地址组 fixture 自动创建",
+        "enable_ipv6": False,
+    }
+    group_info.update(params)
+
+    with allure_step_log(f"Setup: 创建 IP 地址组 {group_info['name']}"):
+        ip_group_page.ip_group_create(
+            name=group_info["name"],
+            ip_addresses=group_info["ip_addresses"],
+            desc=group_info["desc"],
+            enable_ipv6=group_info["enable_ipv6"],
+        )
+        ip_group_page.assert_popup_success()
+
+    yield group_info
+
+    with allure_step_log(f"Teardown: 清理 IP 地址组 {group_info['name']}"):
+        try:
+            ip_group_page.goto_service("负载均衡")
+            ip_group_page.ip_group_search(group_info["name"])
+            names = ip_group_page.get_column_data("名称")
+            if group_info["name"] in names:
+                ip_group_page.ip_group_delete(group_info["name"])
+                ip_group_page.assert_deleted(group_info["name"])
+        except Exception as exc:
+            logger.warning(f"清理 IP 地址组失败: {exc}")

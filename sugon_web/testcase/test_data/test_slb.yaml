@@ -39,43 +39,69 @@ slb:
       spec: "slb.d6.large 2核 4GiB 内网带宽"
 
   test_slb_listener_create:
-    - case_desc: "TCP, 轮询, 健康检查激活(详细配置)"
+    - case_desc: "TCP-轮询-健康检查TCP-常规端口"
       protocol: "TCP"
       port: 80
-      pool_name: "pool-tcp"
+      pool_name: "pool-tcp-random"
       balance_method: "轮询"
       health_check: true
       health_type: "TCP"
       health_max_retries: 3
       health_timeout: 5
       health_interval: 20
+      session_persistence: false
 
-    - case_desc: "UDP, 源IP, 健康检查禁用"
+    - case_desc: "UDP-源IP-关闭健康检查"
       protocol: "UDP"
       port: 53
-      pool_name: "pool-udp"
+      pool_name: "pool-udp-source"
       balance_method: "源IP"
       health_check: false
 
-#    - case_desc: "HTTP, 加权轮询, 健康检查激活, 会话保持禁用"
-#      protocol: "HTTP"
-#      port: 8080
-#      pool_name: "pool-http"
-#      balance_method: "加权轮询"
-#      health_check: true
-#      health_type: "HTTP"
-#      session_persistence: false
-#      session_type: "SOURCE IP"
-#
-#    - case_desc: "HTTP, 轮询, 健康检查激活, 会话保持激活(SOURCE IP)"
-#      protocol: "HTTP"
-#      port: 80
-#      pool_name: "pool-http-cookie"
-#      balance_method: "轮询"
-#      health_check: true
-#      health_type: "HTTP"
-#      session_persistence: true
-#      session_type: "SOURCE IP"
+    - case_desc: "HTTP-加权轮询-HTTP健康检查-会话保持SOURCE_IP"
+      protocol: "HTTP"
+      port: 8080
+      pool_name: "pool-http-weight"
+      balance_method: "加权轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "GET"
+      url_path: "/health"
+      session_persistence: true
+      session_type: "SOURCE IP"
+      health_max_retries: 2
+      health_timeout: 4
+      health_interval: 15
+
+    - case_desc: "HTTP-轮询-HTTP健康检查-会话保持禁用"
+      protocol: "HTTP"
+      port: 8000
+      pool_name: "pool-http-basic"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "HEAD"
+      url_path: "/status"
+      session_persistence: false
+
+    - case_desc: "TCP-加权轮询-关闭健康检查-最小端口"
+      protocol: "TCP"
+      port: 1
+      pool_name: "pool-tcp-port-min"
+      balance_method: "加权轮询"
+      health_check: false
+      session_persistence: false
+
+    - case_desc: "HTTP-轮询-HTTP健康检查-最大端口"
+      protocol: "HTTP"
+      port: 65535
+      pool_name: "pool-http-port-max"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "GET"
+      url_path: "/"
+      session_persistence: false
 
 #    - case_desc: "HTTPS, 单向认证, 国际证书, HTTP重定向"
 #      protocol: "HTTPS"
@@ -102,3 +128,21 @@ slb:
 #      balance_method: "源IP"
 #      health_check: true
 #      session_persistence: false
+
+  test_lb_detail_edit:
+    - title: "名称"
+      field: "name"
+      new_name_suffix: "-edit"
+
+    - title: "描述"
+      field: "desc"
+      new_desc: "autotest listener description"
+
+    - title: "前端端口"
+      field: "port"
+      new_port: 65535
+
+    - title: "访问控制"
+      field: "access_control"
+      enable: true
+      policy: "白名单"
