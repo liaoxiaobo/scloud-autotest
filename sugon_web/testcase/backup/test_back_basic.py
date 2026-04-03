@@ -361,6 +361,7 @@ class TestResumeCreate:
 
         with allure_step_log(f"步骤1: 数据准备 - {scenario_type}"):
             ssh_vm.connect(source_mfip)
+            backup_page.goto_service('备份')
             if scenario_type == "删除原始数据":
                 for vol_name, vol_info in original_md5_dict.items():
                     vol_dir = vol_info.get('dir', f'/cbr_test_{vol_name}')
@@ -383,7 +384,6 @@ class TestResumeCreate:
                         "md5": inc_md5,
                         "path": f"{vol_dir}/{inc_file}"
                     }
-                backup_page.goto_service('备份')
                 backup_page.exec_backup(task_name, "执行增量")
                 backup_page.assert_popup_success("备份任务执行成功")
                 backup_page.assert_status(task_name, "已启动", timeout=900)

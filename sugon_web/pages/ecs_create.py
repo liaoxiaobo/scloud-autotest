@@ -683,6 +683,7 @@ class EcsCreatePage(EcsPage):
 
     def vm_pre_data(self, ssh_vm, vols: dict):
         """虚机预置数据"""
+        vols = vols or {}
         md5_dict = {}
         image_path = "/offlinePackage/image_download/support-fsagent/"
 
@@ -695,15 +696,29 @@ class EcsCreatePage(EcsPage):
         logger.info(f"识别到系统盘: {sys_disk}")
 
         # 统一处理所有盘 (系统盘 + 数据盘)
+        actual_disks_output = ssh_vm.run(r"""lsblk -dn -o NAME,TYPE | awk '$2 == "disk" {print $1}'""", check_rc=True)
+        actual_disks = list(dict.fromkeys(disk.strip() for disk in actual_disks_output.splitlines() if disk.strip()))
+        if sys_disk and sys_disk not in actual_disks:
+            actual_disks.insert(0, sys_disk)
+
+        if actual_disks:
+            target_vols = [sys_disk] + [vol for vol in actual_disks if vol != sys_disk]
+        else:
+            target_vols = [sys_disk] + sorted(vol for vol in vols.keys() if vol != sys_disk)
+
+        if set(vols.keys()) != set(target_vols):
+            logger.warning(f"vols磁盘列表与虚机实际磁盘不一致，vols={sorted(vols.keys())}, actual={target_vols}")
+
         root_file = "IMAGE_CDB_20220910.qcow2"
         root_dir = "/cbr_test_root"
 
-        data_vols = sorted([vol for vol in vols.keys() if vol != sys_disk])
-        for vol_name, size in sorted(vols.items()):
+        data_vols = [vol for vol in target_vols if vol != sys_disk]
+        for vol_name in target_vols:
             if vol_name == sys_disk:
                 # 系统盘: 直接写数据到预定目录，不用分区/格式化/挂载
                 curr_file = root_file
                 curr_dir = root_dir
+                ssh_vm.run(f"mkdir -p {curr_dir}", check_rc=True)
                 logger.info(f"处理系统盘: {vol_name}, 写入文件: {curr_file}")
             else:
                 # 数据盘: 需要格式化、挂载后再写数据
