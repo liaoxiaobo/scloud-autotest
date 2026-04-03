@@ -706,6 +706,9 @@ def lb(browser_context, config, slb, request):
         "port": params["port"],
         "desc": params["desc"],
         "pool_name": params["pool_name"],
+        "balance_method": params.get("balance_method", "轮询"),
+        "health_check": params.get("health_check", False),
+        "session_persistence": params.get("session_persistence", False),
         "acl_enable": params.get("acl_enable", False),
         "access_policy": params.get("access_policy"),
         "ip_group": params.get("ip_group"),
@@ -727,6 +730,55 @@ def lb(browser_context, config, slb, request):
             page.close()
 
 
+@pytest.fixture(scope="class")
+def lb_pool_candidate_vms(browser_context, config, vpc, request):
+    """创建资源池可选 ECS 列表，供监听器资源池新增资源用例复用。"""
+    page = _create_logged_in_page(browser_context, config)
+    ecs_create_page = EcsCreatePage(page)
+
+    params = getattr(request, "param", {})
+    count = params.get("count", 2)
+    cluster = params.get("cluster", "Autotest")
+    vm_prefix = params.get("name_prefix", "lb-pool-vm")
+    created_vms = []
+
+    with allure_step_log(f"Setup: 创建 {count} 台资源池候选虚机"):
+        for _ in range(count):
+            vm_name = f"{vm_prefix}-{random_data(length=4)}"
+            ecs_create_page.goto_service("弹性云服务器")
+            ecs_create_page.ecs_create(
+                basic={"name": vm_name, "集群": cluster},
+                storage={},
+                network={"networks": [{"network": vpc["name"], "subnet": vpc["subnet_name"]}]},
+                manage={},
+                advanced={}
+            )
+            ecs_create_page.assert_popup_success("创建实例命令下发成功")
+            ecs_create_page.assert_status(vm_name)
+
+            row_data = ecs_create_page.get_row_data(vm_name)
+            fixed_ip = row_data["IP地址"].split("固定: ")[-1].strip()
+            created_vms.append({
+                "name": vm_name,
+                "ip": fixed_ip,
+            })
+
+    yield created_vms
+
+    vm_names = [vm["name"] for vm in created_vms]
+    with allure_step_log(f"Teardown: 清理资源池候选虚机 {vm_names}"):
+        try:
+            if created_vms:
+                ecs_create_page.goto_service("弹性云服务器")
+                ecs_create_page.ecs_remove(vm_names)
+                ecs_create_page.ecs_delete(vm_names)
+                ecs_create_page.assert_deleted(vm_names)
+        except Exception as exc:
+            logger.warning(f"清理资源池候选虚机失败: {vm_names}, error={exc}")
+        finally:
+            page.close()
+
+
 @pytest.fixture(scope="function")
 def ip_group_page(page):
     """初始化 IP 地址组页面对象。"""
@@ -736,8 +788,12 @@ def ip_group_page(page):
 
 
 @pytest.fixture(scope="class")
-def ip_group(ip_group_page, request):
+def ip_group(browser_context, config, request):
     """创建 IP 地址组，并在测试结束后自动清理。"""
+    page = _create_logged_in_page(browser_context, config)
+    ip_group_page = IpGroupPage(page)
+    ip_group_page.goto_service("负载均衡")
+
     params = getattr(request, "param", {})
     group_info = {
         "name": f"ipg-{random_data()}",
@@ -768,3 +824,5 @@ def ip_group(ip_group_page, request):
                 ip_group_page.assert_deleted(group_info["name"])
         except Exception as exc:
             logger.warning(f"清理 IP 地址组失败: {exc}")
+        finally:
+            page.close()

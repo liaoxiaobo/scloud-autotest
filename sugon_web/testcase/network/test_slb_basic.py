@@ -131,6 +131,70 @@ class TestSlbCreate:
             slb_page.slb_lb_delete(slb, lb_name)
             slb_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
 
+    @allure.title("监听器详情编辑名称")
+    def test_lb_detail_edit_name(self, slb_page, lb):
+        original_name = lb["name"]
+        new_name = f"{original_name}-edit"
+
+        with allure_step_log(f"步骤1: 进入监听器 {original_name} 详情页"):
+            slb_page.slb_list_goto_lb_detail(lb["slb_name"], lb["name"])
+
+        with allure_step_log(f"步骤2: 将监听器名称从 {original_name} 修改为 {new_name}"):
+            slb_page.lb_edit_basic_info(original_name, "name", new_name=new_name)
+            lb["name"] = new_name
+
+        with allure_step_log("步骤3: 校验名称修改结果"):
+            slb_page.assert_listener_exists(new_name)
+            slb_page.assert_lb_basic_info(new_name)
+
+    @allure.title("监听器详情编辑描述")
+    def test_lb_detail_edit_description(self, slb_page, lb):
+        new_desc = "autotest listener description"
+
+        with allure_step_log(f"步骤1: 修改监听器 {lb['name']} 的描述"):
+            slb_page.slb_list_goto_lb_detail(lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(lb["name"], "description", new_desc=new_desc)
+            lb["desc"] = new_desc
+
+        with allure_step_log("步骤2: 校验描述修改结果"):
+            slb_page.assert_lb_basic_info(new_desc)
+
+    @allure.title("监听器详情编辑前端端口")
+    @pytest.mark.parametrize("new_port", [65535, 8080, 443, 1])
+    def test_lb_detail_edit_frontend_protocol_port(self, slb_page, lb, new_port):
+
+        with allure_step_log(f"步骤1: 将监听器 {lb['name']} 的端口修改为 {new_port}"):
+            slb_page.slb_list_goto_lb_detail(lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(lb["name"], "port", protocol="TCP", port=new_port)
+            slb_page.assert_popup_success()
+            lb["port"] = new_port
+
+        with allure_step_log("步骤2: 校验端口修改结果"):
+            slb_page.assert_lb_basic_info(f"TCP/{new_port}")
+
+    @allure.title("监听器详情编辑访问控制")
+    def test_lb_detail_edit_access_control(self, slb_page, lb, ip_group):
+        with allure_step_log(f"步骤1: 为监听器 {lb['name']} 启用访问控制"):
+            slb_page.slb_list_goto_lb_detail(lb["slb_name"], lb["name"])
+            slb_page.lb_edit_basic_info(
+                lb["name"],
+                "access_control",
+                enable=True,
+                access_policy="白名单",
+                ip_group=ip_group["name"],
+            )
+            slb_page.assert_popup_success()
+
+        with allure_step_log("步骤2: 校验访问控制开启结果"):
+            slb_page.assert_lb_basic_info("白名单")
+
+        with allure_step_log("步骤3: 关闭访问控制，避免影响 IP 地址组清理"):
+            slb_page.lb_edit_basic_info(lb["name"], "access_control", enable=False)
+            slb_page.assert_popup_success()
+
+        with allure_step_log("步骤4: 校验访问控制关闭结果"):
+            slb_page.assert_lb_basic_info("允许所有IP访问")
+
     @allure.title("SLB删除前存在监听器时删除失败，删除监听器后可删除SLB")
     def test_slb_delete_with_lb(self, slb_page, slb):
         lb_name = f"lb-tcp-{random_data()}"
@@ -163,67 +227,3 @@ class TestSlbCreate:
             slb_page.goto_service("负载均衡")
             slb_page.slb_delete(slb)
             slb_page.assert_deleted(slb)
-
-    @allure.title("监听器详情编辑名称")
-    def test_lb_detail_edit_name(self, slb_page, lb):
-        original_name = lb["name"]
-        new_name = f"{original_name}-edit"
-
-        with allure_step_log(f"步骤1: 进入监听器 {original_name} 详情页"):
-            self._goto_listener_detail(slb_page, lb["slb_name"], original_name)
-
-        with allure_step_log(f"步骤2: 将监听器名称从 {original_name} 修改为 {new_name}"):
-            slb_page.lb_edit_basic_info(original_name, "name", new_name=new_name)
-            lb["name"] = new_name
-
-        with allure_step_log("步骤3: 校验名称修改结果"):
-            slb_page.assert_listener_exists(new_name)
-            slb_page.assert_lb_basic_info(new_name)
-
-    @allure.title("监听器详情编辑描述")
-    def test_lb_detail_edit_description(self, slb_page, lb):
-        new_desc = "autotest listener description"
-
-        with allure_step_log(f"步骤1: 修改监听器 {lb['name']} 的描述"):
-            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
-            slb_page.lb_edit_basic_info(lb["name"], "description", new_desc=new_desc)
-            lb["desc"] = new_desc
-
-        with allure_step_log("步骤2: 校验描述修改结果"):
-            slb_page.assert_lb_basic_info(new_desc)
-
-    @allure.title("监听器详情编辑前端端口")
-    def test_lb_detail_edit_frontend_protocol_port(self, slb_page, lb):
-        new_port = 65535
-
-        with allure_step_log(f"步骤1: 将监听器 {lb['name']} 的端口修改为 {new_port}"):
-            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
-            slb_page.lb_edit_basic_info(lb["name"], "port", protocol="TCP", port=new_port)
-            slb_page.assert_popup_success()
-            lb["port"] = new_port
-
-        with allure_step_log("步骤2: 校验端口修改结果"):
-            slb_page.assert_lb_basic_info(f"TCP/{new_port}")
-
-    @allure.title("监听器详情编辑访问控制")
-    def test_lb_detail_edit_access_control(self, slb_page, lb, ip_group):
-        with allure_step_log(f"步骤1: 为监听器 {lb['name']} 启用访问控制"):
-            self._goto_listener_detail(slb_page, lb["slb_name"], lb["name"])
-            slb_page.lb_edit_basic_info(
-                lb["name"],
-                "access_control",
-                enable=True,
-                access_policy="白名单",
-                ip_group=ip_group["name"],
-            )
-            slb_page.assert_popup_success()
-
-        with allure_step_log("步骤2: 校验访问控制开启结果"):
-            slb_page.assert_lb_basic_info("白名单")
-
-        with allure_step_log("步骤3: 关闭访问控制，避免影响 IP 地址组清理"):
-            slb_page.lb_edit_basic_info(lb["name"], "access_control", enable=False)
-            slb_page.assert_popup_success()
-
-        with allure_step_log("步骤4: 校验访问控制关闭结果"):
-            slb_page.assert_lb_basic_info("允许所有IP访问")

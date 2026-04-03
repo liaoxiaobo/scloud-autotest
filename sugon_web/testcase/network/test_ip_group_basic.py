@@ -84,41 +84,39 @@ class TestIpGroupBasic:
         ip_group["ip_addresses"] = new_ip_addresses
         ip_group["desc"] = new_desc
 
-    @allure.title("验证IP地址组详情页修改功能")
+    @allure.title("验证IP地址组详情页修改IP功能")
     def test_ip_group_detail_edit(self, ip_group_page, ip_group):
-        old_name = ip_group["name"]
-        new_name = f"{old_name}-detail-edit"
+        group_name = ip_group["name"]
+        old_ip_addresses = list(ip_group["ip_addresses"])
         new_ip_addresses = ["10.10.10.30", "10.10.10.31"]
-        new_desc = f"{new_name}详情页修改后的描述"
 
-        with allure_step_log(f"步骤1: 在详情页修改IP地址组 {old_name} -> {new_name}"):
+        with allure_step_log(f"步骤1: 在详情页修改IP地址组 {group_name} 的IP地址"):
             ip_group_page.ip_group_edit_in_detail(
-                name=old_name,
-                new_name=new_name,
+                name=group_name,
+                old_ip_addresses=old_ip_addresses,
                 new_ip_addresses=new_ip_addresses,
-                new_desc=new_desc,
             )
             ip_group_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证详情页修改结果"):
-            ip_group_page.assert_detail_basic_info(name=new_name, desc=new_desc)
+            ip_group_page.assert_detail_basic_info(name=group_name, desc=ip_group["desc"])
             detail_ips = ip_group_page.get_detail_ip_addresses()
             for ip in new_ip_addresses:
-                assert ip in detail_ips, f"详情页修改后IP缺失，期望包含: {ip}，实际: {detail_ips}"
-
+                assert ip in detail_ips, f"详情页IP修改失败，期望包含: {ip}，实际: {detail_ips}"
+            for ip in old_ip_addresses:
+                assert ip not in detail_ips, f"详情页旧IP未被替换，期望不包含: {ip}，实际: {detail_ips}"
+            ip_group["ip_addresses"] = new_ip_addresses
         with allure_step_log("步骤3: 验证列表页修改结果"):
             ip_group_page.goto_service("负载均衡")
-            row_data = ip_group_page.get_row_data(new_name)
-            assert row_data.get("名称") == new_name, \
-                f"详情页名称修改失败，期望: {new_name}，实际: {row_data.get('名称')}"
-            assert "10.10.10.30" in row_data.get("包含IP地址", ""), \
-                f"详情页IP修改失败，期望包含: 10.10.10.30，实际: {row_data.get('包含IP地址')}"
-            assert new_desc in row_data.get("描述", ""), \
-                f"详情页描述修改失败，期望包含: {new_desc}，实际: {row_data.get('描述')}"
+            ip_group_page.goto_submenu("IP地址组")
+            row_data = ip_group_page.get_row_data(group_name)
+            assert row_data.get("名称") == group_name, \
+                f"详情页修改后名称异常，期望: {group_name}，实际: {row_data.get('名称')}"
+            assert new_ip_addresses[0] in row_data.get("包含IP地址", ""), \
+                f"详情页修改后列表页IP未更新，期望包含: {new_ip_addresses[0]}，实际: {row_data.get('包含IP地址')}"
+            assert ip_group["desc"] in row_data.get("描述", ""), \
+                f"详情页修改后描述异常，期望包含: {ip_group['desc']}，实际: {row_data.get('描述')}"
 
-        ip_group["name"] = new_name
-        ip_group["ip_addresses"] = new_ip_addresses
-        ip_group["desc"] = new_desc
 
     @allure.title("验证IP地址组详情页新增与单个删除IP功能")
     def test_ip_group_detail_add_delete_ip(self, ip_group_page, ip_group):

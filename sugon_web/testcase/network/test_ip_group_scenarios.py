@@ -22,6 +22,7 @@ class TestIpGroupCreate:
         expected_desc_length = ip_group["expected_desc_length"]
 
         with allure_step_log(f"步骤1: 校验场景 {ip_group['case_desc']} 的创建结果"):
+            ip_group_page.goto_submenu("IP地址组")
             row_data = ip_group_page.get_row_data(group_name)
             assert row_data.get("名称") == group_name, (f"IP 地址组名称校验失败，期望: {group_name}，实际: {row_data.get('名称')}")
             assert ip_addresses[0] in row_data.get("包含IP地址", ""), (f"列表页 IP 校验失败，期望包含: {ip_addresses[0]}，实际: {row_data.get('包含IP地址')}")

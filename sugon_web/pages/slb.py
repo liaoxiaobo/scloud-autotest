@@ -341,8 +341,7 @@ class SlbPage(BasePage):
             slb_name: 负载均衡名称
             tab_name: 详情页中的Tab名称，如："详情"、"监听器"、"后端服务器组" 等
         """
-        # self.get_by_role("row", name=slb_name).locator("a").click()
-        self.get_row_by_name(slb_name).locator("a").first.click()
+        self.get_by_role("row", name=slb_name).locator("a").click()
         self.get_by_role("tab", name=tab_name).evaluate("node => node.click()")
 
         self.logger.info(f"进入负载均衡 {slb_name} 的 {tab_name}")
@@ -453,14 +452,12 @@ class SlbPage(BasePage):
         """进入指定监听器下资源池详情页"""
         self.goto_lb_pool_tab(lb_name)
         active_pane = self._get_lb_nested_tabs().locator(".el-tab-pane:not([aria-hidden='true'])").last
-        pool_row = active_pane.locator(".el-table__body-wrapper tr").filter(
-            has=active_pane.get_by_text(pool_name, exact=True)
-        ).first
+        pool_row = active_pane.locator(".el-table__body-wrapper tr").filter(has_text=pool_name).first
         expect(pool_row).to_be_visible(timeout=5000)
 
-        clickable = pool_row.locator("a").filter(has_text=re.compile(rf"^{re.escape(pool_name)}$")).first
+        clickable = pool_row.locator("a", has_text=pool_name).first
         if clickable.count() == 0:
-            clickable = pool_row.get_by_text(pool_name, exact=True).first
+            clickable = pool_row.get_by_text(pool_name).first
         clickable.click()
         self.logger.info(f"进入监听器 {lb_name} 下资源池详情成功: {pool_name}")
 
@@ -500,7 +497,7 @@ class SlbPage(BasePage):
         dialog = self.get_by_role("dialog").filter(has_text="新建资源")
         expect(dialog).to_be_visible(timeout=5000)
 
-        resource_type_input = dialog.get_by_placeholder("请选择")
+        resource_type_input = dialog.get_by_placeholder("请选择").first
         resource_type_input.click()
         self.locator(".el-select-dropdown:visible li").filter(
             has_text=re.compile(rf"^{re.escape(resource_type)}$")
@@ -523,8 +520,8 @@ class SlbPage(BasePage):
             self.page.wait_for_timeout(500)
 
             row = dialog.locator(".el-table__body-wrapper tr").filter(
-                has=dialog.get_by_text(vm_name, exact=True)
-            ).first
+                has=self.locator("td").filter(has_text=re.compile(rf"^\s*{re.escape(vm_name)}\s*$"))
+            )
             expect(row).to_be_visible(timeout=5000)
 
             checkbox = row.locator("td").first.locator("label span").last
@@ -539,12 +536,96 @@ class SlbPage(BasePage):
 
             self.logger.info(f"资源池新增虚机时已勾选: {vm_name}")
 
-            reset_btn.click()
-            self.wait_for_page_ready()
-            self.page.wait_for_timeout(300)
-
         self.dialog_confirm.click()
         self.logger.info(f"资源池新增虚机提交成功: {vm_names}, resource_type={resource_type}, ports={ports}")
+
+    def assert_lb_pool_basic_info(self, pool_name, protocol=None, balance_method=None,
+                                  session_persistence=None, health_check=None):
+        """校验资源池详情页顶部的基本信息回显。
+
+        Args:
+            pool_name: 资源池名称。
+            protocol: 协议，如 ``TCP``、``HTTP``，默认不校验。
+            balance_method: 负载调度算法，如 ``轮询``，默认不校验。
+            session_persistence: 会话保持展示值，如 ``未开启``，默认不校验。
+            health_check: 健康检查展示值，如 ``未开启``，默认不校验。
+        """
+        page_root = self.locator("#cloud-container-content")
+        expect(page_root.get_by_text("基本信息", exact=True)).to_be_visible(timeout=5000)
+
+        expected_texts = [pool_name, protocol, balance_method, session_persistence, health_check]
+        for text in expected_texts:
+            if text is not None:
+                expect(page_root).to_contain_text(str(text))
+
+        self.logger.info(
+            "资源池详情基本信息校验成功: "
+            f"pool_name={pool_name}, protocol={protocol}, balance_method={balance_method}, "
+            f"session_persistence={session_persistence}, health_check={health_check}"
+        )
+
+    def assert_lb_pool_member_info(self, vm_name, ip_address=None, port=None,
+                                   switch_status=None, resource_status=None):
+        """校验资源池成员列表中的关键信息。
+
+        Args:
+            vm_name: 资源实例名称。
+            ip_address: 期望的 IP 地址，默认不校验。
+            port: 期望的资源端口号，默认不校验。
+            switch_status: 期望的开关状态，默认不校验。
+            resource_status: 期望的资源状态，默认不校验。
+
+        Returns:
+            dict: 当前资源行解析后的表格数据。
+        """
+        row_data = self.get_row_data(vm_name)
+        expected_mapping = {
+            "实例名称": vm_name,
+            "IP地址": ip_address,
+            "端口号": port,
+            "开关状态": switch_status,
+            "资源状态": resource_status,
+        }
+
+        for field_name, expected_value in expected_mapping.items():
+            if expected_value is None:
+                continue
+
+            actual_value = (row_data.get(field_name) or "").strip()
+            if actual_value != str(expected_value):
+                raise AssertionError(
+                    f"资源池成员 '{vm_name}' 字段 '{field_name}' 校验失败，"
+                    f"期望 '{expected_value}'，实际 '{actual_value}'"
+                )
+
+        for field_name in ["开关状态", "资源状态"]:
+            actual_value = (row_data.get(field_name) or "").strip()
+            if not actual_value:
+                raise AssertionError(f"资源池成员 '{vm_name}' 字段 '{field_name}' 为空")
+
+        self.logger.info(f"资源池成员信息校验成功: {vm_name}, row_data={row_data}")
+        return row_data
+
+    def lb_pool_remove_vm(self, vm_names, lb_name=None, pool_name=None):
+        """从监听器资源池详情页删除已添加的虚机资源。
+
+        Args:
+            vm_names: 待删除的虚机名称，支持单个字符串或名称列表。
+            lb_name: 监听器名称；和 ``pool_name`` 一起传入时，会先自动进入资源池详情页。
+            pool_name: 资源池名称；和 ``lb_name`` 一起传入时，会先自动进入资源池详情页。
+        """
+        if isinstance(vm_names, str):
+            vm_names = [vm_names]
+
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        for vm_name in vm_names:
+            self.click_action(vm_name, "删除")
+            self.dialog_confirm.click()
+            self.logger.info(f"资源池成员删除成功: {vm_name}")
 
     def assert_dialog_error(self, *expected_texts):
         """
