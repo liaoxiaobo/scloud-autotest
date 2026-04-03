@@ -94,18 +94,20 @@ class IpGroupPage(BasePage):
         self.wait_for_page_ready()
 
     @submenu("IP地址组")
-    def ip_group_edit_in_detail(self, name, new_name=None, new_ip_addresses=None, new_desc=None, enable_ipv6=None):
-        """在详情页修改IP地址组。"""
+    def ip_group_edit_in_detail(self, name, old_ip_addresses, new_ip_addresses):
+        """在详情页修改IP地址。
+
+        Args:
+            name: IP地址组名称。
+            old_ip_addresses: 需要被替换的原IP地址，支持单个地址或地址列表。
+            new_ip_addresses: 修改后的IP地址，支持单个地址或地址列表。
+        """
         self.goto_ip_group_detail(name)
-        self.get_by_text("修改IP地址组", exact=True).click()
-        dialog = self._get_dialog("修改IP地址组")
-        self._fill_ip_group_form(
-            dialog,
-            name=new_name,
-            ip_addresses=new_ip_addresses,
-            desc=new_desc,
-            enable_ipv6=enable_ipv6,
-        )
+        targets = old_ip_addresses if isinstance(old_ip_addresses, list) else [old_ip_addresses]
+        self.select_rows_by_names([str(ip) for ip in targets])
+        self.get_by_text("修改IP地址", exact=True).click()
+        dialog = self._get_dialog("修改IP地址")
+        self._fill_ip_group_form(dialog, ip_addresses=new_ip_addresses)
         dialog.get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
 
@@ -152,7 +154,12 @@ class IpGroupPage(BasePage):
 
     @submenu("IP地址组")
     def ip_group_add_ip_addresses(self, name, ip_addresses):
-        """在详情页添加IP地址。"""
+        """在详情页添加IP地址。
+
+        Args:
+            name: IP地址组名称。
+            ip_addresses: 需要新增的IP地址，支持单个地址或地址列表。
+        """
         self.goto_ip_group_detail(name)
         self.get_by_text("添加IP地址", exact=True).click()
         dialog = self._get_dialog("添加IP地址")
@@ -162,7 +169,12 @@ class IpGroupPage(BasePage):
 
     @submenu("IP地址组")
     def ip_group_delete_ip_addresses(self, name, ip_addresses):
-        """在详情页删除IP地址。"""
+        """在详情页删除IP地址。
+
+        Args:
+            name: IP地址组名称。
+            ip_addresses: 需要删除的IP地址，支持单个地址或地址列表。
+        """
         self.goto_ip_group_detail(name)
         targets = ip_addresses if isinstance(ip_addresses, list) else [ip_addresses]
         for ip in targets:
@@ -172,10 +184,15 @@ class IpGroupPage(BasePage):
 
     @submenu("IP地址组")
     def ip_group_batch_delete_ip_addresses(self, name, ip_addresses):
-        """在详情页批量删除IP地址。"""
+        """在详情页批量删除IP地址。
+
+        Args:
+            name: IP地址组名称。
+            ip_addresses: 需要批量删除的IP地址，支持单个地址或地址列表。
+        """
         self.goto_ip_group_detail(name)
         targets = ip_addresses if isinstance(ip_addresses, list) else [ip_addresses]
-        self.select_rows_by_names(targets)
+        self.select_rows_by_names([str(ip) for ip in targets])
         self.btn_batch_delete.click()
         self.dialog_confirm.click()
         self.wait_for_page_ready()

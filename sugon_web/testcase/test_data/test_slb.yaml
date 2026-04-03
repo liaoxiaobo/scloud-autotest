@@ -146,3 +146,22 @@ slb:
       field: "access_control"
       enable: true
       policy: "白名单"
+
+  test_lb_pool_add_resource:
+    - case_desc: "单资源-常规端口"
+      vm_count: 1
+      ports: 8080
+
+    - case_desc: "多资源-不同端口"
+      vm_count: 2
+      ports:
+        - 8080
+        - 8081
+
+    - case_desc: "单资源-最小端口"
+      vm_count: 1
+      ports: 1
+
+    - case_desc: "单资源-最大端口"
+      vm_count: 1
+      ports: 65535
