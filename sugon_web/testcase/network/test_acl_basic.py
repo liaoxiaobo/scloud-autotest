@@ -8,7 +8,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.story('基本功能验证')
 class TestAclBasic:
 
-    @allure.title("验证新建与删除网络ACL功能")
+    @allure.title("网络ACL-创建和删除")
     def test_acl_create_delete(self, acl_page):
         acl_name = f"acl_{random_data()}"
 
@@ -20,7 +20,7 @@ class TestAclBasic:
             acl_page.acl_delete(acl_name)
             acl_page.assert_deleted(acl_name)
 
-    @allure.title("验证搜索网络ACL功能")
+    @allure.title("网络ACL-搜索和重置")
     def test_acl_search(self, acl_page, acl):
         acl_name = acl
         with allure_step_log(f"步骤1: 搜索网络ACL: {acl_name}"):
@@ -31,10 +31,9 @@ class TestAclBasic:
 
         with allure_step_log(f"步骤2: 重置搜索条件"):
             acl_page.acl_search_reset()
-            # 断言重置后列表有数据
-            acl_page.get_column_data("名称")
+            assert acl_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("验证编辑网络ACL功能")
+    @allure.title("网络ACL-修改名称和描述")
     def test_acl_edit(self, acl_page, acl):
         acl_name = acl
         new_name = f"{acl_name}-edit"
@@ -56,7 +55,7 @@ class TestAclBasic:
             acl_page.assert_list_contain(acl_name, exact_match=False)
             acl_page.acl_search_reset()
 
-    @allure.title("验证开启和关闭单条网络ACL及流量生效情况")
+    @allure.title("网络ACL-开启和关闭")
     @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
     def test_acl_enable_disable(self, acl_vpc_vms, acl_page, ssh_vm):
         env = acl_vpc_vms
@@ -111,7 +110,7 @@ class TestAclBasic:
                     from sugon_web.utils.logger import logger
                     logger.warning(f"删除规则失败: {e}")
 
-    @allure.title("验证批量开启、关闭和删除网络ACL功能")
+    @allure.title("网络ACL-批量开启关闭和删除")
     def test_acl_batch_operations(self, acl_page):
 
         with allure_step_log(f"步骤1: 新建第二个参与批量的网络ACL"):
@@ -129,7 +128,7 @@ class TestAclBasic:
             acl_page.acl_batch_delete(acl_names)
             acl_page.assert_deleted(acl_names)
 
-    @allure.title("验证网络ACL关联/解关联子网功能")
+    @allure.title("网络ACL-关联和解关联子网")
     def test_acl_subnet_management(self, acl_page, acl, vpc):
         acl_name = acl
         subnet_name = vpc["subnet_name"]
@@ -137,17 +136,6 @@ class TestAclBasic:
         with allure_step_log(f"步骤1: 将网络ACL {acl_name} 关联至子网 {subnet_name}"):
             acl_page.acl_associate_subnet(acl_name, subnets=[subnet_name])
 
-        with allure_step_log(f"步骤2: 从网络ACL {acl_name} 中解关联子网 {subnet_name}"):
-            acl_page.acl_disassociate_subnet(acl_name, subnets=[subnet_name])
-
-    @allure.title("验证网络ACL关联/解关联子网功能")
-    def test_acl_subnet_management(self, acl_page, acl, vpc):
-        acl_name = acl
-        subnet_name = vpc["subnet_name"]
-        
-        with allure_step_log(f"步骤1: 将网络ACL {acl_name} 关联至子网 {subnet_name}"):
-            acl_page.acl_associate_subnet(acl_name, subnets=[subnet_name])
-            
         with allure_step_log(f"步骤2: 从网络ACL {acl_name} 中解关联子网 {subnet_name}"):
             acl_page.acl_disassociate_subnet(acl_name, subnets=[subnet_name])
 

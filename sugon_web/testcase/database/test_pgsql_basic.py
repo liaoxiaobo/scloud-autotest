@@ -11,7 +11,7 @@ from sugon_web.utils import db_util
 @allure.feature('AnhanDB(for PostgreSQL)')
 class TestPgSQLBasic:
 
-    @allure.title("PostgreSQL-实例升级测试")
+    @allure.title("PostgreSQL-升级实例")
     def test_upgrade_instance(self, pgsql_page, pgsql, ssh_host):
         """测试PostgreSQL实例从单机升级到高可用，再升级到集群"""
         instance_name = pgsql["name"]

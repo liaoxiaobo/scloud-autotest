@@ -261,7 +261,7 @@ def evss_policy(evs_page):
 
     # 测试结束后清理
     with allure_step_log("清理测试数据"):
-        evs_page.evss_policy_delete(policy_name)    # TODO: 删除失败，云盘未解绑
+        evs_page.evss_policy_delete(policy_name)
         evs_page.assert_deleted(policy_name)
 
 

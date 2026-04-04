@@ -197,7 +197,7 @@ class TestMySQLBasic:
             assert result.splitlines()[-1] == "1", f"热迁移后数据库连接失败: {result}"
             ssh_vm.close()
 
-    @allure.title("MySQL-创建并删除数据库")
+    @allure.title("MySQL-创建和删除数据库")
     def test_create_and_delete_database(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = mysql["name"]
@@ -235,7 +235,7 @@ class TestMySQLBasic:
             assert db_name not in result_gone, f"数据库 '{db_name}' 在后端删除失败，仍然存在。"
             ssh_vm.close()
 
-    @allure.title("MySQL-批量创建并删除数据库")
+    @allure.title("MySQL-批量创建和删除数据库")
     def test_batch_create_and_delete_databases(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试在实例下批量创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = mysql["name"]
@@ -314,7 +314,7 @@ class TestMySQLBasic:
             assert result_new.splitlines()[-1] == "1"
         ssh_vm.close()
 
-    @allure.title("MySQL-删除及批量删除用户")
+    @allure.title("MySQL-删除和批量删除用户")
     def test_delete_and_batch_delete_users(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试用户的单个删除和批量删除功能，并进行后端验证"""
         instance_name = mysql["name"]
