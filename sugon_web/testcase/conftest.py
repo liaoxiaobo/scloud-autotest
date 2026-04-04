@@ -12,27 +12,6 @@ from sugon_web.utils.util import random_data, load_data
 from sugon_web.conftest import _create_logged_in_page
 
 
-@pytest.fixture(scope="function", autouse=True)
-def close_dialog_before_test(page):
-    """用例执行前关闭可能存在的对话框，避免页面元素定位被遮挡或干扰"""
-
-    try:
-        # 直接检查并关闭对话框
-        close_buttons = [
-            page.get_by_role("button", name="Close"),
-            page.get_by_text("删除提示").locator("xpath=./i"),
-            page.get_by_text("关闭取消").get_by_text("关闭"),
-            page.locator(".one-diloag-footer .cloud-button-btn.cl-btn-primary").filter(has_text="关闭")
-        ]
-        for close_button in close_buttons:
-            if close_button.is_visible():
-                logger.info("发现未关闭的对话框，正在关闭...")
-                close_button.click()
-    except:
-        pass  # 忽略对话框不存在的情况
-
-    yield
-
 @pytest.fixture(scope="function")
 def login_page(page):
     """初始化登录页对象"""

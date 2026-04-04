@@ -3,15 +3,12 @@ import ipaddress
 import random
 import time
 from sugon_web.common.playwright import expect
-from sugon_web.pages.sg import SgPage
-from sugon_web.pages.network import VpcPage
+from sugon_web.pages.network import SgPage, VpcPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.ecs_create import EcsCreatePage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
-from sugon_web.pages.acl import AclPage
-from sugon_web.pages.slb import SlbPage
-from sugon_web.pages.ip_group import IpGroupPage
+from sugon_web.pages.network import AclPage, SlbPage, IpGroupPage
 from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
