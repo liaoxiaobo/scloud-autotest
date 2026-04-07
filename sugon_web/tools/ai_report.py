@@ -11,7 +11,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_RESULTS_DIR = ROOT_DIR / "allure-result"
 DEFAULT_LOGS_DIR = ROOT_DIR / "logs"
 DEFAULT_OUTPUT = ROOT_DIR / "reports" / "ai-test-summary.md"
-ROOT_CAUSE_PROMPT = ROOT_DIR / "sugon_web" / "docs" / "root_cause_prompt.md"
+ROOT_CAUSE_PROMPT = ROOT_DIR / "sugon_web" / "case_specs" / "prompts" /  "test_failure_analysis_prompt.md"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DASHSCOPE_BASE_URL = "https://coding.dashscope.aliyuncs.com/v1"
 PROVIDER_CONFIG = {
@@ -417,7 +417,7 @@ def main() -> int:
     ensure_output_parent(output_path)
     output_path.write_text(content + "\n", encoding="utf-8")
 
-    print(f"已生成报告: {output_path}")
+    print(f"已生成AI总结分析: {output_path}")
     return 0
 
 

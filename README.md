@@ -19,6 +19,7 @@
 ├── logs/
 ├── screenshots/
 └── sugon_web/
+    ├── case_specs/
     ├── conftest.py
     ├── common/
     ├── pages/
@@ -47,6 +48,12 @@
 ### 5. `conftest.py` 和 `pytest.ini`
 - `sugon_web/conftest.py`：全局 Fixture 定义
 - 根目录 `pytest.ini`：项目级 Pytest 配置文件
+
+### 6. `case_specs/`
+- 存放可被程序读取的 Markdown 用例规格、提示词和模板
+- `prompts/`：提示词模板
+- `templates/`：通用 Markdown 模板
+- 按业务域分类沉淀 md 用例，如 `storage/`、`network/`、`compute/`
 
 ## 🛠️ 环境准备
 
