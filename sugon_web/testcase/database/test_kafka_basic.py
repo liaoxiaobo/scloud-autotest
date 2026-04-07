@@ -217,7 +217,7 @@ class TestKafkaBasic:
             kafka_page.reset_whitelist(instance_name)
             kafka_page.assert_popup_success("重置白名单成功")
 
-    @allure.title("Kafka-Topic创建与删除（两种时间戳类型）")
+    @allure.title("Kafka-Topic创建和删除（两种时间戳类型）")
     def test_topic_create_and_delete(self, kafka_page, kafka):
         instance_name = kafka["name"]
         topic_log_append = f"topic-log-{random_string(5)}"

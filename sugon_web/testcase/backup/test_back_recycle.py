@@ -8,7 +8,7 @@ from sugon_web.utils.logger import allure_step_log
 @allure.story('备份任务-回收')
 class TestBackupTaskRecycle:
 
-    @allure.title("恢复备份任务")
+    @allure.title("备份任务-回收站恢复")
     def test_backup_recovery(self, backup_task, backup_page):
         """测试回收站恢复备份任务功能"""
         task_name = backup_task.get("task_name")
@@ -37,7 +37,7 @@ class TestBackupTaskRecycle:
             # 断言重置后搜索输入框已清空
             assert backup_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("验证删除单个备份任务")
+    @allure.title("备份任务-回收站删除")
     def test_backup_recycle_delete(self, backup_page, backup_task):
         task_name = backup_task.get('task_name')
 

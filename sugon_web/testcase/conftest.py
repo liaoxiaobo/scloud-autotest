@@ -12,27 +12,6 @@ from sugon_web.utils.util import random_data, load_data
 from sugon_web.conftest import _create_logged_in_page
 
 
-@pytest.fixture(scope="function", autouse=True)
-def close_dialog_before_test(page):
-    """用例执行前关闭可能存在的对话框，避免页面元素定位被遮挡或干扰"""
-
-    try:
-        # 直接检查并关闭对话框
-        close_buttons = [
-            page.get_by_role("button", name="Close"),
-            page.get_by_text("删除提示").locator("xpath=./i"),
-            page.get_by_text("关闭取消").get_by_text("关闭"),
-            page.locator(".one-diloag-footer .cloud-button-btn.cl-btn-primary").filter(has_text="关闭")
-        ]
-        for close_button in close_buttons:
-            if close_button.is_visible():
-                logger.info("发现未关闭的对话框，正在关闭...")
-                close_button.click()
-    except:
-        pass  # 忽略对话框不存在的情况
-
-    yield
-
 @pytest.fixture(scope="function")
 def login_page(page):
     """初始化登录页对象"""
@@ -261,7 +240,7 @@ def evss_policy(evs_page):
 
     # 测试结束后清理
     with allure_step_log("清理测试数据"):
-        evs_page.evss_policy_delete(policy_name)    # TODO: 删除失败，云盘未解绑
+        evs_page.evss_policy_delete(policy_name)
         evs_page.assert_deleted(policy_name)
 
 
@@ -562,12 +541,69 @@ def vpc_page(page):
     return vpc_page
 
 
+def _build_vpc_create_kwargs(params=None):
+    """根据参数构建VPC创建入参。"""
+    params = params or {}
+    name = params.get('name', random_data(length=3))
+
+    return {
+        "name": name,
+        "subnet_name": params.get('subnet_name', random_data()),
+        "cidr": params.get('cidr', random_data("cidr")),
+        "desc": params.get('desc', ''),
+        "subnet_desc": params.get('subnet_desc', ''),
+        "network_type": params.get('network_type', 'Geneve'),
+        "gateway_mode": params.get('gateway_mode', "分布式网关"),
+        "vlan_id": params.get('vlan_id'),
+        "gateway_ip": params.get('gateway_ip'),
+        "mac": params.get('mac'),
+        "enable_ipv6": params.get('enable_ipv6', False)
+    }
+
+
+def _create_vpc_resource(vpc_page, params=None):
+    """创建VPC并返回资源信息。"""
+    create_kwargs = _build_vpc_create_kwargs(params)
+
+    vpc_page.goto_service('虚拟私有云')
+    vpc_page.vpc_create(**create_kwargs)
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    vpc_page.assert_status(create_kwargs["name"])
+
+    return create_kwargs
+
+
+def _build_vpc_batch_params(params, count):
+    """构建批量创建VPC时每个资源的参数列表。"""
+    params = params or {}
+    if count == 1:
+        return [params]
+
+    base_name = params.get("name")
+    batch_params = []
+    for index in range(count):
+        item_params = dict(params)
+        if base_name:
+            item_params["name"] = f"{base_name}-{index}"
+        batch_params.append(item_params)
+    return batch_params
+
+
+def _cleanup_vpc_resource(vpc_page, name):
+    """清理VPC资源。"""
+    vpc_page.goto_service('虚拟私有云')
+    vpc_page.vpc_delete(name)
+    vpc_page.assert_deleted(name)
+    expect(vpc_page.alert).to_have_count(0, timeout=10000)
+
+
 @pytest.fixture(scope="class")
 def vpc(browser_context, config, request):
     """
     创建并返回一个VPC资源数据，测试结束后自动清理
 
     支持参数化配置，可通过pytest.mark.parametrize传入参数：
+    - count: 创建VPC数量，默认为1
     - name: VPC名称，如果未指定则随机生成
     - subnet_name: 子网名称
     - cidr: 子网CIDR
@@ -583,56 +619,35 @@ def vpc(browser_context, config, request):
         request: pytest的request对象，用于获取测试用例传递的参数
 
     Returns:
-        dict: 包含VPC信息的字典，例如：
+        dict 或 list[dict]: VPC信息。
+            单个VPC时返回字典，例如：
             {
                 "name": "autotest-abc123",
                 "subnet_name": "subnet-xyz789",
                 "cidr": "10.0.0.0/24",
                 "network_type": "Geneve"
             }
+            多个VPC时返回字典列表。
 
     Yields:
-        dict: VPC信息字典，测试用例执行后自动清理
+        dict 或 list[dict]: VPC信息，测试用例执行后自动清理
     """
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
     vpc_page.goto_service('虚拟私有云')
 
-    # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
+    count = params.get("count", 1)
+    params_list = _build_vpc_batch_params(params, count)
 
-    name = params.get('name', random_data(length=3))
+    with allure_step_log(f"创建 {count} 个虚拟私有云"):
+        vpc_list = [_create_vpc_resource(vpc_page, item_params) for item_params in params_list]
 
-    # 构建创建参数
-    create_kwargs = {
-        "name": name,
-        "subnet_name": params.get('subnet_name', random_data()),
-        "cidr": params.get('cidr', random_data("cidr")),
-        "network_type": params.get('network_type', 'Geneve'),
-        "gateway_mode": params.get('gateway_mode', "分布式网关"),
-        "vlan_id": params.get('vlan_id'),
-        "gateway_ip": params.get('gateway_ip'),
-        "mac": params.get('mac'),
-        "enable_ipv6": params.get('enable_ipv6', False)
-    }
+    yield vpc_list[0] if count == 1 else vpc_list
 
-    # 创建VPC
-    vpc_page.goto_service('虚拟私有云')
-    vpc_page.vpc_create(**create_kwargs)
-    vpc_page.assert_popup_success("创建虚拟私有云成功")
-    vpc_page.assert_status(name)
-
-    # 构建返回的VPC信息
-    vpc_data = create_kwargs
-
-    yield vpc_data
-
-    # 清理VPC
-    # ✅ 在删除前确保在虚拟私有云页面
-    vpc_page.goto_service('虚拟私有云')
-    vpc_page.vpc_delete(name)
-    vpc_page.assert_deleted(name)
-    expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
+    with allure_step_log(f"清理虚拟私有云 {[item['name'] for item in vpc_list]}"):
+        for item in vpc_list:
+            _cleanup_vpc_resource(vpc_page, item["name"])
     page.close()
 
 

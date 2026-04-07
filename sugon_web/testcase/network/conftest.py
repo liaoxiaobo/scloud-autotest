@@ -3,14 +3,12 @@ import ipaddress
 import random
 import time
 from sugon_web.common.playwright import expect
-from sugon_web.pages.sg import SgPage
-from sugon_web.pages.network import VpcPage
+from sugon_web.pages.network import SgPage, VpcPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.ecs_create import EcsCreatePage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
-from sugon_web.pages.acl import AclPage
-from sugon_web.pages.slb import SlbPage
+from sugon_web.pages.network import AclPage, SlbPage, IpGroupPage
 from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
@@ -638,7 +636,7 @@ def slb(browser_context, config, vpc, request):
         safe_hosts = hosts[10:-10] if len(hosts) > 20 else hosts
         ip_address = str(random.choice(safe_hosts))
 
-    slb_name = f"slb-{random_data()}"
+    slb_name = params.get("name", f"slb-{random_data()}")
 
     with allure_step_log(f"Setup: 创建负载均衡 {slb_name}"):
         slb_page.goto_service("负载均衡")
@@ -664,5 +662,164 @@ def slb(browser_context, config, vpc, request):
             slb_page.assert_deleted(slb_name)
         except Exception as e:
             logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
+        finally:
+            page.close()
+
+@pytest.fixture(scope="class")
+def lb(browser_context, config, slb, request):
+    """
+    按需创建并返回一个默认的监听器实例字典，在整个类内共享复用测试结束后自动清理。
+    可以通过 pytest.mark.parametrize("lb", [{"port": 81}], indirect=True) 传参定制。
+    """
+    page = _create_logged_in_page(browser_context, config)
+    slb_page = SlbPage(page)
+    slb_page.goto_service("负载均衡")
+    params = getattr(request, "param", {})
+
+    params.setdefault("slb_name", slb)
+    params.setdefault("protocol", "TCP")
+    params.setdefault("port", 80)
+
+    protocol = params["protocol"]
+    params.setdefault("lb_name", f"lb-{protocol.lower()}-{random_data()}")
+    params.setdefault("pool_name", f"pool-{random_data()}")
+
+    if params.get("desc") is None:
+        params["desc"] = f"Autotest listener {params['lb_name']}"
+
+    params.setdefault("health_check", False)
+
+    lb_name = params["lb_name"]
+
+    with allure_step_log(f"Setup: 创建默认监听器 {lb_name}"):
+        slb_page.slb_lb_create(**params)
+        slb_page.assert_popup_success()
+        slb_page.assert_listener_exists(lb_name)
+
+    listener_info = {
+        "slb_name": params["slb_name"],
+        "name": params["lb_name"],
+        "protocol": params["protocol"],
+        "port": params["port"],
+        "desc": params["desc"],
+        "pool_name": params["pool_name"],
+        "balance_method": params.get("balance_method", "轮询"),
+        "health_check": params.get("health_check", False),
+        "session_persistence": params.get("session_persistence", False),
+        "acl_enable": params.get("acl_enable", False),
+        "access_policy": params.get("access_policy"),
+        "ip_group": params.get("ip_group"),
+    }
+
+    yield listener_info
+
+    with allure_step_log(f"Teardown: 删除监听器 {listener_info['name']}"):
+        try:
+            current_name = listener_info["name"]
+            slb_page.goto_service("负载均衡")
+            slb_page.goto_slb_detail(listener_info["slb_name"], "监听器")
+            slb_page.assert_listener_exists(current_name)
+            slb_page.slb_lb_delete(listener_info["slb_name"], current_name)
+            slb_page.assert_popup_success()
+        except Exception as exc:
+            logger.warning(f"listener cleanup failed: {current_name}, error={exc}")
+        finally:
+            page.close()
+
+
+@pytest.fixture(scope="class")
+def lb_pool_candidate_vms(browser_context, config, vpc, request):
+    """创建资源池可选 ECS 列表，供监听器资源池新增资源用例复用。"""
+    page = _create_logged_in_page(browser_context, config)
+    ecs_create_page = EcsCreatePage(page)
+
+    params = getattr(request, "param", {})
+    count = params.get("count", 2)
+    cluster = params.get("cluster", "Autotest")
+    vm_prefix = params.get("name_prefix", "lb-pool-vm")
+    created_vms = []
+
+    with allure_step_log(f"Setup: 创建 {count} 台资源池候选虚机"):
+        for _ in range(count):
+            vm_name = f"{vm_prefix}-{random_data(length=4)}"
+            ecs_create_page.goto_service("弹性云服务器")
+            ecs_create_page.ecs_create(
+                basic={"name": vm_name, "集群": cluster},
+                storage={},
+                network={"networks": [{"network": vpc["name"], "subnet": vpc["subnet_name"]}]},
+                manage={},
+                advanced={}
+            )
+            ecs_create_page.assert_popup_success("创建实例命令下发成功")
+            ecs_create_page.assert_status(vm_name)
+
+            row_data = ecs_create_page.get_row_data(vm_name)
+            fixed_ip = row_data["IP地址"].split("固定: ")[-1].strip()
+            created_vms.append({
+                "name": vm_name,
+                "ip": fixed_ip,
+            })
+
+    yield created_vms
+
+    vm_names = [vm["name"] for vm in created_vms]
+    with allure_step_log(f"Teardown: 清理资源池候选虚机 {vm_names}"):
+        try:
+            if created_vms:
+                ecs_create_page.goto_service("弹性云服务器")
+                ecs_create_page.ecs_remove(vm_names)
+                ecs_create_page.ecs_delete(vm_names)
+                ecs_create_page.assert_deleted(vm_names)
+        except Exception as exc:
+            logger.warning(f"清理资源池候选虚机失败: {vm_names}, error={exc}")
+        finally:
+            page.close()
+
+
+@pytest.fixture(scope="function")
+def ip_group_page(page):
+    """初始化 IP 地址组页面对象。"""
+    page_obj = IpGroupPage(page)
+    page_obj.goto_service("负载均衡")
+    return page_obj
+
+
+@pytest.fixture(scope="class")
+def ip_group(browser_context, config, request):
+    """创建 IP 地址组，并在测试结束后自动清理。"""
+    page = _create_logged_in_page(browser_context, config)
+    ip_group_page = IpGroupPage(page)
+    ip_group_page.goto_service("负载均衡")
+
+    params = getattr(request, "param", {})
+    group_info = {
+        "name": f"ipg-{random_data()}",
+        "ip_addresses": ["10.10.10.10"],
+        "desc": "IP地址组 fixture 自动创建",
+        "enable_ipv6": False,
+    }
+    group_info.update(params)
+
+    with allure_step_log(f"Setup: 创建 IP 地址组 {group_info['name']}"):
+        ip_group_page.ip_group_create(
+            name=group_info["name"],
+            ip_addresses=group_info["ip_addresses"],
+            desc=group_info["desc"],
+            enable_ipv6=group_info["enable_ipv6"],
+        )
+        ip_group_page.assert_popup_success()
+
+    yield group_info
+
+    with allure_step_log(f"Teardown: 清理 IP 地址组 {group_info['name']}"):
+        try:
+            ip_group_page.goto_service("负载均衡")
+            ip_group_page.ip_group_search(group_info["name"])
+            names = ip_group_page.get_column_data("名称")
+            if group_info["name"] in names:
+                ip_group_page.ip_group_delete(group_info["name"])
+                ip_group_page.assert_deleted(group_info["name"])
+        except Exception as exc:
+            logger.warning(f"清理 IP 地址组失败: {exc}")
         finally:
             page.close()

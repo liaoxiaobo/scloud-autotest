@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, only_stor
 @allure.story('回收站功能验证')
 class TestECSRecycle:
 
-    @allure.title("恢复弹性云服务器")
+    @allure.title("弹性云服务器-回收站恢复")
     def test_ecs_recycle_recover(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
@@ -36,7 +36,7 @@ class TestECSRecycle:
             assert md5 in ssh_vm.run(f"md5sum {name}"), "恢复后系统盘数据MD5不一致"
             assert ssh_vm.create_file(name) is not None, "恢复后系统盘数据不能写入"
 
-    @allure.title("列表页搜索&重置")
+    @allure.title("弹性云服务器-回收站搜索和重置")
     def test_ecs_recycle_search(self, ecs_page, vm):
         name = vm.get("name")
         with allure_step_log(f"步骤1: 删除云服务器{name}"):
@@ -64,7 +64,7 @@ class TestECSRecycle:
             ecs_page.goto_service('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
 
-    @allure.title("删除弹性云服务器")
+    @allure.title("弹性云服务器-回收站删除")
     def test_ecs_recycle_remove(self, ecs_page, ssh_host):
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
@@ -82,7 +82,7 @@ class TestECSRecycle:
             ssh_host.wait_vm_deleted(name)
 
 
-    @allure.title("批量删除弹性云服务器")
+    @allure.title("弹性云服务器-回收站批量删除")
     def test_ecs_recycle_batch_remove(self, ecs_page, ssh_host):
         """测试弹性云服务器批量删除功能"""
 
@@ -124,7 +124,7 @@ class TestECSRecycle:
             ssh_host.wait_vm_deleted(ecs_names)
 
     @only_stor('xstor')
-    @allure.title("安全删除功能验证")
+    @allure.title("弹性云服务器-回收站安全删除")
     def test_ecs_recycle_secure_delete(self, ecs_page, ssh_host):
         """测试弹性云服务器删除功能，包括普通删除和安全删除"""
 

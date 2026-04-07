@@ -47,8 +47,6 @@
 - 用例优先复用已有 fixture、页面对象方法、工具函数、日志方法、数据加载方式
 - 如 fixture 中资源标识发生变化，需要同步回写 fixture，确保 teardown 正常执行
 - 列表断言优先使用框架公共断言方法，例如 `assert_list_contain()`、`assert_deleted()`；不要重复造轮子
-- 断言必须校验真实业务结果，不能只验证“点击成功”或“页面没报错”
-
 
 ## 页面对象编写规范
 
@@ -84,10 +82,9 @@ def test_xxx(self, page_fixture, resource_fixture):
 生成代码前，请先自检以下问题；若任一项答案为“否”，先修正再输出代码：
 
 - 是否已经阅读同模块现有用例，并按其标题风格命名
-- 是否优先复用了公共 `search / reset / assert_list_contain / assert_deleted` 等能力
-- 是否避免新增资源专属的冗余 helper
+- 是否优先复用了`base.py`模块公共 `search / reset / assert_list_contain / assert_deleted` 等能力
 - 是否只补充了最小必要的页面对象方法
-- 是否给新增业务方法补了参数说明
-- 是否识别3条以上用例存在重复的前置/清理逻辑，并优先抽成 fixture 或公共 helper
+- 是否给新增业务方法补了参数说明和操作步骤说明
+- 是否识别3条以上用例存在重复的前置/清理逻辑，并优先抽成 class 级别的 fixture
 - 是否让 fixture 的创建、回写、teardown 逻辑保持一致
 - 是否通过最小范围的语法检查或 pytest 验证

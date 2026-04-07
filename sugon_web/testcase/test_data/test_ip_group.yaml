@@ -1,0 +1,31 @@
+ip_group:
+  test_ip_group_create_scenarios:
+    - case_desc: "IPv4-单地址-短描述"
+      ip_addresses:
+        - "10.10.10.10"
+      desc: "ipv4-single"
+      expected_desc_length: 11
+      enable_ipv6: false
+
+    - case_desc: "IPv4-多地址-描述最大255"
+      ip_addresses:
+        - "10.10.10.21"
+        - "10.10.10.22"
+      desc: "{{ 'd' * 255 }}"
+      expected_desc_length: 255
+      enable_ipv6: false
+
+    - case_desc: "IPv6-单地址-描述最大255"
+      ip_addresses:
+        - "2001:db8:1::10"
+      desc: "{{ 'd' * 255 }}"
+      expected_desc_length: 255
+      enable_ipv6: true
+
+    - case_desc: "IPv6-多地址-短描述"
+      ip_addresses:
+        - "2001:db8:2::11"
+        - "2001:db8:2::12"
+      desc: "ipv6-multi"
+      expected_desc_length: 10
+      enable_ipv6: true

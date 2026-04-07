@@ -172,7 +172,7 @@ class TestVPCBasic:
             assert subnet_name, cidr in data['网络类型']
 
 
-    @allure.title("虚拟私有云-搜索&重置")
+    @allure.title("虚拟私有云-搜索和重置")
     def test_vpc_search(self, vpc_page, vpc):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -503,7 +503,7 @@ class TestVPCBasic:
             data = vpc_page.get_row_data(vip)
             assert eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {eip}"
 
-    @allure.title("虚拟IP-搜索&重置")
+    @allure.title("虚拟IP-搜索和重置")
     @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
     def test_vip_search(self, ecs_page, vpc_page, vip, vm):
         """测试虚拟IP搜索&重置"""
@@ -632,7 +632,7 @@ class TestVPCBasic:
         with allure_step_log("步骤4: 验证端口已删除"):
             vpc_page.assert_deleted(port_ip)
 
-    @allure.title("端口-搜索&重置")
+    @allure.title("端口-搜索和重置")
     @pytest.mark.parametrize("port", [{"count": 2}], indirect=True)
     def test_port_search(self, vpc_page, vpc, port):
         """测试端口的搜索和重置功能"""
@@ -822,7 +822,7 @@ class TestVPCBasic:
             logger.info(f"✓ 路由表名称已修改为: {new_rtb_name}")
             logger.info(f"✓ 路由表描述已修改为: {new_rtb_desc}")
 
-    @allure.title("路由表-搜索&重置规则")
+    @allure.title("路由表规则-搜索和重置")
     def test_route_rule_search(self, vpc_page, vpc):
         """测试路由表Tab中按目的地址搜索和重置路由表规则（利用VPC默认路由规则）"""
 

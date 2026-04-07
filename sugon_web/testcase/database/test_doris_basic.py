@@ -349,7 +349,7 @@ class TestDorisBasic:
             assert service_status == "running", f"热迁移后Doris FE服务状态异常: {service_status}"
             ssh_vm.close()
 
-    @allure.title("Doris-创建并删除数据库")
+    @allure.title("Doris-创建和删除数据库")
     def test_create_and_delete_database(self, doris_page, doris, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = doris["name"]
@@ -434,7 +434,7 @@ class TestDorisBasic:
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("Doris-创建并删除用户")
+    @allure.title("Doris-创建和删除用户")
     def test_create_and_delete_user(self, doris_page, doris, ssh_host, ssh_vm):
         """测试创建和删除Doris用户，并进行后端验证"""
         instance_name = doris["name"]
