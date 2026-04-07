@@ -2,7 +2,7 @@ import time
 import pytest
 from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
-from sugon_web.pages.evs import EvsPage
+from sugon_web.pages.storage import EvsPage
 from sugon_web.pages.ecs import EcsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
