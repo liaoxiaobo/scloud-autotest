@@ -24,3 +24,4 @@ faker~=15.0.0
 requests>=2.32.4
 paramiko==3.4.0
 PyJWT==2.4.0
+openai>=1.0.0

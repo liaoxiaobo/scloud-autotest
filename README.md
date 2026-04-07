@@ -13,26 +13,18 @@
 
 ## 📁 项目结构
 ```
-sugon_web/
-├── conftest.py
+.
 ├── pytest.ini
-├── common/
-│   ├── base.py
-│   └── playwright.py
-├── pages/
-│   ├── ecs.py
-│   ├── evs.py
-│   └── login.py
-├── testcase/
-│   ├── conftest.py
-│   ├── test_ecs.py
-│   ├── test_evs.py
-│   ├── test_login.py
-│   └── test_data/
-│       └── test_data.yaml
-└── utils/
-    ├── logger.py
-    └── util.py
+├── allure-result/
+├── logs/
+├── screenshots/
+└── sugon_web/
+    ├── conftest.py
+    ├── common/
+    ├── pages/
+    ├── testcase/
+    ├── tools/
+    └── utils/
 ```
 
 ## 项目目录说明
@@ -53,7 +45,8 @@ sugon_web/
 - 工具模块：如 logger.py （日志工具）、 util.py （通用工具函数）。
 
 ### 5. `conftest.py` 和 `pytest.ini`
-- 全局 Fixture 定义和Pytest 配置文件。
+- `sugon_web/conftest.py`：全局 Fixture 定义
+- 根目录 `pytest.ini`：项目级 Pytest 配置文件
 
 ## 🛠️ 环境准备
 
@@ -86,6 +79,60 @@ allure generate allure-result/ -o ./allure-report -c
 # 本地查看报告
 allure open -h 127.0.0.1 -p 8888 ./allure-report
 ```
+
+### AI 失败总结
+
+执行测试后，可基于 `allure-result` 和 `logs` 自动生成 AI 总结：
+
+```bash
+# 先执行测试，生成 allure-result 和 logs
+pytest sugon_web/testcase/ --alluredir=allure-result
+
+# 配置 API Key
+export DEEPSEEK_API_KEY="你的key"
+
+# 生成 AI 总结（默认输出到 reports/ai-test-summary.md）
+python -m sugon_web.tools.ai_report
+```
+
+常用参数：
+
+```bash
+# 只做本地解析，不调用模型
+python -m sugon_web.tools.ai_report --dry-run
+
+# 指定模型、结果目录、输出文件
+python -m sugon_web.tools.ai_report \
+  --provider deepseek \
+  --model deepseek-chat \
+  --results-dir allure-result \
+  --log-file logs/pytest-2026-04-07.log \
+  --output reports/ai-summary.md
+```
+
+阿里云 DashScope 兼容模型示例：
+
+```bash
+export DASHSCOPE_API_KEY="你的key"
+python -m sugon_web.tools.ai_report --provider dashscope --model glm-5
+```
+
+如果要切到阿里云这条兼容网关：
+
+```bash
+export DASHSCOPE_API_KEY="你的key"
+python -m sugon_web.tools.ai_report \
+  --provider dashscope \
+  --model glm-5
+```
+
+脚本会输出：
+
+- 测试执行概览（通过 / 失败 / 跳过）
+- 失败用例摘要
+- 按失败用例生成的根因初判
+- OpenAI 模式下可带上 Allure 中的失败截图做多模态分析
+- 一份适合回归汇报的 Markdown 总结
 
 ### 命令行参数
 

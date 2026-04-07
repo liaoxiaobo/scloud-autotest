@@ -2,6 +2,7 @@ import os
 import random
 import re
 import time
+from pathlib import Path
 from time import sleep
 import allure
 import pytest
@@ -339,11 +340,11 @@ class EcsPage(OpsPage):
             expect(loc).to_be_visible(timeout=30000)
             # 保存截图到文件
             sleep(5)
-            screenshot_dir = "screenshots"
-            os.makedirs(screenshot_dir, exist_ok=True)
-            screenshot_vnc = os.path.join(screenshot_dir, f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png")
+            screenshot_dir = Path(__file__).resolve().parents[2] / "screenshots"
+            screenshot_dir.mkdir(exist_ok=True)
+            screenshot_vnc = screenshot_dir / f"{name}_{time.strftime('%Y%m%d%H%M%S')}.png"
             # 保存截图到文件
-            loc.screenshot(path=screenshot_vnc)
+            loc.screenshot(path=str(screenshot_vnc))
             logger.info(f"截图保存成功: {screenshot_vnc}")
 
             # 将截图添加到 Allure 报告
