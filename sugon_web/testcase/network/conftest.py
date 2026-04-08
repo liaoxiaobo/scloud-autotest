@@ -4,8 +4,7 @@ import random
 import time
 from sugon_web.common.playwright import expect
 from sugon_web.pages.network import SgPage, VpcPage
-from sugon_web.pages.ecs import EcsPage
-from sugon_web.pages.ecs_create import EcsCreatePage
+from sugon_web.pages.compute import EcsCreatePage, EcsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.network import AclPage, SlbPage, IpGroupPage

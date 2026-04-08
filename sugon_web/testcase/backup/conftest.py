@@ -2,8 +2,7 @@ import time
 import pytest
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.backup import BackUpPage
-from sugon_web.pages.ecs import EcsPage
-from sugon_web.pages.ecs_create import EcsCreatePage
+from sugon_web.pages.compute import EcsCreatePage, EcsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import load_data
 

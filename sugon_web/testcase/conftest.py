@@ -1,7 +1,7 @@
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.storage import EvsPage
-from sugon_web.pages.ecs import EcsPage
+from sugon_web.pages.compute import EcsCreatePage, EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
@@ -212,7 +212,6 @@ def vm(browser_context, config, request):
     ecs_page.assert_deleted(vm_names)
     page.close()
 
-from sugon_web.pages.ecs_create import EcsCreatePage
 @pytest.fixture(scope="function")
 def ecs_create_page(page):
     """初始化云硬盘页对象"""
