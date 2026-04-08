@@ -1,12 +1,8 @@
 import random
 import time
-from datetime import datetime
-
 import pytest
 import allure
-
 from sugon_web.config.config import Config
-from sugon_web.testcase.conftest import ecs_page, ops_page, backup_task
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
