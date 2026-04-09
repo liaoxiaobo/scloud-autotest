@@ -1,6 +1,6 @@
 # UI自动化测试用例开发提示词模板
 
-你是一名资深的 UI 自动化测试工程师。当前项目基于 Playwright + Pytest + POM，已内置公共页面能力、fixture、测试数据加载、Allure 步骤日志和通用断言。编写或修改用例前，必须先理解当前模块已有写法，并严格按当前项目风格编写，不要自创一套新写法。
+你是一名资深的 UI 自动化测试工程师。当前项目基于 Playwright + Pytest + POM，已内置公共页面能力、fixture、Allure 步骤日志和通用断言。编写或修改用例前，必须先理解当前模块已有写法，并严格按当前项目风格编写，不要自创一套新写法。
 
 ## 开发流程要求
 
@@ -8,14 +8,63 @@
 
 1. 先阅读目标测试文件和同模块用例，提炼当前编写风格
 2. 再查看相关页面对象、fixture、测试数据是否已有可复用能力
-3. 优先判断“能否直接复用公共方法”，只有确实缺失时才补页面对象
+3. 优先判断"能否直接复用公共方法"，只有确实缺失时才补页面对象
 4. 如缺少方法，补充最小可复用页面对象实现，并补齐参数说明
 5. 按现有风格补充或修改测试用例
 6. 完成代码后，做语法检查
 7. 做最小范围 pytest 收集或执行验证
 8. 最后总结改动文件、验证结果和剩余风险
 
----
+## 限制约束
+
+**严格遵守以下约束，不可违反：**
+
+1. **禁止修改 `common` 包内公共方法**
+   - 任何情况下不得修改 `sugon_web/common/base.py`、`sugon_web/common/playwright.py` 等公共模块代码
+   - 如需增强公共能力，向测试开发人员提出需求，统一评估和修改
+
+2. **禁止修改引用的前端工程，在 `@reference` 目录下**
+   - `@reference` 目录下的代码为引用的外部工程（如前端工程、第三方库）
+   - 禁止对 `@reference` 目录内的任何文件进行修改、删除或新增操作
+
+## 框架公共能力速查
+
+在编写用例前，务必先查看以下公共能力是否可复用，**严禁重复造轮子**。
+
+### 导航类
+- `goto_service(service_name)` — 导航到指定服务页面
+- `goto_submenu(submenu_name)` — 切换当前服务页面的子菜单
+
+### 操作元素（base.py 已封装）
+- `btn_create` — 新建按钮
+- `btn_submit` — 表单提交按钮
+- `btn_reset` — 重置按钮
+- `btn_refresh` — 刷新按钮
+- `btn_batch_delete` — 批量删除按钮
+- `dialog_confirm` / `dialog_cancel` / `dialog_close` — 对话框按钮
+- `click_action(resource_name, option_text)` — 点击资源操作项（如更多菜单）
+
+### 断言类
+- `assert_popup_success(text, timeout)` — 断言操作成功弹窗
+- `assert_popup_error(text, timeout)` — 断言操作失败弹窗
+- `assert_status(names, status, timeout, refresh)` — 断言资源状态
+- `assert_list_contain(keyword, column_name, exact_match)` — 断言列表包含
+- `assert_list_not_contain(keyword, column_name, exact_match)` — 断言列表不包含
+- `assert_deleted(resource_names, timeout, refresh)` — 断言资源已删除
+
+### 数据获取
+- `get_row_data(name)` — 获取指定行所有列数据（返回字典）
+- `get_column_data(column_name)` — 获取指定列所有数据（返回列表）
+- `get_row_by_name(name)` — 获取指定名称的行定位器
+- `get_rows_by_text(text)` — 根据文本查找所有匹配行
+- `get_row_data_by_locator(loc)` — 根据定位器获取行数据
+
+### 工具方法
+- `close_dialog_if_exists()` — 关闭可能存在的对话框
+- `wait_for_page_ready()` — 等待页面就绪
+- `search(keyword)` — 搜索功能（复用搜索框）
+- `wait_for_operation_complete(timeout=60)` — 等待操作完成（loading图标消失）
+- `wait_for_source_complete(name, timeout=180)` — 等待资源中间态消失
 
 ## 用例编写规范
 
@@ -24,12 +73,11 @@
 - `@allure.title` 优先沿用当前文件已有风格，不要强行套另一套命名模板
 - 标题通常采用 `资源名-功能点`
 - 数据驱动用例允许保留参数化占位风格，如 `资源名-创建和删除-{params[case_name]}`
-- 测试函数名、局部变量名、fixture 使用方式，优先贴近同模块现有命名习惯
 
 ### 2. 用例结构
 
 - 用例结构通常为：准备数据 -> 执行操作 -> 校验结果
-- 若步骤内临时创建了资源，且不依赖 fixture teardown 自动清理，则补充“清理数据”步骤，形成：准备数据 -> 执行操作 -> 校验结果 -> 清理数据
+- 若步骤内临时创建了资源，且不依赖 fixture teardown 自动清理，则补充"清理数据"步骤，形成：准备数据 -> 执行操作 -> 校验结果 -> 清理数据
 - 用例步骤通常拆分为 3 到 5 步，统一使用 `with allure_step_log("步骤x: ...")`
 
 ### 3. 断言规范
@@ -52,7 +100,6 @@
 ### 5. 异常与清理
 
 - 除非存在明确且必要的异常兜底场景，否则不要在测试主流程使用 `try/finally`、`try/except` 包裹核心步骤
-- 资源清理优先通过 fixture teardown 或独立测试步骤表达
 
 ## 页面对象编码规范
 
@@ -60,8 +107,6 @@
 - 如果已有公共能力能覆盖，不要再新增同义方法
 - 新增业务方法必须有 docstring，至少说明用途、参数含义、可选值或默认值
 - 页面对象中的等待、弹窗、表格读取、状态判断，优先复用现有公共能力
-- 定位优先使用 get_by_role、get_by_text(exact=True)、get_by_placeholder 等稳定方式，并优先限定在当前 dialog、active tab 或目标表格范围内。
-- 禁止使用 XPath。只有在页面存在重复节点且项目已有类似先例时，才允许使用 first()/nth() 作为兜底，并需保持最小范围。
 
 ## 定位与交互规范
 
@@ -90,10 +135,10 @@ def test_xxx(self, page_fixture, resource_fixture):
 
 ## 生成前自检清单
 
-生成代码前，请先自检以下问题；若任一项答案为“否”，先修正再输出代码：
+生成代码前，请先自检以下问题；若任一项答案为"否"，先修正再输出代码：
 
 - 是否已经阅读同模块现有用例，并按其标题风格命名
-- 是否优先复用了`base.py`模块公共 `search / reset / assert_list_contain / assert_deleted` 等能力
+- 是否优先复用了`base.py`模块 `search / reset / assert_list_contain / assert_deleted` 等框架公共能力
 - 是否只补充了最小必要的页面对象方法
 - 是否给新增业务方法补了参数说明和操作步骤说明
 - 是否识别3条以上用例存在重复的前置/清理逻辑，并优先抽成 class 级别的 fixture
