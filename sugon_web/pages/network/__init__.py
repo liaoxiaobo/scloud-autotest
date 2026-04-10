@@ -2,6 +2,7 @@ from sugon_web.common.base import BasePage
 
 from .acl import AclPage
 from .eip import EipMixin
+from .internal_dns import InternalDnsMixin
 from .ip_group import IpGroupPage
 from .nat import NatMixin
 from .peer_connect import PeerConnectMixin
@@ -11,5 +12,5 @@ from .slb import SlbPage
 from .vpc import VpcMixin
 
 
-class VpcPage(VpcMixin, PeerConnectMixin, EipMixin, NatMixin, QosMixin, BasePage):
+class VpcPage(VpcMixin, PeerConnectMixin, InternalDnsMixin, EipMixin, NatMixin, QosMixin, BasePage):
     """网络服务页面聚合类。"""

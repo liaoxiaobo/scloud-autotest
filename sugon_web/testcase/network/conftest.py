@@ -909,3 +909,73 @@ def ip_group(browser_context, config, request):
             logger.warning(f"清理 IP 地址组失败: {exc}")
         finally:
             page.close()
+
+
+@pytest.fixture(scope="function")
+def internal_dns(vpc_page, vpc):
+    """创建并返回一个内网解析，测试结束后自动清理。"""
+    dns_info = {
+        "domain": f"dns-{random_data()}.com",
+        "vpc_name": vpc["name"],
+        "email": "admin@test.com",
+        "desc": f"内网解析自动化测试-{random_data(length=4)}",
+    }
+
+    with allure_step_log(f"Setup: 创建内网解析 {dns_info['domain']}"):
+        vpc_page.internal_dns_create(
+            domain=dns_info["domain"],
+            vpc_name=dns_info["vpc_name"],
+            email=dns_info["email"],
+            desc=dns_info["desc"]
+        )
+        vpc_page.assert_popup_success()
+
+    yield dns_info
+
+    with allure_step_log(f"Teardown: 删除内网解析 {dns_info['domain']}"):
+        try:
+            vpc_page.goto_internal_dns_list()
+            vpc_page.search(dns_info["domain"])
+            domains = vpc_page.get_column_data("域名")
+            if dns_info["domain"] in domains:
+                vpc_page.internal_dns_delete(dns_info["domain"])
+                vpc_page.assert_deleted(dns_info["domain"])
+        except Exception as exc:
+            logger.warning(f"清理内网解析失败: {exc}")
+
+
+@pytest.fixture(scope="function")
+def internal_dns_record(vpc_page, internal_dns):
+    """创建并返回一个解析记录，测试结束后自动清理。"""
+    record_info = {
+        "domain": internal_dns["domain"],
+        "host_record": f"www-{random_data(length=4)}",
+        "record_type": "A",
+        "ttl": 600,
+        "value": f"10.10.{random.randint(10, 200)}.{random.randint(10, 200)}",
+        "desc": f"解析记录自动化测试-{random_data(length=4)}",
+    }
+    record_info["alias"] = vpc_page.internal_dns_record_alias(record_info["domain"], record_info["host_record"])
+
+    with allure_step_log(f"Setup: 创建解析记录 {record_info['alias']}"):
+        vpc_page.internal_dns_record_create(
+            domain=record_info["domain"],
+            host_record=record_info["host_record"],
+            record_type=record_info["record_type"],
+            ttl=record_info["ttl"],
+            values=record_info["value"],
+            desc=record_info["desc"]
+        )
+        vpc_page.assert_popup_success()
+
+    yield record_info
+
+    with allure_step_log(f"Teardown: 删除解析记录 {record_info['alias']}"):
+        try:
+            vpc_page.goto_internal_dns_detail(record_info["domain"], tab_name="解析记录")
+            aliases = vpc_page.get_column_data("域名", context="active-tab")
+            if record_info["alias"] in aliases:
+                vpc_page.internal_dns_record_delete(record_info["domain"], record_info["alias"])
+                vpc_page.assert_deleted(record_info["alias"])
+        except Exception as exc:
+            logger.warning(f"清理解析记录失败: {exc}")
