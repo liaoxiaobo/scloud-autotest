@@ -33,7 +33,9 @@ class EcsPageBase(OpsPage):
             v1_count = network if isinstance(network, int) else kwargs.get("count", 1)
 
             # 其余可能的 v1 参数从 args 偏移或 kwargs 获取 (模仿 EcsPage.ecs_create)
-            v1_network = kwargs.get("network", "Autotest")
+            # `network` 是显式形参，调用方使用 `network=...` 时不会再落到 kwargs。
+            # 这里优先使用已绑定到形参的值，避免错误回退到默认网络。
+            v1_network = network if isinstance(network, str) else kwargs.get("network", "Autotest")
             v1_subnet = kwargs.get("subnet", "Autotest(10")
             v1_cluster = kwargs.get("cluster", "Autotest")
             v1_flavor = kwargs.get("flavor", "ecs.c6.Autotest")

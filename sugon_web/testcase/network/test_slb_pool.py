@@ -39,7 +39,7 @@ class TestSlbPool:
 
         with allure_step_log(f"步骤2: 为资源池 {lb['pool_name']} 新增资源 {vm_names}"):
             slb_page.lb_pool_add_vm(vm_names=vm_names, ports=params["ports"])
-            slb_page.assert_popup_success("执行成功")
+            slb_page.assert_popup_success("提交成功")
             added_vm_names = vm_names.copy()
 
         with allure_step_log("步骤3: 校验资源池成员列表信息"):

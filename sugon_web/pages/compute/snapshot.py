@@ -92,7 +92,7 @@ class SnapshotPage(OpsPage):
             self.locator("form div").filter(has_text="是否快照数据盘").locator("span").nth(2).click()
         self.get_by_role("radio", name=retention_type).click()
         if retention_type != "永久保存":
-            self.locator("form div").filter(has_text="保留规则按数量按时间天永久保存").get_by_role("spinbutton").fill(str(retention_value))
+            self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
         self.dialog_confirm.click()
         self.wait_for_page_ready()
         self.logger.info(f"云服务器快照策略修改请求已提交: {new_name}")
