@@ -10,7 +10,6 @@ class InternalDnsMixin:
         """进入内网解析列表页。"""
         self.goto_service("虚拟私有云")
         self.goto_submenu("内网解析")
-        self.wait_for_page_ready()
 
     def _get_dns_dialog(self, title: str):
         """获取内网解析对话框。"""
@@ -53,7 +52,6 @@ class InternalDnsMixin:
         """
         self.goto_internal_dns_list()
         self.btn_create.click()
-        self.wait_for_page_ready()
 
         dialog = self._get_dns_dialog("新建内网解析")
         self._get_dns_form_item(dialog, "域名").locator("input").first.fill(domain)
@@ -66,7 +64,6 @@ class InternalDnsMixin:
             self._get_dns_form_item(dialog, "描述").locator("textarea").fill(desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def internal_dns_edit(self, domain, new_email=None, new_desc=None):
         """修改内网解析的邮箱和描述。
@@ -78,7 +75,6 @@ class InternalDnsMixin:
         """
         self.goto_internal_dns_list()
         self.click_action(domain, "修改")
-        self.wait_for_page_ready()
 
         dialog = self._get_dns_dialog("修改内网解析")
         if new_email is not None:
@@ -88,7 +84,6 @@ class InternalDnsMixin:
             self._get_dns_form_item(dialog, "描述").locator("textarea").fill(new_desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def internal_dns_delete(self, domains):
         """删除内网解析，支持单个和批量操作。
@@ -103,7 +98,6 @@ class InternalDnsMixin:
             self.click_action(domains, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def internal_dns_search(self, keyword):
         """搜索内网解析。"""
@@ -114,7 +108,6 @@ class InternalDnsMixin:
         """重置内网解析搜索条件。"""
         self.goto_internal_dns_list()
         self.btn_reset.click()
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)
 
     @staticmethod
@@ -126,11 +119,9 @@ class InternalDnsMixin:
         """进入内网解析详情页，并切换到指定页签。"""
         self.goto_internal_dns_list()
         self.get_row_by_name(domain).locator("a").first.click()
-        self.wait_for_page_ready()
         tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(rf"^{re.escape(tab_name)}$")).first
         tab.dispatch_event("click")
         expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
-        self.wait_for_page_ready()
 
     def _get_dns_record_form_item(self, dialog, label: str):
         """根据表单标签获取解析记录表单项。"""
@@ -176,7 +167,6 @@ class InternalDnsMixin:
         """创建解析记录。"""
         self.goto_internal_dns_detail(domain, tab_name="解析记录")
         self.page.get_by_text("新建", exact=True).click()
-        self.wait_for_page_ready()
 
         dialog = self._get_dns_dialog("新建")
         self._get_dns_record_form_item(dialog, "主机记录").locator("input").first.fill(host_record)
@@ -185,7 +175,6 @@ class InternalDnsMixin:
         self._get_dns_record_form_item(dialog, "描述").locator("textarea, input").first.fill(desc)
         self._fill_dns_record_values(dialog, record_type, values)
         dialog.get_by_text("立即创建", exact=True).click()
-        self.wait_for_page_ready()
 
     def internal_dns_record_edit(
         self,
@@ -199,7 +188,6 @@ class InternalDnsMixin:
         """修改解析记录。"""
         self.goto_internal_dns_detail(domain, tab_name="解析记录")
         self.click_action(record_alias, "修改")
-        self.wait_for_page_ready()
 
         dialog = self._get_dns_dialog("修改记录集")
         if new_host_record is not None:
@@ -211,7 +199,6 @@ class InternalDnsMixin:
         if new_values is not None:
             self._fill_dns_record_values(dialog, "A", new_values)
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def internal_dns_record_delete(self, domain: str, record_aliases):
         """删除一个或多个解析记录。"""
@@ -224,17 +211,14 @@ class InternalDnsMixin:
             self.page.get_by_text("批量删除", exact=True).click()
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def internal_dns_record_search(self, domain: str, keyword: str):
         """搜索解析记录。"""
         self.goto_internal_dns_detail(domain, tab_name="解析记录")
         self.page.get_by_placeholder("搜索（类型、TTL、值、描述）").fill(keyword)
         self.page.get_by_text("搜索", exact=True).click()
-        self.wait_for_page_ready()
 
     def internal_dns_record_reset(self, domain: str):
         """重置解析记录搜索条件。"""
         self.goto_internal_dns_detail(domain, tab_name="解析记录")
         self.btn_reset.click()
-        self.wait_for_page_ready()

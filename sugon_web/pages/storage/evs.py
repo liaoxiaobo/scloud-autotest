@@ -94,8 +94,6 @@ class EvsPage(BasePage):
             pytest.skip("加密云硬盘不支持共享模式")
 
         self.btn_create.click()
-        self.wait_for_page_ready()
-
         self._input_name.fill(name)
         self._input_desc.fill(desc)
 
@@ -138,7 +136,6 @@ class EvsPage(BasePage):
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("云硬盘")
     def evs_edit(self, name, new_name, new_desc):
@@ -206,7 +203,6 @@ class EvsPage(BasePage):
             self.locator("div").filter(has_text=re.compile(r"^每秒写次数 次/S$")).get_by_placeholder("空表示未限制").fill(str(write_iops))
 
         self.get_by_label("设置QoS").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     @submenu("云硬盘")
     def evs_disable_qos(self, volume_name):
@@ -214,7 +210,6 @@ class EvsPage(BasePage):
         self.click_action(volume_name, "设置QoS")
         self.get_by_role("switch").locator("span").click()
         self.get_by_label("设置QoS").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     @submenu("云硬盘")
     def evs_convert_to_image(self, volume_name, image_name):
@@ -222,20 +217,17 @@ class EvsPage(BasePage):
         self.click_action(volume_name, "转镜像")
         self.locator("form").get_by_role("textbox").fill(image_name)
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("云硬盘")
     def evs_reset_status(self, volume_name):
         """重置云硬盘状态。"""
         self.click_action(volume_name, "重置状态")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("云硬盘")
     def evs_view_snapshots(self, volume_name):
         """查看指定云硬盘的快照列表。"""
         self.click_action(volume_name, "查看快照")
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)
 
     @submenu("云硬盘")
@@ -249,4 +241,3 @@ class EvsPage(BasePage):
             self.get_by_role("switch").locator("span").click()
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

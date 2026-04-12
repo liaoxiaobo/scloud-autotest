@@ -45,7 +45,6 @@ class AclPage(BasePage):
     def acl_search_reset(self):
         """重置搜索条件"""
         self.btn_reset.click()
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)  # 确保列表刷新完毕
         self.logger.info("重置网络ACL搜索条件完成")
 
@@ -58,11 +57,9 @@ class AclPage(BasePage):
             tab_name: 详情页内的页签名称，例如 "入方向规则"、"出方向规则"、"关联子网"
         """
         self.get_by_text(acl_name, exact=True).nth(1).click()
-        self.wait_for_page_ready()
         
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
-            self.wait_for_page_ready()
             
         self.logger.info(f"进入网络ACL {acl_name} 详情页" + (f"，并切换至 {tab_name} 页签" if tab_name else ""))
 
@@ -127,8 +124,6 @@ class AclPage(BasePage):
 
         self.click_action(acl_name, "关联子网")
 
-        self.wait_for_page_ready()
-
         self.get_by_text("新建", exact=True).click()
 
         dialog = self.get_by_role("dialog")
@@ -140,7 +135,6 @@ class AclPage(BasePage):
 
         # 返回列表
         self.locator("#detail_container i").first.click()
-        self.wait_for_page_ready()
         self.logger.info(f"网络ACL {acl_name} 关联子网成功: {subnets}")
 
     @submenu("网络ACL")
@@ -161,7 +155,6 @@ class AclPage(BasePage):
             self.click_action(subnet, "解关联子网")
             self.dialog_confirm.click()
 
-        self.wait_for_page_ready()
         self.logger.info(f"网络ACL {acl_name} 解关联子网成功: {subnets}")
 
     @submenu("网络ACL")
@@ -309,7 +302,6 @@ class AclPage(BasePage):
             self.goto_acl_detail(acl_name, tab_name=tab_name)
         else:
             self.get_by_role("tab", name=tab_name).click()
-            self.wait_for_page_ready()
         
         self.get_by_text("新建", exact=True).click()
         
@@ -462,7 +454,6 @@ class AclPage(BasePage):
             
         # 确定
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
         
         self.logger.info(f"网络ACL修改规则完成: {acl_name} -> {tab_name}")
 
@@ -486,7 +477,6 @@ class AclPage(BasePage):
             
         # 确定
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
         
         self.logger.info(f"网络ACL向前插入规则完成: {acl_name} -> {tab_name}")
 
@@ -510,7 +500,6 @@ class AclPage(BasePage):
         else:
             self.dialog_confirm.click()
             
-        self.wait_for_page_ready()
         self.logger.info(f"网络ACL关闭规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_enable(self, acl_name, direction="入方向",
@@ -530,7 +519,6 @@ class AclPage(BasePage):
         dialog = self.get_by_label("启用规则")
         dialog.get_by_text("确定", exact=True).click()
         
-        self.wait_for_page_ready()
         self.logger.info(f"网络ACL开启规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_batch_operation(self, acl_name, direction="入方向", rule_matches=None, rules=None, operation="开启"):
@@ -577,6 +565,5 @@ class AclPage(BasePage):
         confirm_btn = self.page.locator(".el-message-box__btns .el-button--primary, .dialog-box-footer .cloud-button-btn:has-text('确定')").first
         if confirm_btn.is_visible():
             confirm_btn.click()
-            self.wait_for_page_ready()
         
         self.logger.info(f"网络ACL规则{op_text}完成: {acl_name} -> {len(target_rules)} 条规则")

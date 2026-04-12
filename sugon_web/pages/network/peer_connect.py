@@ -12,7 +12,6 @@ class PeerConnectMixin:
     def peer_connect_create(self, name, requester_vpc, receiver_vpc, desc=""):
         """创建对等连接。"""
         self.btn_create.click()
-        self.wait_for_page_ready()
 
         dialog = self.get_by_role("dialog", name="新建对等连接")
         dialog.get_by_placeholder("请输入名称").fill(name)
@@ -43,7 +42,6 @@ class PeerConnectMixin:
             dialog.locator("textarea").fill(desc)
 
         dialog.get_by_text("立即创建", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("对等连接")
     def peer_connect_delete(self, names):
@@ -55,7 +53,6 @@ class PeerConnectMixin:
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("对等连接")
     def peer_connect_edit(self, name, new_name=None, new_desc=None):
@@ -73,4 +70,3 @@ class PeerConnectMixin:
             dialog.locator("textarea").fill(new_desc)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

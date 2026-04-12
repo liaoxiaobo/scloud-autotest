@@ -516,7 +516,6 @@ class SlbPage(BasePage):
         for index, vm_name in enumerate(vm_names):
             search_input.fill(vm_name)
             search_btn.click()
-            self.wait_for_page_ready()
             self.page.wait_for_timeout(500)
 
             row = dialog.locator(".el-table__body-wrapper tr").filter(

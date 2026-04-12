@@ -14,7 +14,6 @@ class NatMixin:
     def nat_create(self, name, vpc_name, public_ip_pool="public_net(基础版)", eip=None, desc=""):
         """创建NAT网关"""
         self.get_by_text("新建").click()
-        self.wait_for_page_ready()
 
         self.locator("form div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(name)
 
@@ -41,7 +40,6 @@ class NatMixin:
             self.locator("textarea").fill(desc)
 
         self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("NAT网关")
     def nat_delete(self, names):
@@ -53,13 +51,11 @@ class NatMixin:
             self.click_action(names, "删除")
 
         self.get_by_label("删除NAT网关").get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("NAT网关")
     def nat_edit(self, name, new_name=None, new_desc=None):
         """修改NAT网关名称和描述"""
         self.click_action(name, "修改")
-        self.wait_for_page_ready()
 
         if new_name is not None:
             name_input = self.locator("form").locator("input[type=\"text\"]")
@@ -71,7 +67,6 @@ class NatMixin:
             self.locator("textarea").fill(new_desc)
 
         self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("NAT网关")
     def nat_unbind_eip(self, name):
@@ -81,7 +76,6 @@ class NatMixin:
 
         self.click_action(name, "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
         return eip
 
@@ -104,7 +98,6 @@ class NatMixin:
         selected_row.get_by_role("radio").click()
 
         dialog.get_by_text("确定").click()
-        self.wait_for_page_ready()
 
         return eip
 
@@ -113,13 +106,10 @@ class NatMixin:
                          private_ip=None, int_port=None, desc=""):
         """在NAT网关详情页创建DNAT规则"""
         self.get_by_role("cell", name=nat_name).locator("a").click()
-        self.wait_for_page_ready()
 
         self.get_by_role("tab", name="DNAT规则").click()
-        self.wait_for_page_ready()
 
         self.get_by_text("新建").click()
-        self.wait_for_page_ready()
 
         self.locator("label").filter(has_text=protocol).click()
         self.get_by_placeholder("端口范围1~32767").fill(str(ext_port))
@@ -148,14 +138,11 @@ class NatMixin:
             self.locator("textarea").fill(desc)
 
         self.get_by_label("创建DNAT规则").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def _nat_open_detail_tab(self, nat_name, tab_name):
         """进入 NAT 网关详情并切换到指定 Tab。"""
         self.get_by_role("cell", name=nat_name).locator("a").click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name=tab_name).click()
-        self.wait_for_page_ready()
 
     def _select_form_option_by_label(self, form_root, label_pattern, option_text=None):
         """在表单中按标签选择下拉框选项。"""
@@ -228,7 +215,6 @@ class NatMixin:
         self._nat_open_detail_tab(nat_name, "SNAT规则")
 
         self.get_by_text("新建").click()
-        self.wait_for_page_ready()
 
         dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"创建SNAT规则")).last
         self._snat_fill_source(dialog, source_type, source_value)
@@ -237,7 +223,6 @@ class NatMixin:
             dialog.locator("textarea").fill(desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("NAT网关")
     def snat_rule_edit(self, nat_name, source_address, new_source_type=None, new_source_value=None, new_desc=None):
@@ -245,7 +230,6 @@ class NatMixin:
         self._nat_open_detail_tab(nat_name, "SNAT规则")
 
         self.click_action(source_address, "修改")
-        self.wait_for_page_ready()
 
         dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"SNAT规则")).last
 
@@ -256,7 +240,6 @@ class NatMixin:
             dialog.locator("textarea").fill(new_desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def snat_rule_delete(self, source_addresses):
         """删除 SNAT 规则，支持单个和批量操作（需已在 NAT 网关详情页的 SNAT 规则 Tab 下）。"""
@@ -267,20 +250,16 @@ class NatMixin:
             self.click_action(str(source_addresses), "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("NAT网关")
     def dnat_rule_edit(self, nat_name, ext_port, new_ext_port=None, new_protocol=None,
                        new_private_ip=None, new_int_port=None, new_desc=None):
         """在NAT网关详情页修改DNAT规则"""
         self.get_by_role("cell", name=nat_name).locator("a").click()
-        self.wait_for_page_ready()
 
         self.get_by_role("tab", name="DNAT规则").click()
-        self.wait_for_page_ready()
 
         self.click_action(str(ext_port), "修改")
-        self.wait_for_page_ready()
 
         dialog = self.get_by_label("修改DNAT规则")
 
@@ -304,7 +283,6 @@ class NatMixin:
             dialog.locator("textarea").fill(new_desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def dnat_rule_delete(self, ext_ports):
         """删除DNAT规则，支持单个和批量操作（需已在NAT网关详情页的DNAT规则Tab下）"""
@@ -315,4 +293,3 @@ class NatMixin:
             self.click_action(str(ext_ports), "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

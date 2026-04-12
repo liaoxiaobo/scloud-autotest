@@ -23,7 +23,6 @@ class TestECSLabels:
 
         with allure_step_log(f"步骤3: 重置搜索条件"):
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
 

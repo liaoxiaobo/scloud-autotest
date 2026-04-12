@@ -26,7 +26,6 @@ class TestVPCBasic:
             logger.info("设置每页显示 100 条数据")
             vpc_page.locator("#cloud-container-content").get_by_placeholder("请选择").click()
             vpc_page.get_by_text("100条/页").click()
-            vpc_page.wait_for_page_ready()  # 等待页面刷新完成
 
             # 获取"网络类型"列的所有数据
             network_types = vpc_page.get_column_data('网络类型')
@@ -182,7 +181,6 @@ class TestVPCBasic:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("虚拟私有云-批量删除")
@@ -528,7 +526,6 @@ class TestVPCBasic:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
         with allure_step_log("步骤4: 解除绑定两台实例"):
@@ -643,9 +640,7 @@ class TestVPCBasic:
         with allure_step_log("步骤1: 进入端口列表页"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="端口").click()
-            vpc_page.wait_for_page_ready()
 
         with allure_step_log("步骤2: 输入端口IP进行搜索"):
             # 取第一个IP作为搜索关键字
@@ -659,7 +654,6 @@ class TestVPCBasic:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             # 验证搜索框已清空
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
             # 验证列表恢复（至少包含之前创建的两个IP）
@@ -677,9 +671,7 @@ class TestVPCBasic:
         with allure_step_log("步骤1: 进入端口列表页"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="端口").click()
-            vpc_page.wait_for_page_ready()
 
         with allure_step_log("步骤2: 批量删除端口"):
             # 传入列表进行批量删除
@@ -712,9 +704,7 @@ class TestVPCBasic:
         with allure_step_log("步骤1: 进入端口列表页"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="端口").click()
-            vpc_page.wait_for_page_ready()
 
         with allure_step_log("步骤2: 修改端口IP和MAC"):
             logger.info(f"将端口 {old_ip} 修改为 IP: {new_ip}, MAC: {new_mac}")
@@ -808,9 +798,7 @@ class TestVPCBasic:
         with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="路由表").click()
-            vpc_page.wait_for_page_ready()
 
         with allure_step_log("步骤2: 修改路由表名称和描述"):
             vpc_page.route_table_edit(new_name=new_rtb_name, new_desc=new_rtb_desc)
@@ -832,9 +820,7 @@ class TestVPCBasic:
         with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="路由表").click()
-            vpc_page.wait_for_page_ready()
 
         with allure_step_log(f"步骤2: 按目的地址 '{keyword}' 搜索，验证结果包含该规则"):
             vpc_page.search(keyword)
@@ -844,7 +830,6 @@ class TestVPCBasic:
 
         with allure_step_log("步骤3: 重置搜索条件，验证规则列表恢复"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             rows = vpc_page.get_column_data("目的地址")
             assert len(rows) > 1, f"重置后应有多行，实际只有 {len(rows)} 行: {rows}"
 

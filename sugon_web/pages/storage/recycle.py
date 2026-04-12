@@ -17,11 +17,9 @@ class RecyclePage(BasePage):
                 self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("回收站")
     def evs_restore(self, volume_name):
         """从回收站恢复云硬盘。"""
         self.click_action(volume_name, "恢复")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

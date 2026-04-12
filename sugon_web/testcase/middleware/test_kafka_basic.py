@@ -302,7 +302,6 @@ class TestKafkaBasic:
                 kafka_page.page.goto(detail_url)
             else:
                 kafka_page.page.reload()
-            kafka_page.wait_for_page_ready()
             kafka_page.ensure_instance_tab(instance_name, "Topic管理")
             for topic_name in topic_names:
                 kafka_page.assert_list_not_contain(topic_name, column_name="Topic名称")

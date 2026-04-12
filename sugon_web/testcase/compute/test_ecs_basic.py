@@ -526,7 +526,6 @@ class TestECSBasic:
 
         with allure_step_log("步骤2: 验证迁移结果"):
             ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
-            ecs_page.wait_for_page_ready()
             ecs_page.wait_for_source_complete(name)
             new_host = ecs_page.get_row_data(name).get("物理机")
             assert new_host != host, f"热迁移失败，迁移前节点:{host}, 迁移后节点:{new_host}"
@@ -542,7 +541,6 @@ class TestECSBasic:
         测试弹性云服务器的冷迁移功能
         """
         ecs_page.goto_service('弹性云服务器')
-        ecs_page.wait_for_page_ready()
         name = vm.get("name")
         ecs_id = vm.get("id")
         with allure_step_log("步骤1: 冷迁移"):
@@ -717,7 +715,6 @@ class TestECSBasic:
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
         """
-        ecs_page.wait_for_page_ready()
         names = [vm[i].get("name") for i in range(len(vm))]
         ecs_ids = [vm[i].get("id") for i in range(len(vm))]
         ecs_page.goto_service('弹性云服务器')
@@ -839,7 +836,6 @@ class TestECSBasic:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("弹性云服务器-Agent版本设置")
