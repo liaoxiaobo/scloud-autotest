@@ -143,7 +143,6 @@ class MongoDBPage(BasePage):
         :param new_size: 新磁盘大小
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         # 假设单机/副本集是这个操作，分片集群可能不同
         self.click_action(f"{name}-0", "修改云硬盘大小")
 
@@ -161,7 +160,6 @@ class MongoDBPage(BasePage):
         :param specification_name: 新规格名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.click_action(f"{name}-0", "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
@@ -177,7 +175,6 @@ class MongoDBPage(BasePage):
         :return: 绑定的IP地址
         """
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-        self.wait_for_page_ready()
 
         self.click_action(node_name, "绑定公网IP")
 
@@ -185,7 +182,6 @@ class MongoDBPage(BasePage):
         dialog = self.get_by_label("绑定公网IP", exact=True)
         dialog.get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为"关闭"的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -204,7 +200,6 @@ class MongoDBPage(BasePage):
         :param node_name: 节点名称
         """
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-        self.wait_for_page_ready()
 
         self.click_action(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
@@ -216,7 +211,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新建备节点").click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
@@ -227,7 +221,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新建只读节点").click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
@@ -238,7 +231,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("添加Mongos节点").click()
         self.get_by_label("添加Mongos节点").get_by_text("确定", exact=True).click()
 
@@ -250,7 +242,6 @@ class MongoDBPage(BasePage):
         :param shard_count: 分片数量
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("调整分片").click()
         dialog = self.get_by_label("调整分片")
         # 假设是一个 spinbutton 或带有特定 label 的单选/输入
@@ -265,7 +256,6 @@ class MongoDBPage(BasePage):
         :param ip_address: IP地址或CIDR
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         self.get_by_text("添加", exact=True).click()
         self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
@@ -279,7 +269,6 @@ class MongoDBPage(BasePage):
         :param ip_address: IP地址或CIDR
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         self.locator("span").filter(has_text=ip_address).locator("i").click()
         self.get_by_label("移除").get_by_text("确定", exact=True).click()
@@ -292,10 +281,8 @@ class MongoDBPage(BasePage):
         :param ip_addresses: IP地址或CIDR的列表
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
@@ -309,7 +296,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
@@ -323,11 +309,9 @@ class MongoDBPage(BasePage):
         :param param_value: 参数新值
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="参数设置").click()
-        self.wait_for_page_ready()
-        
+
         # 使用更稳健的行定位方式
         self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
         
@@ -348,9 +332,7 @@ class MongoDBPage(BasePage):
         :param new_password: 新密码
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "修改用户")
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
@@ -365,9 +347,7 @@ class MongoDBPage(BasePage):
         :param user_name: 用户名
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "删除")
         self.dialog_confirm.click()
 
@@ -378,7 +358,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="错误日志").click()
         self.get_by_text("立即开启").click()
         self.get_by_label("开启错误日志").get_by_text("确定", exact=True).click()
@@ -390,7 +369,6 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="错误日志").click()
         self.get_by_text("服务设置").first.click()
         self.get_by_role("switch").locator("span").click()
@@ -403,10 +381,8 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="参数设置").click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_text("导出", exact=True).click()
 
@@ -420,9 +396,7 @@ class MongoDBPage(BasePage):
         :param cpu_auto: 是否开启CPU自动收敛
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(node_name, "热迁移")
-        self.wait_for_page_ready()
         sleep(2)
 
         # 选择目标物理机

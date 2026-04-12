@@ -13,11 +13,9 @@ class RedisPage(BasePage):
     def ensure_instance_tab(self, name: str, tab_name: str = "节点"):
         """确保进入Redis实例的详情页特定标签"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(2)
         if tab_name and tab_name != "节点":
             self.get_by_role("tab", name=tab_name).click()
-            self.wait_for_page_ready()
             sleep(1)
 
     @submenu("实例管理")
@@ -191,7 +189,6 @@ class RedisPage(BasePage):
         """Redis节点热迁移"""
         self.ensure_instance_tab(name)
         self.click_action(node_name, "热迁移")
-        self.wait_for_page_ready()
         sleep(2)
 
         # 选择目标物理机
@@ -241,7 +238,6 @@ class RedisPage(BasePage):
         :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("切换网络").click()
 
         dialog = self.get_by_label("切换网络")
@@ -312,7 +308,6 @@ class RedisPage(BasePage):
         """删除用户"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         sleep(2)
         self.click_action(user_name, "删除")
         self.dialog_confirm.click()
@@ -326,7 +321,6 @@ class RedisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         sleep(2)
 
         for user_name in user_names:
@@ -340,7 +334,6 @@ class RedisPage(BasePage):
         """修改用户"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         sleep(2)
         self.click_action(user_name, "修改用户")
         dialog = self.get_by_role("dialog")
@@ -353,7 +346,6 @@ class RedisPage(BasePage):
         """添加白名单"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
-        self.wait_for_page_ready()
         sleep(2)
         self.get_by_text("添加", exact=True).click()
         self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
@@ -364,7 +356,6 @@ class RedisPage(BasePage):
         """移除白名单"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
-        self.wait_for_page_ready()
         sleep(2)
         self.locator("span").filter(has_text=ip_address).locator("i").click()
         self.get_by_label("移除").get_by_text("确定", exact=True).click()
@@ -374,7 +365,6 @@ class RedisPage(BasePage):
         """批量删除白名单"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
-        self.wait_for_page_ready()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
@@ -390,7 +380,6 @@ class RedisPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
-        self.wait_for_page_ready()
         sleep(2)
         # MySQL 和 Redis 对于重置白名单按钮可能在页面呈现或文案一致
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
@@ -406,7 +395,6 @@ class RedisPage(BasePage):
         self.get_by_text("绑定公网IP").first.click()
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -438,7 +426,6 @@ class RedisPage(BasePage):
         self.click_action(f"{name}-0", "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first

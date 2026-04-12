@@ -156,7 +156,6 @@ def vm(browser_context, config, request):
             sys_size=root_gb
         )
         ecs_page.assert_popup_success("创建实例命令下发成功")
-        ecs_page.wait_for_page_ready()
         # 等待虚机创建完成并收集信息
         metadata_list = []
 

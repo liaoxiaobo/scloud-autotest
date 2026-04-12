@@ -139,7 +139,6 @@ class MySQLPage(BasePage):
         :param new_size: 新磁盘大小
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(f"{name}-0", "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
@@ -158,7 +157,6 @@ class MySQLPage(BasePage):
         :param specification_name: 新规格名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(f"{name}-0", "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
@@ -171,11 +169,9 @@ class MySQLPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_text("绑定公网IP").first.click()
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -193,7 +189,6 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("解绑公网IP").click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
@@ -205,11 +200,9 @@ class MySQLPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(f"{name}-0", "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为“关闭”的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -227,7 +220,6 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(f"{name}-0", "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
@@ -238,7 +230,6 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新建只读节点").click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
@@ -251,7 +242,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         sleep(30)
-        self.wait_for_page_ready()
         self.locator(".el-icon-refresh").click()
         self.click_action(node_name, "删除")
         self.dialog_confirm.click()
@@ -264,11 +254,9 @@ class MySQLPage(BasePage):
         :param db_name: 数据库名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(5)
         self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(3)
-        self.wait_for_page_ready()
         self.btn_create.click()
         sleep(3)
         dialog = self.get_by_label("新建数据库")
@@ -283,11 +271,9 @@ class MySQLPage(BasePage):
         :param db_name: 数据库名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(5)
         self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(5)
-        self.wait_for_page_ready()
         self.locator("tr").filter(has_text=db_name).get_by_text("删除").last.click()
         self.dialog_confirm.click()
 
@@ -299,11 +285,9 @@ class MySQLPage(BasePage):
         :param db_names: 数据库名称列表
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(5)
         self.get_by_role("tab", name=re.compile(r"^数据库$")).click()
         sleep(5)
-        self.wait_for_page_ready()
 
         for db_name in db_names:
             self.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
@@ -323,7 +307,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.btn_create.click()
         dialog = self.get_by_role("dialog")
         dialog.locator("form div").filter(has_text="用户名").get_by_role("textbox").fill(user_name)
@@ -345,7 +328,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "修改用户")
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
@@ -362,11 +344,9 @@ class MySQLPage(BasePage):
         :param privileges: 权限 (e.g., "读写")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(2)
         self.get_by_role("tab", name="用户").click()
         sleep(2)
-        self.wait_for_page_ready()
         self.click_action(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
         sleep(2)
@@ -384,7 +364,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "删除")
         self.dialog_confirm.click()
 
@@ -397,7 +376,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
 
         for user_name in user_names:
             self.get_by_role("row", name=re.compile(user_name)).locator("span").nth(1).click()
@@ -415,7 +393,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
@@ -430,7 +407,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="读写分离").click()
-        self.wait_for_page_ready()
         self.get_by_text("开通读写分离", exact=True).click()
 
     @submenu("实例管理")
@@ -441,7 +417,6 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="读写分离").click()
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="关闭读写分离").click()
         self.get_by_label("关闭读写分离").get_by_text("确定", exact=True).click()
 
@@ -516,7 +491,6 @@ class MySQLPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
@@ -572,10 +546,8 @@ class MySQLPage(BasePage):
         """
         self.get_by_text(model_name).first.click()
         sleep(3)
-        self.wait_for_page_ready()
         self.locator(".table-tool-bar-left > div:nth-child(2) > .cloud-button-btn").click()
         sleep(3)
-        self.wait_for_page_ready()
         self.get_by_role("row", name=f"{param_name}").get_by_role("checkbox").check()
         self.get_by_label("选择参数").get_by_text("确定").click()
 
@@ -587,7 +559,6 @@ class MySQLPage(BasePage):
         :param instance_name: 实例名称
         """
         self.get_by_text(model_name).first.click()
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="应用").click()
         # 选择实例
         # self.locator("input[type=\"text\"]").filter(has_text="请选择").click()
@@ -614,12 +585,10 @@ class MySQLPage(BasePage):
         :param param_value: 参数新值
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="参数设置").click()
         # 定位到参数行并点击编辑图标
         sleep(3)
-        self.wait_for_page_ready()
         self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
         # 在弹窗中修改值
         dialog = self.get_by_label("编辑参数")
@@ -637,10 +606,8 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="参数设置").click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_text("导出", exact=True).click()
 
@@ -654,9 +621,7 @@ class MySQLPage(BasePage):
         :param cpu_auto: 是否开启CPU自动收敛
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.click_action(node_name, "热迁移")
-        self.wait_for_page_ready()
         sleep(2)
 
         # 选择目标物理机
@@ -712,7 +677,6 @@ class MySQLPage(BasePage):
         :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("切换网络").click()
 
         dialog = self.get_by_label("切换网络")

@@ -44,4 +44,3 @@ class RecyclePage(OpsPage):
             self.click_action(names, delete_option)
         self.dialog_confirm.click()
         logger.info(f"{names}删除请求已提交")
-        self.wait_for_page_ready()

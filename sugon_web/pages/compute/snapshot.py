@@ -28,7 +28,6 @@ class SnapshotPage(OpsPage):
         else:
             self.click_action(snapshot_names, "删除")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
         self.logger.info(f"云服务器快照删除请求已提交: {snapshot_names}")
 
     @submenu("快照")
@@ -38,13 +37,11 @@ class SnapshotPage(OpsPage):
         dialog.locator("div").filter(has_text=re.compile(r"^快照名称$")).get_by_role("textbox").fill(new_name)
         dialog.locator("textarea").fill(new_desc)
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照")
     def ecss_restore(self, snapshot_name):
         self.click_action(snapshot_name, "还原快照")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照策略")
     def ecss_policy_create(self, name, hours, enabled=False, cycle_days=1, retention_type="按数量", retention_value=1,
@@ -63,7 +60,6 @@ class SnapshotPage(OpsPage):
         if retention_type != "永久保存":
             self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
         self.logger.info(f"云服务器快照策略创建请求已提交: {name}")
 
     @submenu("快照策略")
@@ -74,7 +70,6 @@ class SnapshotPage(OpsPage):
         else:
             self.click_action(names, "删除")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
         self.logger.info(f"云服务器快照策略删除请求已提交: {names}")
 
     @submenu("快照策略")
@@ -94,7 +89,6 @@ class SnapshotPage(OpsPage):
         if retention_type != "永久保存":
             self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
         self.logger.info(f"云服务器快照策略修改请求已提交: {new_name}")
 
     @submenu("弹性云服务器")
@@ -119,7 +113,6 @@ class SnapshotPage(OpsPage):
             self.get_by_role("radiogroup").locator("label").filter(has_text=vm_type),
         ]
         self._find_element(vm_type_locs).click()
-        self.wait_for_page_ready()
         search_locs = [
             self.locator("section").get_by_placeholder("搜索（名称）"),
             self.get_by_role("dialog", name="详细信息 close 详细信息").get_by_placeholder("搜索（名称）"),
@@ -129,7 +122,6 @@ class SnapshotPage(OpsPage):
         ]
         self._find_element(search_locs).fill(name)
         self.get_by_role("dialog").get_by_text("搜索").click()
-        self.wait_for_page_ready()
         vm_names = self.get_column_data("名称/ID")
         vm_names = [vm_name.split(" ")[0] for vm_name in vm_names if vm_name.startswith(name)]
         loc = self.get_by_role("dialog").locator(
@@ -182,5 +174,4 @@ class SnapshotPage(OpsPage):
         else:
             self.click_action(vm_name, "删除")
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
         self.logger.info(f"云服务器快照删除请求已提交: {vm_name}")

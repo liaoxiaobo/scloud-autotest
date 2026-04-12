@@ -20,4 +20,3 @@ class ImageServicePage(OpsPage):
         self.click_action(image_name, "删除")
         self.dialog_confirm.click()
         logger.info(f"操作完成: 删除镜像{image_name}成功")
-        self.wait_for_page_ready()

@@ -799,7 +799,6 @@ class EcsPageBase(OpsPage):
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
 
 
     @submenu("弹性云服务器")
@@ -1089,7 +1088,6 @@ class EcsPageBase(OpsPage):
                 need_start = True  # 标记需要恢复开机
 
             self.click_action(name, "修改规格")
-            self.wait_for_page_ready()
             if spec_type:
                 classify = spec.get("classify", "计算型")
                 flavor_name = spec.get("flavor_name")
@@ -1097,7 +1095,6 @@ class EcsPageBase(OpsPage):
                 # 选择规格分类
                 if classify:
                     self.get_by_text(classify).click()
-                    self.wait_for_page_ready()
 
                 # 选择具体规格
                 if flavor_name:
@@ -1327,7 +1324,6 @@ class EcsPageBase(OpsPage):
             if migration_type == "热迁移":
                 # 选择目标集群cluster
                 self.get_by_text("目标集群").locator("xpath=./following-sibling::div//input").click()
-                self.wait_for_page_ready()
                 locs = [
                     self.locator("li").filter(has_text=cluster).nth(1),  # 同名集群内迁移
                     self.locator("li").filter(has_text=cluster)
@@ -1335,7 +1331,6 @@ class EcsPageBase(OpsPage):
                 self._find_element(locs, f"集群{cluster}").click()
 
                 # 等待物理机选择区域加载完成
-                self.wait_for_page_ready()
                 # 尝试选择指定的目标物理机
                 available_hosts = self._get_available_migration_hosts()
                 if node in available_hosts:
@@ -1387,7 +1382,6 @@ class EcsPageBase(OpsPage):
             self.get_by_text("目标物理机").locator("xpath=./following-sibling::div/span").click()
 
             # 等待物理机选择区域加载完成
-            self.wait_for_page_ready()
 
             # 取所有可用的物理机节点，排除包含is-disabled属性的节点
             available_hosts = self._get_available_migration_hosts()
@@ -1465,7 +1459,6 @@ class EcsPageBase(OpsPage):
 
             # 选择目标集群cluster
             self.get_by_text("目标集群").locator("xpath=./following-sibling::div//input").click()
-            self.wait_for_page_ready()
             locs = [
                 self.locator("li").filter(has_text=cluster).nth(1),  # 同名集群内迁移
                 self.locator("li").filter(has_text=cluster)
@@ -1473,7 +1466,6 @@ class EcsPageBase(OpsPage):
             self._find_element(locs, f"集群{cluster}").click()
 
             # 等待物理机选择区域加载完成
-            self.wait_for_page_ready()
 
             # 选择目标物理机
             if target_host:
@@ -1482,7 +1474,6 @@ class EcsPageBase(OpsPage):
                     target_host = f"{target_host}.cloud.local" if ".cloud.local" not in target_host else target_host
                     self.locator("section").get_by_placeholder("搜索（名称）").fill(target_host)
                     self.get_by_role("dialog").get_by_text("搜索").click()
-                    self.wait_for_page_ready()
 
                     # 尝试选择指定的目标物理机
                     self.get_by_role("radio", name=target_host).click()
@@ -1493,7 +1484,6 @@ class EcsPageBase(OpsPage):
                     # 如果未指定的目标物理机，选择第一个可用的
                     logger.warning(f"指定的目标物理机 {target_host} 不可用 ，选择第一个可用物理机")
                     self.locator("section").get_by_text("重置").click()
-                    self.wait_for_page_ready()
                     available_hosts = self._get_available_migration_hosts()
                     # 如果没有可用物理机，抛出异常
                     if not available_hosts:
@@ -1641,7 +1631,6 @@ class EcsPageBase(OpsPage):
         self.get_by_role("cell", name=name).locator("a").click()
 
         # 等待详情页面加载完成
-        self.wait_for_page_ready()
 
         logger.info(f"成功进入云服务器{name}详情页")
 
@@ -1659,7 +1648,6 @@ class EcsPageBase(OpsPage):
         self.click_action(name, "挂载CD-ROM")
 
         # 等待挂载CD-ROM对话框出现
-        self.wait_for_page_ready()
 
         # 选择CD-ROM类型（如果需要选择）
         try:
@@ -1691,7 +1679,6 @@ class EcsPageBase(OpsPage):
         self.click_action(name, "卸载CD-ROM")
 
         # 等待挂载CD-ROM对话框出现
-        self.wait_for_page_ready()
 
         # 选择CD-ROM
         self.get_by_placeholder("请选择CD-ROM").click()
@@ -1780,7 +1767,6 @@ class EcsPageBase(OpsPage):
         # 点击操作按钮
         self.click_action(name, "安装工具")
 
-        self.wait_for_page_ready()
         # 点击安装并进入下一步
         self.get_by_text("安装并进入下一步").click()
         logger.info(f"云服务器 {name} 安装工具请求已提交")
@@ -1945,7 +1931,6 @@ class EcsPageBase(OpsPage):
         self.get_by_text("目标物理机").locator("xpath=./following-sibling::div/span").click()
 
         # 等待物理机选择区域加载完成
-        self.wait_for_page_ready()
 
         # 取所有可用的物理机节点，排除包含is-disabled属性的节点
         available_hosts = self._get_available_migration_hosts()
@@ -2009,7 +1994,6 @@ class EcsPageBase(OpsPage):
         if sub_tab:
             # 使用正则匹配精确文本，处理首尾空格和换行
             self.locator(".security-group-item").filter(has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")).click()
-        self.wait_for_page_ready()
         logger.info(f"进入云服务器 {name} 的安全组页签")
 
     def ecs_set_security_groups(self, sg_names: list, bind: bool = True):
@@ -2032,7 +2016,6 @@ class EcsPageBase(OpsPage):
                 pagination_trigger.click()
                 # 寻找 50条/页 选项
                 self.locator("li").filter(has_text="50条/页").last.click()
-                self.wait_for_page_ready()
         except Exception as e:
             logger.warning(f"尝试设置分页为50失败: {e}")
 
@@ -2052,7 +2035,6 @@ class EcsPageBase(OpsPage):
 
         # 等待成功提示
         self.assert_popup_success(re.compile(r"设置安全组成功|操作成功"))
-        self.wait_for_page_ready()
         logger.info(f"设置安全组完成: {sg_names}, bind={bind}")
 
     def ecs_get_bound_security_groups(self):
@@ -2175,7 +2157,6 @@ class EcsPageBase(OpsPage):
         # 确定并断言
         dialog.get_by_text("确定", exact=True).click()
         self.assert_popup_success(re.compile(r"规则操作成功|新建.*成功|操作成功"))
-        self.wait_for_page_ready()
         logger.info(f"自定义安全组规则创建完成: {kwargs}")
 
     def ecs_delete_custom_sg_rule(self, description=None):
@@ -2205,7 +2186,6 @@ class EcsPageBase(OpsPage):
             target_direction = self.get_by_text(direction, exact=True).filter(has_not_text="入口出口")
             if target_direction.count() > 0:
                 target_direction.first.click()
-                self.wait_for_page_ready()
 
         # 查找当前激活的tab页中的表格 headers 和 rows
         active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])", ".active-tab").first
@@ -2250,7 +2230,6 @@ class EcsPageBase(OpsPage):
         # 点击指定云服务器的详情链接
         self.locator(".el-icon-back").click()
         # 等待详情页面加载完成
-        self.wait_for_page_ready()
 
     def assert_ecs_details_info(self, names, info_items: dict, tab: str = "详情", sub_tab: str = None):
         """验证云服务器详情页面中的信息
@@ -2272,12 +2251,10 @@ class EcsPageBase(OpsPage):
             exact = False if tab == "安全组" or tab == "事件列表" else True
             if tab == "详情":
                 sleep(2)
-                self.wait_for_page_ready()
             else:
                 self.get_by_role("tab", name=tab, exact=exact).click()
                 if sub_tab:
                     self.locator("label").filter(has_text=sub_tab).click()
-                self.wait_for_page_ready()
             # 逐个验证信息项
             for item_name, expected_content in info_items.items():
                 if tab == "详情":
@@ -2315,7 +2292,6 @@ class EcsPageBase(OpsPage):
             可用物理机节点名称列表
         """
         available_hosts = []
-        self.wait_for_page_ready()
         # 获取所有物理机行
         all_rows = self.locator("section").locator(".el-table__body-wrapper").locator("tr")
         row_count = all_rows.count()
@@ -2633,7 +2609,6 @@ class EcsPageBase(OpsPage):
         except:
             self.locator(".el-icon-setting").click()  # 收起下拉
 
-        self.wait_for_page_ready()
         self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
 
 __all__ = ["EcsPageBase"]
