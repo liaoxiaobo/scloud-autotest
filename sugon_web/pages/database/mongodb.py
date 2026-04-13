@@ -142,9 +142,9 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         :param new_size: 新磁盘大小
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        # 假设单机/副本集是这个操作，分片集群可能不同
-        self.click_action(f"{name}-0", "修改云硬盘大小")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
         spin_button = dialog.get_by_role("spinbutton")
@@ -159,9 +159,9 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         :param specification_name: 新规格名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        sleep(3)
-        self.click_action(f"{name}-0", "修改规格")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
@@ -174,8 +174,7 @@ class MongoDBPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         :return: 绑定的IP地址
         """
-        self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-
+        self.goto_detail_page(instance_name, node_name)
         self.click_action(node_name, "绑定公网IP")
 
         # 使用更精确的dialog定位
@@ -199,8 +198,7 @@ class MongoDBPage(BasePage):
         :param instance_name: 实例名称
         :param node_name: 节点名称
         """
-        self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-
+        self.goto_detail_page(instance_name, node_name)
         self.click_action(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
 
@@ -395,7 +393,7 @@ class MongoDBPage(BasePage):
         :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
         :param cpu_auto: 是否开启CPU自动收敛
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "热迁移")
         sleep(2)
 

@@ -317,6 +317,39 @@ class BasePage(Playwright):
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
+    def goto_detail_page(self, instance_name: str, row_name: str = None,
+                            timeout: int = 10, poll_interval: float = 0.2) -> Locator | None:
+        """进入实例详情，并等待目标行在详情页可见。
+
+        Args:
+            instance_name: 实例名称
+            row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
+            timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
+        """
+        self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+        self.wait_for_page_ready()
+
+        if not row_name:
+            return None
+
+        end_time = time.time() + timeout
+        last_error = None
+
+        while time.time() < end_time:
+            try:
+                row = self.get_row_by_name(row_name)
+                self.logger.info(f"详情页目标行已就绪: {row_name}")
+                return row
+            except Exception as e:
+                last_error = e
+
+            self.page.wait_for_timeout(int(poll_interval * 1000))
+
+        raise AssertionError(
+            f"等待详情页资源行 '{row_name}' 超时，实例: '{instance_name}'"
+        ) from last_error
+
     def assert_popup_success(self, text=None, timeout=5):
         """公共方法: 根据弹窗文本和类型，断言操作成功
 

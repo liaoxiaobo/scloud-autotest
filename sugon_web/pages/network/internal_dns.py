@@ -10,6 +10,7 @@ class InternalDnsMixin:
         """进入内网解析列表页。"""
         self.goto_service("虚拟私有云")
         self.goto_submenu("内网解析")
+        self.wait_for_page_ready()
 
     def _get_dns_dialog(self, title: str):
         """获取内网解析对话框。"""
@@ -119,9 +120,11 @@ class InternalDnsMixin:
         """进入内网解析详情页，并切换到指定页签。"""
         self.goto_internal_dns_list()
         self.get_row_by_name(domain).locator("a").first.click()
+        self.wait_for_page_ready()
         tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(rf"^{re.escape(tab_name)}$")).first
         tab.dispatch_event("click")
         expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
+        self.wait_for_page_ready()
 
     def _get_dns_record_form_item(self, dialog, label: str):
         """根据表单标签获取解析记录表单项。"""

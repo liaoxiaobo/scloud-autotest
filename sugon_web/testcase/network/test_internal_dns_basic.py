@@ -132,7 +132,6 @@ class TestInternalDnsBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证解析记录创建成功"):
-            vpc_page.goto_internal_dns_detail(internal_dns["domain"], tab_name="解析记录")
             vpc_page.assert_list_contain(record_alias, column_name="域名", exact_match=True)
             row_data = vpc_page.get_row_data(record_alias)
             assert row_data.get("域名") == record_alias, f"域名断言失败: {row_data}"

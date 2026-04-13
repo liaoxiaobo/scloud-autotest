@@ -203,13 +203,12 @@ class DorisPage(BasePage):
         :param node_type: 节点类型，"fe"或"be"
         :param new_size: 新磁盘大小
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-
         # 根据节点类型确定节点名称
         if node_type.lower() == "fe":
             node_name = f"{name}_fe_node01"
         else:
             node_name = f"{name}_be_node01"
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
@@ -228,14 +227,12 @@ class DorisPage(BasePage):
         :param specification_name: 新规格名称（用于页面选择）
         :param node_type: 节点类型，"fe"或"be"
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-
         # 根据节点类型确定节点名称（使用原始命名格式）
         if node_type.lower() == "fe":
             node_name = f"{name}_fe_node01"
         else:
             node_name = f"{name}_be_node01"
-
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
@@ -285,14 +282,12 @@ class DorisPage(BasePage):
         :param node_type: 节点类型，"fe"或"be"
         :return: 绑定的IP地址
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-
         # 根据节点类型确定节点名称（使用原始命名格式）
         if node_type.lower() == "fe":
             node_name = f"{name}_fe_node01"
         else:
             node_name = f"{name}_be_node01"
-
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "绑定公网IP")
 
         # 使用更精确的dialog定位
@@ -316,14 +311,12 @@ class DorisPage(BasePage):
         :param name: 实例名称
         :param node_type: 节点类型，"fe"或"be"
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-
         # 根据节点类型确定节点名称（使用原始命名格式）
         if node_type.lower() == "fe":
             node_name = f"{name}_fe_node01"
         else:
             node_name = f"{name}_be_node01"
-
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定").click()
 
@@ -747,7 +740,7 @@ class DorisPage(BasePage):
         :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
         :param cpu_auto: 是否开启CPU自动收敛
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "热迁移")
         sleep(2)
 
