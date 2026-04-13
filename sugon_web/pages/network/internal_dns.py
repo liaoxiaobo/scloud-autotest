@@ -2,15 +2,11 @@ import re
 
 from playwright.sync_api import expect
 
+from sugon_web.common.base import submenu
+
 
 class InternalDnsMixin:
     """内网解析页面动作。"""
-
-    def goto_internal_dns_list(self):
-        """进入内网解析列表页。"""
-        self.goto_service("虚拟私有云")
-        self.goto_submenu("内网解析")
-        self.wait_for_page_ready()
 
     def _get_dns_dialog(self, title: str):
         """获取内网解析对话框。"""
@@ -42,6 +38,7 @@ class InternalDnsMixin:
 
         dialog.locator(".el-dialog__header").click()
 
+    @submenu("内网解析")
     def internal_dns_create(self, domain, vpc_name, email="", desc=""):
         """创建内网解析。
 
@@ -51,7 +48,6 @@ class InternalDnsMixin:
             email: 管理员邮箱，默认为空。
             desc: 描述信息，默认为空。
         """
-        self.goto_internal_dns_list()
         self.btn_create.click()
 
         dialog = self._get_dns_dialog("新建内网解析")
@@ -66,6 +62,7 @@ class InternalDnsMixin:
 
         dialog.get_by_text("确定", exact=True).click()
 
+    @submenu("内网解析")
     def internal_dns_edit(self, domain, new_email=None, new_desc=None):
         """修改内网解析的邮箱和描述。
 
@@ -74,7 +71,6 @@ class InternalDnsMixin:
             new_email: 新邮箱。
             new_desc: 新描述。
         """
-        self.goto_internal_dns_list()
         self.click_action(domain, "修改")
 
         dialog = self._get_dns_dialog("修改内网解析")
@@ -86,6 +82,7 @@ class InternalDnsMixin:
 
         dialog.get_by_text("确定", exact=True).click()
 
+    @submenu("内网解析")
     def internal_dns_delete(self, domains):
         """删除内网解析，支持单个和批量操作。
 
@@ -100,14 +97,14 @@ class InternalDnsMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("内网解析")
     def internal_dns_search(self, keyword):
         """搜索内网解析。"""
-        self.goto_internal_dns_list()
         self.search(keyword)
 
+    @submenu("内网解析")
     def internal_dns_reset(self):
         """重置内网解析搜索条件。"""
-        self.goto_internal_dns_list()
         self.btn_reset.click()
         self.page.wait_for_timeout(1000)
 
@@ -116,15 +113,10 @@ class InternalDnsMixin:
         """返回解析记录列表中的完整域名。"""
         return f"{host_record}.{domain}" if host_record else domain
 
-    def goto_internal_dns_detail(self, domain: str, tab_name: str = "详情"):
+    @submenu("内网解析")
+    def goto_internal_dns_detail(self, domain: str, tab_name: str = "详情", row_name: str = None):
         """进入内网解析详情页，并切换到指定页签。"""
-        self.goto_internal_dns_list()
-        self.get_row_by_name(domain).locator("a").first.click()
-        self.wait_for_page_ready()
-        tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(rf"^{re.escape(tab_name)}$")).first
-        tab.dispatch_event("click")
-        expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
-        self.wait_for_page_ready()
+        return self.goto_detail_page(domain, row_name=row_name, tab_name=tab_name)
 
     def _get_dns_record_form_item(self, dialog, label: str):
         """根据表单标签获取解析记录表单项。"""
@@ -189,7 +181,7 @@ class InternalDnsMixin:
         new_desc: str | None = None,
     ):
         """修改解析记录。"""
-        self.goto_internal_dns_detail(domain, tab_name="解析记录")
+        self.goto_internal_dns_detail(domain, tab_name="解析记录", row_name=record_alias)
         self.click_action(record_alias, "修改")
 
         dialog = self._get_dns_dialog("修改记录集")
@@ -205,8 +197,8 @@ class InternalDnsMixin:
 
     def internal_dns_record_delete(self, domain: str, record_aliases):
         """删除一个或多个解析记录。"""
-        self.goto_internal_dns_detail(domain, tab_name="解析记录")
         aliases = [record_aliases] if isinstance(record_aliases, str) else record_aliases
+        self.goto_internal_dns_detail(domain, tab_name="解析记录", row_name=aliases[0])
         if len(aliases) == 1:
             self.click_action(aliases[0], "删除")
         else:

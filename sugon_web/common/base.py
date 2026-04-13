@@ -317,18 +317,33 @@ class BasePage(Playwright):
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
-    def goto_detail_page(self, instance_name: str, row_name: str = None,
-                            timeout: int = 10, poll_interval: float = 0.2) -> Locator | None:
-        """进入实例详情，并等待目标行在详情页可见。
+    def goto_detail_page(
+        self,
+        instance_name: str,
+        row_name: str = None,
+        tab_name: str = None,
+        timeout: int = 10,
+        poll_interval: float = 0.2,
+    ) -> Locator | None:
+        """进入实例详情页，可选切换页签并等待目标行可见。
 
         Args:
             instance_name: 实例名称
             row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
+            tab_name: 进入详情页后需要切换的页签名称
             timeout: 超时时间（秒）
             poll_interval: 轮询间隔（秒）
         """
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
         self.wait_for_page_ready()
+
+        if tab_name:
+            tab = self.page.locator(".el-tabs__item").filter(
+                has_text=re.compile(rf"^{re.escape(tab_name)}$")
+            ).first
+            tab.dispatch_event("click")
+            expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
+            self.wait_for_page_ready()
 
         if not row_name:
             return None

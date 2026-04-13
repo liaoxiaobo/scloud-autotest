@@ -929,8 +929,7 @@ def internal_dns(vpc_page, vpc):
 
     with allure_step_log(f"Teardown: 删除内网解析 {dns_info['domain']}"):
         try:
-            vpc_page.goto_internal_dns_list()
-            vpc_page.search(dns_info["domain"])
+            vpc_page.internal_dns_search(dns_info["domain"])
             domains = vpc_page.get_column_data("域名")
             if dns_info["domain"] in domains:
                 vpc_page.internal_dns_delete(dns_info["domain"])
