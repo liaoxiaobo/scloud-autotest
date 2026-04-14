@@ -2,6 +2,7 @@ import datetime
 
 import allure
 import pytest
+import re
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -136,6 +137,11 @@ def _create_logged_in_page(browser_context, config):
 
     logger.info(f"导航到目标URL: {base_url}")
     page.goto(base_url)
+    try:
+        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=5000)
+    except Exception:
+        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     if not _is_logged_in(page):
@@ -254,14 +260,8 @@ def ssh_vm(jump_host):
 
 def _is_logged_in(page):
     """检查是否已登录"""
-    try:
-        # 检查登录表单是否存在，如果存在说明未登录
-        login_form = page.get_by_placeholder("请输入登录账号")
-        login_form.wait_for(timeout=2000)
-        return False
-    except:
-        # 找不到登录表单，说明已登录
-        return True
+    current_url = page.url or ""
+    return "/#/index" in current_url and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -297,12 +297,15 @@ def _login(page, config, max_retries=3):
             page.get_by_placeholder("请输入登录密码").fill(password)
             page.get_by_text("登 录").click()
 
-            # 等待页面加载完成
-            page.wait_for_load_state("networkidle")
+            # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
+            page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
             page.wait_for_load_state("domcontentloaded")
+            page.wait_for_load_state("load")
 
-            # 检查登录按钮是否消失（说明登录成功）
-            return _is_logged_in(page)
+            if _is_logged_in(page):
+                return True
+
+            raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
 
         except Exception as e:
             logger.info(f"第{attempt}次登录未成功: {e}")
