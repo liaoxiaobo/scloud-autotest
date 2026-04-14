@@ -759,7 +759,6 @@ class BackUpPage(BasePage):
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
 
     @submenu("任务")
     def backup_to_details(self, name: str):
@@ -994,8 +993,6 @@ class BackUpPage(BasePage):
         self.click_action(name, operation)
         # 断言弹窗成功
         self.assert_popup_success(f"{operation}备份任务成功")
-        # 等待页面加载完成
-        self.wait_for_page_ready()
 
         self.logger.info(f"成功{operation}备份任务{name}")
 
@@ -1019,8 +1016,6 @@ class BackUpPage(BasePage):
         self.dialog_confirm.click()
 
         # 等待详情页面加载完成
-        self.wait_for_page_ready()
-
         self.logger.info(f"操作完成: 修改名称 {name} 为 {new_name}")
 
     @submenu("任务")
@@ -1038,7 +1033,6 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
         self.click_action(name, "管理云服务器")
-        self.wait_for_page_ready()
 
         # 选择虚机类型
         if vm_type != "弹性云服务器":
@@ -1223,7 +1217,6 @@ class BackUpPage(BasePage):
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
 
     @submenu("回收")
     def backup_recovery(self, name):

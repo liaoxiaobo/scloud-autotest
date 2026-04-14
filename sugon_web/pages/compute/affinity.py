@@ -26,7 +26,6 @@ class AffinityGroupPage(OpsPage):
             self.get_row_by_name(names).get_by_text("删除", exact=True).click()
         self.dialog_confirm.click()
         logger.info("已提交亲和组删除请求")
-        self.wait_for_page_ready()
 
     @submenu("弹性云服务器")
     def ecs_bind_unbind_group(self, names, operation: str, group_name: str):

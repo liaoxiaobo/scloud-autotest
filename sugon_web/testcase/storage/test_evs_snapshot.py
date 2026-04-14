@@ -62,7 +62,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘快照-修改")
@@ -172,7 +171,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("快照策略-修改")

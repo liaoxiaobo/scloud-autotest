@@ -18,11 +18,9 @@ class KafkaPage(BasePage):
             cells = row.locator("td")
             target = cells.nth(1) if cells.count() > 1 else row
             target.click()
-            self.wait_for_page_ready()
             sleep(2)
         if tab_name and tab_name != "节点":
             self.get_by_role("tab", name=tab_name).click()
-            self.wait_for_page_ready()
             sleep(1)
 
     @submenu("实例管理")
@@ -40,7 +38,6 @@ class KafkaPage(BasePage):
             ).first.click()
 
         self.btn_create.click()
-        self.wait_for_page_ready()
         sleep(1)
 
         # 基本信息
@@ -134,7 +131,6 @@ class KafkaPage(BasePage):
         dialog = self.page.locator("div.el-dialog:visible").last
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("body > div.el-select-dropdown:visible").last.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
         ip_address = ip_row.locator("td").nth(1).inner_text()
@@ -158,7 +154,6 @@ class KafkaPage(BasePage):
         dialog = self.page.locator("div.el-dialog:visible").last
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("body > div.el-select-dropdown:visible").last.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
         ip_address = ip_row.locator("td").nth(1).inner_text()
@@ -201,7 +196,6 @@ class KafkaPage(BasePage):
         """为Kafka实例批量删除白名单"""
         self.ensure_instance_tab(name, "白名单")
         sleep(2)
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
@@ -253,7 +247,6 @@ class KafkaPage(BasePage):
         """Kafka节点热迁移"""
         self.ensure_instance_tab(name)
         self.click_action(node_name, "热迁移")
-        self.wait_for_page_ready()
         sleep(2)
 
         self.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()

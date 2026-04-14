@@ -139,7 +139,6 @@ class TestECSScenario:
 
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
             ecs_page.goto_service('弹性云服务器')
-            ecs_page.wait_for_page_ready()
             new_vm_ip = ecs_page.get_row_data(new_vm).get("IP地址").split(':')[1].strip()
             new_vm_mfip = ecs_page.bind_mfip(new_vm_ip)
             ssh_vm.connect(new_vm_mfip)

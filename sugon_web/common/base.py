@@ -317,6 +317,54 @@ class BasePage(Playwright):
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
+    def goto_detail_page(
+        self,
+        instance_name: str,
+        row_name: str = None,
+        tab_name: str = None,
+        timeout: int = 10,
+        poll_interval: float = 0.2,
+    ) -> Locator | None:
+        """进入实例详情页，可选切换页签并等待目标行可见。
+
+        Args:
+            instance_name: 实例名称
+            row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
+            tab_name: 进入详情页后需要切换的页签名称
+            timeout: 超时时间（秒）
+            poll_interval: 轮询间隔（秒）
+        """
+        self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+        self.wait_for_page_ready()
+
+        if tab_name:
+            tab = self.page.locator(".el-tabs__item").filter(
+                has_text=re.compile(rf"^{re.escape(tab_name)}$")
+            ).first
+            tab.dispatch_event("click")
+            expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
+            self.wait_for_page_ready()
+
+        if not row_name:
+            return None
+
+        end_time = time.time() + timeout
+        last_error = None
+
+        while time.time() < end_time:
+            try:
+                row = self.get_row_by_name(row_name)
+                self.logger.info(f"详情页目标行已就绪: {row_name}")
+                return row
+            except Exception as e:
+                last_error = e
+
+            self.page.wait_for_timeout(int(poll_interval * 1000))
+
+        raise AssertionError(
+            f"等待详情页资源行 '{row_name}' 超时，实例: '{instance_name}'"
+        ) from last_error
+
     def assert_popup_success(self, text=None, timeout=5):
         """公共方法: 根据弹窗文本和类型，断言操作成功
 
@@ -725,11 +773,9 @@ class BasePage(Playwright):
 
     def wait_for_page_ready(self):
         """公共方法: 等待页面完全就绪"""
-        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
-        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
-        # self.page.wait_for_selector(".el-loading-spinner", state='hidden')
-        # 等待所有 .el-loading-spinner 元素隐藏
+        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
+        # 等待所有 Element UI loading 遮罩消失
         loading_spinners = self.page.locator(".el-loading-spinner")
         count = loading_spinners.count()
         if count > 0:

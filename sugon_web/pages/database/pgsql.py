@@ -155,9 +155,9 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         :param new_size: 新磁盘大小
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
-        self.click_action(f"{name}-0", "修改云硬盘大小")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
         # 定位到步进器输入框并填充新大小
@@ -174,9 +174,9 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         :param specification_name: 新规格名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
-        self.click_action(f"{name}-0", "修改规格")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
@@ -189,11 +189,9 @@ class PgSQLPage(BasePage):
         :return: 绑定的IP地址
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_text("绑定公网IP").first.click()
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为"关闭"的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -211,7 +209,6 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("解绑公网IP").click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
@@ -223,15 +220,11 @@ class PgSQLPage(BasePage):
         :param network: 网络名称 (仅绑定时需要)
         :return: 绑定的IP地址
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
-        sleep(3)
-        self.locator(".el-icon-refresh").click()
-        self.wait_for_page_ready()
-        self.click_action(f"{name}-0", "绑定公网IP")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "绑定公网IP")
         self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
-        self.wait_for_page_ready()
 
         # 选择第一个状态为"关闭"的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -248,12 +241,9 @@ class PgSQLPage(BasePage):
         为PostgreSQL节点解绑弹性IP
         :param name: 实例名称
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
-        sleep(3)
-        self.locator(".el-icon-refresh").click()
-        self.wait_for_page_ready()
-        self.click_action(f"{name}-0", "解绑公网IP")
+        node_name = f"{name}-0"
+        self.goto_detail_page(name, node_name)
+        self.click_action(node_name, "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -263,7 +253,6 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_label("详情").get_by_text("新建只读节点").click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
@@ -276,7 +265,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         sleep(30)
-        self.wait_for_page_ready()
         self.locator(".el-icon-refresh").click()
         self.click_action(node_name, "删除")
         self.dialog_confirm.click()
@@ -289,11 +277,9 @@ class PgSQLPage(BasePage):
         :param db_name: 数据库名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(3)
-        self.wait_for_page_ready()
         self.btn_create.click()
         dialog = self.get_by_label("新建数据库")
         dialog.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(db_name)
@@ -307,11 +293,9 @@ class PgSQLPage(BasePage):
         :param db_name: 数据库名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(5)
-        self.wait_for_page_ready()
         self.get_by_role("row", name=f"{db_name}").locator("i").click()
         self.dialog_confirm.click()
 
@@ -323,11 +307,9 @@ class PgSQLPage(BasePage):
         :param db_names: 数据库名称列表
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="数据库", exact=True).click()
         sleep(5)
-        self.wait_for_page_ready()
 
         for db_name in db_names:
             self.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
@@ -347,7 +329,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.btn_create.click()
         dialog = self.get_by_role("dialog")
         dialog.locator("form div").filter(has_text="用户名").get_by_role("textbox").fill(user_name)
@@ -365,7 +346,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "修改用户")
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
@@ -382,11 +362,9 @@ class PgSQLPage(BasePage):
         :param privileges: 权限 (e.g., "读写")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(2)
         self.get_by_role("tab", name="用户").click()
         sleep(2)
-        self.wait_for_page_ready()
         self.click_action(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
         sleep(2)
@@ -404,7 +382,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "删除")
         self.dialog_confirm.click()
 
@@ -417,7 +394,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
 
         for user_name in user_names:
             self.get_by_role("row", name=re.compile(user_name)).locator("span").nth(1).click()
@@ -435,7 +411,6 @@ class PgSQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="用户").click()
-        self.wait_for_page_ready()
         self.click_action(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
@@ -450,7 +425,6 @@ class PgSQLPage(BasePage):
         :param ip_address: IP地址或CIDR
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         self.get_by_text("添加", exact=True).click()
         self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
@@ -464,7 +438,6 @@ class PgSQLPage(BasePage):
         :param ip_address: IP地址或CIDR
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         # 精准定位到要删除的IP地址对应的删除按钮
         self.locator("span").filter(has_text=ip_address).locator("i").click()
@@ -478,10 +451,8 @@ class PgSQLPage(BasePage):
         :param ip_addresses: IP地址或CIDR的列表
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
-        self.wait_for_page_ready()
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
         self.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
@@ -495,7 +466,6 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         self.get_by_role("tab", name="白名单").click()
         self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
@@ -509,12 +479,10 @@ class PgSQLPage(BasePage):
         :param param_value: 参数新值
         """
         self.locator(f"#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
         sleep(3)
         self.get_by_role("tab", name="参数设置").click()
         # 定位到参数行并点击编辑图标
         sleep(3)
-        self.wait_for_page_ready()
         
         # 使用 MySQL 的定位方式
         self.page.locator("tr").filter(has_text=param_name).get_by_text("编辑").last.click()
@@ -537,10 +505,8 @@ class PgSQLPage(BasePage):
         :param bandwidth: 迁移速率 (25%, 50%, 75%, 全速)
         :param cpu_auto: 是否开启CPU自动收敛
         """
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.wait_for_page_ready()
+        self.goto_detail_page(name, node_name)
         self.click_action(node_name, "热迁移")
-        self.wait_for_page_ready()
         sleep(2)
 
         # 选择目标物理机

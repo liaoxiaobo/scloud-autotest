@@ -96,7 +96,6 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -399,16 +398,13 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="数据库", exact=True).click()
-            doris_page.wait_for_page_ready()
             keyword = db_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_database_exist(keyword)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -421,16 +417,13 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="用户").click()
-            doris_page.wait_for_page_ready()
             keyword = user_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -746,17 +739,14 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             sleep(2)
             doris_page.get_by_role("tab", name="参数设置").click()
             sleep(3)
-            doris_page.wait_for_page_ready()
             keyword = param_keyword
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"

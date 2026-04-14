@@ -82,7 +82,6 @@ class SgPage(BasePage):
     def sg_search_reset(self):
         """重置搜索条件"""
         self.btn_reset.click()
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)  # 确保列表刷新完毕
         self.logger.info("重置安全组搜索条件完成")
 
@@ -94,7 +93,6 @@ class SgPage(BasePage):
             sg_name: 安全组名称
         """
         self.get_by_text(sg_name, exact=True).click()
-        self.wait_for_page_ready()
         self.logger.info(f"进入安全组{sg_name}详情页")
 
     def select_all_rows(self):

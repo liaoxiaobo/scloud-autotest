@@ -59,7 +59,6 @@ class OpsPage(BasePage):
         # self.get_by_placeholder("请输入搜索内容").fill(search_value)
         self.get_by_placeholder(f"搜索（{search_type}）").fill(search_value)
         self.get_by_text("搜索", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("物理机设备")
     @submenu("裸磁盘")

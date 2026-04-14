@@ -53,7 +53,6 @@ class TestEVSBasic:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘-修改")
@@ -224,7 +223,6 @@ class TestEVSBasic:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
         with allure_step_log("步骤4: 从回收站恢复云硬盘"):

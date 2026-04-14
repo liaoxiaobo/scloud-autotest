@@ -76,7 +76,6 @@ class IpGroupPage(BasePage):
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("IP地址组")
     def ip_group_edit(self, name, new_name=None, new_ip_addresses=None, new_desc=None, enable_ipv6=None):
@@ -91,7 +90,6 @@ class IpGroupPage(BasePage):
             enable_ipv6=enable_ipv6,
         )
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("IP地址组")
     def ip_group_edit_in_detail(self, name, old_ip_addresses, new_ip_addresses):
@@ -109,7 +107,6 @@ class IpGroupPage(BasePage):
         dialog = self._get_dialog("修改IP地址")
         self._fill_ip_group_form(dialog, ip_addresses=new_ip_addresses)
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("IP地址组")
     def ip_group_search(self, keyword):
@@ -120,7 +117,6 @@ class IpGroupPage(BasePage):
     def ip_group_search_reset(self):
         """重置IP地址组搜索条件。"""
         self.btn_reset.click()
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)
 
     @submenu("IP地址组")
@@ -133,11 +129,9 @@ class IpGroupPage(BasePage):
         if clickable.count() == 0:
             clickable = target_row.locator("td").nth(1)
         clickable.click()
-        self.wait_for_page_ready()
 
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
-            self.wait_for_page_ready()
 
     def assert_detail_basic_info(self, name=None, desc=None):
         """校验详情页基本信息区域。"""
@@ -165,7 +159,6 @@ class IpGroupPage(BasePage):
         dialog = self._get_dialog("添加IP地址")
         self._fill_ip_group_form(dialog, ip_addresses=ip_addresses)
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("IP地址组")
     def ip_group_delete_ip_addresses(self, name, ip_addresses):
@@ -180,7 +173,6 @@ class IpGroupPage(BasePage):
         for ip in targets:
             self.click_action(str(ip), "删除")
             self.dialog_confirm.click()
-            self.wait_for_page_ready()
 
     @submenu("IP地址组")
     def ip_group_batch_delete_ip_addresses(self, name, ip_addresses):
@@ -195,4 +187,3 @@ class IpGroupPage(BasePage):
         self.select_rows_by_names([str(ip) for ip in targets])
         self.btn_batch_delete.click()
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

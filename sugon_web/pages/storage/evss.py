@@ -29,7 +29,6 @@ class EvssPage(BasePage):
 
         self.locator("textarea").fill(desc)
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照")
     def evss_delete(self, names):
@@ -41,7 +40,6 @@ class EvssPage(BasePage):
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照")
     def evss_edit(self, name, new_name, new_desc):
@@ -56,7 +54,6 @@ class EvssPage(BasePage):
         desc_input.fill(new_desc)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照策略")
     def evss_policy_create(self, name, hours, enabled=False, cycle_days=1, retention_type="按数量", retention_value=1):
@@ -79,7 +76,6 @@ class EvssPage(BasePage):
             self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照策略")
     def evss_policy_delete(self, names):
@@ -91,7 +87,6 @@ class EvssPage(BasePage):
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照策略")
     def evss_policy_edit(self, name, hours, enabled=False, cycle_days=1, retention_type="按数量", retention_value=1):
@@ -113,7 +108,6 @@ class EvssPage(BasePage):
             self.locator("form div").filter(has_text="保留规则按数量 按时间 天 永久保存").get_by_role("spinbutton").fill(str(retention_value))
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照任务")
     def evss_task_set_auto_snapshot(self, volume_name, enable=True):
@@ -124,7 +118,6 @@ class EvssPage(BasePage):
             self.click_action(volume_name, "禁用自动快照")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("快照任务")
     def evss_task_delete(self, names):
@@ -136,4 +129,3 @@ class EvssPage(BasePage):
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

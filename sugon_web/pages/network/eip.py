@@ -104,7 +104,6 @@ class EipMixin:
                 raise AssertionError(f"不支持的分配模式: {method}")
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
         expect(dialog).not_to_be_visible(timeout=10000)
 
         if selected_ips:
@@ -141,4 +140,3 @@ class EipMixin:
                 raise AssertionError("未找到'批量释放公网IP'按钮")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()

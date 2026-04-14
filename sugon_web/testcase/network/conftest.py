@@ -122,7 +122,6 @@ def eip(vpc_page, request):
                     vpc_page.eip_release(current_ip)
                     vpc_page.assert_deleted(current_ip)
                 vpc_page.btn_reset.click()
-                vpc_page.wait_for_page_ready()
         except Exception as e:
             logger.warning(f"清理弹性公网IP时出错: {e}")
 
@@ -150,9 +149,7 @@ def vip(vpc_page, vpc):
     # 确保在正确的 tab 页
     vpc_page.goto_service("虚拟私有云")
     vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-    vpc_page.wait_for_page_ready()
     vpc_page.get_by_role("tab", name="虚拟IP管理").click()
-    vpc_page.wait_for_page_ready()
 
     logger.info(f"清理虚拟IP {vip_address}")
     vpc_page.vip_delete(vip_address)
@@ -226,10 +223,8 @@ def port(vpc_page, vpc, request):
                 # 确保在正确的页面（VPC详情 -> 端口Tab）
                 vpc_page.goto_service("虚拟私有云")
                 vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-                vpc_page.wait_for_page_ready()
 
                 vpc_page.get_by_role("tab", name="端口").click()
-                vpc_page.wait_for_page_ready()
 
                 # 批量删除端口
                 vpc_page.port_delete(created_ports)
@@ -934,8 +929,7 @@ def internal_dns(vpc_page, vpc):
 
     with allure_step_log(f"Teardown: 删除内网解析 {dns_info['domain']}"):
         try:
-            vpc_page.goto_internal_dns_list()
-            vpc_page.search(dns_info["domain"])
+            vpc_page.internal_dns_search(dns_info["domain"])
             domains = vpc_page.get_column_data("域名")
             if dns_info["domain"] in domains:
                 vpc_page.internal_dns_delete(dns_info["domain"])

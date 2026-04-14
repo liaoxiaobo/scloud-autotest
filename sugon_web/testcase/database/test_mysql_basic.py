@@ -610,7 +610,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -623,9 +622,7 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="数据库", exact=True).click()
-            mysql_page.wait_for_page_ready()
             keyword = db_name[:-2]
             mysql_page.search(keyword)
             sleep(2)
@@ -633,7 +630,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -646,16 +642,13 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="用户").click()
-            mysql_page.wait_for_page_ready()
             keyword = user_name[:-2]
             mysql_page.search(keyword)
             mysql_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -668,17 +661,14 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             sleep(2)
             mysql_page.get_by_role("tab", name="参数设置").click()
             sleep(2)
-            mysql_page.wait_for_page_ready()
             mysql_page.search(param_keyword)
             mysql_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -700,7 +690,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤三：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 

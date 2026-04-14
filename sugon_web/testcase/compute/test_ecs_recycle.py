@@ -52,7 +52,6 @@ class TestECSRecycle:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
             # 断言重置后搜索输入框已清空
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -118,7 +117,6 @@ class TestECSRecycle:
             ecs_page.ecs_recover_batch_delete(ecs_names)
 
         with allure_step_log("步骤4: 验证删除结果"):
-            ecs_page.wait_for_page_ready()
             # 验证弹性云服务器已彻底删除
             ecs_page.assert_deleted(ecs_names)
             ssh_host.wait_vm_deleted(ecs_names)

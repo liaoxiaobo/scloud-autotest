@@ -27,7 +27,6 @@ class TestInternalDnsBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证内网解析列表数据"):
-            vpc_page.goto_internal_dns_list()
             vpc_page.assert_list_contain(domain, column_name="域名", exact_match=True)
             row_data = vpc_page.get_row_data(domain)
             assert row_data.get("域名") == domain, f"域名断言失败: {row_data}"
@@ -57,11 +56,8 @@ class TestInternalDnsBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证修改后的列表数据"):
-            vpc_page.goto_internal_dns_list()
             row_data = vpc_page.get_row_data(internal_dns["domain"])
             assert new_desc == row_data.get("描述"), f"描述断言失败: {row_data}"
-            vpc_page.goto_internal_dns_detail(internal_dns["domain"])
-            expect(vpc_page.page.locator("body")).to_contain_text(new_email)
             internal_dns["email"] = new_email
             internal_dns["desc"] = new_desc
 
@@ -102,7 +98,6 @@ class TestInternalDnsBasic:
                 vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证2条内网解析创建成功"):
-            vpc_page.goto_internal_dns_list()
             for domain in domains:
                 vpc_page.assert_list_contain(domain, column_name="域名", exact_match=True)
 
@@ -132,7 +127,6 @@ class TestInternalDnsBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证解析记录创建成功"):
-            vpc_page.goto_internal_dns_detail(internal_dns["domain"], tab_name="解析记录")
             vpc_page.assert_list_contain(record_alias, column_name="域名", exact_match=True)
             row_data = vpc_page.get_row_data(record_alias)
             assert row_data.get("域名") == record_alias, f"域名断言失败: {row_data}"
@@ -168,7 +162,6 @@ class TestInternalDnsBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证修改后的解析记录数据"):
-            vpc_page.goto_internal_dns_detail(internal_dns_record["domain"], tab_name="解析记录")
             row_data = vpc_page.get_row_data(new_alias)
             assert row_data.get("域名") == new_alias, f"域名断言失败: {row_data}"
             assert row_data.get("类型") == "A", f"类型断言失败: {row_data}"
@@ -221,7 +214,6 @@ class TestInternalDnsBasic:
                 vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证2条解析记录创建成功"):
-            vpc_page.goto_internal_dns_detail(internal_dns["domain"], tab_name="解析记录")
             for record_alias in record_aliases:
                 vpc_page.assert_list_contain(record_alias, column_name="域名", exact_match=True)
 

@@ -107,7 +107,6 @@ class TestPeerConnectBasic:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
         with allure_step_log("步骤4: 删除对等连接"):

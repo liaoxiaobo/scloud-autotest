@@ -63,7 +63,6 @@ class VpcMixin:
                    enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
         self.btn_create.click()
-        self.wait_for_page_ready()
 
         self._input_name.fill(name)
         self._input_desc.fill(desc)
@@ -112,7 +111,6 @@ class VpcMixin:
             self._input_dns.fill(dns)
 
         self.btn_submit.click()
-        self.wait_for_page_ready()
 
     @submenu("虚拟私有云")
     def vpc_delete(self, names):
@@ -124,7 +122,6 @@ class VpcMixin:
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def vpc_details_get(self, name) -> dict:
         """获取VPC详情页面的数据"""
@@ -162,12 +159,10 @@ class VpcMixin:
             self.locator("textarea").fill(new_desc)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def vpc_generate_auth_code(self, name):
         """生成VPC授权码并复制"""
         self.click_action(name, "生成授权码")
-        self.wait_for_page_ready()
 
         auth_code = self.get_by_text("eyJ").inner_text()
         self.get_by_text("复制").click()
@@ -205,16 +200,13 @@ class VpcMixin:
             self._input_dns.fill(dns)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def subnet_create_in_detail(self, vpc_name, subnet_name, cidr, desc="",
                                 available_ip=None, dns=None, acl_policy=None, gateway_ip=None):
         """在VPC详情页的子网tab页中新建子网"""
         self.get_by_role("row", name=vpc_name).locator("a").click()
-        self.wait_for_page_ready()
 
         self.get_by_role("tab", name="子网").click()
-        self.wait_for_page_ready()
 
         new_button = self.get_by_label("子网", exact=True).get_by_text("新建")
         time.sleep(3)
@@ -242,7 +234,6 @@ class VpcMixin:
             self.get_by_role("option", name=acl_policy).click()
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def subnet_delete(self, vpc_name, names):
         """在VPC详情页的子网tab页中删除子网，支持单个和批量操作"""
@@ -253,12 +244,10 @@ class VpcMixin:
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def subnet_edit(self, subnet_name, new_name=None, new_desc=None, new_available_ip=None, new_dns=None):
         """在VPC详情页的子网tab页中修改子网"""
         self.click_action(subnet_name, "修改")
-        self.wait_for_page_ready()
 
         if new_name is not None:
             self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(new_name)
@@ -273,13 +262,11 @@ class VpcMixin:
             self.get_by_role("textbox", name="选填(默认:114.114.114.114)").fill(new_dns)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def vip_create(self, vpc_name, subnet_name, ip_address=None):
         """创建虚拟IP地址"""
         self.get_by_role("row", name=vpc_name).locator("a").click()
         self.get_by_role("tab", name="虚拟IP管理").click()
-        self.wait_for_page_ready()
 
         self.get_by_text("申请虚拟IP地址").first.click()
         self.get_by_label("申请虚拟IP地址").get_by_placeholder("请选择").click()
@@ -291,7 +278,6 @@ class VpcMixin:
             self.get_by_label("申请虚拟IP地址").get_by_role("textbox").nth(4).fill(last_segment)
 
         self.get_by_label("申请虚拟IP地址").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def vip_delete(self, names):
         """删除虚拟IP，支持单个和批量操作"""
@@ -302,7 +288,6 @@ class VpcMixin:
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def vip_bind_eip(self, vip_address, network_type="public_net(基础版)"):
         """绑定公网IP"""
@@ -329,7 +314,6 @@ class VpcMixin:
         dialog = self.get_by_role("dialog", name="绑定实例")
         dialog.get_by_role("textbox", name="请输入设备名称").fill(instance_name)
         dialog.get_by_text("搜索").click()
-        self.wait_for_page_ready()
 
         rows = dialog.locator(".el-table__body-wrapper tr")
         if rows.count() == 0:
@@ -358,13 +342,10 @@ class VpcMixin:
         self.logger.info(f"开始在 VPC '{vpc_name}' 中创建端口")
 
         self.get_row_by_name(vpc_name).locator("a").first.click()
-        self.wait_for_page_ready()
 
         self.get_by_role("tab", name="端口").click()
-        self.wait_for_page_ready()
 
         self.get_by_label("端口", exact=True).get_by_text("新建").click()
-        self.wait_for_page_ready()
 
         self.get_by_placeholder("请选择子网").click()
         self.get_by_title(subnet_name).click()
@@ -390,7 +371,6 @@ class VpcMixin:
                 self.get_by_role("switch").locator("span").click()
 
         self.get_by_label("新建端口").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def port_delete(self, names):
         """删除端口，支持单个和批量操作"""
@@ -403,7 +383,6 @@ class VpcMixin:
             self.click_action(names, "删除")
 
         self.locator("#cloud-container-content").get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     def port_edit(self, old_ip: str, new_ip: str = None, new_mac: str = None):
         """修改端口"""
@@ -420,12 +399,10 @@ class VpcMixin:
             self.get_by_placeholder(re.compile(r"请按照.*格式输入")).fill(new_mac)
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     def route_table_edit(self, new_name=None, new_desc=None):
         """修改路由表的名称和描述（需已在VPC详情页路由表Tab下）"""
         self.locator(".el-icon-edit").click()
-        self.wait_for_page_ready()
 
         if new_name is not None:
             name_input = self.get_by_label("编辑").locator("input[type=\"text\"]")
@@ -435,18 +412,14 @@ class VpcMixin:
             self.locator("textarea").fill(new_desc)
 
         self.get_by_label("编辑").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def route_rule_create(self, vpc_name, dest_cidr, next_hop, next_hop_type="ECS实例", ip_version="IPv4", desc=None):
         """在VPC详情页的路由表tab中新建路由表规则"""
         self.get_row_by_name(vpc_name).locator("a").first.click()
-        self.wait_for_page_ready()
 
         self.get_by_role("tab", name="路由表").click()
-        self.wait_for_page_ready()
 
         self.get_by_label("路由表", exact=True).get_by_text("新建").click()
-        self.wait_for_page_ready()
 
         if ip_version != "IPv4":
             self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="IP版本")).get_by_placeholder("请选择").click()
@@ -465,13 +438,11 @@ class VpcMixin:
             self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="描述")).locator("textarea").fill(desc)
 
         self.get_by_label("新建路由表规则").get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def route_rule_edit(self, dest_cidr, new_dest_cidr=None, new_next_hop_type=None,
                         new_next_hop=None, new_ip_version=None, new_desc=None):
         """修改路由表规则（需已在VPC详情页路由表Tab下）"""
         self.click_action(dest_cidr, "修改")
-        self.wait_for_page_ready()
 
         dialog = self.get_by_label("修改路由表规则")
 
@@ -502,7 +473,6 @@ class VpcMixin:
             ).locator("textarea").fill(new_desc)
 
         dialog.get_by_text("确定").click()
-        self.wait_for_page_ready()
 
     def route_rule_delete(self, dest_cidrs):
         """删除路由表规则，支持单个和批量操作"""
@@ -513,4 +483,3 @@ class VpcMixin:
             self.click_action(dest_cidrs, "删除")
 
         self.get_by_label("删除").get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()

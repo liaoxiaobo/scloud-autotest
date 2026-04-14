@@ -61,7 +61,6 @@ class TestEipBasic:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             search_input = vpc_page.get_by_role("textbox", name="搜索（公网IP）")
             assert search_input.input_value() == "", "重置后搜索框未清空"
             assert len(vpc_page.table_rows) > 0, "重置后公网IP列表为空"

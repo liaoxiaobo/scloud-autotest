@@ -10,7 +10,6 @@ class QosMixin:
     def qos_create(self, name, send_rate, recv_rate, desc=""):
         """创建网络QoS。"""
         self.btn_create.click()
-        self.wait_for_page_ready()
 
         dialog = self.get_by_label("新建QoS")
         if dialog.count() == 0:
@@ -29,7 +28,6 @@ class QosMixin:
             submit_btn.click()
         else:
             self.btn_submit.click()
-        self.wait_for_page_ready()
 
     def _set_qos_rate(self, dialog, field_name, value):
         """设置网络QoS速率；value 为 None 时保持不限速。"""
@@ -58,7 +56,6 @@ class QosMixin:
             self.click_action(name, "修改")
         except Exception:
             self.click_action(name, "编辑")
-        self.wait_for_page_ready()
 
         dialog = self.get_by_label("修改QoS")
         if dialog.count() == 0:
@@ -77,7 +74,6 @@ class QosMixin:
             dialog.locator("textarea").fill(new_desc)
 
         dialog.get_by_text("确定", exact=True).click()
-        self.wait_for_page_ready()
 
     @submenu("网络QoS")
     def qos_delete(self, names):
@@ -89,7 +85,6 @@ class QosMixin:
             self.click_action(names, "删除")
 
         self.dialog_confirm.click()
-        self.wait_for_page_ready()
 
     @submenu("网络QoS")
     def qos_search(self, keyword):
@@ -100,5 +95,4 @@ class QosMixin:
     def qos_search_reset(self):
         """重置网络QoS搜索条件。"""
         self.btn_reset.click()
-        self.wait_for_page_ready()
         self.page.wait_for_timeout(1000)
