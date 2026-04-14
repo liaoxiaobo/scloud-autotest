@@ -137,18 +137,31 @@ class InternalDnsMixin:
         option.click()
 
     def _fill_dns_record_values(self, dialog, record_type: str, values):
-        """填写解析记录值，当前基础场景覆盖 A 记录。"""
+        """填写解析记录值。
+
+        Args:
+            dialog: 当前可见的记录集弹窗定位器。
+            record_type: 记录类型，当前支持 ``A`` 和 ``SRV``。
+            values: 记录值。A 记录支持单个 IP 或 IP 列表；SRV 记录使用单个
+                ``priority weight port target`` 格式字符串。
+        """
         record_values = values if isinstance(values, list) else [values]
-        if record_type != "A":
-            raise ValueError(f"当前仅支持 A 记录，收到类型: {record_type}")
-
-        value_inputs = dialog.get_by_placeholder("例如：192.168.10.10")
-        while value_inputs.count() < len(record_values):
-            dialog.get_by_role("button", name=re.compile("添加")).click()
+        if record_type == "A":
             value_inputs = dialog.get_by_placeholder("例如：192.168.10.10")
+            while value_inputs.count() < len(record_values):
+                dialog.get_by_role("button", name=re.compile("添加")).click()
+                value_inputs = dialog.get_by_placeholder("例如：192.168.10.10")
 
-        for index, value in enumerate(record_values):
-            value_inputs.nth(index).fill(str(value))
+            for index, value in enumerate(record_values):
+                value_inputs.nth(index).fill(str(value))
+            return
+
+        if record_type == "SRV":
+            srv_input = dialog.get_by_placeholder("例如：[优先级][权重][端口][目标地址],以空格隔开").first
+            srv_input.fill(str(record_values[0]))
+            return
+
+        raise ValueError(f"当前仅支持 A 或 SRV 记录，收到类型: {record_type}")
 
     def internal_dns_record_create(
         self,
@@ -159,11 +172,25 @@ class InternalDnsMixin:
         values="192.168.10.10",
         desc: str = "",
     ):
-        """创建解析记录。"""
+        """在内网解析详情页创建解析记录。
+
+        操作步骤：
+            1. 进入指定内网解析详情页的“解析记录”页签；
+            2. 打开“新建记录集”弹窗并填写主机记录、类型、TTL、值和描述；
+            3. 提交后等待页面刷新完成。
+
+        Args:
+            domain: 所属内网解析域名。
+            host_record: 主机记录，传空字符串表示根域记录。
+            record_type: 记录类型，当前支持 ``A`` 和 ``SRV``。
+            ttl: TTL 值。
+            values: 记录值。A 记录支持单值或多值；SRV 记录传单个格式化字符串。
+            desc: 记录描述。
+        """
         self.goto_internal_dns_detail(domain, tab_name="解析记录")
         self.page.get_by_text("新建", exact=True).click()
 
-        dialog = self._get_dns_dialog("新建")
+        dialog = self._get_dns_dialog("新建记录集")
         self._get_dns_record_form_item(dialog, "主机记录").locator("input").first.fill(host_record)
         self._select_dns_record_type(dialog, record_type)
         self._get_dns_record_form_item(dialog, "TTL").locator("input").first.fill(str(ttl))
@@ -179,7 +206,25 @@ class InternalDnsMixin:
         new_ttl: int | None = None,
         new_values=None,
         new_desc: str | None = None,
+        record_type: str = "A",
     ):
+        """修改解析记录。
+
+        操作步骤：
+            1. 进入指定内网解析详情页的“解析记录”页签；
+            2. 在目标记录行点击“修改”；
+            3. 按需回填主机记录、TTL、值和描述后提交。
+
+        Args:
+            domain: 所属内网解析域名。
+            record_alias: 待修改记录在列表中展示的完整域名。
+            new_host_record: 修改后的主机记录，传空字符串表示根域记录。
+            new_ttl: 修改后的 TTL。
+            new_values: 修改后的记录值。
+            new_desc: 修改后的描述。
+            record_type: 当前记录类型，决定值区域的填写方式。
+        """
+        self.goto_internal_dns_detail(domain, tab_name="解析记录")
         """修改解析记录。"""
         self.goto_internal_dns_detail(domain, tab_name="解析记录", row_name=record_alias)
         self.click_action(record_alias, "修改")
@@ -192,7 +237,7 @@ class InternalDnsMixin:
         if new_desc is not None:
             self._get_dns_record_form_item(dialog, "描述").locator("textarea, input").first.fill(new_desc)
         if new_values is not None:
-            self._fill_dns_record_values(dialog, "A", new_values)
+            self._fill_dns_record_values(dialog, record_type, new_values)
         dialog.get_by_text("确定", exact=True).click()
 
     def internal_dns_record_delete(self, domain: str, record_aliases):
