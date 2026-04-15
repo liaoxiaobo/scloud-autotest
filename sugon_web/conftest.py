@@ -261,7 +261,7 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return "/#/index" in current_url and "login" not in current_url
+    return "login" not in current_url
 
 
 def _login(page, config, max_retries=3):

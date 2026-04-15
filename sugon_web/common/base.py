@@ -321,7 +321,7 @@ class BasePage(Playwright):
         self,
         instance_name: str,
         row_name: str = None,
-        tab_name: str = None,
+        tab_name: str = "详情",
         timeout: int = 10,
         poll_interval: float = 0.2,
     ) -> Locator | None:
@@ -329,7 +329,7 @@ class BasePage(Playwright):
 
         Args:
             instance_name: 实例名称
-            row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
+            row_name: 详情页中期望出现的资源行名称
             tab_name: 进入详情页后需要切换的页签名称
             timeout: 超时时间（秒）
             poll_interval: 轮询间隔（秒）

@@ -38,6 +38,7 @@ SERVICE_MAP = {
     'AnhanDB(for PostgreSQL)': ('资源中心', '数据库'),
     'AnhanDB(for MongoDB)': ('资源中心', '数据库'),
     '数据仓库 Doris': ('资源中心', '数据库'),
+    'AnhanDB-XScale': ('资源中心', '数据库'),
 
     # 中间件服务
     'AnhanDB(for Redis)': ('资源中心', '中间件'),
