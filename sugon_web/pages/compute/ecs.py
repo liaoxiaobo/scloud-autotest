@@ -4,6 +4,7 @@ import re
 import time
 from pathlib import Path
 from time import sleep
+from typing import Any, NotRequired, TypedDict
 import allure
 import pytest
 from playwright.sync_api import expect
@@ -16,86 +17,229 @@ from sugon_web.utils.util import random_data
 from sugon_web.config.config import Config
 
 
+# ECS 创建流程的结构化配置定义，用于约束 basic/storage/network/manage/advanced
+# 五个配置分组的字段类型，便于调用方按统一结构传参。
+EcsBasicConfig = TypedDict(
+    "EcsBasicConfig",
+    {
+        "name": str,
+        "count": int,
+        "cluster": str,
+        "host": str,
+        "flavor": dict[str, Any],
+        "labels": list[str],
+    },
+    total=False,
+)
+
+# 单块数据盘配置，描述卷类型、容量和创建数量。
+EcsStorageDiskConfig = TypedDict(
+    "EcsStorageDiskConfig",
+    {
+        "vol_type": str,
+        "size": str,
+        "count": str,
+    },
+    total=False,
+)
+
+# 镜像来源配置，统一描述镜像/ISO/快照等来源信息。
+EcsImageConfig = TypedDict(
+    "EcsImageConfig",
+    {
+        "source": str,
+        "name": str,
+        "os_version": str,
+    },
+    total=False,
+)
+
+# 存储分组配置，包含存储池、镜像、系统盘和数据盘列表。
+EcsStorageConfig = TypedDict(
+    "EcsStorageConfig",
+    {
+        "storage_pool": str,
+        "encryption_key": str,
+        "image": EcsImageConfig,
+        "system_disk": int,
+        "data_disks": list[EcsStorageDiskConfig],
+    },
+    total=False,
+)
+
+# 单张网卡配置，描述要绑定的网络与子网。
+EcsNetworkItemConfig = TypedDict(
+    "EcsNetworkItemConfig",
+    {
+        "network": str,
+        "subnet": str,
+    },
+    total=False,
+)
+
+# 网络分组配置，支持多网卡、安全组以及 IPv6 分配选项。
+EcsNetworkConfig = TypedDict(
+    "EcsNetworkConfig",
+    {
+        "networks": list[EcsNetworkItemConfig],
+        "security_groups": list[str],
+        "enable_ipv6": bool,
+    },
+    total=False,
+)
+
+# 管理分组配置，定义登录方式、登录凭据和 VNC 密码。
+EcsManageConfig = TypedDict(
+    "EcsManageConfig",
+    {
+        "login_type": str,
+        "login_pwd": str,
+        "login_key": str,
+        "vnc_pwd": str,
+    },
+    total=False,
+)
+
+# 高级分组配置，汇总亲和组、QoS、注入、主机名等高级能力。
+EcsAdvancedConfig = TypedDict(
+    "EcsAdvancedConfig",
+    {
+        "affinity": list[str],
+        "acceleration": bool,
+        "priority": str,
+        "ceiling": str,
+        "injection": list[str],
+        "hostname": str,
+        "vnc_type": str,
+        "sound_type": str
+    },
+    total=False,
+)
+
+# ECS 标准创建请求，统一聚合五个分组配置供页面填写流程消费。
+EcsCreateRequest = TypedDict(
+    "EcsCreateRequest",
+    {
+        "basic": EcsBasicConfig,
+        "storage": EcsStorageConfig,
+        "network": EcsNetworkConfig,
+        "manage": EcsManageConfig,
+        "advanced": EcsAdvancedConfig,
+    },
+    total=False,
+)
+
+def _config_get(config: dict[str, Any] | None, *keys: str, default: Any = None) -> Any:
+    """按顺序读取配置键，兼容新旧字段名。"""
+    if not config:
+        return default
+    for key in keys:
+        if key in config and config[key] not in (None,):
+            return config[key]
+    return default
+
+
+def _validate_section_config(section_name: str, config: dict[str, Any] | None) -> dict[str, Any]:
+    """校验单个配置分组是否为字典类型。"""
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        raise TypeError(f"{section_name!r} must be a dict, got {type(config).__name__}")
+    return dict(config)
+
+
+def _normalize_standard_ecs_create_request(
+    basic: EcsBasicConfig | None,
+    storage: EcsStorageConfig | None,
+    network: EcsNetworkConfig | None,
+    manage: EcsManageConfig | None,
+    advanced: EcsAdvancedConfig | None,
+) -> EcsCreateRequest:
+    """规范化标准分组方式的 ECS 创建请求。"""
+    # 标准调用方式下，分别校验各分组配置，统一转成可安全读写的 dict。
+    return {
+        "basic": _validate_section_config("basic", basic),
+        "storage": _validate_section_config("storage", storage),
+        "network": _validate_section_config("network", network),
+        "manage": _validate_section_config("manage", manage),
+        "advanced": _validate_section_config("advanced", advanced),
+    }
+
+
+def _normalize_ecs_create_request(
+    basic: EcsBasicConfig | None = None,
+    storage: EcsStorageConfig | None = None,
+    network: EcsNetworkConfig | None = None,
+    manage: EcsManageConfig | None = None,
+    advanced: EcsAdvancedConfig | None = None,
+) -> EcsCreateRequest:
+    """规范化 ECS 创建入参。"""
+    return _normalize_standard_ecs_create_request(
+        basic,
+        storage,
+        network,
+        manage,
+        advanced,
+    )
+
+
 class EcsPageBase(OpsPage):
     @submenu("弹性云服务器")
-    def ecs_create(self, basic=None, storage=None, network=None, manage=None, advanced=None, **kwargs):
+    def ecs_create(
+        self,
+        basic: EcsBasicConfig | None = None,
+        storage: EcsStorageConfig | None = None,
+        network: EcsNetworkConfig | None = None,
+        manage: EcsManageConfig | None = None,
+        advanced: EcsAdvancedConfig | None = None,
+    ) -> dict[str, Any]:
         """创建云服务器
 
-        支持两种调用方式：
-        1. v2 式 (字典传参): ecs_create(basic={}, storage={}, network={}, manage={}, advanced={})
-        2. v1 式 (扁平传参): ecs_create(name, image_source="镜像", count=1, ...)
+        仅支持分组字典传参:
+        ecs_create(basic={}, storage={}, network={}, manage={}, advanced={})
         """
-        # 1. 检测并转换参数格式 (如果是 v1 扁平化传参)
-        if isinstance(basic, str) or "name" in kwargs:
-            # 提取 v1 参数
-            v1_name = basic if isinstance(basic, str) else kwargs.get("name")
-            v1_image_source = storage if isinstance(storage, str) else kwargs.get("image_source", "镜像")
-            v1_count = network if isinstance(network, int) else kwargs.get("count", 1)
-
-            # 其余可能的 v1 参数从 args 偏移或 kwargs 获取 (模仿 EcsPage.ecs_create)
-            # `network` 是显式形参，调用方使用 `network=...` 时不会再落到 kwargs。
-            # 这里优先使用已绑定到形参的值，避免错误回退到默认网络。
-            v1_network = network if isinstance(network, str) else kwargs.get("network", "Autotest")
-            v1_subnet = kwargs.get("subnet", "Autotest(10")
-            v1_cluster = kwargs.get("cluster", "Autotest")
-            v1_flavor = kwargs.get("flavor", "ecs.c6.Autotest")
-            v1_image_name = kwargs.get("image_name", "")
-            v1_os_version = kwargs.get("os_version", "centos7.9")
-            v1_login_pwd = kwargs.get("login_password", "admin1234@sugon")
-            v1_vnc_pwd = kwargs.get("vnc_password", "sugon@20")
-            v1_sys_size = kwargs.get("sys_size", 25)
-            v1_enable_ipv6 = kwargs.get("enable_ipv6", False)
-
-            # 构造成 v2 的字典结构
-            basic = {"name": v1_name, "数量": v1_count, "集群": v1_cluster, "规格": {"基础规格": v1_flavor}}
-            storage = {
-                "镜像": {"来源": v1_image_source, "镜像名称": v1_image_name, "ISO": v1_os_version},
-                "系统盘": v1_sys_size
-            }
-            network = {
-                "networks": [{"network": v1_network, "subnet": v1_subnet}],
-                "enable_ipv6": v1_enable_ipv6
-            }
-            manage = {"login_type": "密码登录", "login_pwd": v1_login_pwd, "vnc_pwd": v1_vnc_pwd}
-            advanced = {}
+        request = _normalize_ecs_create_request(
+            basic=basic,
+            storage=storage,
+            network=network,
+            manage=manage,
+            advanced=advanced,
+        )
 
         # 点击创建按钮
         self.btn_create.click()
         # 填写基本信息
-        basic_info = self._basic_info(basic)
+        basic_info = self._basic_info(request["basic"])
         # 填写存储信息
-        self._storage_info(storage)
+        self._storage_info(request["storage"])
         # 填写网络信息
-        self._network_info(network)
+        self._network_info(request["network"])
         # 填写管理信息
-        self._manage_info(manage)
+        self._manage_info(request["manage"])
         # 填写高级配置
-        self._advanced_info(advanced)
+        self._advanced_info(request["advanced"])
 
         # 点击创建按钮
         self.get_by_text("立即创建").click()
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
-    # 保持别名兼容
-    ecs_create_v2 = ecs_create
-
     def _basic_info(self, basic):
         """填写弹性云服务器基本信息
         Args:
             basic: 基本配置信息
                 {
-                "数量": 1,
-                "集群": "Autotest",
-                "物理机": "master02",
-                "规格": {"基础规格": "ecs.m6.xlarge"}
-                "规格": {"自定义规格": {"cpu": "2", "mem": "4"}}
+                "count": 1,
+                "cluster": "Autotest",
+                "host": "master02",
+                "flavor": {"base": "ecs.m6.xlarge"}
+                "flavor": {"custom": {"cpu": "2", "mem": "4"}}
                 }
         """
         if basic:
             logger.info(f"basic信息: {basic}")
-            name = basic.get("name") if basic.get("name") else random_data('string', 4)
-            count = basic.get("数量") if basic.get("数量") else 1
+            name = _config_get(basic, "name", default=random_data('string', 4))
+            count = _config_get(basic, "count", default=1)
         else:
             name = random_data('string', 4)
             count = 1
@@ -107,20 +251,20 @@ class EcsPageBase(OpsPage):
             self.get_by_role("spinbutton").first.fill(str(count))
 
         # 选择规格
-        flavor_info = basic.get("规格") if basic and basic.get("规格") else {"基础规格": "ecs.c6.Autotest"}
+        flavor_info = _config_get(basic, "flavor", default={"base": "ecs.c6.Autotest"})
         self._select_flavor(flavor_info)
 
         # 选择集群
-        cluster_name = basic.get("集群") if basic and basic.get("集群") else "Autotest"
+        cluster_name = _config_get(basic, "cluster", default="Autotest")
         self._select_cluster(cluster_name)
 
         # 选择物理机
-        host = basic.get("物理机") if basic and basic.get("物理机") else ""
+        host = _config_get(basic, "host", default="")
         if host:
             self._select_physical_host(host)
 
         # 选择标签
-        labels = basic.get("标签") if basic and basic.get("标签") else []
+        labels = _config_get(basic, "labels", default=[])
         if labels:
             self._select_label(labels)
         return {"name": name, "count": count}
@@ -130,15 +274,15 @@ class EcsPageBase(OpsPage):
         Args:
             storage: 基本配置信息
                 {
-                "存储池": xstor/usan,
-                "密钥": "UUID",
-                "镜像":{
-                    image_source: "镜像" / "空启动" / "快照" / "ISO"
-                    image_name: "镜像名称" / "快照名称" / "ISO名称"
+                "storage_pool": xstor/usan,
+                "encryption_key": "UUID",
+                "image":{
+                    source: "镜像" / "空启动" / "快照" / "ISO"
+                    name: "镜像名称" / "快照名称" / "ISO名称"
                     os_version: 操作系统版本，默认为"centos7.9"
                     },
-                "系统盘": 25,
-                "数据盘": [
+                "system_disk": 25,
+                "data_disks": [
                     {"vol_type": "ceph-type", "size": "20", "count": "1"},
                     {"vol_type": "usan-type", "size": "20", "count": "1"},
                     ]
@@ -147,26 +291,26 @@ class EcsPageBase(OpsPage):
         if storage:
             logger.info(f"storage信息: {storage}")
         # 选择存储池
-        storage_pool = storage.get("存储池") if storage and storage.get("存储池") else self.storage_pool
+        storage_pool = _config_get(storage, "storage_pool", default=self.storage_pool)
         self._select_storage_pool(storage_pool)
 
         # 选择密钥
-        encryption_key = storage.get("密钥") if storage and storage.get("密钥") else ""
+        encryption_key = _config_get(storage, "encryption_key", default="")
         if encryption_key and self.storage_pool in ["xstor-test", "usan-test"]:
             self._enable_encryption(encryption_key)
 
         # 选择镜像
-        image_info = storage.get("镜像") if storage and storage.get("镜像") else {"来源": "镜像", "镜像名称": "", "ISO": "centos7.9"}
+        image_info = _config_get(storage, "image", default={"source": "镜像", "name": "", "os_version": "centos7.9"})
         self._select_image(image_info)
 
         # 设置系统盘大小（云硬盘来源时不需要设置）
-        image_source = image_info.get("来源", "镜像")
+        image_source = _config_get(image_info, "source", default="镜像")
         if image_source != "云硬盘":
-            size = storage.get("系统盘", 25) if storage and storage.get("系统盘") else 25
+            size = _config_get(storage, "system_disk", default=25)
             self._set_sys_volume(size)
 
         # 设置数据盘
-        data_disks = storage.get("数据盘") if storage and storage.get("数据盘") else []
+        data_disks = _config_get(storage, "data_disks", default=[])
         self._set_data_volumes(data_disks)
 
     def _network_info(self, network):
@@ -187,8 +331,9 @@ class EcsPageBase(OpsPage):
                 # 后续网卡点击"添加网卡"后选择
                 self.get_by_text("添加网卡").click()
                 self._select_single_network(net_config)
-        if network and network.get("安全组"):
-            self._select_security_group(network.get("安全组"))
+        security_groups = _config_get(network, "security_groups", default=[])
+        if security_groups:
+            self._select_security_group(security_groups)
 
         # 选择分配IPv6
         if network and network.get("enable_ipv6"):
@@ -279,27 +424,34 @@ class EcsPageBase(OpsPage):
         if vnc_type:
             self._set_vnc_type(vnc_type)
 
+        # 设置声卡类型
+        sound_type = None
+        if advanced:
+            sound_type = advanced.get("sound_type")
+        if sound_type:
+            self._set_sound_type(sound_type)
+            logger.info(f"已设置声卡类型为: {sound_type}")
+
     def _select_flavor(self, flavor_info: dict):
         """选择规格
         Args:
             flavor_info: 规格信息
-            {"基础规格": {"flavor": "ecs.c6.Autotest}}
-            {"自定义规格": {"cpu": "2", "mem": "4"}}
+            {"base": "ecs.c6.Autotest"}
+            {"custom": {"cpu": "2", "mem": "4"}}
         """
         # 根据规格类型选择不同的处理方式
         flavor_type = flavor_info.keys()
         logger.info(f"规格: {list(flavor_type)[0]}")
-        if "自定义规格" in flavor_type:
+        if "custom" in flavor_type:
             # 选择自定义规格
             self.get_by_role("radio", name="自定义规格").click()
-            flavor = flavor_info.get("自定义规格")
+            flavor = _config_get(flavor_info, "custom", default={})
             # 填写CPU和内存
-            logger.info(f"CPU: {flavor.get('CPU')}, 内存: {flavor.get('Mem')}")
-            self.locator("div:nth-child(4) > .el-form-item__content > .el-input > .el-input__inner").fill(flavor.get("CPU"))
-            # self.get_by_text("CPU", exact=True).locator("xpath=./../../following-sibling::div[1]/div[1]").fill(flavor.get("CPU"))
-            # self.locator("label").filter(has_text="CPU").first.locator("xpath=./../following-sibling::div[1]/div[1]").fill(flavor.get("CPU"))
-            self.locator("div:nth-child(5) > .el-form-item__content > .el-input > .el-input__inner").fill(flavor.get("Mem"))
-            # self.get_by_text("内存", exact=True).locator("xpath=../../following-sibling::div/div").fill(flavor.get("Mem"))
+            cpu = _config_get(flavor, "cpu", default="")
+            mem = _config_get(flavor, "mem", default="")
+            logger.info(f"CPU: {cpu}, 内存: {mem}")
+            self.locator("div:nth-child(4) > .el-form-item__content > .el-input > .el-input__inner").fill(cpu)
+            self.locator("div:nth-child(5) > .el-form-item__content > .el-input > .el-input__inner").fill(mem)
         else:
             # 选择基础规格
             self.get_by_role("radio", name="基础规格").click()
@@ -307,7 +459,7 @@ class EcsPageBase(OpsPage):
             self.get_by_text("选择计算规格").first.click()
 
             # 搜索选择规格
-            flavor = flavor_info.get("基础规格")
+            flavor = _config_get(flavor_info, "base")
             flavor_type = flavor.split(".")[1][0]
 
             self.search(flavor)
@@ -364,9 +516,6 @@ class EcsPageBase(OpsPage):
             labels: 标签列表
         """
         self.get_by_text("标签设置").first.click()
-        # self.locator("#cloud-container-content span").filter(has_text="标签设置").locator("i").click()
-        # self.get_by_role("dialog").locator("span").filter(has_text="条/页20条/页50条/页100条/页").locator("i").click()
-        # self.get_by_text("50条/页").click()
         self.select_rows_by_names(labels)
         self.get_by_role("dialog").get_by_text("确定").click()
         self.logger.info(f"已选择物理机: {labels}")
@@ -406,14 +555,14 @@ class EcsPageBase(OpsPage):
         """选择镜像，支持多种来源方式
         Args:
             image_info: {
-                image_source: "镜像" / "空启动" / "快照" / "ISO" / "云硬盘"
-                image_name: "镜像名称" / "快照名称" / "ISO名称"
+                source: "镜像" / "空启动" / "快照" / "ISO" / "云硬盘"
+                name: "镜像名称" / "快照名称" / "ISO名称"
                 os_version: 操作系统版本，默认为"centos7.9"
             }
         """
-        image_name = image_info.get("镜像名称", "") or self.storage_pool
-        image_source = image_info.get("来源", "镜像")
-        os_version = image_info.get("ISO")
+        image_name = _config_get(image_info, "name", default="") or self.storage_pool
+        image_source = _config_get(image_info, "source", default="镜像")
+        os_version = _config_get(image_info, "os_version")
         logger.info(f"开始选择镜像: image_source={image_source}, image_name={image_name}, os={os_version}")
 
         try:

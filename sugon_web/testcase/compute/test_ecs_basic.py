@@ -120,7 +120,7 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("弹性云服务器-重置状态")
-    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}}], indirect=True)
     def test_ecs_reset_status(self, ecs_page, vm, ssh_vm, ssh_host):
         """弹性云服务器-重置状态功能验证"""
         name = vm.get("name")
@@ -143,7 +143,7 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("弹性云服务器-编辑")
-    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}}], indirect=True)
     def test_ecs_edit(self, ecs_page, vm, ssh_vm):
         new_name = random_data(length=4)
         name = vm.get("name")
@@ -302,7 +302,7 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"从虚拟机{name}分离云硬盘")
 
     @allure.title("弹性云服务器-修改密码")
-    @pytest.mark.parametrize("vm", [{"count": 1}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}}], indirect=True)
     def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         mfip = vm.get("mfip")
@@ -420,7 +420,7 @@ class TestECSBasic:
             assert expection in actual, f"同步时间服务器失败，期望时间:{expection},实际时间:{actual}"
 
     @allure.title("弹性云服务器-创建镜像")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": True}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
     def test_ecs_create_image(self, ecs_page, vm, ssh_vm):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
@@ -442,7 +442,10 @@ class TestECSBasic:
         with allure_step_log(f"步骤3: 使用镜像{image_name}创建弹性云服务器{name}-1"):
             ecs_page.goto_service("弹性云服务器")
             image_vm = f"{name}-image"
-            ecs_page.ecs_create(image_vm, image_name=image_name)
+            ecs_page.ecs_create(
+                basic={"name": image_vm},
+                storage={"image": {"source": "镜像", "name": image_name}},
+            )
             ecs_page.assert_popup_success("创建实例命令下发成功")
             # ecs_page.wait_for_source_complete(image_vm)
             ecs_page.assert_status(image_vm)
@@ -465,7 +468,7 @@ class TestECSBasic:
             ecs_page.assert_deleted(image_name, refresh=True)
 
     @allure.title("弹性云服务器-热迁移（手动指定节点）")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": True}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": True}], indirect=True)
     @skip_if_nodes_less_than(2)
     def test_ecs_hot_migration_manual(self, ecs_page, vm, ssh_vm, ssh_host):
         """
@@ -689,7 +692,7 @@ class TestECSBasic:
             assert ssh_vm.run(f"lsblk | grep sda") == ""
 
     @allure.title("弹性云服务器-批量操作")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("operations", load_data("test_ecs_batch_operations", "test_ecs.yaml"))
     def test_ecs_batch_operations(self, ecs_page, vm, ssh_host, operations):
         names = [vm[i].get("name") for i in range(len(vm))]
@@ -709,7 +712,7 @@ class TestECSBasic:
                 assert stdout.get("vm_state") == vm_state, f"批量操作{operation}失败，期望vm_state:{vm_state},实际vm_state:{stdout.get('vm_state')}"
 
     @allure.title("弹性云服务器-批量迁移")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     @skip_if_nodes_less_than(2)
     def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
         """
@@ -734,7 +737,7 @@ class TestECSBasic:
                 assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
 
     @allure.title("弹性云服务器-批量设置启动和关机顺序")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("operation",["关机","启动"])
     def test_ecs_batch_set_boot_order(self, ecs_page, vm, operation):
         names = [[vm[i].get("name")] for i in range(len(vm))]
@@ -857,7 +860,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-批量Agent版本设置")
     @pytest.mark.parametrize("agent_conf", load_data("test_ecs_batch_modify_agent", "test_ecs.yaml"))
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     def test_ecs_batch_modify_agent(self, ecs_page, vm, agent_conf):
         ecs_page.goto_service("弹性云服务器")
         names = [vm[i].get("name") for i in range(len(vm))]
@@ -874,7 +877,7 @@ class TestECSBasic:
             ecs_page.assert_ecs_details_info(names, info_items=except_agent_version)
 
     @allure.title("弹性云服务器-加载和卸载网卡")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": True}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
     @pytest.mark.parametrize("network_info", load_data('test_ecs_network', "test_ecs.yaml"))
     def test_ecs_network(self, ecs_page, vm, ssh_vm, network_info):
         name = vm.get("name")

@@ -110,7 +110,7 @@ class TestECSLabels:
             ecs_page.assert_ecs_details_info([vm_name], info_items={"标签": "--"})
 
     @allure.title("验证批量标签设置功能")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("labels", [{"count": 3}], indirect=True)
     def test_ecs_batch_bind_labels(self, ecs_page, vm, labels):
         """批量标签设置"""

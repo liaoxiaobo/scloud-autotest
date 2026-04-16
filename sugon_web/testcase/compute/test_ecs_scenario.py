@@ -122,7 +122,10 @@ class TestECSScenario:
             ecs_page.assert_status(vm['name'])
 
         with allure_step_log(f"步骤4: 基于快照{snapshot_name}创建云服务器{new_vm}"):
-            ecs_page.ecs_create(new_vm, image_source="快照", image_name=snapshot_name)
+            ecs_page.ecs_create(
+                basic={"name": new_vm},
+                storage={"image": {"source": "快照", "name": snapshot_name}},
+            )
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(new_vm)
             newvm_disk = ecs_page.get_row_data(vm_name).get("挂载云硬盘")
@@ -166,7 +169,7 @@ class TestECSScenario:
             ecs_page.assert_deleted(snapshot_name, refresh=True)
 
     @allure.title("验证虚机绑定亲和组批量迁移功能")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     @skip_if_nodes_less_than(2)
     def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
         policy = "亲和"

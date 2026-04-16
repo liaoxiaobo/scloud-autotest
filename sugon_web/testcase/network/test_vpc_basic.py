@@ -462,7 +462,7 @@ class TestVPCBasic:
             logger.info(f"✓ 批量删除虚拟IP验证通过: {target_vips}")
 
     @allure.title("虚拟IP-绑定&解绑实例")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm):
 
         with allure_step_log("步骤1: 绑定实例"):
@@ -502,7 +502,7 @@ class TestVPCBasic:
             assert eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {eip}"
 
     @allure.title("虚拟IP-搜索和重置")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)
     def test_vip_search(self, ecs_page, vpc_page, vip, vm):
         """测试虚拟IP搜索&重置"""
 

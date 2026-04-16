@@ -303,7 +303,7 @@ class TestNAT:
 
     @allure.title("DNAT规则-创建和删除-{params[case_name]}")
     @pytest.mark.parametrize("params", load_data('test_dnat_rule_create_delete', data_file='test_network.yaml'))
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_create_delete(self, vpc_page, nat, vpc, vm, params):
 
         """测试在NAT网关详情页创建和删除DNAT规则"""
@@ -350,7 +350,7 @@ class TestNAT:
             vpc_page.assert_deleted(str(ext_port))
 
     @allure.title("DNAT规则-修改协议和端口等配置")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_edit(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页修改DNAT规则的协议、公网端口、内部端口和描述"""
         nat_name = nat['name']
@@ -411,7 +411,7 @@ class TestNAT:
             vpc_page.assert_deleted(str(new_ext_port))
 
     @allure.title("DNAT规则-批量删除")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_batch_delete(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页批量删除DNAT规则"""
         nat_name = nat['name']
@@ -440,7 +440,7 @@ class TestNAT:
             vpc_page.assert_deleted(ports)
 
     @allure.title("DNAT规则-搜索和重置")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_search_reset(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页搜索和重置DNAT规则"""
         nat_name = nat['name']

@@ -164,7 +164,7 @@ class TestEVSScenario:
             evs_page.assert_popup_success()
 
     @allure.title("共享云硬盘-多实例挂载数据一致性验证")
-    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
     @pytest.mark.parametrize("volume", [{"shared": True, "size": 10}], indirect=True)
     def test_shared_volume_data_consistency(self, evs_page, vm, volume, ssh_vm, ssh_host):
 

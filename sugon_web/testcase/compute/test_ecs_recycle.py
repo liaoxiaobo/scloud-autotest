@@ -67,7 +67,7 @@ class TestECSRecycle:
     def test_ecs_recycle_remove(self, ecs_page, ssh_host):
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
-            ecs_page.ecs_create(name=name)
+            ecs_page.ecs_create(basic={"name": name})
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
 
@@ -90,10 +90,7 @@ class TestECSRecycle:
         ids = []
         with allure_step_log("步骤1: 批量创建弹性云服务器"):
             base_name = random_data()
-            ecs_page.ecs_create(
-                base_name,
-                count=3
-            )
+            ecs_page.ecs_create(basic={"name": base_name, "count": 3})
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 生成批量创建的云硬盘名称列表
@@ -128,7 +125,7 @@ class TestECSRecycle:
 
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
-            ecs_page.ecs_create(name=name)
+            ecs_page.ecs_create(basic={"name": name})
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
 

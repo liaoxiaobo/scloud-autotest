@@ -65,7 +65,7 @@ class TestSGBasic:
             sg_page.sg_search_reset()
 
     @allure.title("安全组-克隆")
-    def test_sg_clone(self, ecs_page, sg_page, ssh_host, ecs_create_page, sg, vpc):
+    def test_sg_clone(self, ecs_page, sg_page, ssh_host, sg, vpc):
         sg_name = sg
         clone_name = f"{sg_name}-clone"
 
@@ -103,24 +103,24 @@ class TestSGBasic:
             network_name = vpc["name"]
             subnet_name = vpc["subnet_name"]
             
-            ecs_create_page.goto_service("弹性云服务器")
-            network = {"networks":[{"network": network_name, "subnet": subnet_name}], "安全组": [clone_name]}
-            vm1_info = ecs_create_page.ecs_create({}, {}, network, {}, {})
+            ecs_page.goto_service("弹性云服务器")
+            network = {"networks":[{"network": network_name, "subnet": subnet_name}], "security_groups": [clone_name]}
+            vm1_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm1_name = vm1_info.get("name")
-            ecs_create_page.assert_status(vm1_name)
+            ecs_page.assert_status(vm1_name)
 
-            fip1 = ecs_create_page.ecs_bind_pub_ip(vm1_name, subnet=subnet_name)
-            ecs_create_page.assert_popup_success("执行成功")
+            fip1 = ecs_page.ecs_bind_pub_ip(vm1_name, subnet=subnet_name)
+            ecs_page.assert_popup_success("执行成功")
 
         with allure_step_log(f"步骤5: 从云外访问fip1(ping/ssh请求)，期望结果：可以ping通，可以ssh连接"):
             ssh_host.ping(fip1, connected=True)
             ssh_host.telnet(fip1, port=22, timeout=15)
 
         with allure_step_log(f"步骤6: 清理测试资源-虚机 {vm1_name}"):
-            ecs_create_page.goto_service("弹性云服务器")
-            ecs_create_page.ecs_remove(vm1_name)
-            ecs_create_page.ecs_delete(vm1_name, release_ip=True)
-            ecs_create_page.assert_deleted(vm1_name)
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove(vm1_name)
+            ecs_page.ecs_delete(vm1_name, release_ip=True)
+            ecs_page.assert_deleted(vm1_name)
 
         with allure_step_log(f"步骤7: 清理克隆出的安全组"):
             sg_page.goto_service("安全组")

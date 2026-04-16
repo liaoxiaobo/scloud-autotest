@@ -10,14 +10,14 @@ from sugon_web.utils.util import random_data
 class TestSGScenario:
 
     @allure.title("验证安全组创建基本功能")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": True}], indirect=True)
-    def test_sg_create_scenario(self, ecs_page, sg_page, ssh_vm, ssh_host, ecs_create_page, vm, vpc):
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
+    def test_sg_create_scenario(self, eip, ecs_page, sg_page, ssh_vm, ssh_host, vm, vpc):
         vm1_mfip = vm.get("mfip")
         network_name = vpc.get("name")
         subnet_name = vpc.get("subnet_name")
 
-        with allure_step_log(f"前置准备: 申请/分配一个可用公网 IP 以备后续测试使用"):
-            ecs_page.assign_ip()
+        with allure_step_log(f"前置准备: 使用 fixture 预分配的公网 IP {eip} 供后续绑定使用"):
+            assert eip, "未获取到可用公网IP"
 
         with allure_step_log(f"步骤1: 新建安全组"):
             sg_page.goto_service("安全组")
@@ -34,18 +34,18 @@ class TestSGScenario:
             assert all(d.strip() == "出口" for d in directions), f"期望所有规则都是'出口'方向，实际: {directions}"
 
         with allure_step_log(f"步骤3: 进入ECS模块，使用安全组{sg_name}创建弹性云服务器vm2，并绑定弹性公网ip"):
-            ecs_create_page.goto_service("弹性云服务器")
-            network = {"networks":[{"network": network_name,"subnet": subnet_name}], "安全组": [sg_name]}
-            vm2_info = ecs_create_page.ecs_create({}, {}, network, {}, {})
+            ecs_page.goto_service("弹性云服务器")
+            network = {"networks":[{"network": network_name,"subnet": subnet_name}], "security_groups": [sg_name]}
+            vm2_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm2 = vm2_info.get("name")
-            ecs_create_page.assert_status(vm2)
+            ecs_page.assert_status(vm2)
 
-            data = ecs_create_page.get_row_data(vm2)
+            data = ecs_page.get_row_data(vm2)
             ip_list = data["IP地址"].split("固定: ")
             vm2_ip = ip_list[-1].strip()
 
-            fip1 = ecs_create_page.ecs_bind_pub_ip(vm2, subnet=subnet_name)
-            ecs_create_page.assert_popup_success("执行成功")
+            fip1 = ecs_page.ecs_bind_pub_ip(vm2, subnet=subnet_name)
+            ecs_page.assert_popup_success("执行成功")
 
         with allure_step_log(f"步骤4: 从云外访问fip1({fip1})(ping/ssh请求)，期望结果：无法ping通，ssh无法连接"):
             ssh_host.ping(fip1, connected=False)
@@ -76,10 +76,10 @@ class TestSGScenario:
             ssh_vm.ping(vm2_ip, connected=True)
 
         with allure_step_log(f"步骤8: 清理测试资源-虚机"):
-            ecs_create_page.goto_service("弹性云服务器")
-            ecs_create_page.ecs_remove(vm2)
-            ecs_create_page.ecs_delete(vm2, release_ip=True)
-            ecs_create_page.assert_deleted(vm2)
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove(vm2)
+            ecs_page.ecs_delete(vm2, release_ip=True)
+            ecs_page.assert_deleted(vm2)
 
         with allure_step_log(f"步骤9: 清理测试资源-安全组"):
             sg_page.goto_service("安全组")
@@ -87,7 +87,7 @@ class TestSGScenario:
             sg_page.assert_deleted(sg_name)
 
     @allure.title("验证删除安全组场景")
-    def test_sg_delete_scenario(self, sg_page, ecs_create_page, vpc):
+    def test_sg_delete_scenario(self, sg_page, ecs_page, vpc):
         base_name = random_data()
         sg_page.goto_service("安全组")
 
@@ -102,11 +102,11 @@ class TestSGScenario:
         with allure_step_log(f"步骤2: 使用安全组 {sg_used} 创建 ECS 用于占用"):
             network_name = vpc["name"]
             subnet_name = vpc["subnet_name"]
-            ecs_create_page.goto_service("弹性云服务器")
-            network = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [sg_used]}
-            vm_info = ecs_create_page.ecs_create({}, {}, network, {}, {})
+            ecs_page.goto_service("弹性云服务器")
+            network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg_used]}
+            vm_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm_name = vm_info.get("name")
-            ecs_create_page.assert_status(vm_name)
+            ecs_page.assert_status(vm_name)
 
         with allure_step_log(f"步骤3: 场景(1):删除单个未使用的安全组 {sg_unused_1}"):
             sg_page.goto_service("安全组")
@@ -162,27 +162,29 @@ class TestSGScenario:
             sg_page.assert_status(sg_used, status=f"{sg_used}删除测试用")
 
         with allure_step_log(f"步骤7: 清理测试资源{vm_name}、{sg_used}"):
-            ecs_create_page.goto_service("弹性云服务器")
-            ecs_create_page.ecs_remove(vm_name)
-            ecs_create_page.ecs_delete(vm_name, release_ip=True)
-            ecs_create_page.assert_deleted(vm_name)
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove(vm_name)
+            ecs_page.ecs_delete(vm_name, release_ip=True)
+            ecs_page.assert_deleted(vm_name)
 
             sg_page.goto_service("安全组")
             sg_page.sg_delete(sg_used)
             sg_page.assert_deleted(sg_used)
 
     @allure.title("验证入方向规则-cidr类型")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 2, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_two_vms(self, sg_page, ssh_vm, ssh_host, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        vm2 = sg_vm_setup["vms"][1]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
+    def test_sg_two_vms(self, eip, sg, sg_page, ssh_vm, ssh_host, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        vm2 = vm["vms"][1]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
         subnet_name = vpc.get("subnet_name")
 
         with allure_step_log(f"步骤1: 为虚机 {vm1['name']} 绑定公网IP"):
-            fip1 = ecs_create_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
-            ecs_create_page.assert_popup_success("执行成功")
+            assert eip, "未获取到可用公网IP"
+            fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
+            ecs_page.assert_popup_success("执行成功")
 
         with allure_step_log(f"步骤2: {sg1}、{sg2}下添加入方向放行所有IPv4的规则，出方向保持默认"):
             sg_page.goto_service("安全组")
@@ -225,7 +227,7 @@ class TestSGScenario:
             ssh_host.ping(fip1, connected=False)
 
             # VNC/SSH登录vm2虚机，对vm1虚机发起ping请求，预期结果：可以ping通
-            vm2_mfip = ecs_create_page.bind_mfip(vm2["ip"], network=network_name)
+            vm2_mfip = ecs_page.bind_mfip(vm2["ip"], network=network_name)
 
             # 使用SSH连接到vm2，并对vm1的内部IP发起ping请求
             try:
@@ -236,11 +238,12 @@ class TestSGScenario:
                 pass
 
     @allure.title("创建入方向规则-远程安全组类型")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 2, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_inter_binding(self, sg_page, ssh_vm, ssh_host, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        vm2 = sg_vm_setup["vms"][1]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
+    def test_sg_inter_binding(self, eip, sg, sg_page, ssh_vm, ssh_host, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        vm2 = vm["vms"][1]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
         subnet_name = vpc.get("subnet_name")
 
@@ -278,14 +281,15 @@ class TestSGScenario:
 
         with allure_step_log("步骤4: SSH登录管控节点，对fip1发起ping请求，预期结果：无法ping通"):
             # 给vm1绑定公网IP
-            ecs_create_page.goto_service("弹性云服务器")
-            fip1 = ecs_create_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
+            ecs_page.goto_service("弹性云服务器")
+            assert eip, "未获取到可用公网IP"
+            fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
 
             ssh_host.ping(fip1, connected=False)
 
         with allure_step_log("步骤5: 登录vm2虚机，对vm1虚机发起ping请求，预期结果：可以ping通"):
             # 为vm2绑定mfip用于管理执行
-            vm2_mfip = ecs_create_page.bind_mfip(vm2["ip"], network=network_name)
+            vm2_mfip = ecs_page.bind_mfip(vm2["ip"], network=network_name)
 
             ssh_vm.connect(vm2_mfip)
             ssh_vm.ping(vm1["ip"], connected=True)
@@ -319,10 +323,10 @@ class TestSGScenario:
                 pass
 
     @allure.title("验证安全组规则添加与删除后的连通性")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 1, "sg_count": 1, "sg_strategy": "shared"}], indirect=True)
-    def test_sg_rule_visibility(self, sg_page, ssh_host, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        sg1 = sg_vm_setup["sgs"][0]
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}}], indirect=True)
+    def test_sg_rule_visibility(self, eip, sg, sg_page, ssh_host, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        sg1 = vm["sgs"][0]
         subnet_name = vpc.get("subnet_name")
 
         with allure_step_log(f"步骤1: sg1({sg1})下添加入方向放行所有ipv4的规则"):
@@ -350,9 +354,10 @@ class TestSGScenario:
 
         with allure_step_log("步骤3: SSH登录管控节点，对fip1发起ping请求，预期结果：可以ping通"):
             # 给vm1绑定公网IP (FIP)
-            ecs_create_page.goto_service("弹性云服务器")
-            fip1 = ecs_create_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
-            ecs_create_page.assert_popup_success("执行成功")
+            ecs_page.goto_service("弹性云服务器")
+            assert eip, "未获取到可用公网IP"
+            fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
+            ecs_page.assert_popup_success("执行成功")
 
             ssh_host.ping(fip1, connected=True)
 
@@ -367,11 +372,12 @@ class TestSGScenario:
             ssh_host.ping(fip1, connected=False)
 
     @allure.title("验证出方向规则-cidr类型")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 2, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_egress_rule_logic(self, sg_page, ssh_vm, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        vm2 = sg_vm_setup["vms"][1]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
+    def test_sg_egress_rule_logic(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        vm2 = vm["vms"][1]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
 
         with allure_step_log(f"步骤1: {sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
@@ -389,7 +395,7 @@ class TestSGScenario:
                 )
 
         with allure_step_log(f"步骤2: VNC登录vm1虚机，对vm2发起ping请求，预期结果：可以ping通"):
-            vm1_mfip = ecs_create_page.bind_mfip(vm1["ip"], network=network_name)
+            vm1_mfip = ecs_page.bind_mfip(vm1["ip"], network=network_name)
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vm2["ip"], connected=True)
 
@@ -425,16 +431,17 @@ class TestSGScenario:
             ssh_vm.ping(vm2["ip"], connected=False)
 
         with allure_step_log(f"步骤7: 登录vm2, ping vm1, 预期结果：可以ping通"):
-            vm2_mfip = ecs_create_page.bind_mfip(vm2["ip"], network=network_name)
+            vm2_mfip = ecs_page.bind_mfip(vm2["ip"], network=network_name)
             ssh_vm.connect(vm2_mfip)
             ssh_vm.ping(vm1["ip"], connected=True)
 
     @allure.title("验证出方向规则-远程安全组类型")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 2, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_egress_inter_binding(self, sg_page, ssh_vm, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        vm2 = sg_vm_setup["vms"][1]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
+    def test_sg_egress_inter_binding(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        vm2 = vm["vms"][1]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
 
         with allure_step_log(f"步骤1: {sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
@@ -471,14 +478,13 @@ class TestSGScenario:
             )
 
         with allure_step_log(f"步骤4: VNC登录vm1虚机，对vm2虚机发起ping请求，预期结果：无法ping通"):
-            vm1_mfip = ecs_create_page.bind_mfip(vm1["ip"], network=network_name)
+            vm1_mfip = ecs_page.bind_mfip(vm1["ip"], network=network_name)
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vm2["ip"], connected=False)
 
         with allure_step_log(f"步骤5: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程选择安全组sg2"):
             sg_page.goto_service("安全组")
-            sg_page.goto_sg_detail(sg1)
-            sg_page.sg_rule_delete(sg1, direction="出口")
+            sg_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
             sg_page.sg_rule_create(
                 sg_name=sg1,
@@ -514,11 +520,12 @@ class TestSGScenario:
             ssh_vm.ping(vm2["ip"], connected=True)
 
     @allure.title("验证出方向规则-默认规则删除")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 2, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_default_egress_deletion(self, sg_page, ssh_vm, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        vm2 = sg_vm_setup["vms"][1]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
+    def test_sg_default_egress_deletion(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm):
+        vm1 = vm["vms"][0]
+        vm2 = vm["vms"][1]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
 
         with allure_step_log(f"步骤1: {sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
@@ -536,7 +543,7 @@ class TestSGScenario:
                 )
 
         with allure_step_log(f"步骤2: vm1 ping vm2, 预期可以ping通"):
-            vm1_mfip = ecs_create_page.bind_mfip(vm1["ip"], network=network_name)
+            vm1_mfip = ecs_page.bind_mfip(vm1["ip"], network=network_name)
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vm2["ip"], connected=True)
 
@@ -554,10 +561,11 @@ class TestSGScenario:
             ssh_vm.ping(vm2["ip"], connected=False)
 
     @allure.title("验证云服务器详情页自定义安全组规则绑定与生效性")
-    @pytest.mark.parametrize("sg_vm_setup", [{"vm_count": 1, "sg_count": 2, "sg_strategy": "unique"}], indirect=True)
-    def test_sg_vm_binding_connectivity(self, ecs_page, sg_page, ssh_vm, ecs_create_page, vpc, sg_vm_setup):
-        vm1 = sg_vm_setup["vms"][0]
-        sg1, sg2 = sg_vm_setup["sgs"]
+    @pytest.mark.parametrize("sg", [2], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}}], indirect=True)
+    def test_sg_vm_binding_connectivity(self, sg, ecs_page, sg_page, ssh_vm, vpc, vm):
+        vm1 = vm["vms"][0]
+        sg1, sg2 = vm["sgs"]
         network_name = vpc.get("name")
         subnet_name = vpc.get("subnet_name")
 
@@ -575,11 +583,11 @@ class TestSGScenario:
             )
 
         with allure_step_log(f"步骤2: 使用vm1同一vpc创建虚机vm2，并绑定安全组sg2"):
-            ecs_create_page.goto_service("弹性云服务器")
-            network_vm1 = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [sg2]}
-            vm1_info = ecs_create_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network_vm1, {}, {})
+            ecs_page.goto_service("弹性云服务器")
+            network_vm1 = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
+            vm1_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network_vm1, {}, {})
             vm2_name = vm1_info.get("name")
-            ecs_create_page.assert_status(vm2_name)
+            ecs_page.assert_status(vm2_name)
             vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
         with allure_step_log(f"步骤3: 进入虚机vm2详情页，验证安全组信息"):
@@ -625,7 +633,7 @@ class TestSGScenario:
             ecs_page.assert_deleted(vm2_name)
 
     @allure.title("验证云服务器详情页自定义安全组页面功能")
-    def test_sg_vm_detail_management(self, ecs_page, sg_page, ecs_create_page, vpc):
+    def test_sg_vm_detail_management(self, ecs_page, sg_page, vpc):
         base_name = random_data()
         sg1, sg2, sg3 = [f"{base_name}-sg{_}" for _ in range(3)]
         
@@ -641,8 +649,8 @@ class TestSGScenario:
             network_name = vpc.get("name")
             subnet_name = vpc.get("subnet_name")
             ecs_page.goto_service("弹性云服务器")
-            network = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [sg1]}
-            vm_info = ecs_create_page.ecs_create({}, {}, network, {}, {})
+            network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg1]}
+            vm_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm_name = vm_info.get("name")
             ecs_page.assert_status(vm_name)
 
