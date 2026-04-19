@@ -575,31 +575,13 @@ class EcsPageBase(OpsPage):
             self.locator("li").filter(has_text=re.compile(rf"^{image_source}$")).click()
             logger.info(f"已选择镜像来源: {image_source}")
 
-            # 统一镜像选择逻辑
             supported_sources = ["镜像", "快照", "ISO", "云硬盘"]
-            if image_source in supported_sources:
-                if image_name:
-                    self.get_by_text(f"选择{image_source}").first.click()
-                    self.wait_for_page_ready()
-                    dialog = self.get_by_role("dialog").last
-                    if image_source == "ISO":
-                        # 重置一下，避免hover的tips遮挡选择
-                        loc = dialog.get_by_text("重置")
-                        if loc.is_visible():
-                            loc.click()
-
-                    search_box = dialog.get_by_placeholder("搜索（名称）")
-                    if search_box.count() > 0:
-                        search_box.first.fill(image_name)
-                        dialog.get_by_text("搜索", exact=True).first.click()
-                        self.wait_for_page_ready()
-
-                    row = dialog.locator(".el-table__body-wrapper tr").filter( has=dialog.get_by_text(image_name, exact=True)).first
-                    expect(row).to_be_visible()
-                    row.get_by_role("radio").click()
-                    self.dialog_confirm.click()
-                    logger.info(f"已选择{image_source}: {image_name}")
-
+            if image_source in supported_sources and image_name:
+                self._select_from_named_drawer(
+                    drawer_title=f"选择{image_source}",
+                    item_name=image_name,
+                    reset_first=(image_source == "ISO"),
+                )
             elif image_source == "空启动":
                 pass
             else:
@@ -608,6 +590,34 @@ class EcsPageBase(OpsPage):
         except Exception as e:
             logger.error(f"选择镜像失败: {str(e)}")
             raise e
+
+    def _select_from_named_drawer(self, drawer_title: str, item_name: str, reset_first: bool = False):
+        """在指定抽屉中搜索并按名称精确选择资源。"""
+        self.get_by_text(drawer_title).first.click()
+        self.page.wait_for_load_state("domcontentloaded")
+
+        drawer = self.locator(f"div[role='dialog'][aria-label='{drawer_title}']:visible")
+        expect(drawer).to_be_visible()
+
+        if reset_first:
+            reset_btn = drawer.locator(".cloud-table-header-right").get_by_text("重置", exact=True)
+            if reset_btn.count() > 0 and reset_btn.first.is_visible():
+                reset_btn.first.click()
+
+        search_input = drawer.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
+        if search_input.count() > 0:
+            search_input.fill(item_name)
+            drawer.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
+            self.wait_for_page_ready()
+
+        row = drawer.locator(
+            "xpath=.//div[contains(@class,'el-table__body-wrapper')]//tr[.//td[2]//*[normalize-space(text())="
+            f"'{item_name}'] or .//td[2][normalize-space(.)='{item_name}']]"
+        ).first
+        expect(row).to_be_visible(timeout=5000)
+        row.locator("label[role='radio']").click()
+        drawer.get_by_text("确定", exact=True).click()
+        logger.info(f"已在{drawer_title}中选择: {item_name}")
 
     def _select_from_pool_image(self, image_name, os_version):
         """来源选择 镜像"""
@@ -1039,27 +1049,22 @@ class EcsPageBase(OpsPage):
             logger.info(f"云服务器{name}：VNC登录成功")
 
     @submenu("弹性云服务器")
-    def ecs_rebuild(self, name: str, version: str, bit: str, image: str):
-        """重建云主机
-        Args：
-            name: 云服务器名称
-            version: 重建云主机的操作系统版本
-            bit: 重建云主机的操作系统位数
-            image: 重建云主机的镜像源
-        """
+    def ecs_rebuild(self, name: str, image: str):
+        """新版重建云主机：只在重建抽屉内按镜像名称搜索并选择。"""
         self.click_action(name, "重建云主机")
-        # 选择操作系统版本
-        self.get_by_role("textbox", name="请选择操作系统版本").click()
-        self.get_by_role("listitem").filter(has_text=version).click()
-        # self._select_image(image)
-        # 选择操作系统版本
-        self.get_by_role("textbox", name="请选择操作系统位数").click()
-        self.get_by_role("listitem").filter(has_text=bit).click()
-        # 选择镜像源
-        self.get_by_role("textbox", name="请选择镜像").click()
-        self.get_by_title(image, exact=True).click()
+        self.page.wait_for_load_state("domcontentloaded")
+
+        rebuild_dialog = self.locator("div[role='dialog'][aria-label='重建云主机']:visible")
+        a = rebuild_dialog.count()
+        search_input = rebuild_dialog.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
+        search_input.fill(image)
+        rebuild_dialog.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
+        self.wait_for_page_ready()
+
+        image_row = rebuild_dialog.locator(".el-table__body tr").filter(has_text=re.compile(rf"{re.escape(image)}"))
+        image_row.locator("label[role='radio']").click()
         self.dialog_confirm.click()
-        logger.info(f"重建云主机操作完成：{name}，操作系统版本：{version}，操作系统位数：{bit}，镜像：{image}")
+        logger.info(f"重建云主机完成: {name}, 镜像: {image}")
 
     @submenu("弹性云服务器")
     def ecs_clone(self, name: str, clonename: str, net: str, subnet: str, encryption: dict, ipv6=False):
