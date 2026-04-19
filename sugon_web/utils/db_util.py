@@ -7,6 +7,7 @@
 - 后端资源验证
 - SSH命令执行和结果解析
 """
+import json
 import re
 import random
 import string
@@ -16,6 +17,33 @@ from faker import Faker
 
 
 fake = Faker(locale="zh_CN")
+
+def _get_guest_list_items(ssh_host, name: str):
+    """通过 scli guest list 获取指定名称的虚机列表。"""
+    output = ssh_host.run(f"scli guest list --name={name} -f json").strip()
+    if not output:
+        return []
+
+    data = json.loads(output)
+    if isinstance(data, dict):
+        for key in ("items", "data", "results"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        return [data]
+    if isinstance(data, list):
+        return data
+    return []
+
+
+def _get_guest_item(ssh_host, name: str):
+    """获取指定名称的单个虚机记录。"""
+    items = _get_guest_list_items(ssh_host, name)
+    for item in items:
+        item_name = item.get("name") or item.get("Name")
+        if item_name == name:
+            return item
+    return items[0] if items else {}
 
 
 def input_name(self):
@@ -141,10 +169,7 @@ def get_disk_size(self, node_name: str, ssh_host) -> int:
     :raises RuntimeError: 命令执行或解析失败时
     """
     try:
-        output = ssh_host.run(
-            f"cinder list | grep {node_name} | awk -F'|' '{{print $5}}' | tr -d ' '"
-        ).strip()
-        return int(output)
+        return ssh_host.get_volume_size(node_name)
     except Exception as e:
         raise RuntimeError(f"获取云盘大小失败 (节点: {node_name}): {e}")
 
@@ -159,10 +184,14 @@ def get_specification(self, node_name: str, ssh_host) -> str:
     :raises RuntimeError: 命令执行或解析失败时
     """
     try:
-        output = ssh_host.run(
-            f"gova show $(gova list | grep {node_name} | awk '{{print $2}}') | awk -F'|' '/flavor_name/ {{gsub(/^ +| +$/, \"\", $3); print $3}}'"
-        ).strip()
-        return output
+        item = _get_guest_item(ssh_host, node_name)
+        specification = item.get("flavor_name") or item.get("flavor") or item.get("specification") or ""
+        if specification:
+            return specification
+        uuid = item.get("uuid") or item.get("id")
+        if uuid:
+            return ssh_host.guest_show(uuid).get("flavor_name", "")
+        return ""
     except Exception as e:
         raise RuntimeError(f"获取节点规格失败 (节点: {node_name}): {e}")
 
@@ -199,7 +228,7 @@ def get_service_status(self, ssh_host, service_name: str) -> str:
         command = f"systemctl status {service_name}"
         result = ssh_host.run(command)
         self.logger.info(f"systemctl status {service_name} 输出:\n{result}")
-        
+
         # 解析状态（Active: active (running) 或 Active: inactive (dead) 等）
         if 'active (running)' in result.lower():
             status = 'running'
@@ -215,21 +244,21 @@ def get_service_status(self, ssh_host, service_name: str) -> str:
                     break
             else:
                 status = 'unknown'
-        
+
         self.logger.info(f"服务 '{service_name}' 的状态为: {status}")
         return status
-        
+
     except Exception as e:
         raise RuntimeError(f"获取服务状态失败 (服务: {service_name}): {e}")
 
-def assert_backend_created(self, ssh_host, name: str, command: str = "gova list", timeout: int = 600,
+def assert_backend_created(self, ssh_host, name: str, command: str = "scli guest list", timeout: int = 600,
                            interval: int = 10):
     """
     断言资源已在后端创建成功，支持轮询检查
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象
     :param name: 要检查的资源名称
-    :param command: 用于检查的命令模板，默认为 "gova list"
+    :param command: 用于检查的命令模板，默认为 "scli guest list"
     :param timeout: 超时时间（秒），默认为 600 秒（10 分钟）
     :param interval: 轮询间隔时间（秒），默认为 10 秒
     :raises pytest.skip: 当SSH连接未配置时
@@ -265,14 +294,14 @@ def assert_backend_created(self, ssh_host, name: str, command: str = "gova list"
         pytest.fail(f"超时错误：资源 '{name}' 在 {timeout} 秒内未能在后端创建。")
 
 
-def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list", timeout: int = 600,
+def assert_backend_deleted(self, ssh_host, name: str, command: str = "scli guest list", timeout: int = 600,
                            interval: int = 10):
     """
     断言资源已从后端删除，支持轮询检查
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象
     :param name: 要检查的资源名称
-    :param command: 用于检查的命令模板，默认为 "gova list"
+    :param command: 用于检查的命令模板，默认为 "scli guest list"
     :param timeout: 超时时间（秒），默认为 600 秒（10 分钟）
     :param interval: 轮询间隔时间（秒），默认为 10 秒
     :raises pytest.skip: 当SSH连接未配置时
@@ -308,29 +337,17 @@ def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list"
 
 def get_backend_host(self, ssh_host, name: str) -> str:
     """
-    通过 gova list 查询后端资源所在的物理机节点
+    通过 scli guest list 查询后端资源所在的物理机节点
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象 (通常是 master 节点)
     :param name: 资源名称
     :return: str 物理机节点名称
     """
     try:
-        command = f"gova list -name {name}"
-        result = ssh_host.run(command)
-        self.logger.info(f"gova list 输出:\n{result}")
-
-        # 解析表格，寻找对应的行并提取 NODE 列 (第3列)
-        for line in result.splitlines():
-            if name in line and "|" in line:
-                # 分割并过滤掉空字符串
-                parts = [p.strip() for p in line.split("|") if p.strip()]
-                if len(parts) >= 3:
-                    # parts 为 [UUID, NAME, NODE, ...]
-                    host = parts[2]
-                    self.logger.info(f"后端查询到资源 '{name}' 当前所在节点为: {host}")
-                    return host
-
-        return ""
+        item = _get_guest_item(ssh_host, name)
+        host = item.get("node") or item.get("host") or ""
+        self.logger.info(f"后端查询到资源 '{name}' 当前所在节点为: {host}")
+        return host
     except Exception as e:
         self.logger.error(f"获取后端物理机节点失败: {e}")
         return ""

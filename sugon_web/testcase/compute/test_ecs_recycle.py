@@ -102,8 +102,7 @@ class TestECSRecycle:
             # 验证所有弹性云服务器创建成功
             for name, ecs_id in zip(ecs_names, ids):
                 ecs_page.assert_status(name)
-                stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-                assert stdout.get("vm_state") == "active", f"{name}后台状态不是active，状态为:{stdout.get('vm_state')}"
+                ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}后台状态不是active")
 
         # 批量回收弹性云服务器
         with allure_step_log("步骤2: 批量回收弹性云服务器"):

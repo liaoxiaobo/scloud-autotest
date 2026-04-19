@@ -201,7 +201,8 @@ def volume(evs_page, request):
         evs_page.evs_create(**create_kwargs)
         evs_page.assert_popup_success()
         evs_page.assert_status(name, status="可用")
-        volume = {"name": name}
+        row_data = evs_page.get_row_data(name)
+        volume = {"name": name, "id": row_data["名称/ID"].split(":")[1].strip()}
 
     yield volume
 
@@ -420,7 +421,7 @@ def _build_vm_fixture_names(base_name: str, count: int) -> list[str]:
         raise ValueError(f"'count' must be >= 1, got {count!r}")
     if count == 1:
         return [base_name]
-    return [f"{base_name}-{index}" for index in range(count)]
+    return [f"{base_name}-{index}" for index in range(1, count+1)]
 
 
 def _create_vm_resources(
@@ -479,7 +480,7 @@ def _bind_vm_fixture_mfips(
         ecs_page.mfip_create(vm_data["project"], network, vm_data["ip"])
         ecs_page.assert_popup_success()
         ecs_page.mfip_search(vm_data["ip"])
-        vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("Mfip 地址")
+        vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("管理IP地址")
     ecs_page.goto_service("弹性云服务器")
 
 

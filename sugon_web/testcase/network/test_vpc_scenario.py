@@ -96,7 +96,7 @@ class TestVPCNetwork:
             ecs_page.mfip_create(vm2_project, vm1_network, vm2_ip)
             ecs_page.assert_popup_success()
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
             ecs_page.goto_service("弹性云服务器")
 
             logger.info(
@@ -197,10 +197,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -351,10 +351,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -452,10 +452,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")

@@ -21,6 +21,11 @@ class VpcMixin:
         """VPC描述输入框"""
         return self.locator("textarea").nth(0)
 
+    def _select_cluster(self, cluster_name="Autotest"):
+        """选择VPC所属集群。"""
+        self.get_by_role("textbox", name="请选择集群").click()
+        self.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(cluster_name)}$")).click()
+
     @property
     def _input_subnet_name(self):
         """子网名称输入框"""
@@ -58,13 +63,14 @@ class VpcMixin:
 
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
-                   network_type="Geneve", gateway_mode="分布式网关",
+                   network_type="Geneve", cluster="Autotest", gateway_mode="分布式网关",
                    gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
                    enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
         self.btn_create.click()
 
         self._input_name.fill(name)
+        self._select_cluster(cluster)
         self._input_desc.fill(desc)
         self.get_by_role("radio", name=network_type).click()
 

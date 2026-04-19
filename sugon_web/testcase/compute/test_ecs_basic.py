@@ -31,8 +31,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 验证{name}{operation}结果"):
             ecs_page.assert_popup_success(f"{name}{desc}", timeout=60)
             ecs_page.assert_status(name, status=staus)
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == vm_state, f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": vm_state}, f"{name}状态变更失败")
             if vm_state == "active":
                 time.sleep(5)
                 ssh_vm.connect(vm['mfip'])
@@ -49,8 +48,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 验证{name}关机结果"):
             ecs_page.assert_popup_success(f"{name}实例关机任务下发成功", timeout=60)
             ecs_page.assert_status(name, status="关机")
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "stopped", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "stopped"}, f"{name}状态变更失败")
 
         with allure_step_log(f"步骤3: {name}启动"):
             ecs_page.ecs_operations(name, "启动")
@@ -58,8 +56,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤4: 验证{name}启动结果"):
             ecs_page.assert_popup_success(f"{name}实例启动任务下发成功")
             ecs_page.assert_status(name)
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}状态变更失败")
             time.sleep(5)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
@@ -76,8 +73,7 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"{name}实例挂起任务下发成功", timeout=60)
             # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name, status="挂起")
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "suspended", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "suspended"}, f"{name}状态变更失败")
 
         with allure_step_log(f"步骤3: {name}恢复运行"):
             ecs_page.ecs_operations(name, "恢复运行")
@@ -86,8 +82,7 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"{name}实例恢复运行任务下发成功")
             # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}状态变更失败")
             time.sleep(5)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
@@ -103,8 +98,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 验证{name}暂停结果"):
             ecs_page.assert_popup_success(f"{name}实例暂停任务下发成功", timeout=60)
             ecs_page.assert_status(name, status="暂停")
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "paused", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "paused"}, f"{name}状态变更失败")
 
         with allure_step_log(f"步骤3: {name}取消暂停"):
             ecs_page.ecs_operations(name, "取消暂停")
@@ -113,8 +107,7 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"{name}实例恢复运行任务下发成功")
             # ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "active", f"{name}状态变更失败"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}状态变更失败")
             time.sleep(5)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
@@ -137,8 +130,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤2: 验证重置状态结果"):
             ecs_page.assert_status(name)
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vm_state") == "active", f"重置状态验证失败: 状态为 {stdout.get('status')}"
+            ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, "重置状态验证失败")
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
@@ -204,7 +196,7 @@ class TestECSBasic:
             ssh_vm.create_file(f"/home/{name}-1")
 
         with allure_step_log(f"步骤2: 重建云服务器{name}"):
-            ecs_page.ecs_rebuild(name, 'centos7.9', '64位', image)
+            ecs_page.ecs_rebuild(name, image)
 
         with allure_step_log("步骤3: 验证重建结果"):
             ecs_page.assert_popup_success(f"{name}实例重建成功")
@@ -250,9 +242,7 @@ class TestECSBasic:
 
         with allure_step_log("步骤2: 验证修改结果"):
             ecs_page.assert_ecs_info(name, "规格", f"{cpu} 核 {mem}.00 GiB")
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            assert stdout.get("vcpu") == cpu
-            assert stdout.get("memory_mb") == str(int(mem) * 1024)
+            ssh_host.assert_guest_fields(ecs_id, {"vcpu": cpu, "memory_mb": str(int(mem) * 1024)}, f"{name}修改规格失败")
 
     @allure.title("弹性云服务器-修改CPU QoS")
     @pytest.mark.parametrize("qos_data", load_data('test_ecs_cpu_qos', "test_ecs.yaml"))
@@ -268,8 +258,8 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"设置cpu-qos成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-            # exception: CPU QoS修改成功后，gova show 获取的CPU QoS信息
+            stdout = ssh_host.guest_show(ecs_id)
+            # exception: CPU QoS修改成功后，scli guest show 获取的CPU QoS信息
             #        K: "quota:cpu_quota"、"quota:cpu_shares"、"quota:cpu_period"
             for k, v in qos_data.get("expection").items():
                 assert v == stdout.get(k), f"修改云服务器CPU QoS失败，期望{k}:{v},实际{k}:{stdout.get(k)}"
@@ -502,7 +492,7 @@ class TestECSBasic:
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
             expect_node = ecs_page.get_row_data(names[1]).get("物理机")
             assert expect_node == check_node, f"热迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
-            assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_ids[1]}")).get("node") == check_node
+            ssh_host.assert_guest_node(ecs_ids[1], check_node, "热迁移失败")
 
             # 验证长ping迁移丢包率
             ssh_vm.connect(mfips[0])
@@ -532,8 +522,7 @@ class TestECSBasic:
             ecs_page.wait_for_source_complete(name)
             new_host = ecs_page.get_row_data(name).get("物理机")
             assert new_host != host, f"热迁移失败，迁移前节点:{host}, 迁移后节点:{new_host}"
-            assert new_host == ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"), \
-                f"热迁移失败，页面展示节点:{new_host}, 后台物理机节点:{new_host}"
+            ssh_host.assert_guest_node(ecs_id, new_host, "热迁移失败")
             vm.update({"host": new_host})
 
     @allure.title("弹性云服务器-冷迁移")
@@ -558,7 +547,7 @@ class TestECSBasic:
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
             expect_node = ecs_page.get_row_data(name).get("物理机")
             assert expect_node == check_node, f"冷迁移失败，期望迁移至节点:{check_node},实际迁移至节点:{expect_node}"
-            assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == check_node
+            ssh_host.assert_guest_node(ecs_id, check_node, "冷迁移失败")
             vm.update({"host": check_node})
 
             # 验证迁移后虚机的可用性
@@ -618,8 +607,8 @@ class TestECSBasic:
             assert new_size in ecs_page.get_row_data(name).get("系统盘关闭机密存储开启机密存储   筛选   重置 ")
             ecs_page.assert_ecs_details_info(name, {"系统盘": new_size})
 
-            # 验证扩容后页面展示的系统盘大小 和 通过gova show 获取的系统盘大小是否一致
-            stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
+            # 验证扩容后页面展示的系统盘大小 和 通过 scli guest show 获取的系统盘大小是否一致
+            stdout = ssh_host.assert_guest_fields(ecs_id, {"root_gb": new_size}, "扩容系统盘失败")
             root_dev = stdout.get("root_dev")
             assert stdout.get("root_gb") == new_size, \
                 f"扩容系统盘失败，期望系统盘大小:{new_size}GiB,实际系统盘大小:{stdout.get('root_gb')}GiB"
@@ -709,7 +698,7 @@ class TestECSBasic:
             for name, ecs_id in zip(names, ecs_ids):
                 ecs_page.assert_status(name, status=status)
                 stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-                assert stdout.get("vm_state") == vm_state, f"批量操作{operation}失败，期望vm_state:{vm_state},实际vm_state:{stdout.get('vm_state')}"
+                ssh_host.assert_guest_fields(ecs_id, {"vm_state": vm_state}, f"批量操作{operation}失败")
 
     @allure.title("弹性云服务器-批量迁移")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
@@ -732,9 +721,9 @@ class TestECSBasic:
 
             for name,ecs_id in zip(names,ecs_ids):
                 ecs_page.assert_status(name)
-                # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
+                # 验证迁移后页面展示的物理机节点 和 通过 scli guest show 获取的物理机节点是否一致
                 expect_node = ecs_page.get_row_data(name).get("物理机")
-                assert ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node") == expect_node
+                ssh_host.assert_guest_node(ecs_id, expect_node, "批量迁移失败")
 
     @allure.title("弹性云服务器-批量设置启动和关机顺序")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)

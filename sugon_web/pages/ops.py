@@ -8,7 +8,7 @@ from sugon_web.utils.logger import logger
 
 class OpsPage(BasePage):
 
-    @submenu("MFIP")
+    @submenu("平台网络")
     def mfip_create(self, project: str, network: str, ip: str, exact=True):
         """创建 MFIP"""
         self.btn_create.click()
@@ -27,16 +27,16 @@ class OpsPage(BasePage):
         target_item.click()
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=exact).click()
-        self.get_by_text("确定").click()
+        self.get_by_label("新建管理IP").get_by_text("确定").click()
 
-    @submenu("MFIP")
+    @submenu("平台网络")
     def mfip_delete(self, ip: str):
         """删除 MFIP"""
         self.click_action(ip, "删除")
         self.dialog_confirm.click()
 
 
-    @submenu("MFIP")
+    @submenu("平台网络")
     def mfip_search(self, ip: str):
         """查询 MFIP"""
         self.get_by_role("textbox", name="请选择").nth(1).click()

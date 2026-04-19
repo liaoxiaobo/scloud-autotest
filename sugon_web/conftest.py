@@ -331,7 +331,7 @@ def check_compute_nodes(ssh_host, config):
     try:
         logger.info("开始获取物理机节点信息...")
         # 获取集群的节点
-        _output = ssh_host.run("gova aggregate list | grep Autotest | awk '{print $6}'")
+        _output = ssh_host.run("scli aggregate list | grep Autotest | awk '{print $6}'")
         _node_count = _output.split('(')[1].split(')')[0]
 
         # 将节点信息更新到 config 中

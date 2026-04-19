@@ -233,7 +233,7 @@ class TestECSScenario:
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
             for name, ecs_id in zip(all_vms, ecs_ids):
                 ecs_page.assert_status(name)
-                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
+                nodes.append(ssh_host.guest_show(ecs_id).get("node"))
             assert len(set(nodes)) >= 1
 
         with allure_step_log(f"步骤10: 删除{policy}组: {group_name}"):

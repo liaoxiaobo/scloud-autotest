@@ -1039,27 +1039,22 @@ class EcsPageBase(OpsPage):
             logger.info(f"云服务器{name}：VNC登录成功")
 
     @submenu("弹性云服务器")
-    def ecs_rebuild(self, name: str, version: str, bit: str, image: str):
-        """重建云主机
-        Args：
-            name: 云服务器名称
-            version: 重建云主机的操作系统版本
-            bit: 重建云主机的操作系统位数
-            image: 重建云主机的镜像源
-        """
+    def ecs_rebuild(self, name: str, image: str):
+        """新版重建云主机：只在重建抽屉内按镜像名称搜索并选择。"""
         self.click_action(name, "重建云主机")
-        # 选择操作系统版本
-        self.get_by_role("textbox", name="请选择操作系统版本").click()
-        self.get_by_role("listitem").filter(has_text=version).click()
-        # self._select_image(image)
-        # 选择操作系统版本
-        self.get_by_role("textbox", name="请选择操作系统位数").click()
-        self.get_by_role("listitem").filter(has_text=bit).click()
-        # 选择镜像源
-        self.get_by_role("textbox", name="请选择镜像").click()
-        self.get_by_title(image, exact=True).click()
+        self.page.wait_for_load_state("domcontentloaded")
+
+        rebuild_dialog = self.locator("div[role='dialog'][aria-label='重建云主机']:visible")
+        a = rebuild_dialog.count()
+        search_input = rebuild_dialog.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
+        search_input.fill(image)
+        rebuild_dialog.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
+        self.wait_for_page_ready()
+
+        image_row = rebuild_dialog.locator(".el-table__body tr").filter(has_text=re.compile(rf"{re.escape(image)}"))
+        image_row.locator("label[role='radio']").click()
         self.dialog_confirm.click()
-        logger.info(f"重建云主机操作完成：{name}，操作系统版本：{version}，操作系统位数：{bit}，镜像：{image}")
+        logger.info(f"重建云主机完成: {name}, 镜像: {image}")
 
     @submenu("弹性云服务器")
     def ecs_clone(self, name: str, clonename: str, net: str, subnet: str, encryption: dict, ipv6=False):
