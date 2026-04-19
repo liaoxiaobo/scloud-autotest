@@ -21,13 +21,8 @@ class EcsPage(
     """兼容现有用例的计算页面聚合对象。"""
 
 
-class EcsCreatePage(EcsPage):
-    pass
-
-
 __all__ = [
     "AffinityGroupPage",
-    "EcsCreatePage",
     "EcsPage",
     "EcsPageBase",
     "ElasticCloudServerPage",

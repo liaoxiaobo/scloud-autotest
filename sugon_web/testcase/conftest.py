@@ -14,6 +14,7 @@ from sugon_web.pages.compute.ecs import (
 )
 from typing import Any, Callable, Iterator, NotRequired, TypedDict
 from sugon_web.pages.ops import OpsPage
+from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -368,7 +369,8 @@ def _build_vm_create_request(
 
     storage = _merge_vm_section(
         {
-            "image": {"source": "镜像", "name": "", "os_version": "centos7.9"},
+            "storage_pool": f"{Config.get('stor')}-test",
+            "image": {"source": "镜像", "name": f"{Config.get('stor')}-test"},
             "system_disk": 25,
         },
         dependency_overrides.get("storage"),

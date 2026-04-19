@@ -300,8 +300,11 @@ class EcsPageBase(OpsPage):
             self._enable_encryption(encryption_key)
 
         # 选择镜像
-        image_info = _config_get(storage, "image", default={"source": "镜像", "name": "", "os_version": "centos7.9"})
-        self._select_image(image_info)
+        image_info = _config_get(storage, "image", default={"source": "镜像", "name": f"{storage_pool}"})
+        self._select_image(
+            image_source=_config_get(image_info, "source", default="镜像"),
+            image_name=_config_get(image_info, "name", default=storage_pool)
+        )
 
         # 设置系统盘大小（云硬盘来源时不需要设置）
         image_source = _config_get(image_info, "source", default="镜像")
@@ -520,15 +523,15 @@ class EcsPageBase(OpsPage):
         self.get_by_role("dialog").get_by_text("确定").click()
         self.logger.info(f"已选择物理机: {labels}")
 
-    def _select_storage_pool(self, image_name):
+    def _select_storage_pool(self, storage_pool_name):
         """选择存储池"""
-        image_name = image_name or self.storage_pool
+        storage_pool_name = storage_pool_name or self.storage_pool
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
         self.page.wait_for_load_state("networkidle")
-        self.get_by_text(self.storage_pool, exact=True).click()
-        logger.info(f"已选择存储池: {self.storage_pool}")
+        self.get_by_text(storage_pool_name, exact=True).click()
+        logger.info(f"已选择存储池: {storage_pool_name}")
 
     def _enable_encryption(self, encryption_key):
         """启用加密并选择密钥
@@ -551,35 +554,51 @@ class EcsPageBase(OpsPage):
         # 等待页面加载完成
         self.page.wait_for_timeout(1000)
 
-    def _select_image(self, image_info):
+    def _select_image(self, image_source="镜像", image_name="", **kwargs):
         """选择镜像，支持多种来源方式
         Args:
-            image_info: {
-                source: "镜像" / "空启动" / "快照" / "ISO" / "云硬盘"
-                name: "镜像名称" / "快照名称" / "ISO名称"
-                os_version: 操作系统版本，默认为"centos7.9"
-            }
+            image_name: 镜像名称或特定镜像源所需的标识
+            image_source: 镜像来源方式，可选值：
+                - "镜像": 使用存储池中的镜像（默认）
+                - "空启动": 使用空启动模式
+                - "快照": 使用快照作为镜像源
+                - "ISO": 使用ISO镜像
+            **kwargs: 其他参数，如快照ID、ISO大小等
         """
-        image_name = _config_get(image_info, "name", default="") or self.storage_pool
-        image_source = _config_get(image_info, "source", default="镜像")
-        os_version = _config_get(image_info, "os_version")
-        logger.info(f"开始选择镜像: image_source={image_source}, image_name={image_name}, os={os_version}")
+        image_name = image_name or self.storage_pool
+        logger.info(f"开始选择镜像: image_source={image_source}, image_name={image_name}")
 
         try:
             # 选择镜像来源
             self.get_by_role("textbox", name="请选择", exact=True).nth(3).click()
             self.locator("li").filter(has_text=re.compile(rf"^{image_source}$")).click()
-            logger.info(f"已选择来源: {image_source}")
+            logger.info(f"已选择镜像来源: {image_source}")
 
-            # 根据不同来源执行不同的选择逻辑
-            if image_source == "镜像":
-                self._select_from_pool_image(image_name, os_version)
-            elif image_source == "快照":
-                self._select_snapshot_image(image_name)
-            elif image_source == "ISO":
-                self._select_iso_image(image_name)
-            elif image_source == "云硬盘":
-                self._select_cloud_disk_image(image_name)
+            # 统一镜像选择逻辑
+            supported_sources = ["镜像", "快照", "ISO", "云硬盘"]
+            if image_source in supported_sources:
+                if image_name:
+                    self.get_by_text(f"选择{image_source}").first.click()
+                    self.wait_for_page_ready()
+                    dialog = self.get_by_role("dialog").last
+                    if image_source == "ISO":
+                        # 重置一下，避免hover的tips遮挡选择
+                        loc = dialog.get_by_text("重置")
+                        if loc.is_visible():
+                            loc.click()
+
+                    search_box = dialog.get_by_placeholder("搜索（名称）")
+                    if search_box.count() > 0:
+                        search_box.first.fill(image_name)
+                        dialog.get_by_text("搜索", exact=True).first.click()
+                        self.wait_for_page_ready()
+
+                    row = dialog.locator(".el-table__body-wrapper tr").filter( has=dialog.get_by_text(image_name, exact=True)).first
+                    expect(row).to_be_visible()
+                    row.get_by_role("radio").click()
+                    self.dialog_confirm.click()
+                    logger.info(f"已选择{image_source}: {image_name}")
+
             elif image_source == "空启动":
                 pass
             else:
