@@ -3,6 +3,7 @@ import time
 import pytest
 import allure
 from sugon_web.config.config import Config
+from sugon_web.testcase.backup.conftest import _execute_full_backup_and_collect_data
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
@@ -318,13 +319,14 @@ class TestResumeCreate:
             backup_page,
             ecs_page,
             ssh_vm,
-            backup_with_full_backup,
+            backup_task,
             cleanup_resume_data,
             data
     ):
         """测试恢复的各种数据准备场景（新建资源/覆盖原始）"""
 
         allure.dynamic.title(f"恢复任务-恢复场景（{data['用例名称']}）")
+        backup_with_full_backup = _execute_full_backup_and_collect_data(backup_page, backup_task)
 
         # 从 fixture 获取基础数据
         source_vm = backup_with_full_backup.get("server_names")
