@@ -135,7 +135,7 @@ def _create_logged_in_page(browser_context, config):
     logger.info("页面创建成功")
 
     logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url)
+    page.goto(base_url, wait_until="domcontentloaded")
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     if not _is_logged_in(page):
@@ -256,6 +256,8 @@ def _is_logged_in(page):
     """检查是否已登录"""
     try:
         # 检查登录表单是否存在，如果存在说明未登录
+        page.wait_for_timeout(2000)
+        logger.info(f"检查登录表单是否存在")
         login_form = page.get_by_placeholder("请输入登录账号")
         login_form.wait_for(timeout=2000)
         return False
