@@ -447,6 +447,7 @@ class TestSGScenario:
         with allure_step_log(f"步骤1: {sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
             sg_page.goto_service("安全组")
             for sg_name in [sg1, sg2]:
+                sg_page.sg_rule_delete_all_by_direction(sg_name, "入口")
                 sg_page.sg_rule_create(
                     sg_name=sg_name,
                     protocol="所有",
@@ -459,12 +460,7 @@ class TestSGScenario:
                 )
 
         with allure_step_log(f"步骤2: 删除{sg1}下所有的出方向规则"):
-            sg_page.goto_sg_detail(sg1)
-            # 获取当前规则并过滤出出口规则
-            rules = sg_page.sg_get_all_rules()
-            egress_rules = [r for r in rules if r["方向"] == "出口"]
-            for _ in range(len(egress_rules)):
-                sg_page.sg_rule_delete(sg1, direction="出口")
+            sg_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
         with allure_step_log(f"步骤3: 新增出方向规则，放行ipv4所有流量，但远程字段选择安全组default（非sg2）"):
             sg_page.sg_rule_create(
@@ -502,8 +498,7 @@ class TestSGScenario:
 
         with allure_step_log(f"步骤7: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程字段修改为CIDR，网段保持为空"):
             sg_page.goto_service("安全组")
-            sg_page.goto_sg_detail(sg1)
-            sg_page.sg_rule_delete(sg1, direction="出口")
+            sg_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
             sg_page.sg_rule_create(
                 sg_name=sg1,
@@ -636,12 +631,12 @@ class TestSGScenario:
     def test_sg_vm_detail_management(self, ecs_page, sg_page, vpc):
         base_name = random_data()
         sg1, sg2, sg3 = [f"{base_name}-sg{_}" for _ in range(3)]
-        
+
         with allure_step_log(f"步骤1: 创建安全组 {sg1}, {sg2}, {sg3}"):
             sg_page.goto_service("安全组")
             sg_page.sg_create(sg1, desc="测试虚机详情页管理安全组")
             sg_page.sg_rule_create(sg1, direction="入口", remote_type="CIDR", from_list=True)
-            
+
             # 创建额外的安全组用于多选测试
             [sg_page.sg_create(sg, desc=f"{sg}多选测试") for sg in [sg2, sg3]]
 
@@ -660,7 +655,7 @@ class TestSGScenario:
                 ecs_page.ecs_to_sg_tab(vm_name)
                 bound_sgs = ecs_page.ecs_get_bound_security_groups()
                 assert any(sg1 in s for s in bound_sgs), f"期望 {sg1} 在绑定列表中, 实际: {bound_sgs}"
-                
+
                 # 验证自定义规则下为空
                 ecs_page.ecs_to_sg_tab(vm_name)
                 protocol_header = next((h for h in ecs_page.table_headers if "协议" in h), "协议")

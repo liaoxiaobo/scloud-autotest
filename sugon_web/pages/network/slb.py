@@ -102,33 +102,33 @@ class SlbPage(BasePage):
         self.logger.info(f"负载均衡创建完成: {name} ({version})")
         return name
 
-    def _slb_lb_set_basic_config(self, lb_name, protocol, port=None, desc=None, 
+    def _slb_lb_set_basic_config(self, lb_name, protocol, port=None, desc=None,
                                   acl_enable=False, access_policy=None, ip_group=None,
-                                  auth_mode="单向认证", cert_type="国际服务器证书", 
-                                  server_cert=None, ca_cert=None, 
+                                  auth_mode="单向认证", cert_type="国际服务器证书",
+                                  server_cert=None, ca_cert=None,
                                   http_redirect=False, redirect_port=None):
         """步骤1: 基础配置"""
         # 监听器名称
         self.locator("div").filter(has_text=re.compile(r"^监听器名称$")).get_by_role("textbox").fill(lb_name)
-        
+
         # 描述
         if desc:
             self.locator("textarea").fill(desc)
-            
+
         # 协议
         self.get_by_label("新建监听器").get_by_role("textbox", name="请选择").click()
         self.get_by_text(protocol, exact=True).last.click() # 使用last以应对可能重复项
-        
+
         # 端口
         if port:
             # 这里的 spinbutton 可能是第一个
             self.get_by_role("spinbutton").first.fill(str(port))
-        
+
         # HTTPS 联动字段
         if protocol == "HTTPS":
             # 认证方式 (单向/双向)
             self.locator("label").filter(has_text=auth_mode).click()
-            
+
             # 服务器证书类型选择
             # 默认两个都勾选。根据 cert_types 调整勾选状态。
             cert_types = [cert_type] if isinstance(cert_type, str) else cert_type
@@ -139,7 +139,7 @@ class SlbPage(BasePage):
                 should_be_checked = ct in cert_types
                 if is_checked != should_be_checked:
                     checkbox_label.locator("span").nth(1).click()
-            
+
             # 选择证书 (只有勾选了对应类型才进行选择)
             if server_cert:
                 # server_cert 可以是一个字符串（默认国际）或者字典 {"国际": "...", "国密": "..."}
@@ -169,7 +169,7 @@ class SlbPage(BasePage):
         is_checked = acl_switch.get_attribute("aria-checked") == "true"
         if is_checked != acl_enable:
             acl_switch.locator("span").click()
-        
+
         if acl_enable:
             acl_dialog = self._find_element([
                 self.get_by_role("dialog", name="新建监听器"),
@@ -181,17 +181,17 @@ class SlbPage(BasePage):
                 expect(access_policy_select).to_be_visible(timeout=3000)
                 access_policy_select.click()
                 self.locator("div.el-select-dropdown:visible li").filter(has_text=re.compile(rf"^{re.escape(access_policy)}$")).click()
-            
+
             # 选择IP地址组
             if ip_group:
                 ip_group_select = acl_dialog.locator("div.el-form-item:has(label[for='ip_group_uuid'])").get_by_placeholder("请选择")
                 expect(ip_group_select).to_be_visible(timeout=3000)
                 ip_group_select.click()
                 self.locator("div.el-select-dropdown:visible li").filter(has_text=re.compile(rf"^{re.escape(ip_group)}$")).click()
-        
+
         self.get_by_text("下一步").click()
 
-    def _slb_lb_set_listener_config(self, pool_name, balance_method, health_check, 
+    def _slb_lb_set_listener_config(self, pool_name, balance_method, health_check,
                                     session_persistence=False, session_type=None,
                                     health_type=None, health_max_retries=None,
                                     health_timeout=None, health_interval=None,
@@ -207,10 +207,10 @@ class SlbPage(BasePage):
 
         if not pool_name:
             pool_name = f"pool-{random_data()}"
-        
+
         # 资源池名称
         self.locator("div").filter(has_text=re.compile(r"^资源池名称$")).get_by_role("textbox").fill(pool_name)
-        
+
         # 均衡算法
         self.get_by_label("新建监听器").get_by_role("textbox", name="请选择").click()
         self.locator("li").filter(has_text=re.compile(fr"^{balance_method}$")).click()
@@ -253,7 +253,7 @@ class SlbPage(BasePage):
                 url_input = form_item_by_text("URL地址").get_by_role("textbox")
                 url_input.click()
                 url_input.fill(url_path)
-        
+
         self.get_by_text("下一步").click()
 
     def _slb_lb_set_confirm_info(self):
@@ -263,12 +263,12 @@ class SlbPage(BasePage):
         # self.locator(".dialog-box-footer").get_by_text("新建", exact=True).click()
 
     @submenu("负载均衡（基础版）")
-    def slb_lb_create(self, slb_name, lb_name, protocol="TCP", port=80, 
+    def slb_lb_create(self, slb_name, lb_name, protocol="TCP", port=80,
                             desc=None, acl_enable=False, access_policy=None, ip_group=None,
                             pool_name=None, balance_method="轮询", health_check=True,
                             **kwargs):
         """为负载均衡创建监听器 (3步流程)
-        
+
         Args:
             slb_name: 负载均衡名称
             lb_name: 监听器名称
@@ -305,10 +305,10 @@ class SlbPage(BasePage):
             http_redirect=kwargs.get("http_redirect", False),
             redirect_port=kwargs.get("redirect_port")
         )
-            
+
         # 2. 监听器配置 (资源池)
         self._slb_lb_set_listener_config(
-            pool_name, balance_method, health_check, 
+            pool_name, balance_method, health_check,
             session_persistence=kwargs.get("session_persistence", False),
             session_type=kwargs.get("session_type"),
             health_type=kwargs.get("health_type"),
@@ -318,10 +318,10 @@ class SlbPage(BasePage):
             http_method=kwargs.get("http_method"),
             url_path=kwargs.get("url_path")
         )
-            
+
         # 3. 确认信息
         self._slb_lb_set_confirm_info()
-        
+
         self.logger.info(f"SLB监听器创建成功: {lb_name} ({protocol}:{port})")
         return lb_name
 
@@ -341,7 +341,47 @@ class SlbPage(BasePage):
             slb_name: 负载均衡名称
             tab_name: 详情页中的Tab名称，如："详情"、"监听器"、"后端服务器组" 等
         """
-        self.get_by_role("row", name=slb_name).locator("a").click()
+        visible_name_links = self.locator("a:visible").filter(
+            has_text=re.compile(rf"^\s*{re.escape(slb_name)}\s*$")
+        )
+        if visible_name_links.count() > 0:
+            visible_name_links.first.click()
+            self.wait_for_page_ready()
+            self.get_by_role("tab", name=tab_name).evaluate("node => node.click()")
+            self.logger.info(f"进入负载均衡 {slb_name} 的 {tab_name}")
+            return
+
+        target_row = self.get_row_by_name(slb_name)
+        clickable = None
+
+        exact_links = target_row.locator("a").filter(has_text=re.compile(rf"^{re.escape(slb_name)}$"))
+        for i in range(exact_links.count()):
+            candidate = exact_links.nth(i)
+            if candidate.is_visible():
+                clickable = candidate
+                break
+
+        if clickable is None:
+            all_links = target_row.locator("a")
+            for i in range(all_links.count()):
+                candidate = all_links.nth(i)
+                if candidate.is_visible():
+                    clickable = candidate
+                    break
+
+        if clickable is None:
+            exact_texts = target_row.get_by_text(slb_name, exact=True)
+            for i in range(exact_texts.count()):
+                candidate = exact_texts.nth(i)
+                if candidate.is_visible():
+                    clickable = candidate
+                    break
+
+        if clickable is None:
+            raise AssertionError(f"负载均衡 {slb_name} 的详情入口不可见")
+
+        clickable.click()
+        self.wait_for_page_ready()
         self.get_by_role("tab", name=tab_name).evaluate("node => node.click()")
 
         self.logger.info(f"进入负载均衡 {slb_name} 的 {tab_name}")
@@ -488,43 +528,54 @@ class SlbPage(BasePage):
         elif lb_name or pool_name:
             raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
 
-        create_btns = [
-            self.locator(".el-tab-pane:not([aria-hidden='true'])").get_by_text("新建", exact=True),
-            self.get_by_text("新建", exact=True),
-        ]
-        self._find_element(create_btns, "资源池虚机新建按钮", timeout=3000).click()
+        table_container = self.locator(".cloud-table-container.table-fixed").first
+        expect(table_container).to_be_visible(timeout=5000)
+        table_container.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
 
-        dialog = self.get_by_role("dialog").filter(has_text="新建资源")
+        create_btn = table_container.locator(
+            ".cloud-table-header .cloud-button-btn"
+        ).filter(has_text=re.compile(r"^\s*新建\s*$")).first
+        expect(create_btn).to_be_visible(timeout=5000)
+        expect(create_btn).not_to_have_class(re.compile(r"cl-btn-disabled"), timeout=15000)
+        create_btn.click()
+
+        dialog = self.locator(".el-dialog__wrapper:visible").get_by_role("dialog", name="新建资源")
         expect(dialog).to_be_visible(timeout=5000)
 
         resource_type_input = dialog.get_by_placeholder("请选择").first
         resource_type_input.click()
-        self.locator(".el-select-dropdown:visible li").filter(
+        self.locator("div.el-select-dropdown:visible li").filter(
             has_text=re.compile(rf"^{re.escape(resource_type)}$")
         ).first.click()
 
-        search_inputs = [
-            dialog.get_by_placeholder("搜索(名称)"),
-            dialog.get_by_placeholder("搜索（名称）"),
-            dialog.get_by_role("textbox", name="搜索(名称)"),
-            dialog.get_by_role("textbox", name="搜索（名称）"),
-        ]
-        search_input = self._find_element(search_inputs, "资源搜索框", timeout=2000)
-        search_btn = dialog.get_by_text("搜索", exact=True)
-        reset_btn = dialog.get_by_text("重置", exact=True)
+        dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
 
+        try:
+            pagination_trigger = dialog.locator(".el-pagination__sizes .el-input__inner").first
+            if pagination_trigger.count() > 0 and pagination_trigger.is_visible():
+                pagination_trigger.click()
+                self.locator("div.el-select-dropdown:visible li").filter(
+                    has_text=re.compile(r"^100条/页$")
+                ).first.click()
+                dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+        except Exception as e:
+            self.logger.warning(f"尝试设置资源选择分页为100失败: {e}")
+
+        missing_vms = []
         for index, vm_name in enumerate(vm_names):
-            search_input.fill(vm_name)
-            search_btn.click()
-            self.page.wait_for_timeout(500)
-
             row = dialog.locator(".el-table__body-wrapper tr").filter(
-                has=self.locator("td").filter(has_text=re.compile(rf"^\s*{re.escape(vm_name)}\s*$"))
-            )
-            expect(row).to_be_visible(timeout=5000)
+                has_text=re.compile(rf"\b{re.escape(vm_name)}\b")
+            ).first
 
-            checkbox = row.locator("td").first.locator("label span").last
-            checkbox.click()
+            if row.count() == 0 or not row.is_visible():
+                missing_vms.append(vm_name)
+                continue
+
+            checkbox = row.locator("td").first.locator(".el-checkbox").first
+            checkbox_class = checkbox.get_attribute("class") or ""
+            if "is-checked" not in checkbox_class:
+                checkbox.click()
+                self.logger.info(f"资源池新增虚机时已勾选: {vm_name}")
 
             target_port = resolve_port(vm_name, index)
             if target_port is not None:
@@ -533,10 +584,13 @@ class SlbPage(BasePage):
                 port_input.fill(str(target_port))
                 self.logger.info(f"资源池新增虚机时已设置端口: {vm_name} -> {target_port}")
 
-            self.logger.info(f"资源池新增虚机时已勾选: {vm_name}")
+        if missing_vms:
+            raise AssertionError(f"新建资源弹窗当前可选列表中未找到虚机: {missing_vms}")
 
         self.dialog_confirm.click()
-        self.logger.info(f"资源池新增虚机提交成功: {vm_names}, resource_type={resource_type}, ports={ports}")
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(1000)
+        self.logger.info(f"资源池新增虚机提交成功: vm_names={vm_names}, resource_type={resource_type}, ports={ports}")
 
     def assert_lb_pool_basic_info(self, pool_name, protocol=None, balance_method=None,
                                   session_persistence=None, health_check=None):
@@ -812,7 +866,7 @@ class SlbPage(BasePage):
 
     def slb_lb_delete(self, slb_name, lb_name):
         """删除负载均衡监听器
-        
+
         Args:
             slb_name: 负载均衡名称
             lb_name: 待删除的监听器名称
@@ -820,21 +874,21 @@ class SlbPage(BasePage):
         # 进入SLB详情页并切换到监听器Tab
         # self.get_by_role("row", name=slb_name).locator("a").click()
         # self.get_by_role("tab", name="监听器").evaluate("node => node.click()")
-        
+
         # 找到目标监听器项并点击删除图标
         target_item = self.locator("div.listener-left-list-item").filter(has_text=lb_name)
         target_item.locator(".el-icon-delete").click()
-        
+
         # 确认删除
         self.dialog_confirm.click()
-        
+
         self.logger.info(f"SLB监听器 {lb_name} 已删除 (SLB: {slb_name})")
 
 
     @submenu("负载均衡（基础版）")
     def slb_delete(self, names):
         """负载均衡
-        
+
         Args:
             names: 负载均衡名称或名称列表
         """
@@ -853,3 +907,47 @@ class SlbPage(BasePage):
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
+
+    @submenu("负载均衡（基础版）")
+    def get_slb_vip(self, slb_name):
+        """
+        获取负载均衡的内网VIP地址。
+
+        Args:
+            slb_name: 负载均衡名称
+
+        Returns:
+            str: 内网VIP地址
+        """
+        row_data = self.get_row_data(slb_name)
+        vip = row_data.get("VIP地址") or row_data.get("内网地址") or row_data.get("网络IP") or row_data.get("地址")
+        if not vip:
+            headers = self.table_headers
+            for key in ["VIP地址", "内网地址", "网络IP", "地址", "IPv4地址"]:
+                if key in headers:
+                    vip = row_data.get(key)
+                    if vip:
+                        break
+        if not vip:
+            raise AssertionError(f"未能从SLB '{slb_name}' 获取内网VIP地址，当前行数据: {row_data}")
+        self.logger.info(f"获取SLB '{slb_name}' 内网VIP地址: {vip}")
+        return vip.strip()
+
+    @submenu("负载均衡（基础版）")
+    def get_slb_eip(self, slb_name):
+        """
+        获取负载均衡绑定的公网IP地址。
+
+        Args:
+            slb_name: 负载均衡名称
+
+        Returns:
+            str: 公网IP地址，如果未绑定则返回None
+        """
+        row_data = self.get_row_data(slb_name)
+        eip = row_data.get("公网IPv4") or row_data.get("公网IP") or row_data.get("弹性公网IP")
+        if eip and eip.strip() and eip.strip() not in ["-", "无", ""]:
+            self.logger.info(f"获取SLB '{slb_name}' 公网IP地址: {eip.strip()}")
+            return eip.strip()
+        self.logger.info(f"SLB '{slb_name}' 未绑定公网IP")
+        return None

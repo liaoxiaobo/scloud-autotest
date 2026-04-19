@@ -10,19 +10,12 @@ from sugon_web.utils.util import load_data
 @allure.story("监听器资源池")
 class TestSlbPool:
 
-    @staticmethod
-    def _resolve_expected_ports(params, selected_vms):
-        ports = params["ports"]
-        if isinstance(ports, list):
-            return ports[:len(selected_vms)]
-        return [ports] * len(selected_vms)
-
     @allure.title("监听器资源池新增资源: {params[case_desc]}")
     @pytest.mark.parametrize("params", load_data("test_lb_pool_add_resource", "test_slb.yaml"))
     def test_lb_pool_add_resource(self, slb_page, lb, lb_pool_candidate_vms, params):
         selected_vms = lb_pool_candidate_vms[:params["vm_count"]]
         vm_names = [vm["name"] for vm in selected_vms]
-        expected_ports = self._resolve_expected_ports(params, selected_vms)
+        expected_ports = slb_page._resolve_expected_ports(params, selected_vms)
         added_vm_names = []
 
         with allure_step_log(f"步骤1: 进入监听器 {lb['name']} 的资源池详情页"):

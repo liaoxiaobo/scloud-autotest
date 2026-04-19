@@ -4,7 +4,7 @@ import random
 import time
 from sugon_web.common.playwright import expect
 from sugon_web.pages.network import SgPage, VpcPage
-from sugon_web.pages.compute import EcsCreatePage, EcsPage
+from sugon_web.pages.compute import EcsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.pages.network import AclPage, SlbPage, IpGroupPage
@@ -185,7 +185,7 @@ def port(vpc_page, vpc, request):
     start_index = 20 if len(hosts) > 30 else 2
     if len(hosts) - start_index < count:
         raise ValueError(f"子网IP资源不足，无法创建 {count} 个端口")
-    
+
     available_hosts = hosts[start_index:]
     selected_ips = random.sample(available_hosts, count)
 
@@ -328,143 +328,41 @@ def qos(qos_page):
             logger.warning(f"清理网络QoS时出错: {e}")
 
 @pytest.fixture(scope="class")
-def sg(browser_context, config):
+def sg(browser_context, config, request):
     """
-    创建并返回一个安全组名称，测试结束后自动清理
+    创建并返回安全组名称，测试结束后自动清理
+
+    request.param:
+        int: 需要创建的安全组数量，默认 1
 
     Yields:
-        str: 安全组名称，测试用例执行后自动清理
+        str | list[str]: 单个安全组名称或安全组名称列表
     """
     page = _create_logged_in_page(browser_context, config)
     sg_page = SgPage(page)
     sg_page.goto_service('安全组')
-    sg_name = random_data()
 
-    # 创建安全组
-    with allure_step_log("创建安全组"):
-        sg_page.goto_service("安全组")
-        sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
-
-    yield sg_name
-
-    # 测试结束后清理
-    with allure_step_log("清理安全组"):
-        sg_page.goto_service("安全组")
-        sg_page.sg_delete(sg_name)
-        sg_page.assert_deleted(sg_name)
-    page.close()
-
-
-@pytest.fixture(scope="class")
-def sg_vm_setup(browser_context, config, vpc, request):
-    """
-    通用前置准备：分配公网IP、创建安全组、创建虚机并绑定IP
-    支持参数化配置，可通过pytest.mark.parametrize传入参数：
-    - vm_count: 创建虚机数量，默认为2
-    - sg_count: 创建安全组数量，默认为2
-    - fip_count: 分配并绑定公网IP的数量，默认为1
-    """
-    page = _create_logged_in_page(browser_context, config)
-    ecs_page = EcsPage(page)
-    sg_page = SgPage(page)
-    ecs_create_page = EcsCreatePage(page)
-
-    params = getattr(request, 'param', {})
-    vm_count = params.get('vm_count', 2)
-    sg_count = params.get('sg_count', 2)
-    fip_count = params.get('fip_count', 1)
-
-    network_name = vpc.get("name")
-    subnet_name = vpc.get("subnet_name")
-
-    # 分配公网IP
-    if fip_count > 0:
-        with allure_step_log(f"Fixture: 分配 {fip_count} 个公网IP"):
-            ecs_page.assign_ip(count=str(fip_count))
-
-    # 平台创建安全组
-    sgs = []
-    with allure_step_log(f"Fixture: 平台创建 {sg_count} 个安全组"):
-        sg_page.goto_service("安全组")
-        timestamp_suffix = time.strftime("%M%S")
-        for i in range(sg_count):
-            sg_name = f"autotest-sg{i + 1}-{timestamp_suffix}"
-            sg_page.sg_create(sg_name, desc=f"{sg_name}自动化测试")
-            expect(sg_page.popup).to_have_count(0)
-            sgs.append(sg_name)
-
-    # 在同一子网下创建虚机并将它们分发到安全组中
-    vms = []
-    vm_names = []
-    sg_strategy = params.get('sg_strategy', 'unique')  # 默认 'unique'
-
-    with allure_step_log(f"Fixture: 在vpc同一子网下创建 {vm_count} 个虚机 (策略: {sg_strategy})"):
-        ecs_create_page.goto_service("弹性云服务器")
-        for i in range(vm_count):
-            # 根据策略分配安全组
-            if sg_strategy == 'shared':
-                # 所有虚机绑定第一个安全组
-                current_sg = sgs[0]
-            else:
-                # 默认 'unique': 每个虚机循环分配安全组
-                current_sg = sgs[i % len(sgs)]
-
-            network_vm = {"networks": [{"network": network_name, "subnet": subnet_name}], "安全组": [current_sg]}
-            vm_info = ecs_create_page.ecs_create(basic={}, storage={}, network=network_vm, manage={}, advanced={})
-            vm_names.append(vm_info.get("name"))
-
-        for vm_name in vm_names:
-            ecs_create_page.assert_status(vm_name)
-
-            # 获取虚机元数据
-            row_data = ecs_create_page.get_row_data(vm_name)
-            ip_list = row_data["IP地址"].split("固定: ")
-            vm_metadata = {
-                "name": vm_name,
-                "id": row_data["名称/ID"].split(":")[1].strip(),
-                "ip": ip_list[-1].strip(),
-                "row_data": row_data
-            }
-            vms.append(vm_metadata)
-
-    yield {
-        "vms": vms,
-        "sgs": sgs,
-    }
-
-    # 清理释放资源
-    with allure_step_log("Fixture: 清理测试资源"):
-        ecs_create_page.goto_service("弹性云服务器")
-        ecs_create_page.ecs_remove(vm_names)
-        # ecs_delete 时选择释放 IP
-        ecs_create_page.ecs_delete(vm_names, release_ip=True)
-        ecs_create_page.assert_deleted(vm_names)
-
-        sg_page.goto_service("安全组")
-        sg_page.sg_delete(sgs)
-        sg_page.assert_deleted(sgs)
+    count = getattr(request, "param", 1)
+    if count <= 0:
+        yield []
         page.close()
-#
-#
-# @pytest.fixture(autouse=True)
-# def sg_rule_cleanup(sg_page, request):
-#     """
-#     自动使用的 fixture，恢复安全组默认规则。
-#
-#     """
-#     yield
-#
-#     if 'sg_vm_setup' in request.fixturenames:
-#         # 只有当测试用例使用了 sg_vm_setup 这个 class 作用域的 fixture 时才执行
-#         try:
-#             sg_vm_setup_data = request.getfixturevalue('sg_vm_setup')
-#             sgs = sg_vm_setup_data.get("sgs", [])
-#             with allure_step_log(f"Fixture Cleanup: 还原安全组 {sgs} 的规则为默认"):
-#                 for sg_name in sgs:
-#                     # 调用新增加的恢复默认规则方法
-#                     sg_page.sg_rule_restore_defaults(sg_name)
-#         except Exception as e:
-#             logger.error(f"Cleanup fixture failed: {e}")
+        return
+
+    names = []
+    with allure_step_log(f"创建 {count} 个安全组"):
+        for _ in range(count):
+            sg_name = random_data()
+            sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
+            expect(sg_page.popup).to_have_count(0)
+            names.append(sg_name)
+
+    yield names[0] if count == 1 else names
+
+    with allure_step_log(f"清理安全组 {names}"):
+        sg_page.goto_service("安全组")
+        sg_page.sg_delete(names)
+        sg_page.assert_deleted(names)
+    page.close()
 
 @pytest.fixture(scope="function")
 def acl_page(page):
@@ -498,114 +396,196 @@ def acl(browser_context, config):
         acl_page.acl_batch_delete([acl_name])
     page.close()
 
-def _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params):
-    """提取的预置环境核心逻辑，支持给不同scope的fixture复用"""
-    vpc_acl_name = acl if params.get('vpc_acl', True) else None
+def _normalize_acl_env_params(params=None, defaults=None):
+    """统一 ACL 环境参数，避免多个 fixture 重复处理默认值。"""
+    merged = {"vpc_acl": True, "sub2_acl": False, "vms_per_subnet": 1}
+    if defaults:
+        merged.update(defaults)
+    if params:
+        merged.update(params)
+    return merged
 
+
+def _build_acl_env_data(acl_name, params):
+    """构建 ACL 场景的资源描述，不直接执行页面操作。"""
+    params = _normalize_acl_env_params(params)
     base_name = random_data()
-    vpc_name = f"vpc-{base_name}"
-    sub1_name = f"sub1-{base_name}"
-    sub2_name = f"sub2-{base_name}"
-    n = random.randint(1, 240)
-    cidr1 = f"10.{n}.1.0/24"
-    cidr2 = f"10.{n}.2.0/24"
+    network_id = random.randint(1, 240)
+    return {
+        "acl_name": acl_name,
+        "vpc_name": f"vpc-{base_name}",
+        "sub1_name": f"sub1-{base_name}",
+        "sub2_name": f"sub2-{base_name}",
+        "cidr1": f"10.{network_id}.1.0/24",
+        "cidr2": f"10.{network_id}.2.0/24",
+        "vpc_acl_enabled": params["vpc_acl"],
+        "sub2_acl_enabled": params["sub2_acl"],
+        "vms_per_subnet": params["vms_per_subnet"],
+        "vms": [],
+    }
 
-    # 创建VPC和sub1，并关联ACL
-    with allure_step_log(f"前置步骤1: 创建VPC {vpc_name} 和子网 {sub1_name} (关联ACL: {vpc_acl_name})"):
+
+def _create_acl_topology(vpc_page, env_data):
+    """仅创建 ACL 场景所需的 VPC/子网拓扑。"""
+    vpc_acl_name = env_data["acl_name"] if env_data["vpc_acl_enabled"] else None
+    with allure_step_log(
+        f"前置步骤1: 创建VPC {env_data['vpc_name']} 和子网 {env_data['sub1_name']} (关联ACL: {vpc_acl_name})"
+    ):
         vpc_page.goto_service("虚拟私有云")
         vpc_page.vpc_create(
-            name=vpc_name,
-            subnet_name=sub1_name,
-            cidr=cidr1,
+            name=env_data["vpc_name"],
+            subnet_name=env_data["sub1_name"],
+            cidr=env_data["cidr1"],
             network_type="Geneve",
-            acl_policy=vpc_acl_name
+            acl_policy=vpc_acl_name,
         )
-        vpc_page.assert_status(vpc_name, refresh=True)
+        vpc_page.assert_status(env_data["vpc_name"], refresh=True)
 
-    # 创建sub2，并关联ACL
-    sub2_acl_name = acl if params.get('sub2_acl', False) else None
-    with allure_step_log(f"前置步骤2: 为 {vpc_name} 创建子网 {sub2_name} (关联ACL: {sub2_acl_name})"):
+    sub2_acl_name = env_data["acl_name"] if env_data["sub2_acl_enabled"] else None
+    with allure_step_log(
+        f"前置步骤2: 为 {env_data['vpc_name']} 创建子网 {env_data['sub2_name']} (关联ACL: {sub2_acl_name})"
+    ):
         vpc_page.subnet_create(
-            vpc_name=vpc_name,
-            subnet_name=sub2_name,
-            cidr=cidr2,
-            acl_policy=sub2_acl_name
+            vpc_name=env_data["vpc_name"],
+            subnet_name=env_data["sub2_name"],
+            cidr=env_data["cidr2"],
+            acl_policy=sub2_acl_name,
         )
 
-    # 放开安全组入方向所有流量 (IPv4 & IPv6)
-    with allure_step_log(f"前置步骤3: 在安全组 {sg} 中放开所有入方向流量"):
-        rules = sg_page.sg_get_all_rules(sg_name=sg)
 
+def _ensure_sg_ingress_allow_all(sg_page, sg_name):
+    """补齐 ACL 场景依赖的最小安全组入方向规则。"""
+    with allure_step_log(f"前置步骤3: 在安全组 {sg_name} 中放开所有入方向流量"):
+        rules = sg_page.sg_get_all_rules(sg_name=sg_name)
         has_ipv4 = any(r.get("方向", "") == "入口" and r.get("以太网类型", "") == "IPv4" for r in rules)
         has_ipv6 = any(r.get("方向", "") == "入口" and r.get("以太网类型", "") == "IPv6" for r in rules)
 
         if not has_ipv4:
-            sg_page.sg_rule_create(sg_name=sg, direction="入口", protocol="所有", ip_version="IPv4", remote_type="CIDR", from_list=False, detail_mode=True)
+            sg_page.sg_rule_create(
+                sg_name=sg_name,
+                direction="入口",
+                protocol="所有",
+                ip_version="IPv4",
+                remote_type="CIDR",
+                from_list=False,
+                detail_mode=True,
+            )
         if not has_ipv6:
-            sg_page.sg_rule_create(sg_name=sg, direction="入口", protocol="所有", ip_version="IPv6", remote_type="CIDR", from_list=False, detail_mode=True)
+            sg_page.sg_rule_create(
+                sg_name=sg_name,
+                direction="入口",
+                protocol="所有",
+                ip_version="IPv6",
+                remote_type="CIDR",
+                from_list=False,
+                detail_mode=True,
+            )
 
-    vms_per_subnet = params.get("vms_per_subnet", 1)
-    vms_list = []
-    for tag, subnet in [("a", sub1_name), ("b", sub2_name)]:
-        for i in range(vms_per_subnet):
-            vm_tag = tag.upper() if vms_per_subnet == 1 else f"{tag.upper()}-{i}"
-            with allure_step_log(f"前置步骤: 创建ECS {vm_tag} 在 {subnet} 并关联安全组 {sg}"):
-                ecs_create_page.goto_service("弹性云服务器")
-                vm_base = random_data()
-                vm_name = f"vm{tag}{i}-{vm_base}" if vms_per_subnet > 1 else f"vm{tag}-{vm_base}"
-                basic = {"name": vm_name}
-                network = {"networks": [{"network": vpc_name, "subnet": subnet}], "安全组": [sg]}
-                ecs_create_page.ecs_create(basic=basic, network=network)
-                ecs_create_page.assert_status(vm_name)
 
-                # 绑定MFIP
-                row_data = ecs_create_page.get_row_data(vm_name)
-                fixed_ip = row_data["IP地址"].split("固定: ")[-1].strip()
-                mfip = ecs_create_page.bind_mfip(fixed_ip, network=vpc_name)
-                from sugon_web.utils.logger import logger
-                logger.info(f"VM {vm_name} 已绑定 MFIP: {mfip}")
+def _create_acl_vm(ecs_page, vpc_name, subnet_name, sg_name, tag, index, vms_per_subnet):
+    """创建单台 ACL 场景虚机并返回最小元数据。"""
+    vm_tag = tag.upper() if vms_per_subnet == 1 else f"{tag.upper()}-{index}"
+    with allure_step_log(f"前置步骤: 创建ECS {vm_tag} 在 {subnet_name} 并关联安全组 {sg_name}"):
+        ecs_page.goto_service("弹性云服务器")
+        vm_base = random_data()
+        vm_name = f"vm{tag}{index}-{vm_base}" if vms_per_subnet > 1 else f"vm{tag}-{vm_base}"
+        basic = {"name": vm_name}
+        network = {"networks": [{"network": vpc_name, "subnet": subnet_name}], "security_groups": [sg_name]}
+        ecs_page.ecs_create(basic=basic, network=network)
+        ecs_page.assert_status(vm_name)
 
-                vms_list.append({
-                    "tag": vm_tag,
-                    "name": vm_name,
-                    "ip": fixed_ip,
-                    "mfip": mfip
-                })
+        row_data = ecs_page.get_row_data(vm_name)
+        fixed_ip = row_data["IP地址"].split("固定: ")[-1].strip()
+        mfip = ecs_page.bind_mfip(fixed_ip, network=vpc_name)
+        logger.info(f"VM {vm_name} 已绑定 MFIP: {mfip}")
+        return {"tag": vm_tag, "name": vm_name, "ip": fixed_ip, "mfip": mfip}
 
-    env_data = {
-        "vpc_name": vpc_name,
-        "sub1_name": sub1_name,
-        "sub2_name": sub2_name,
-        "cidr1": cidr1,
-        "cidr2": cidr2,
-        "vms": vms_list,
-        "acl_name": acl,
-        "sg_name": sg
-    }
 
-    yield env_data
+def _create_acl_vms(ecs_page, env_data, sg_name):
+    """为 ACL 场景拓扑批量创建业务虚机。"""
+    vms = []
+    for tag, subnet_name in (("a", env_data["sub1_name"]), ("b", env_data["sub2_name"])):
+        for index in range(env_data["vms_per_subnet"]):
+            vms.append(
+                _create_acl_vm(
+                    ecs_page=ecs_page,
+                    vpc_name=env_data["vpc_name"],
+                    subnet_name=subnet_name,
+                    sg_name=sg_name,
+                    tag=tag,
+                    index=index,
+                    vms_per_subnet=env_data["vms_per_subnet"],
+                )
+            )
+    return vms
 
-    # 清理
-    vm_names = [vm["name"] for vm in vms_list]
+
+def _cleanup_acl_vms(ecs_page, vms):
+    """清理 ACL 场景创建的云主机。"""
+    vm_names = [vm["name"] for vm in vms]
+    if not vm_names:
+        return
     with allure_step_log(f"Fixture清理: 删除ECS实例 {vm_names}"):
-        ecs_create_page.goto_service("弹性云服务器")
-        ecs_create_page.ecs_remove(vm_names)
-        ecs_create_page.ecs_delete(vm_names)
-        ecs_create_page.assert_deleted(vm_names)
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.ecs_remove(vm_names)
+        ecs_page.ecs_delete(vm_names)
+        ecs_page.assert_deleted(vm_names)
 
+
+def _cleanup_acl_topology(vpc_page, vpc_name):
+    """清理 ACL 场景创建的 VPC 拓扑。"""
     with allure_step_log(f"Fixture清理: 删除VPC {vpc_name}"):
         vpc_page.goto_service("虚拟私有云")
         vpc_page.vpc_delete(vpc_name)
         vpc_page.assert_deleted(vpc_name)
 
 
+def _acl_env_resource(acl_name, sg_name, vpc_page, sg_page, ecs_page, params=None):
+    """组装 ACL 场景环境，兼容 function/class 两种 scope 复用。"""
+    env_data = _build_acl_env_data(acl_name, params)
+    env_data["sg_name"] = sg_name
+    _create_acl_topology(vpc_page, env_data)
+    _ensure_sg_ingress_allow_all(sg_page, sg_name)
+    env_data["vms"] = _create_acl_vms(ecs_page, env_data, sg_name)
+
+    try:
+        yield env_data
+    finally:
+        _cleanup_acl_vms(ecs_page, env_data["vms"])
+        _cleanup_acl_topology(vpc_page, env_data["vpc_name"])
+
+
 @pytest.fixture(scope="function")
-def acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, request):
+def acl_env_params(request):
+    """ACL 场景默认参数，供更细粒度资源 fixture 复用。"""
+    return _normalize_acl_env_params(getattr(request, "param", {}))
+
+
+@pytest.fixture(scope="function")
+def acl_topology(acl, vpc_page, acl_env_params):
+    """仅创建 ACL 场景所需的 VPC/子网/ACL 关联拓扑。"""
+    env_data = _build_acl_env_data(acl, acl_env_params)
+    _create_acl_topology(vpc_page, env_data)
+    try:
+        yield env_data
+    finally:
+        _cleanup_acl_topology(vpc_page, env_data["vpc_name"])
+
+
+@pytest.fixture(scope="function")
+def sg_allow_all_ingress(sg, sg_page):
+    """确保安全组具备 ACL 场景所需的基础入方向放行规则。"""
+    _ensure_sg_ingress_allow_all(sg_page, sg)
+    return sg
+
+
+@pytest.fixture(scope="function")
+def acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_page, request):
     """
     环境预置 (Function 级别): 每个用例单独创建虚机和VPC
     """
-    params = getattr(request, 'param', {})
-    yield from _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params)
+    params = getattr(request, "param", {})
+    yield from _acl_env_resource(acl, sg, vpc_page, sg_page, ecs_page, params)
 
 
 @pytest.fixture(scope="class")
@@ -617,10 +597,12 @@ def acl_in_out_bound_rules(browser_context, config, acl, sg):
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
     sg_page = SgPage(page)
-    ecs_create_page = EcsCreatePage(page)
+    ecs_page = EcsPage(page)
     params = {"vpc_acl": False, "sub2_acl": True, "vms_per_subnet": 2}
-    yield from _do_setup_acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_create_page, params)
-    page.close()
+    try:
+        yield from _acl_env_resource(acl, sg, vpc_page, sg_page, ecs_page, params)
+    finally:
+        page.close()
 
 def _do_clean_acl_inbound_rules(acl_page, acl_name):
     """执行清理ACL入方向规则的核心逻辑"""
@@ -804,55 +786,6 @@ def lb(browser_context, config, slb, request):
             slb_page.assert_popup_success()
         except Exception as exc:
             logger.warning(f"listener cleanup failed: {current_name}, error={exc}")
-        finally:
-            page.close()
-
-
-@pytest.fixture(scope="class")
-def lb_pool_candidate_vms(browser_context, config, vpc, request):
-    """创建资源池可选 ECS 列表，供监听器资源池新增资源用例复用。"""
-    page = _create_logged_in_page(browser_context, config)
-    ecs_create_page = EcsCreatePage(page)
-
-    params = getattr(request, "param", {})
-    count = params.get("count", 2)
-    cluster = params.get("cluster", "Autotest")
-    vm_prefix = params.get("name_prefix", "lb-pool-vm")
-    created_vms = []
-
-    with allure_step_log(f"Setup: 创建 {count} 台资源池候选虚机"):
-        for _ in range(count):
-            vm_name = f"{vm_prefix}-{random_data(length=4)}"
-            ecs_create_page.goto_service("弹性云服务器")
-            ecs_create_page.ecs_create(
-                basic={"name": vm_name, "集群": cluster},
-                storage={},
-                network={"networks": [{"network": vpc["name"], "subnet": vpc["subnet_name"]}]},
-                manage={},
-                advanced={}
-            )
-            ecs_create_page.assert_popup_success("创建实例命令下发成功")
-            ecs_create_page.assert_status(vm_name)
-
-            row_data = ecs_create_page.get_row_data(vm_name)
-            fixed_ip = row_data["IP地址"].split("固定: ")[-1].strip()
-            created_vms.append({
-                "name": vm_name,
-                "ip": fixed_ip,
-            })
-
-    yield created_vms
-
-    vm_names = [vm["name"] for vm in created_vms]
-    with allure_step_log(f"Teardown: 清理资源池候选虚机 {vm_names}"):
-        try:
-            if created_vms:
-                ecs_create_page.goto_service("弹性云服务器")
-                ecs_create_page.ecs_remove(vm_names)
-                ecs_create_page.ecs_delete(vm_names)
-                ecs_create_page.assert_deleted(vm_names)
-        except Exception as exc:
-            logger.warning(f"清理资源池候选虚机失败: {vm_names}, error={exc}")
         finally:
             page.close()
 

@@ -6,6 +6,23 @@ from sugon_web.common.base import BasePage, submenu
 class SgPage(BasePage):
     """安全组页面类"""
 
+    def _get_sg_rule_table(self):
+        """定位安全组详情页中的规则表。"""
+        active_tabs = self.locator(".el-tab-pane:not([aria-hidden='true']) .el-table:visible").all()
+        candidate_tables = active_tabs or self.locator("#cloud-container-content .el-table:visible").all()
+
+        for table in candidate_tables:
+            try:
+                headers = table.locator(".el-table__header-wrapper th").all_text_contents()
+                if any("方向" in header for header in headers) and any("协议" in header for header in headers):
+                    self.logger.info(f"已定位安全组规则表，表头: {headers}")
+                    return table, headers
+            except Exception as exc:
+                self.logger.debug(f"检查安全组规则表候选项失败: {exc}")
+                continue
+
+        raise AssertionError("未找到安全组详情规则表")
+
     @submenu("安全组")
     def sg_create(self, name, desc=None):
         """创建安全组
@@ -93,6 +110,7 @@ class SgPage(BasePage):
             sg_name: 安全组名称
         """
         self.get_by_text(sg_name, exact=True).click()
+        self.page.wait_for_url("**/security-group-detail/**")
         self.logger.info(f"进入安全组{sg_name}详情页")
 
     def select_all_rows(self):
@@ -158,7 +176,7 @@ class SgPage(BasePage):
         else:
             # 进入安全组详情
             self.goto_sg_detail(sg_name)
-            
+
             # 点击创建规则按钮
             self.btn_create.click()
 
@@ -245,8 +263,10 @@ class SgPage(BasePage):
         if not detail_mode:
             self.goto_sg_detail(sg_name)
 
-        # 定位包含特定方向文本的行
-        target_row = self.get_by_role("row").filter(has=self.locator("td").filter(has_text=re.compile(rf"^{direction}$"))).first
+        rules_table, _ = self._get_sg_rule_table()
+        target_row = rules_table.locator(".el-table__body-wrapper tr").filter(
+            has=rules_table.locator("td").filter(has_text=re.compile(rf"^{direction}$"))
+        ).first
 
         if target_row.count() == 0:
             self.logger.warning(f"未找到方向为 {direction} 的规则行")
@@ -263,6 +283,20 @@ class SgPage(BasePage):
         self.dialog_confirm.click()
 
         self.logger.info(f"已删除 {sg_name} 的一条规则: {row_text}")
+
+    def sg_rule_delete_all_by_direction(self, sg_name, direction="入口", detail_mode=False):
+        """删除指定方向的所有安全组规则。"""
+        if not detail_mode:
+            self.goto_sg_detail(sg_name)
+
+        while True:
+            rules = self.sg_get_all_rules()
+            target_rules = [rule for rule in rules if rule["方向"] == direction]
+            if not target_rules:
+                break
+            self.sg_rule_delete(sg_name, direction=direction, detail_mode=True)
+
+        self.logger.info(f"已清空 {sg_name} 的所有[{direction}]规则")
 
     def sg_rule_restore_defaults(self, sg_name):
         """恢复安全组规则到默认状态 (出口 IPv4 所有, 出口 IPv6 所有)"""
@@ -322,9 +356,9 @@ class SgPage(BasePage):
             self.goto_service("安全组")
             self.goto_sg_detail(sg_name)
 
+        rules_table, headers = self._get_sg_rule_table()
         rules = []
-        headers = self.table_headers
-        row_locators = self.table_rows
+        row_locators = rules_table.locator(".el-table__body-wrapper tr").all()
 
         for i in range(len(row_locators)):
             row_locator = row_locators[i]
@@ -354,3 +388,10 @@ class SgPage(BasePage):
         rules.sort(key=lambda x: f"{x.get('方向', '')}-{x.get('以太网类型', '')}-{x.get('IP协议', '')}")
         self.logger.info(f"成功获取到的{sg_name}安全组规则列表: {rules}")
         return rules
+
+    def _resolve_expected_ports(self, params, selected_vms):
+
+        ports = params["ports"]
+        if isinstance(ports, list):
+            return ports[:len(selected_vms)]
+        return [ports] * len(selected_vms)
