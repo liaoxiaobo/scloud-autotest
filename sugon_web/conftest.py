@@ -133,15 +133,18 @@ def page(browser_context, config):
     base_url = config.get("base_url")
     username = config.get("username")
     password = config.get("password")
+    login_url = f"{base_url.rstrip('/')}/#/login"
 
     try:
         logger.info("创建新页面...")
         page = browser_context.new_page()
         logger.info("页面创建成功")
 
-        logger.info(f"导航到目标URL: {base_url}")
-        page.goto(base_url)
+        logger.info(f"导航到登录URL: {login_url}")
+        page.goto(login_url)
         logger.info(f"页面导航完成，当前URL: {page.url}")
+        page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(1000)
 
         # 检查是否已登录，如果未登录则执行登录
         if not _is_logged_in(page):
@@ -247,12 +250,16 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     try:
-        # 检查登录表单是否存在，如果存在说明未登录
+        # 如果当前就在登录页，直接判定为未登录
+        if "#/login" in page.url:
+            return False
+
+        # 先等一等登录表单，如果能看到说明未登录
         login_form = page.get_by_placeholder("请输入登录账号")
-        login_form.wait_for(timeout=2000)
+        login_form.wait_for(state="visible", timeout=5000)
         return False
     except:
-        # 找不到登录表单，说明已登录
+        # 找不到登录表单，或已经离开登录页，说明已登录
         return True
 
 
@@ -284,17 +291,27 @@ def _login(page, config, max_retries=3):
             logger.info(f"{'=' * 40}")
 
         try:
-            # 填写登录信息
-            page.get_by_placeholder("请输入登录账号").fill(username)
-            page.get_by_placeholder("请输入登录密码").fill(password)
-            page.get_by_text("登 录").click()
+            logger.info(f"开始登录: user={username}")
+            username_input = page.get_by_placeholder("请输入登录账号")
+            password_input = page.get_by_placeholder("请输入登录密码")
+            login_button = page.get_by_role("button", name="登 录")
 
-            # 等待页面加载完成
-            page.wait_for_load_state("networkidle")
-            page.wait_for_load_state("domcontentloaded")
+            username_input.wait_for(state="visible", timeout=5000)
+            password_input.wait_for(state="visible", timeout=5000)
+            login_button.wait_for(state="visible", timeout=5000)
 
-            # 检查登录按钮是否消失（说明登录成功）
-            return _is_logged_in(page)
+            username_input.click()
+            username_input.fill(username)
+            username_input.press("Enter")
+            username_input.press("Tab")
+            password_input.fill(password)
+            login_button.click()
+
+            page.wait_for_timeout(2000)
+
+            logged_in = _is_logged_in(page)
+            logger.info(f"登录判定结果: {logged_in}, 当前URL: {page.url}")
+            return logged_in
 
         except Exception as e:
             logger.info(f"第{attempt}次登录未成功: {e}")

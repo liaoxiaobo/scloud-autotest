@@ -8,19 +8,32 @@ from sugon_web.utils import db_util
 class DorisPage(BasePage):
     """Doris实例管理页面对象"""
 
-    def _select_min_node_spec(self, section_name: str):
-        """在指定节点配置区域选择最小规格"""
+    def _select_node_spec(self, section_name: str, specification_name: str = None):
+        """在指定节点配置区域选择规格。未指定时默认选择第一条。"""
         section_index = 0 if section_name == "FE节点配置" else 1
-        self.get_by_text("选择节点规格", exact=True).nth(section_index).click()
+        self.locator(".el-icon-circle-plus-outline").nth(section_index).click()
         dialog = self.get_by_role("dialog").last
-        dialog.get_by_role("radio").first.click()
+        dialog.get_by_role("radio", name="Doris数据型").click()
+        if specification_name:
+            dialog.get_by_role("row", name=re.compile(re.escape(specification_name))).get_by_role("radio").click()
+        else:
+            dialog.get_by_role("row").nth(0).get_by_role("radio").click()
         dialog.get_by_text("确定", exact=True).click()
+
+    def _select_disk_type_in_section(self, section_name: str, disk_type: str):
+        """在指定节点配置区域选择数据盘类型。"""
+        placeholder_index = 3 if section_name == "FE节点配置" else 4
+        self.locator("#cloud-container-content").get_by_placeholder("请选择", exact=True).nth(placeholder_index).click()
+        self.page.wait_for_timeout(1000)
+        self.get_by_text(disk_type).last.click()
 
     @submenu("实例管理")
     def create_instance(self, name: str, version: str = "2.1.9", ha_type: str = "读高可用",
                         password: str = "admin1234@sugon", network: str = "Autotest",
                         subnet: str = "Autotest:10.", os_type: str = "AnolisOS 7.9",
                         case_sensitivity: str = "不区分大小写（将所有表名转换为小写存储）",
+                        fe_specification_name: str = "云数据库标准型 doris.d1.2c4g 2核 4GiB",
+                        be_specification_name: str = "云数据库标准型 doris.d1.2c4g 2核 4GiB",
                         fe_disk_type: str = None, fe_disk_size: int = 50,
                         be_disk_type: str = None, be_disk_size: int = 100):
         """
@@ -33,6 +46,8 @@ class DorisPage(BasePage):
         :param subnet: 子网（支持模糊匹配，如"Autotest:"）
         :param os_type: 操作系统
         :param case_sensitivity: 大小写策略
+        :param fe_specification_name: FE节点规格名称，不传则默认选第一条
+        :param be_specification_name: BE节点规格名称，不传则默认选第一条
         :param fe_disk_type: FE节点磁盘类型
         :param fe_disk_size: FE节点磁盘大小
         :param be_disk_type: BE节点磁盘类型
@@ -57,12 +72,10 @@ class DorisPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 配置设置 ---
-        # 大小写策略 - 在配置区域的第一个"请选择"下拉框
-        # 使用包含"大小写策略"关键字的表单区域定位
-        self.locator("form").filter(has_text="配置 专有网络 大小写策略").get_by_placeholder("请选择", exact=True).first.click()
-        # 点击选项
-        re.compile(rf"^{re.escape(case_sensitivity)}$")
-        self.locator("span").filter(has_text=re.compile(rf"^{re.escape(case_sensitivity)}$")).click()
+        # 大小写策略已改为单选项；新版页面上第 3 项默认就是选中态
+        case_section = self.locator("form").filter(has_text=re.compile(r"大小写策略"))
+        if "将所有表名转换为小写存储" not in case_sensitivity:
+            case_section.get_by_text(case_sensitivity).click()
 
         # 密码
         self.get_by_placeholder("请输入admin管理员用户密码").fill(password)
@@ -72,19 +85,11 @@ class DorisPage(BasePage):
         self.get_by_role("radio", name=ha_type).click()
 
         # FE节点规格选择
-        self._select_min_node_spec("FE节点配置")
+        self._select_node_spec("FE节点配置", fe_specification_name)
 
-        # FE节点数据盘类型 - 在配置区域的第3个"请选择"（索引为2）
-        fe_disk_dropdown = self.locator("form").filter(
-            has_text="配置 专有网络 大小写策略 用户名 密码 确认密码 FE"
-        ).get_by_placeholder("请选择", exact=True).nth(2)
-        fe_disk_dropdown.click()
-        # 等待下拉列表出现
-        self.page.wait_for_timeout(1000)
         # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_fe_disk_type = fe_disk_type if fe_disk_type else self.volume_type
-        # 点击 FE 的磁盘类型选项（第2个，索引为1）
-        self.locator("li").filter(has_text=selected_fe_disk_type).nth(1).click()
+        self._select_disk_type_in_section("FE节点配置", selected_fe_disk_type)
 
         # FE节点数据盘大小
         self.get_by_role("spinbutton").first.click()
@@ -96,21 +101,14 @@ class DorisPage(BasePage):
         
         # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_be_disk_type = be_disk_type if be_disk_type else self.volume_type
-        # BE 数据盘类型 - 在配置区域的第4个"请选择"（索引为3）
-        be_disk_dropdown = self.locator("form").filter(
-            has_text="配置 专有网络 大小写策略 用户名 密码 确认密码 FE"
-        ).get_by_placeholder("请选择", exact=True).nth(3)
-        be_disk_dropdown.click()
-        self.page.wait_for_timeout(1000)
-        # 点击 BE 的磁盘类型选项（第3个，索引为2）
-        self.locator("li").filter(has_text=selected_be_disk_type).nth(2).click()
+        self._select_disk_type_in_section("BE节点配置", selected_be_disk_type)
 
         # BE节点数据盘大小
         self.get_by_role("spinbutton").nth(2).click()
         self.get_by_role("spinbutton").nth(2).fill(str(be_disk_size))
 
         # BE节点规格选择
-        self._select_min_node_spec("BE节点配置")
+        self._select_node_spec("BE节点配置", be_specification_name)
 
         # --- 确认创建 ---
         self.btn_submit.click()
@@ -239,7 +237,10 @@ class DorisPage(BasePage):
             node_name = f"{name}_be_node01"
 
         self.click_action(node_name, "修改规格")
-        self.get_by_role("row", name=specification_name).get_by_role("radio").click()
+        dialog = self.get_by_role("dialog").last
+        dialog.get_by_role("cell", name=specification_name, exact=True) \
+            .locator("xpath=ancestor::tr") \
+            .get_by_role("radio").click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -358,7 +359,9 @@ class DorisPage(BasePage):
         self.page.locator("li").filter(has_text=selected_disk_type).click()
 
         # 选择计算规格
-        self.get_by_role("row", name=specification_name).get_by_role("radio").click()
+        dialog.get_by_role("cell", name=specification_name, exact=True) \
+            .locator("xpath=ancestor::tr") \
+            .get_by_role("radio").click()
 
         # 确认添加
         dialog.get_by_text("确定").click()

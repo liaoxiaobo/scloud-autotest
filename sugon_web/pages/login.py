@@ -12,8 +12,15 @@ class LoginPage(BasePage):
             name: 登录用户名
             pwd: 登录密码
         """
-        self._input_username.fill(name)
-        self._input_password.fill(pwd)
+        username = self._input_username
+        password = self._input_password
+
+        self.page.wait_for_timeout(1000)
+        username.click()
+        username.fill(name)
+        username.press("Enter")
+        username.press("Tab")
+        password.fill(pwd)
         self._btn_login.click()
 
     @property
@@ -29,9 +36,10 @@ class LoginPage(BasePage):
     @property
     def _btn_login(self):
         """登录页面元素:登录按钮"""
-        return self.get_by_text("登 录")
+        return self.get_by_role("button", name="登 录")
 
     def logout(self):
         """执行登出操作"""
+        self.page.wait_for_timeout(500)
         self.get_by_role("definition").filter(has_text="admin").click()
         self.get_by_text("退出系统").click()
