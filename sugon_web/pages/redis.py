@@ -65,9 +65,8 @@ class RedisPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        db_util.disk_type_dropdown(self).click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 数据盘大小
         self.locator("div").filter(has_text=re.compile(r"^数据盘大小\(GiB\)$")).get_by_role("spinbutton").fill(str(disk_size))

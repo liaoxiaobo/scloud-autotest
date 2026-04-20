@@ -76,17 +76,18 @@ class KafkaPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # 存储设置
-        self.locator("div").filter(has_text=re.compile(r"^云硬盘类型")).locator("input").first.click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        select_visible_option(selected_disk_type)
+        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["云硬盘类型"])
         self.locator("div").filter(has_text=re.compile(r"^云硬盘大小\(GiB\)$")).get_by_role("spinbutton").fill(str(disk_size))
 
         # 规格
-        specification_row = self.get_by_role("row", name=re.compile(re.escape(specification_name)))
+        specification_row = self.locator("tr").filter(has_text=re.compile(re.escape(specification_name)))
         if specification_row.count() > 0:
-            specification_row.get_by_role("radio").click()
+            specification_row.first.locator(".el-radio, label[role='radio']").first.click()
         else:
-            self.locator(".el-table__body-wrapper").get_by_role("radio").first.click()
+            self.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr").first.locator(
+                ".el-radio, label[role='radio']"
+            ).first.click()
 
         self.btn_submit.click()
 

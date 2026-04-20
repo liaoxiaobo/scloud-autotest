@@ -49,11 +49,8 @@ class MongoDBPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        # 磁盘类型 (假设只要选一次，如果分片集群每个节点都要选，需要调整)
-        # 根据录制脚本，似乎只有一个数据盘类型选择
-        db_util.disk_type_dropdown(self).click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 磁盘大小 
         # 不同的集群类型和录制场景下定位可能不同
