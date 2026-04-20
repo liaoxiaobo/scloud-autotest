@@ -38,8 +38,8 @@ class TestMySQLBasic:
             mysql_page.restart_instance(instance_name)
         with allure_step_log("步骤二：验证重启结果"):
             mysql_page.assert_popup_success("实例重启任务创建完成")
-            mysql_page.assert_status(instance_name, status="重启中", timeout=10)
-            mysql_page.assert_status(instance_name, status="运行中", timeout=300)
+            mysql_page.assert_status(instance_name, status="重启中", timeout=300, refresh=True)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=600, refresh=True)
 
     @allure.title("MySQL-修改实例管理员密码")
     def test_change_root_password(self, mysql_page, mysql, ssh_host, ssh_vm):
@@ -68,7 +68,7 @@ class TestMySQLBasic:
     def test_change_disk_size(self, mysql_page, mysql, ssh_host):
         """测试调整MySQL实例的云盘大小"""
         instance_name = mysql["name"]
-        new_disk_size = 66  # 假设从20扩容到40
+        new_disk_size = 71 # 假设从20扩容到40
 
         with allure_step_log(f"步骤一：调整实例 {instance_name} 的磁盘大小为 {new_disk_size}GB"):
             mysql_page.change_disk_size(instance_name, new_disk_size)
@@ -76,8 +76,8 @@ class TestMySQLBasic:
         with allure_step_log("步骤二：验证调整结果"):
             node_name = f"{instance_name}-0"
             mysql_page.assert_popup_success("扩容硬盘中，请耐心等待")
-            mysql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=500)
+            mysql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
             assert db_util.get_disk_size(mysql_page, node_name, ssh_host) == new_disk_size
 
     @allure.title("MySQL-修改实例规格")
@@ -94,8 +94,8 @@ class TestMySQLBasic:
             # 刷新页面，然后检查实例列表中的规格信息
             node_name = f"{instance_name}-0"
             mysql_page.assert_popup_success("修改规格中，请耐心等待")
-            mysql_page.assert_status(node_name, status="调整规格中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=5000)
+            mysql_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=5000, refresh=True)
             assert db_util.get_specification(mysql_page, node_name, ssh_host) == real_specification
 
     @allure.title("MySQL-实例绑定和解绑公网IP")

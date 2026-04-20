@@ -54,10 +54,8 @@ class PgSQLPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        db_util.disk_type_dropdown(self).click()
-        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 数据盘大小
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))
