@@ -202,7 +202,7 @@ def volume(evs_page, request):
         evs_page.assert_popup_success()
         evs_page.assert_status(name, status="可用")
         row_data = evs_page.get_row_data(name)
-        volume = {"name": name, "id": row_data["名称/ID"].split(":")[1].strip()}
+        volume = {"name": name}
 
     yield volume
 

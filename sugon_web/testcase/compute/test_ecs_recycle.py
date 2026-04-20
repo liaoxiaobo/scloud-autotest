@@ -94,7 +94,7 @@ class TestECSRecycle:
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 生成批量创建的云硬盘名称列表
-            for i in range(3):
+            for i in range(1, 4):
                 name = f"{base_name}-{i}"
                 ecs_names.append(name)
                 ids.append(ecs_page.get_row_data(name).get("名称/ID").split(':')[1])

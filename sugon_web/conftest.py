@@ -1,11 +1,12 @@
 import datetime
+import re
 
 import allure
 import pytest
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from sugon_web.utils.logger import logger
+from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
@@ -138,6 +139,13 @@ def _create_logged_in_page(browser_context, config):
     page.goto(base_url, wait_until="domcontentloaded")
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
+    try:
+        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=5000)
+    except Exception:
+        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
+    logger.info(f"页面导航完成，当前URL: {page.url}")
+
     if not _is_logged_in(page):
         _login(page, {"username": username, "password": password})
         logger.info("登录成功")
@@ -254,16 +262,8 @@ def ssh_vm(jump_host):
 
 def _is_logged_in(page):
     """检查是否已登录"""
-    try:
-        # 检查登录表单是否存在，如果存在说明未登录
-        page.wait_for_timeout(2000)
-        logger.info(f"检查登录表单是否存在")
-        login_form = page.get_by_placeholder("请输入登录账号")
-        login_form.wait_for(timeout=2000)
-        return False
-    except:
-        # 找不到登录表单，说明已登录
-        return True
+    current_url = page.url or ""
+    return "/#/index" in current_url and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -287,33 +287,36 @@ def _login(page, config, max_retries=3):
     if not username or not password:
         raise ValueError("环境配置中缺少用户名或密码")
 
-    for attempt in range(1, max_retries + 1):
-        if attempt > 1:
-            logger.info(f"\n{'=' * 40}")
-            logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
-            logger.info(f"{'=' * 40}")
+    with allure_step_log("尝试登录"):
+        for attempt in range(1, max_retries + 1):
+            if attempt > 1:
+                logger.info(f"\n{'=' * 40}")
+                logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
+                logger.info(f"{'=' * 40}")
 
-        try:
-            # 填写登录信息
-            page.get_by_placeholder("请输入登录账号").fill(username)
-            page.get_by_placeholder("请输入登录密码").fill(password)
-            page.get_by_text("登 录").click()
+            try:
+                # 填写登录信息
+                page.get_by_placeholder("请输入登录账号").fill(username)
+                page.get_by_placeholder("请输入登录密码").fill(password)
+                page.get_by_text("登 录").click()
 
-            # 等待页面加载完成
-            page.wait_for_load_state("networkidle")
-            page.wait_for_load_state("domcontentloaded")
+                # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
+                page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+                page.wait_for_load_state("domcontentloaded")
+                page.wait_for_load_state("load")
 
-            # 检查登录按钮是否消失（说明登录成功）
-            return _is_logged_in(page)
+                if _is_logged_in(page):
+                    return True
 
-        except Exception as e:
-            logger.info(f"第{attempt}次登录未成功: {e}")
-            if attempt == max_retries:
-                raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
-            continue
+                raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
 
-    return False
+            except Exception as e:
+                logger.info(f"第{attempt}次登录未成功: {e}")
+                if attempt == max_retries:
+                    raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
+                continue
 
+        return False
 
 @pytest.fixture(scope="session", autouse=True)
 def check_compute_nodes(ssh_host, config):

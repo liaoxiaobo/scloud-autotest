@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import re
@@ -12,6 +13,7 @@ from playwright.sync_api import expect
 
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
+from sugon_web.common.mixins import DrawerSelectMixin
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data
 from sugon_web.config.config import Config
@@ -183,7 +185,7 @@ def _normalize_ecs_create_request(
     )
 
 
-class EcsPageBase(OpsPage):
+class EcsPageBase(DrawerSelectMixin, OpsPage):
     @submenu("弹性云服务器")
     def ecs_create(
         self,
@@ -530,7 +532,7 @@ class EcsPageBase(OpsPage):
 
         # 选择存储池
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
-        self.page.wait_for_load_state("networkidle")
+        # self.page.wait_for_load_state("networkidle")
         self.get_by_text(storage_pool_name, exact=True).click()
         logger.info(f"已选择存储池: {storage_pool_name}")
 
@@ -590,34 +592,6 @@ class EcsPageBase(OpsPage):
         except Exception as e:
             logger.error(f"选择镜像失败: {str(e)}")
             raise e
-
-    def _select_from_named_drawer(self, drawer_title: str, item_name: str, reset_first: bool = False):
-        """在指定抽屉中搜索并按名称精确选择资源。"""
-        self.get_by_text(drawer_title).first.click()
-        self.page.wait_for_load_state("domcontentloaded")
-
-        drawer = self.locator(f"div[role='dialog'][aria-label='{drawer_title}']:visible")
-        expect(drawer).to_be_visible()
-
-        if reset_first:
-            reset_btn = drawer.locator(".cloud-table-header-right").get_by_text("重置", exact=True)
-            if reset_btn.count() > 0 and reset_btn.first.is_visible():
-                reset_btn.first.click()
-
-        search_input = drawer.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
-        if search_input.count() > 0:
-            search_input.fill(item_name)
-            drawer.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
-            self.wait_for_page_ready()
-
-        row = drawer.locator(
-            "xpath=.//div[contains(@class,'el-table__body-wrapper')]//tr[.//td[2]//*[normalize-space(text())="
-            f"'{item_name}'] or .//td[2][normalize-space(.)='{item_name}']]"
-        ).first
-        expect(row).to_be_visible(timeout=5000)
-        row.locator("label[role='radio']").click()
-        drawer.get_by_text("确定", exact=True).click()
-        logger.info(f"已在{drawer_title}中选择: {item_name}")
 
     def _select_from_pool_image(self, image_name, os_version):
         """来源选择 镜像"""
@@ -1021,7 +995,7 @@ class EcsPageBase(OpsPage):
         logger.info(f"云服务器{name}：登录VNC")
 
         # 使用 trigger_action 参数，确保 expect_page 在点击前开始监听
-        with self.new_tab_context(trigger_action=lambda: self.click_action(name, "登录")) as new_page:
+        with self.new_tab_context(trigger_action=lambda: self._trigger_instance_login(name, login_type="VNC")) as new_page:
             # 输入VNC密码并登录
             try:
                 new_page.locator("#app iframe").content_frame.get_by_label("Password:").fill(vncpwd)
@@ -1048,21 +1022,47 @@ class EcsPageBase(OpsPage):
                 )
             logger.info(f"云服务器{name}：VNC登录成功")
 
+    def _trigger_instance_login(self, name: str, login_type: str = "VNC"):
+        """触发实例登录并按需选择登录方式。
+
+        当前登录弹窗可能包含 VNC、SSH 等多种方式。统一在这里处理，
+        便于后续扩展其它登录入口，而不影响具体登录流程实现。
+        """
+        self.click_action(name, "登录")
+
+        login_dialog = self.get_by_role("dialog", name="登录")
+        expect(login_dialog).to_be_visible()
+
+        if login_type:
+            self.get_by_role("dialog").locator("div").filter(has_text=login_type).nth(3).click()
+            logger.info(f"云服务器{name}：已选择登录方式 {login_type}")
+
+        self.get_by_text("立即登录").click()
+
+        self.get_by_text("立即登录 取消").get_by_text("取消").click() # 手动关闭登录选择方式弹窗
+
     @submenu("弹性云服务器")
-    def ecs_rebuild(self, name: str, image: str):
-        """新版重建云主机：只在重建抽屉内按镜像名称搜索并选择。"""
+    def ecs_rebuild(self, name: str, image: str, pre_type: str = "精简置备"):
+        """重建云主机并选择镜像。
+            Args:
+                name: 云服务器名称
+                image: 镜像名称
+                pre_type: 置备方式，默认精简置备
+        """
         self.click_action(name, "重建云主机")
         self.page.wait_for_load_state("domcontentloaded")
 
         rebuild_dialog = self.locator("div[role='dialog'][aria-label='重建云主机']:visible")
-        a = rebuild_dialog.count()
-        search_input = rebuild_dialog.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
-        search_input.fill(image)
-        rebuild_dialog.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
-        self.wait_for_page_ready()
-
-        image_row = rebuild_dialog.locator(".el-table__body tr").filter(has_text=re.compile(rf"{re.escape(image)}"))
-        image_row.locator("label[role='radio']").click()
+        expect(rebuild_dialog).to_be_visible()
+        mode_trigger = self._find_element(
+            [
+                self.locator("div").filter(has_text=re.compile(r"^置备方式精简置备厚置备$")).get_by_placeholder("请选择"),
+                self.locator("form div").filter(has_text="置备方式精简置备厚置备 请选择置备方式").get_by_placeholder("请选择")],
+            "重建云主机置备方式选择框",
+            timeout=3000)
+        mode_trigger.click()
+        self.get_by_role("listitem").filter(has_text=pre_type).click()
+        self._select_from_named_drawer(drawer_title="选择镜像", item_name=image, open_drawer=True)
         self.dialog_confirm.click()
         logger.info(f"重建云主机完成: {name}, 镜像: {image}")
 
@@ -2703,7 +2703,7 @@ class EcsPageBase(OpsPage):
         self.assert_popup_success("执行成功")
         self.mfip_search(ip)
         # return self.get_column_data("Mfip 地址")[0]
-        return self.get_row_data(ip).get("Mfip 地址")
+        return self.get_row_data(ip).get("管理IP地址")
 
     def stout_to_dict(self, strs):
         """将gova show字输出的符串转为字典

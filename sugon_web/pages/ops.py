@@ -15,7 +15,7 @@ class OpsPage(BasePage):
         self.get_by_placeholder("请选择项目").click()
         self.get_by_title(project).click()
         # 选择项目后会触发接口请求重绘网络列表，此处等待接口请求完成
-        self.page.wait_for_load_state("networkidle")
+        # self.page.wait_for_load_state("networkidle")
 
         # 等待接口返回并渲染网络下拉列表
         self.get_by_placeholder("请选择网络").click()

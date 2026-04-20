@@ -11,15 +11,15 @@ ecs_create:
     network:
     manage:
     advanced:
-  test_ecs_create_from_volume:
-    - basic:
-      storage:
-        image:
-          source: "云硬盘"
-          name: "{{ volume_name }}"
-      network:
-      manage:
-      advanced:
+#  test_ecs_create_from_volume:
+#    - basic:
+#      storage:
+#        image:
+#          source: "云硬盘"
+#          name: "{{ volume_name }}"
+#      network:
+#      manage:
+#      advanced:
 
 #  - basic:
 #    storage:

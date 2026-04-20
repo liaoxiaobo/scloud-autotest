@@ -65,7 +65,7 @@ class TestBackupBasic:
             backup_page.goto_submenu('任务')
             keyword = backup_task.get('task_name').split("-")[-1]
             backup_page.backup_search(keyword)
-            backup_page.page.wait_for_load_state("networkidle")
+            # backup_page.page.wait_for_load_state("networkidle")
             backup_page.assert_list_contain(keyword, column_name="任务名", exact_match=False)
 
         with allure_step_log("步骤2: 重置搜索条件"):
