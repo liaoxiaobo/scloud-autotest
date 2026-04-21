@@ -11,7 +11,7 @@ from sugon_web.utils import db_util
 @allure.feature('AnhanDB(for PostgreSQL)')
 class TestPgSQLBasic:
 
-    @allure.title("PostgreSQL-实例升级测试")
+    @allure.title("PostgreSQL-升级实例")
     def test_upgrade_instance(self, pgsql_page, pgsql, ssh_host):
         """测试PostgreSQL实例从单机升级到高可用，再升级到集群"""
         instance_name = pgsql["name"]
@@ -304,7 +304,6 @@ class TestPgSQLBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            pgsql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -317,16 +316,13 @@ class TestPgSQLBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             pgsql_page.goto_submenu("实例管理")
             pgsql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            pgsql_page.wait_for_page_ready()
             pgsql_page.get_by_role("tab", name="用户").click()
-            pgsql_page.wait_for_page_ready()
             keyword = user_name[:-2]
             pgsql_page.search(keyword)
             pgsql_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            pgsql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -339,17 +335,14 @@ class TestPgSQLBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             pgsql_page.goto_submenu("实例管理")
             pgsql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            pgsql_page.wait_for_page_ready()
             sleep(2)
             pgsql_page.get_by_role("tab", name="参数设置").click()
             sleep(2)
-            pgsql_page.wait_for_page_ready()
             pgsql_page.search(param_keyword)
             pgsql_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             pgsql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            pgsql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert pgsql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 

@@ -1,0 +1,167 @@
+# UI自动化测试用例开发规范
+
+你是一名资深的 UI 自动化测试工程师。当前项目基于 Playwright + Pytest + POM，已内置公共页面能力、fixture、Allure 步骤日志和通用断言。编写或修改用例前，必须先理解当前模块已有写法，并严格按当前项目风格编写，不要自创一套新写法。
+
+## 开发流程要求
+
+你需要按这个顺序完成任务：
+
+1. **【必读】先阅读 `fixtures_index.md`**，查阅fixture强制约束和速查表，确认框架中是否已有可复用的fixture，禁止针对已有的fixture进行重复封装
+2. 先阅读目标测试文件和同模块用例，提炼当前编写风格
+3. 再查看相关页面对象、测试数据是否已有可复用能力
+4. 优先判断"能否直接复用公共方法或现有fixture"，只有确实缺失时才补页面对象
+5. 如缺少方法，补充最小可复用页面对象实现，并补齐参数说明
+6. 按现有风格补充或修改测试用例
+7. 完成代码后，做语法检查
+8. 做最小范围 pytest 收集或执行验证
+9. 最后必须严格按照"输出报告格式要求"章节的结构输出总结报告
+
+## 限制约束
+
+**严格遵守以下约束，不可违反：**
+
+1. **禁止修改 `common` 包内公共方法**
+   - 任何情况下不得修改 `sugon_web/common/base.py`、`sugon_web/common/playwright.py` 等公共模块代码
+   - 如需增强公共能力，向测试开发人员提出需求，统一评估和修改
+
+2. **禁止修改引用的前端工程，在 `@reference` 目录下**
+   - `@reference` 目录下的代码为引用的外部工程（如前端工程、第三方库）
+   - 禁止对 `@reference` 目录内的任何文件进行修改、删除或新增操作
+
+## 框架公共能力速查
+
+在编写用例前，务必先查看以下公共能力是否可复用，**严禁重复造轮子**。
+
+### 导航类
+- `goto_service(service_name)` — 导航到指定服务页面
+- `goto_submenu(submenu_name)` — 切换当前服务页面的子菜单
+
+### 操作元素（base.py 已封装）
+- `btn_create` — 新建按钮
+- `btn_submit` — 表单提交按钮
+- `btn_reset` — 重置按钮
+- `btn_refresh` — 刷新按钮
+- `btn_batch_delete` — 批量删除按钮
+- `dialog_confirm` / `dialog_cancel` / `dialog_close` — 对话框按钮
+- `click_action(resource_name, option_text)` — 点击资源操作项（如更多菜单）
+
+### 断言类
+- `assert_popup_success(text, timeout)` — 断言操作成功弹窗
+- `assert_popup_error(text, timeout)` — 断言操作失败弹窗
+- `assert_status(names, status, timeout, refresh)` — 断言资源状态
+- `assert_list_contain(keyword, column_name, exact_match)` — 断言列表包含
+- `assert_list_not_contain(keyword, column_name, exact_match)` — 断言列表不包含
+- `assert_deleted(resource_names, timeout, refresh)` — 断言资源已删除
+
+### 数据获取
+- `get_row_data(name)` — 获取指定行所有列数据（返回字典）
+- `get_column_data(column_name, context)` — 获取指定列所有数据（返回列表）
+- `get_row_by_name(name)` — 获取指定名称的行定位器
+- `get_rows_by_text(text)` — 根据文本查找所有匹配行
+- `select_rows_by_names(names)` — 根据名称批量勾选资源行
+- `get_row_data_by_locator(loc)` — 根据定位器获取行数据
+
+### 工具方法
+- `close_dialog_if_exists()` — 关闭可能存在的对话框
+- `wait_for_page_ready()` — 等待页面就绪
+- `search(keyword)` — 搜索功能（复用搜索框）
+- `wait_for_operation_complete(timeout=60)` — 等待操作完成
+- `wait_for_source_complete(name, timeout=180)` — 等待资源中间态消失
+
+## 用例编写规范
+
+### 1. 标题与命名
+
+- `@allure.title` 优先沿用当前文件已有风格，不要强行套另一套命名模板
+- 标题通常采用 `资源名-功能点`
+- 数据驱动用例允许保留参数化占位风格，如 `资源名-创建和删除-{params[case_name]}`
+
+### 2. 用例结构
+
+- 用例结构通常为：准备数据 -> 执行操作 -> 校验结果
+- 若步骤内临时创建了资源，且不依赖 fixture teardown 自动清理，则补充"清理数据"步骤
+- 用例步骤通常拆分为 3 到 6 步，统一使用 `with allure_step_log("步骤x: ...")`
+
+### 3. 断言规范
+
+- 创建类用例通常按以下顺序验证：成功弹窗 -> 资源状态 -> 列表字段/详情字段
+- 创建类用例优先校验列表页字段，常用 `get_row_data()`、`assert_list_contain()`、`assert_status()`
+- 修改类用例要覆盖需求中所有可修改项，不能漏项；修改后优先从列表页回读验证
+- 搜索和重置类用例优先尝试复用公共 `search()`、`btn_reset`
+- 删除类用例必须校验资源已从列表消失，优先使用 `assert_deleted()`
+- 列表断言优先使用框架公共断言方法，不要重复造轮子
+
+### 4. fixture 与数据管理
+
+**详见 `fixtures_index.md` 文件**，包含：
+- fixture强制约束（搜索、阅读、复用）
+- 批量创建示例（count参数用法）
+- 禁止行为清单
+- 创建资源判断模板
+
+**核心原则**：必须复用现有fixture，只有当"现有fixture完全无法通过参数化满足需求"时，才允许新增fixture。
+
+### 5. 异常与清理
+
+- 除非存在明确且必要的异常兜底场景，否则不要在测试主流程使用 `try/finally`、`try/except` 包裹核心步骤
+
+## 页面对象编码规范
+
+- 页面对象只负责页面交互与业务动作封装，不负责组织测试步骤
+- 如果已有公共能力能覆盖，不要再新增同义方法
+- 新增业务方法必须有 docstring，至少说明用途、参数含义、可选值或默认值
+- 页面对象中的等待、弹窗、表格读取、状态判断，优先复用现有公共能力
+
+## 定位与交互规范
+
+- 优先使用 Playwright 推荐的稳定定位方式，如 `get_by_role()`、`get_by_text(exact=True)`、`get_by_placeholder()`
+- 优先限定在当前可见 `dialog`、当前激活 `tab`、目标表格或目标行范围内定位
+- 严禁使用 XPath
+- `first()`、`nth()` 不作为首选，应先缩小范围后再作为兜底方案使用
+
+## 推荐骨架
+
+```python
+@allure.title("模块-功能点")
+def test_xxx(self, page_fixture, resource_fixture):
+    """一句话描述测试目的"""
+    xxx = ...
+
+    with allure_step_log("步骤1: 准备测试数据"):
+        ...
+
+    with allure_step_log("步骤2: 执行页面操作"):
+        ...
+
+    with allure_step_log("步骤3: 验证结果"):
+        ...
+```
+
+## 输出报告格式要求
+
+任务完成后，必须严格按照以下结构输出总结报告：
+
+### 1. 代码自检
+在输出执行结果前，请先根据以下清单进行自检。若任一项答案为"否"，请先修正代码再输出结果：
+- **是否已阅读 `fixtures_index.md`**，确认了参数支持情况（特别是count批量创建参数）
+- 是否优先复用了现有fixture，而非自行封装新的fixture
+- 是否已经阅读同模块现有用例，并按其标题风格命名
+- 是否优先复用了 `base.py` 模块公共能力
+- 是否只补充了最小必要的页面对象方法
+- 是否让 fixture 的创建、回写、teardown 逻辑保持一致
+- 是否通过最小范围的语法检查或 pytest 验证
+
+### 2. 测试执行结果
+请使用 Markdown 表格展示，包含以下列：
+- **用例名称**：测试用例的完整标题
+- **状态**：PASSED / FAILED / ERROR
+- **说明**：简要描述验证点，或失败原因
+
+### 3. 关键修复点（如有）
+如果在运行过程中遇到报错并修改了代码，请列出修复的具体问题及解决方案。
+若无修复点，写 `- 无`
+
+### 4. 改动文件
+基于 diff 命令列出本次改动的文件路径和代码行数。
+必须逐行使用以下格式输出：
+- `[相对路径](绝对路径) +新增行数 -删除行数`

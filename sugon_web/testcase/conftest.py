@@ -1,38 +1,14 @@
-import time
 import pytest
-from playwright.sync_api import expect
 from sugon_web.pages.login import LoginPage
-from sugon_web.pages.evs import EvsPage
-from sugon_web.pages.ecs import EcsPage
-from sugon_web.pages.network import VpcPage
+from sugon_web.pages.storage import EvsPage
+from sugon_web.pages.compute import EcsCreatePage, EcsPage
 from sugon_web.pages.ops import OpsPage
-from sugon_web.pages.kms import KmsPage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.util import random_data
+from sugon_web.conftest import _create_logged_in_page
 
 
-@pytest.fixture(scope="function", autouse=True)
-def close_dialog_before_test(page):
-    """用例执行前关闭可能存在的对话框，避免页面元素定位被遮挡或干扰"""
-
-    try:
-        # 直接检查并关闭对话框
-        close_buttons = [
-            page.get_by_role("button", name="Close"),
-            page.get_by_text("删除提示").locator("xpath=./i"),
-            page.get_by_text("关闭取消").get_by_text("关闭"),
-            page.locator(".one-diloag-footer .cloud-button-btn.cl-btn-primary").filter(has_text="关闭")
-        ]
-        for close_button in close_buttons:
-            if close_button.is_visible():
-                logger.info("发现未关闭的对话框，正在关闭...")
-                close_button.click()
-    except:
-        pass  # 忽略对话框不存在的情况
-
-    yield
-
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def login_page(page):
     """初始化登录页对象"""
     login_page = LoginPage(page)
@@ -40,7 +16,7 @@ def login_page(page):
     return login_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def evs_page(page):
     """初始化云硬盘页对象"""
     evs_page = EvsPage(page)
@@ -108,14 +84,14 @@ def volume(evs_page, request):
     evs_page.assert_deleted(volume["name"])
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ecs_page(page):
     """初始化弹性云服务器页对象"""
     ecs_page = EcsPage(page)
     ecs_page.goto_service('弹性云服务器')
     return ecs_page
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
@@ -123,7 +99,7 @@ def ops_page(page):
     return ops_page
 
 @pytest.fixture(scope="class")
-def vm(ecs_page, request):
+def vm(browser_context, config, request):
     """初始化弹性云服务器数据
 
     支持参数化配置，可通过pytest.mark.parametrize传入参数：
@@ -140,18 +116,22 @@ def vm(ecs_page, request):
     - 如果创建一台虚机：返回字典类型的虚机信息
     - 如果创建多台虚机：返回字典列表，每个字典包含一台虚机的信息
     """
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    ecs_page.goto_service('弹性云服务器')
+
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
     root_gb = params.get('root_gb', 25)
     bind_mfip = params.get('bind_mfip', True)
 
-    # ✅ 如果引用了vpc fixture，自动获取网络和子网信息
-    if 'vpc' in request.fixturenames:
+    # ✅ 如果引用了 vpc 或依赖 vpc 的 vip fixture，自动复用同一个网络和子网
+    if 'vpc' in request.fixturenames or 'vip' in request.fixturenames:
         vpc_data = request.getfixturevalue('vpc')
         network = vpc_data['name']  # VPC名称就是网络名称
         subnet = vpc_data['subnet_name']
-        logger.info(f"检测到vpc fixture，使用VPC网络: {network}, 子网: {subnet}")
+        logger.info(f"检测到与VPC相关的fixture，使用VPC网络: {network}, 子网: {subnet}")
     else:
         network = params.get('network', 'Autotest')
         subnet = params.get('subnet', 'Autotest(10')
@@ -176,7 +156,6 @@ def vm(ecs_page, request):
             sys_size=root_gb
         )
         ecs_page.assert_popup_success("创建实例命令下发成功")
-        ecs_page.wait_for_page_ready()
         # 等待虚机创建完成并收集信息
         metadata_list = []
 
@@ -230,709 +209,18 @@ def vm(ecs_page, request):
     ecs_page.ecs_remove(vm_names)
     ecs_page.ecs_delete(vm_names)
     ecs_page.assert_deleted(vm_names)
+    page.close()
 
-@pytest.fixture()
-def evss_policy(evs_page):
-    """创建并返回一个快照策略，测试结束后自动清理"""
-    policy_name = random_data()
-
-    # 创建快照策略
-    with allure_step_log("创建快照策略"):
-        evs_page.evss_policy_create(
-            name=policy_name,
-            enabled=True,
-            hours=[0, 1, 2],
-            retention_type="按数量",
-            retention_value=1,
-            cycle_days=1
-        )
-
-        # 验证创建成功
-        evs_page.assert_popup_success("添加策略成功")
-
-    # 返回策略名称供测试使用
-    yield policy_name
-
-    # 测试结束后清理
-    with allure_step_log("清理测试数据"):
-        evs_page.evss_policy_delete(policy_name)    # TODO: 删除失败，云盘未解绑
-        evs_page.assert_deleted(policy_name)
-
-
-@pytest.fixture()
-def evss(evs_page, volume):
-    """创建并返回一个快照，测试结束后自动清理"""
-    snapshot_name = random_data()
-    with allure_step_log("创建快照"):
-        # 创建快照
-        evs_page.evss_create(volume["name"], snapshot_name, "测试快照")
-        evs_page.assert_popup_success("创建快照成功")
-        evs_page.goto_submenu("快照")
-        evs_page.assert_status(snapshot_name, status="可用")
-
-    # 返回快照名称供测试使用
-    yield {"name": snapshot_name, "volume_name": volume["name"]}
-
-    # 测试结束后清理
-    with allure_step_log("清理测试数据"):
-        evs_page.goto_submenu("快照")
-        evs_page.evss_delete(snapshot_name)
-        evs_page.assert_deleted(snapshot_name)
-
-
-@pytest.fixture
-def kms_page(page):
-    """创建密钥管理页面对象并导航到密钥管理页面"""
-    kms = KmsPage(page)
-    kms.goto_service("可信密码模块")
-
-    # 检查是否已授权
-    try:
-        text_locator = kms.get_by_text("您已成功授权")
-        expect(text_locator).to_be_visible()
-        # kms.page.wait_for_selector('text="您已成功授权"', state='visible', timeout=5000)
-    except:
-        pytest.skip("当前环境可信密码模块未授权，跳过测试")
-
-    return kms
-
-
-@pytest.fixture
-def kms_key(kms_page, request):
-    """创建密钥管理页面对象并创建一个测试密钥
-
-    Args:
-        kms_page: 密钥管理页面对象
-        request: pytest的request对象，用于获取参数
-
-    Returns:
-        str: 创建的密钥名称
-    """
-    # 获取加密引擎参数，默认为"HCT"
-    engine = getattr(request, 'param', 'HCT')
-
-    # 生成随机密钥名称
-    key_name = random_data()
-
-    # 创建密钥
-    kms_page.kms_create(
-        name=key_name,
-        engine=engine,
-        key_type="SM4 (用途：加解密，包括系统盘、数据盘、网卡等)",
-        desc="测试密钥"
-    )
-
-    # 验证创建成功
-    kms_page.assert_popup_success("执行成功")
-
-    # 获取密钥数据行的字典对象
-    key_data = kms_page.get_row_data(key_name)
-
-    yield key_data
-
-    # 清理测试数据
-    kms_page.goto_service("可信密码模块")
-    kms_page.kms_delete(key_name)
-    kms_page.assert_deleted(key_name)
-
-
-@pytest.fixture()
-def ecss(ecs_page, vm):
-    """创建并返回一个ECS快照名称，测试结束后自动清理
-
-    Args:
-        ecs_page: ECS页面对象
-        vm: 虚拟机fixture
-
-    Returns:
-        str: 快照名称
-    """
-    vm_name = vm.get("name")
-    snapshot_name = f"{vm_name}{time.strftime('%H%M%S')}"
-    with allure_step_log("setup: 创建系统盘快照"):
-        # 创建系统盘快照
-        ecs_page.ecss_create(
-            name=vm_name,
-            snapshot_name=snapshot_name,
-        )
-        ecs_page.assert_popup_success("创建实例快照成功")
-        # ecs_page.wait_for_source_complete(vm_name)
-        ecs_page.assert_status(vm_name)
-
-        # 切换到快照页面并验证
-        ecs_page.goto_submenu("快照")
-        ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
-
-    # 返回快照名称
-    yield {"name": snapshot_name, "vm_name": vm_name}
-
-    with allure_step_log("清理测试数据"):
-        # 测试结束后清理快照
-        ecs_page.ecss_delete(snapshot_name)
-        ecs_page.assert_deleted(snapshot_name, refresh=True)
-
-@pytest.fixture()
-def ecss_policy(ecs_page):
-    """创建并返回一个云服务器快照策略，测试结束后自动清理"""
-    policy_name = random_data()
-
-    # 创建快照策略
-    with allure_step_log("setup: 创建快照策略"):
-        ecs_page.ecss_policy_create(
-            name=policy_name,
-            hours=[0, 1, 2],
-            enabled=True,
-            cycle_days=1,
-            retention_type="按数量",
-            retention_value=1
-        )
-
-    # 验证创建成功
-    ecs_page.assert_popup_success("执行成功")
-
-    # 返回策略名称供测试使用
-    yield {"name": policy_name}
-
-    # 测试结束后清理
-    with allure_step_log("清理测试数据"):
-        ecs_page.ecss_policy_delete(policy_name)
-        ecs_page.assert_deleted(policy_name)
-        ecs_page.assert_popup_success("删除策略成功")
-
-@pytest.fixture()
-def image(ssh_host, ecs_page, request):
-    """
-    动态创建镜像的fixture，支持从测试用例层传递参数
-
-    测试用例可以通过以下方式使用：
-    1. 直接使用：默认参数创建镜像
-    2. 传递参数：使用pytest.mark.parametrize或indirect参数
-
-    Args:
-        ssh_host: SSH连接fixture
-        ecs_page: ECS页面fixture
-        request: pytest的request对象，用于获取测试用例传递的参数
-
-    Returns:
-        str: 创建的镜像名称
-
-    Yields:
-        str: 镜像名称，测试用例执行后自动清理
-    """
-    params = getattr(request, 'param', {})
-    name = params.get('name', random_data())
-    backend = params.get('backend', ecs_page.storage_pool)
-    if backend.startswith("local"):
-        backend = "local-test"
-    image_name = params.get('image', "AnolisOS-8.9-x86_64-minimal.iso")
-    ssh_host.glance_image_create(name, image=image_name, backend=backend)
-    yield {"name": name}
-    ssh_host.glance_image_delete(name)
-
-
-@pytest.fixture
-def pool(ops_page, vm, request):
-    """
-    动态创建存储池的fixture，支持从测试用例层传递参数
-    测试用例可以通过以下方式使用：
-    1. 直接使用：默认参数创建存储池
-    2. 传递参数：使用pytest.mark.parametrize或indirect参数
-    Args:
-        ops_page: Ops页面对象
-        request: pytest的request对象，用于获取测试用例传递的参数
-    Returns:
-        dict: 包含存储池名称的字典
-    Yields:
-        dict: 包含存储池名称的字典，测试用例执行后自动清理
-    """
-    params = getattr(request, 'param', {})
-
-    # 从参数中获取节点名称
-    node = params.get('node', vm.get("host"))
-
-    # 生成随机名称
-    pool_name = f"disk_{random_data()}"
-    with allure_step_log("创建指定数量的虚机"):
-        ops_page.goto_service("计算设施")
-        # 启用磁盘并获取磁盘大小
-        _disk_name, _disk_size = ops_page.enable_disk("所在物理机", node)
-        # ops_page.assert_status(_disk_name, status="启用")
-
-        # 创建存储池
-        # device_type = f"DISK-SATA-{_disk_size}"
-        storage_type = params.get('storage_type', "本地磁盘")
-        ops_page.create_storage_pool(pool_name, device_type=_disk_size, storage_type=storage_type)
-
-        # 验证存储池创建成功
-        # ops_page.assert_popup_success("执行成功")
-        ops_page.sync_storage_pool_config()
-        ops_page.sync_pool_size(pool_name)
-
-        pool_data = {"pool_name": pool_name, "disk_size": _disk_size, "disk_name": _disk_name}
-        pool_data.update(vm)
-        logger.info(f"pool_data: {pool_data}")
-
-    yield pool_data
-
-    try:
-        # 检查存储池是否存在，如果存在则尝试删除
-        ops_page.goto_service("存储设施")
-        ops_page.search(pool_name)
-
-        # 如果找到存储池，则删除
-        ops_page.delete_storage_pool(pool_name)
-    except Exception as e:
-        logger.warning(f"清理存储池 {pool_name}时出错: {e}")
-
-        # 禁用磁盘
-    try:
-        ops_page.search_disk("所在物理机", node)
-        ops_page.disable_disk(_disk_name)
-
-    except Exception as e:
-        logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
-
-@pytest.fixture(scope="class")
-def labels(ecs_page, request):
-    params = getattr(request, 'param', {})
-    count = params.get('count', 1)  # 默认创建1个标签
-
-    # 生成标签名称
-    label_names = []
-    prefix = params.get('prefix', 'label')  # 默认前缀为'label'
-    with allure_step_log("创建指定数量的标签"):
-        for i in range(count):
-            # 使用随机数据生成唯一标签名称
-            name = f"{prefix}-{random_data()}"
-            label_name = ecs_page.create_label(name)
-            ecs_page.assert_popup_success("新建标签成功")
-            label_names.append(label_name)
-            logger.info(f"已创建标签: {label_name}")
-
-    yield label_names
-
-    # 测试结束后清理标签
-    with allure_step_log("清理测试标签"):
-        logger.info(f"开始清理标签: {label_names}")
-        try:
-            ecs_page.goto_service("弹性云服务器")
-            ecs_page.goto_submenu("标签")
-            ecs_page.batch_delete_label(label_names)
-            logger.info(f"标签清理完成: {label_names}")
-        except Exception as e:
-            logger.warning(f"清理标签时出错: {e}")
-
-
-@pytest.fixture()
-def affinity(ecs_page, request):
-    params = getattr(request, 'param', {})
-    count = params.get('count', 1)  # 默认创建1个标签
-
-    # 生成标签名称
-    label_names = []
-    prefix = params.get('prefix', 'label')  # 默认前缀为'label'
-
-    for i in range(count):
-        # 使用随机数据生成唯一标签名称
-        name = f"{prefix}_{random_data()}"
-        label_name = ecs_page.create_label(name)
-        ecs_page.assert_popup_success("新建标签成功")
-        label_names.append(label_name)
-        logger.info(f"已创建标签: {label_name}")
-
-    yield label_names
-
-
-@pytest.fixture(scope="class")
-def vpc_page(page):
-    """初始化虚拟私有云页面对象"""
-    vpc_page = VpcPage(page)
-    vpc_page.goto_service('虚拟私有云')
-    return vpc_page
-
-
-@pytest.fixture(scope="class")
-def vpc(vpc_page, request):
-    """
-    创建并返回一个VPC资源数据，测试结束后自动清理
-
-    支持参数化配置，可通过pytest.mark.parametrize传入参数：
-    - name: VPC名称，如果未指定则随机生成
-    - subnet_name: 子网名称
-    - cidr: 子网CIDR
-    - desc: VPC描述
-    - subnet_desc: 子网描述
-    - network_type: 网络类型（Geneve/Vlan/Flat）
-    - gateway_mode: 网关模式（分布式网关/集中式网关）
-    - vlan_id: VLAN ID
-    - gateway_ip: 网关IP
-
-    Args:
-        vpc_page: VPC页面对象
-        request: pytest的request对象，用于获取测试用例传递的参数
-
-    Returns:
-        dict: 包含VPC信息的字典，例如：
-            {
-                "name": "autotest-abc123",
-                "subnet_name": "subnet-xyz789",
-                "cidr": "10.0.0.0/24",
-                "network_type": "Geneve"
-            }
-
-    Yields:
-        dict: VPC信息字典，测试用例执行后自动清理
-    """
-
-
-    # 获取参数，如果没有提供则使用默认值
-    params = getattr(request, 'param', {})
-
-    name = params.get('name', random_data(length=3))
-
-    # 构建创建参数
-    create_kwargs = {
-        "name": name,
-        "subnet_name": params.get('subnet_name', random_data()),
-        "cidr": params.get('cidr', random_data("cidr")),
-        "network_type": params.get('network_type', 'Geneve'),
-        "gateway_mode": params.get('gateway_mode', "分布式网关"),
-        "vlan_id": params.get('vlan_id'),
-        "gateway_ip": params.get('gateway_ip'),
-        "mac": params.get('mac'),
-        "enable_ipv6": params.get('enable_ipv6', False)
-    }
-
-    # 创建VPC
-    vpc_page.goto_service('虚拟私有云')
-    vpc_page.vpc_create(**create_kwargs)
-    vpc_page.assert_popup_success("创建虚拟私有云成功")
-    vpc_page.assert_status(name)
-
-    # 构建返回的VPC信息
-    vpc_data = create_kwargs
-
-    yield vpc_data
-
-    # 清理VPC
-    # ✅ 在删除前确保在虚拟私有云页面
-    vpc_page.goto_service('虚拟私有云')
-    vpc_page.vpc_delete(name)
-    vpc_page.assert_deleted(name)
-    expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
-
-
-from sugon_web.pages.ecs_create import EcsCreatePage
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def ecs_create_page(page):
     """初始化云硬盘页对象"""
     ecs_create_page = EcsCreatePage(page)
     ecs_create_page.goto_service('弹性云服务器')
     return ecs_create_page
 
-from sugon_web.pages.backup import BackUpPage
-@pytest.fixture(scope="class")
-def backup_page(page):
-    """初始化备份任务页对象"""
-
-    backup_page = BackUpPage(page)
-    backup_page.goto_service('备份')
-    return backup_page
-
-@pytest.fixture(scope="class")
-def vm_backup(ecs_create_page, ecs_page, ssh_vm, request):
-    """
-    创建并返回虚拟机备份数据，支持批量创建，测试结束后自动清理
-
-    Args:
-        request.param: 可选参数
-            - count: 创建虚机数量，默认为1
-    """
-    params = getattr(request, 'param', {})
-    vm_count = params.get('count', 1)
-
-    with allure_step_log("检查环境备份节点"):
-        # 检查备份节点是否启用
-        ecs_page.goto_service("备份设施")
-        ecs_page.goto_submenu("备份节点")
-
-        state = ecs_page.get_column_data("服务状态")
-        ips = ecs_page.get_column_data("IP地址")
-        nodes_dic = {
-            ip: st for ip, st in zip(ips, state)
-            if ip and st  # 过滤空值
-        }
-        enabled_nodes = [ip for ip, status in nodes_dic.items() if status == "已启用"]
-        if not enabled_nodes:
-            pytest.skip("无已启用的备份节点")
-
-    with allure_step_log("预置公网IP"):
-        ecs_page.assign_ip(count=str(vm_count))  # 与虚机数量一致
-
-    with allure_step_log("预置虚机及数据"):
-        # 获取参数
-        # params = getattr(request, 'param', {})
-        # vm_count = params.get('count', 1)  # 默认创建1台
-
-        # 批量创建虚机
-        ecs_page.goto_service("弹性云服务器")
-        basic, network, manage, advanced = {"数量": vm_count}, {}, {}, {}
-        storage = {'系统盘': 25, '数据盘': [{'vol_type': f'{ecs_page.stor}-type', 'size': '25', 'count': '2'}]}
-        vm_info = ecs_create_page.ecs_create(basic, storage, network, manage, advanced) # vm_info={"name": "autotest-jsh212","count": 2}
-        # ecs_page.assert_popup_success("创建实例命令下发成功")
-        vm_name = vm_info.get("name")
-
-        # 根据创建数量生成实际的虚机名称列表
-        if vm_count == 1:
-            vm_names = [vm_name]
-        else:
-            vm_names = [f"{vm_name}-{j}" for j in range(vm_count)]
-        # 检查虚机状态
-        ecs_page.assert_status(vm_names, f"-{time.strftime('%Y%m%d')}", refresh=True)
-
-        vm_list = []
-        # 获取虚机挂载的云硬盘
-        ecs_page.goto_service("云硬盘")
-        ecs_page.goto_submenu("云硬盘")
-        for vm_name in vm_names:
-            ecs_page.btn_refresh.click()
-            rows = ecs_page.get_rows_by_text(f"{vm_name}-")
-
-            vols = {}
-            for row in rows.all():
-                row_data = ecs_page.get_row_data_by_locator(row)
-                v_name = row_data.get("名称")
-                ecs_page.assert_status(v_name, "正在使用", refresh=True)
-                vol_name = row_data.get("挂载信息").split("上的")[-1]
-                vol_size = row_data.get("容量")
-                if vol_name not in vols.keys() and vol_name != "--":
-                    vols.update({vol_name: vol_size})
-            vm_list.append({"name": vm_name, "vols": vols})
-
-        for vm_name in vm_list:
-            # 绑定公网IP, 预置数据
-            ecs_page.goto_service("弹性云服务器")
-            ecs_page.ecs_bind_pub_ip(vm_name.get("name"))
-            ecs_page.assert_popup_success(f"执行成功")
-            ecs_page.set_table_header("架构")
-            row_data = ecs_page.get_row_data(vm_name.get("name"))
-            arch = row_data.get("架构x86_64aarch64   筛选   重置 ")
-            ip = row_data.get("IP地址").split('固定:')[1].strip()
-            mfip = ecs_page.bind_mfip(ip.strip())
-            ssh_vm.connect(mfip)
-            md5_dict = ecs_create_page.vm_pre_data(ssh_vm, vm_name.get("vols"))
-
-            # 将 enabled_nodes 等信息添加到每个 vm_info 中
-            vm_name.update({"backup_nodes": enabled_nodes, "md5_dict": md5_dict,  "mfip": mfip, "arch": arch})
-        logger.info(f"vm_list: {vm_list}")
-
-    ecs_create_page.goto_service('备份')
-
-    # 返回列表
-    yield vm_list
-
-    with allure_step_log("清理虚机"):
-        # 批量清理
-        vm_names = [vm_info.get("name") for vm_info in vm_list]
-        ecs_page.goto_service("弹性云服务器")
-        ecs_page.ecs_remove(vm_names)
-        ecs_page.ecs_delete(vm_names, delete_volume=True, release_ip=True)
-        ecs_page.assert_deleted(vm_names)
-
-
-@pytest.fixture(scope="class")
-def backup_task(backup_page, vm_backup, request):
-    """
-    创建并返回备份任务数据，支持批量创建，测试结束后自动清理
-
-    Args:
-        backup_page: 备份任务页面对象
-        vm_backup: 虚机信息（单个字典或列表）
-        request: pytest的request对象，用于获取测试用例传递的参数
-        request.param: 可选参数
-            - task_count: 创建任务数量，默认为1，不能超过虚机数量
-            - policy: 备份策略配置
-    """
-    params = getattr(request, 'param', {})
-    task_count = params.get('task_count', 1)  # 默认创建1个任务
-
-    # 获取策略配置
-    policy_data = load_data('common_backup', "test_backup.yaml")
-    policy = params.get('policy', policy_data[0])
-
-    vm_list = vm_backup
-    vm_count = len(vm_list)
-
-    # 校验：任务数不能大于虚机数量
-    if task_count > vm_count:
-        raise ValueError(f"任务数({task_count})不能大于虚机数量({vm_count})，每个虚机只能创建一个任务")
-
-    task_list = []
-    for i in range(task_count):
-        vm = vm_list[i]
-
-        task_name = f"task{time.strftime('%M%S')}-{vm.get('name')}"
-        backup_page.goto_service('备份')
-        backup_page.create_backup_task(
-            task_name=task_name,
-            server_names=[vm.get("name")],
-            policy=policy
-        )
-        backup_page.assert_popup_success("执行成功")
-        backup_page.assert_status(task_name, "创建完成")
-
-        cur_target = backup_page.backup_get_cur_target(task_name)
-
-        task = {
-            "server_names": vm.get("name"),
-            "task_name": task_name,
-            "cur_target": cur_target,
-            "backup_nodes": vm.get("backup_nodes"),
-            "source_md5": vm.get("md5_dict"),
-            "source_mfip": vm.get("mfip"),
-            "source_arch": vm.get("arch"),
-        }
-        task_list.append(task)
-    logger.info(f"task_list: {task_list}")
-    # 根据数量返回单个对象或列表
-    yield task_list[0] if task_count == 1 else task_list
-
-    # 批量清理
-    task_names = [task_list[i].get("task_name") for i in range(len(task_list))]
-    try:
-        backup_page.backup_batch_operation(task_names, "停止")
-    except Exception:
-        pass
-    try:
-        backup_page.backup_batch_operation(task_names, "删除")
-    except Exception:
-        pass
-    try:
-        backup_page.backup_delete(task_names)
-        backup_page.assert_deleted(task_names)
-    except Exception:
-        pass
-    # 清理备份数据
-    for task in task_list:
-        vm_name = task.get("server_names")
-        try:
-            with allure_step_log(f'清理 {vm_name} 的备份数据'):
-                backup_page.backup_data_delete(vm_name)
-        except Exception as e:
-            logger.warning(f'清理 {vm_name} 备份数据失败, 错误: {e}')
-
-
-@pytest.fixture
-def cleanup_backup_task(backup_page):
-    """自动清理备份任务的 fixture"""
-    task_names = []
-
-    yield task_names  # 执行测试用例
-
-    # 清理所有创建的任务
-    for task_name in task_names:
-        try:
-            with allure_step_log(f"清理测试数据: {task_name}"):
-                backup_page.backup_remove(task_name)
-                backup_page.backup_delete(task_name)
-                backup_page.assert_deleted(task_name)
-        except Exception as e:
-            allure_step_log(f"清理失败: {task_name}, 错误: {e}")
-        if "once" in task_name:
-            vm_name = task_name.split("-")[-1]
-            try:
-                with allure_step_log(f'清理 {vm_name} 的备份数据'):
-                    backup_page.backup_data_delete(vm_name)
-            except Exception as e:
-                logger.warning(f'清理 {vm_name} 备份数据失败, 错误: {e}')
-
-@pytest.fixture(scope="function")
-def cleanup_resume_data(ecs_page, backup_page):
-    """
-    自动清理恢复任务相关数据的 fixture
-
-    清理内容：
-    1. 恢复任务
-    2. 恢复产生的新虚拟机（仅"新建资源"类型）
-
-    使用方式：
-        resume_tasks, new_vm_names = cleanup_resume_data
-        # 覆盖原始资源
-        resume_tasks.append(re_task_name)
-        # 新建资源
-        resume_tasks.append(re_task_name)
-        new_vm_names.append(new_vm_name)
-    """
-    resume_tasks = []  # 恢复任务名称列表
-    new_vm_names = []  # 恢复产生的新虚拟机名称列表
-
-    yield resume_tasks, new_vm_names
-
-    if resume_tasks:
-        try:
-            with allure_step_log(f"清理恢复任务: {resume_tasks}"):
-                backup_page.goto_service('备份')
-                backup_page.delete_resume_task(resume_tasks)
-        except Exception as e:
-            logger.warning(f"清理恢复任务失败: {resume_tasks}, 错误: {e}")
-
-    if new_vm_names:
-        try:
-            with allure_step_log(f"清理恢复产生的新虚拟机: {new_vm_names}"):
-                ecs_page.goto_service('弹性云服务器')
-                ecs_page.ecs_remove(new_vm_names)
-                ecs_page.ecs_delete(new_vm_names, delete_volume=True, release_ip=True)
-                ecs_page.assert_deleted(new_vm_names)
-        except Exception as e:
-            logger.warning(f"清理虚拟机失败: {new_vm_names}, 错误: {e}")
-
-    # 返回备份页面
-    backup_page.goto_service('备份')
-
-
-@pytest.fixture(scope="class")
-def backup_with_full_backup(backup_task, backup_page, ssh_vm, ecs_page):
-    """
-    执行全量备份并返回备份数据的 fixture
-
-    Returns:
-        dict: 包含以下信息
-            - task_name: 备份任务名
-            - server_names: 原始虚机名
-            - source_mfip: 原始虚机管理IP
-            - source_md5: 原始数据MD5
-            - backup_data: 备份数据标识列表
-    """
-    task_name = backup_task.get("task_name")
-    source_vm = backup_task.get("server_names")
-    source_mfip = backup_task.get("source_mfip")
-    original_md5_dict = backup_task.get("source_md5")
-    original_arch = backup_task.get("source_arch")
-
-    backup_data = []
-
-    with allure_step_log("前置步骤: 执行全量备份"):
-        backup_page.goto_service('备份')
-        backup_page.exec_backup(task_name, "执行全量")
-        backup_page.assert_popup_success("备份任务执行成功")
-        backup_page.assert_status(task_name, "已启动", timeout=600)
-        re_data = backup_page.get_backup_data(source_vm)
-        backup_data.extend(re_data)
-
-    yield {
-        "task_name": task_name,
-        "server_names": source_vm,
-        "source_mfip": source_mfip,
-        "source_md5": original_md5_dict,
-        "backup_data": backup_data,
-        "original_arch": original_arch,
-    }
 @pytest.fixture(scope="function")
 def test_context(request):
     """用于在测试用例各步骤间传递数据的上下文"""
     if not hasattr(request.node, "test_context"):
         request.node.test_context = {}
     return request.node.test_context
-
-    expect(vpc_page.alert).not_to_be_visible(timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题
-    expect(vpc_page.alert).to_have_count(0, timeout=10000)     # 解决创建vpc页面，alert弹窗遮挡创建按钮的问题

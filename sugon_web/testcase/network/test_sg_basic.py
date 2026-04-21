@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.feature('网络安全-安全组')
 @allure.story('基本功能验证')
 class TestSGBasic:
-    @allure.title("验证新建安全组功能")
+    @allure.title("安全组-创建和删除")
     def test_sg_create(self, sg_page):
 
         with allure_step_log(f"步骤1: 新建安全组"):
@@ -28,7 +28,7 @@ class TestSGBasic:
             sg_page.sg_delete(sg_name)
             sg_page.assert_deleted(sg_name)
 
-    @allure.title("验证搜索安全组功能")
+    @allure.title("安全组-搜索和重置")
     def test_sg_search(self, sg_page, sg):
         sg_name = sg
         with allure_step_log(f"步骤1: 搜索安全组: {sg_name}"):
@@ -40,10 +40,9 @@ class TestSGBasic:
 
         with allure_step_log(f"步骤2: 重置搜索条件"):
             sg_page.sg_search_reset()
-            # 断言重置后列表有数据（使用默认名称列进行粗略判断，这里不报错即视为成功渲染列表）
-            sg_page.get_column_data("名称")
+            assert sg_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("验证编辑安全组功能")
+    @allure.title("安全组-修改名称和描述")
     def test_sg_edit(self, sg_page, sg):
         sg_name = sg
         new_name = f"{sg_name}-edit"
@@ -65,7 +64,7 @@ class TestSGBasic:
             sg_page.assert_list_contain(sg_name, exact_match=False)
             sg_page.sg_search_reset()
 
-    @allure.title("验证克隆安全组功能")
+    @allure.title("安全组-克隆")
     def test_sg_clone(self, ecs_page, sg_page, ssh_host, ecs_create_page, sg, vpc):
         sg_name = sg
         clone_name = f"{sg_name}-clone"
@@ -128,7 +127,7 @@ class TestSGBasic:
             sg_page.sg_delete(clone_name)
             sg_page.assert_deleted(clone_name)
 
-    @allure.title("验证删除安全组规则功能")
+    @allure.title("安全组规则-删除")
     def _test_sg_rule_delete(self, sg_page, sg):
         sg_name = sg
         with allure_step_log(f"步骤1: 在安全组 {sg_name} 中创建入口规则并删除"):
@@ -147,7 +146,7 @@ class TestSGBasic:
             # 删除创建的入口规则
             sg_page.sg_rule_delete(sg_name, direction="入口")
 
-    @allure.title("验证在列表页快捷创建安全组规则功能")
+    @allure.title("安全组规则-列表页快捷创建")
     def test_sg_rule_create_from_list(self, sg_page, sg):
         sg_name = sg
         protocol_type = "HTTPS"
@@ -177,12 +176,12 @@ class TestSGBasic:
             expect(target_row).to_contain_text("0.0.0.0/0")
             expect(target_row).to_contain_text("IPv4")
 
-    @allure.title("验证安全组规则创建场景")
+    @allure.title("安全组规则-创建场景")
     @pytest.mark.parametrize("scenario", load_data("test_sg_rule_create_scenarios", "test_sg.yaml"))
     def test_sg_rule_create_scenarios(self, sg_page, sg, scenario):
         sg_name = sg
 
-        allure.dynamic.title(f"安全组创建规则:{scenario['desc']}")
+        allure.dynamic.title(f"安全组规则-创建场景（{scenario['desc']}）")
         with allure_step_log(f"步骤1: 为安全组 {sg_name} 创建规则: {scenario['desc']}"):
             sg_page.goto_service("安全组")
             sg_page.sg_rule_create(

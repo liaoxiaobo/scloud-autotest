@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data, skip_stor
 @allure.story('云硬盘-基本功能验证')
 class TestEVSBasic:
 
-    @allure.title("云硬盘-批量创建&批量删除")
+    @allure.title("云硬盘-批量创建和批量删除")
     def test_volume_batch_delete(self, evs_page, ssh_host):
 
         volume_names = []
@@ -42,7 +42,7 @@ class TestEVSBasic:
         evs_page.assert_deleted(volume_names)
         ssh_host.wait_volume_deleted(volume_names)
 
-    @allure.title("云硬盘-列表页搜索&重置")
+    @allure.title("云硬盘-搜索和重置")
     def test_volume_search(self, evs_page, volume):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -53,7 +53,6 @@ class TestEVSBasic:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘-修改")
@@ -117,7 +116,7 @@ class TestEVSBasic:
             evs_page.evs_disable_qos(volume_name=volume["name"])
             evs_page.assert_popup_success("设置单卷QoS成功")
 
-    @allure.title("云硬盘-挂载&卸载")
+    @allure.title("云硬盘-挂载和卸载")
     def test_volume_bind_vm(self, evs_page, vm, volume, ssh_vm):
 
         evs_page.goto_service('云硬盘')  # TODO: 引入vm fixture导致evs_page定位不到云硬盘菜单，加跳转解决
@@ -138,7 +137,7 @@ class TestEVSBasic:
             assert ssh_vm.run(f"lsblk | grep {disk_name}") == ""
 
     @skip_stor("local")
-    @allure.title("云硬盘-转镜像")
+    @allure.title("云硬盘-转换为镜像")
     def test_volume_convert_to_image(self, ecs_page, evs_page, ssh_host):
 
         name = random_data()
@@ -199,7 +198,7 @@ class TestEVSBasic:
             assert snapshot_data["名称"] == evss["name"]
             assert snapshot_data["云硬盘名称"] == volume["name"]
 
-    @allure.title("云硬盘-移入&移出回收站")
+    @allure.title("云硬盘-移入和移出回收站")
     def test_volume_restore(self, evs_page, volume):
 
         with allure_step_log("步骤1: 云硬盘移入回收站"):
@@ -210,7 +209,7 @@ class TestEVSBasic:
             evs_page.goto_submenu("云硬盘")
             evs_page.assert_status(volume["name"], status="可用")
 
-    @allure.title("回收站-列表页搜索&重置")
+    @allure.title("云硬盘-回收站搜索和重置")
     def test_garbage_search(self, evs_page, volume):
 
         with allure_step_log("步骤1: 云硬盘移入回收站"):
@@ -224,7 +223,6 @@ class TestEVSBasic:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
         with allure_step_log("步骤4: 从回收站恢复云硬盘"):

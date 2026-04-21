@@ -91,7 +91,6 @@ class TestNAT:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             # 断言搜索框已清空
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -295,7 +294,6 @@ class TestNAT:
 
         with allure_step_log("步骤3: 重置搜索条件"):
             vpc_page.btn_reset.click()
-            vpc_page.wait_for_page_ready()
             assert vpc_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
         with allure_step_log("步骤4: 验证重置后列表恢复并清理测试数据"):
@@ -545,9 +543,7 @@ class TestNAT:
                 vpc_page.goto_service("NAT网关")
                 # 需要进入详情页删除规则
                 vpc_page.get_by_role("cell", name=nat_name).locator("a").click()
-                vpc_page.wait_for_page_ready()
                 vpc_page.get_by_role("tab", name="DNAT规则").click()
-                vpc_page.wait_for_page_ready()
                 vpc_page.dnat_rule_delete(ext_port)
                 vpc_page.assert_deleted(str(ext_port))
                 
@@ -555,9 +551,7 @@ class TestNAT:
                 vpc_page.goto_service("虚拟私有云")
                 # 路由表规则删除
                 vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-                vpc_page.wait_for_page_ready()
                 vpc_page.get_by_role("tab", name="路由表").click()
-                vpc_page.wait_for_page_ready()
                 vpc_page.route_rule_delete("0.0.0.0/0")
 
     @allure.title("DNAT场景-探测公网IP公网端口验证规则生效（UDP协议）")
@@ -646,15 +640,11 @@ class TestNAT:
             ssh_vm.run(f"pkill -f \"nc -uvl {int_port}\"")
             vpc_page.goto_service("NAT网关")
             vpc_page.get_by_role("cell", name=nat_name).locator("a").click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="DNAT规则").click()
-            vpc_page.wait_for_page_ready()
             vpc_page.dnat_rule_delete(str(udp_ext_port))
             vpc_page.assert_deleted(str(udp_ext_port))
 
             vpc_page.goto_service("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.wait_for_page_ready()
             vpc_page.get_by_role("tab", name="路由表").click()
-            vpc_page.wait_for_page_ready()
             vpc_page.route_rule_delete("0.0.0.0/0")

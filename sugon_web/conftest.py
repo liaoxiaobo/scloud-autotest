@@ -124,38 +124,44 @@ def browser_context(browser):
     logger.info("浏览器上下文已关闭")
 
 
-@pytest.fixture(scope="class")
-def page(browser_context, config):
-    """
-    每个测试用例获得独立的页面实例，保证测试隔离性
-    受限于用例设计及被依赖fixture，此fixture暂时只能在class级别使用
-    """
+def _create_logged_in_page(browser_context, config):
+    """基于给定的 context 创建并返回一个已登录页面。"""
     base_url = config.get("base_url")
     username = config.get("username")
     password = config.get("password")
     login_url = f"{base_url.rstrip('/')}/#/login"
 
+    logger.info("创建新页面...")
+    page = browser_context.new_page()
+    logger.info("页面创建成功")
+
+    logger.info(f"导航到目标URL: {base_url}")
+    page.goto(base_url)
+    logger.info(f"页面导航完成，当前URL: {page.url}")
+
+    if not _is_logged_in(page):
+        _login(page, {"username": username, "password": password})
+        logger.info("登录成功")
+
+        base_page_obj = BasePage(page)
+        base_page_obj.close_dialog_if_exists()
+
+    return page
+
+
+@pytest.fixture(scope="function")
+def page(browser_context, config):
+    """
+    每个测试用例获得独立的页面实例，减少同类测试之间的页面污染
+    浏览器上下文仍按 class 复用，以保留类内共享登录态
+    """
     try:
-        logger.info("创建新页面...")
-        page = browser_context.new_page()
-        logger.info("页面创建成功")
-
-        logger.info(f"导航到登录URL: {login_url}")
-        page.goto(login_url)
-        logger.info(f"页面导航完成，当前URL: {page.url}")
-        page.wait_for_load_state("domcontentloaded")
-        page.wait_for_timeout(1000)
-
-        # 检查是否已登录，如果未登录则执行登录
-        if not _is_logged_in(page):
-            _login(page, {"username": username, "password": password})
-            logger.info("登录成功")
-
-            # 关闭弹窗
-            base_page_obj = BasePage(page)
-            base_page_obj.close_dialog_if_exists()
+        page = _create_logged_in_page(browser_context, config)
 
         yield page
+
+        page.close()
+        logger.info("页面已关闭")
 
     except Exception as e:
         logger.error(f"页面初始化失败: {e}")

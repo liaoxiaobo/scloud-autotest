@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.story('云硬盘-快照基本功能验证')
 class TestEVSS:
 
-    @allure.title("云硬盘快照-创建&删除")
+    @allure.title("云硬盘快照-创建和删除")
     @pytest.mark.parametrize("params", load_data('test_volume_add_snapshot'))
     def test_volume_add_snapshot(self, evs_page, volume, params):
         snapshot_name = params["snapshot_name_prefix"] + random_data()
@@ -52,7 +52,7 @@ class TestEVSS:
             for name in snapshot_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("云硬盘快照-列表页搜索&重置")
+    @allure.title("云硬盘快照-搜索和重置")
     def test_evss_search(self, evs_page, evss):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -62,7 +62,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘快照-修改")
@@ -106,7 +105,7 @@ class TestEVSS:
             evs_page.assert_deleted(name)
             ssh_host.wait_volume_deleted(name)
 
-    @allure.title("快照策略-创建&删除")
+    @allure.title("快照策略-创建和删除")
     @pytest.mark.parametrize("params", load_data('test_create_policies'))
     def test_evss_policy_create(self, evs_page, params):
         """测试云服务器快照策略创建功能"""
@@ -162,7 +161,7 @@ class TestEVSS:
             for name in policy_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("快照策略-列表页搜索&重置")
+    @allure.title("快照策略-搜索和重置")
     def test_evss_policy_search(self, evs_page, evss_policy):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -172,7 +171,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("快照策略-修改")
@@ -182,7 +180,7 @@ class TestEVSS:
             evs_page.evss_policy_edit(name=evss_policy, hours=[7,8,9])
             evs_page.assert_popup_success("修改策略成功")
 
-    @allure.title("快照策略-云硬盘绑定&解绑快照策略")
+    @allure.title("快照策略-绑定和解绑云硬盘")
     def test_volume_bind_evss_policy(self, evs_page, volume, evss_policy):
 
         with allure_step_log("步骤1: 绑定快照策略"):
@@ -247,7 +245,7 @@ class TestEVSS:
             for name in volume_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("快照任务-禁用&开启自动快照")
+    @allure.title("快照任务-禁用和开启自动快照")
     def test_volume_auto_snapshot(self, evs_page, volume, evss_policy):
 
         with allure_step_log("步骤1: 绑定快照策略"):

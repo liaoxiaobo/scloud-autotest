@@ -26,7 +26,6 @@ class TestMongoDBBasic:
 
         # 增加等待，并刷新页面，确保列表数据最新
         sleep(5)
-        mongodb_page.wait_for_page_ready()
 
         with allure_step_log("步骤三：重命名实例回退"):
             mongodb_page.rename_instance(renamed_name, instance_name)
@@ -260,7 +259,6 @@ class TestMongoDBBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mongodb_page.wait_for_page_ready()
             assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("MongoDB-开启和关闭错误日志")
@@ -288,17 +286,14 @@ class TestMongoDBBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             mongodb_page.goto_submenu("实例管理")
             mongodb_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mongodb_page.wait_for_page_ready()
             sleep(2)
             mongodb_page.get_by_role("tab", name="参数设置").click()
             sleep(2)
-            mongodb_page.wait_for_page_ready()
             mongodb_page.search(param_keyword)
             mongodb_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mongodb_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mongodb_page.wait_for_page_ready()
             assert mongodb_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("MongoDB-节点热迁移")

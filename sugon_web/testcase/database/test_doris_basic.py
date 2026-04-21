@@ -96,7 +96,6 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -349,7 +348,7 @@ class TestDorisBasic:
             assert service_status == "running", f"热迁移后Doris FE服务状态异常: {service_status}"
             ssh_vm.close()
 
-    @allure.title("Doris-创建并删除数据库")
+    @allure.title("Doris-创建和删除数据库")
     def test_create_and_delete_database(self, doris_page, doris, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = doris["name"]
@@ -399,16 +398,13 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="数据库", exact=True).click()
-            doris_page.wait_for_page_ready()
             keyword = db_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_database_exist(keyword)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -421,20 +417,17 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="用户").click()
-            doris_page.wait_for_page_ready()
             keyword = user_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("Doris-创建并删除用户")
+    @allure.title("Doris-创建和删除用户")
     def test_create_and_delete_user(self, doris_page, doris, ssh_host, ssh_vm):
         """测试创建和删除Doris用户，并进行后端验证"""
         instance_name = doris["name"]
@@ -746,17 +739,14 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             sleep(2)
             doris_page.get_by_role("tab", name="参数设置").click()
             sleep(3)
-            doris_page.wait_for_page_ready()
             keyword = param_keyword
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
