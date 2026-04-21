@@ -141,7 +141,7 @@ def _create_logged_in_page(browser_context, config):
 
     try:
         # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=5000)
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
     except Exception:
         logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
     logger.info(f"页面导航完成，当前URL: {page.url}")
@@ -239,6 +239,12 @@ def ssh_host(config):
     ssh.close()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def load_deploy_mode(ssh_host, config):
+    """会话初始化时读取部署模式并写入 Config。"""
+    Config.load_deploy_mode(ssh_host)
+
+
 @pytest.fixture(scope="session")
 def jump_host(config):
     """创建并配置跳板机连接"""
@@ -263,7 +269,7 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return "/#/index" in current_url and "login" not in current_url
+    return ("/#/index" in current_url or "/#" in current_url) and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -341,8 +347,6 @@ def check_compute_nodes(ssh_host, config):
 
         # 将节点信息更新到 config 中
         Config._config['_node_count'] = _node_count
-
-        logger.info(f"节点列表已更新到config: {Config._config['_node_count']}")
 
         # 返回节点信息
         return {

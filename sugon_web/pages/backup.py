@@ -16,8 +16,6 @@ class BackUpPage(BasePage):
             task_name: str,
             server_names: list,
             policy: dict = None,
-            cloud_type: str = "曙光云",
-            cloud_list: str = "曙光云",
             **kwargs
     ):
         """创建备份任务
@@ -25,18 +23,12 @@ class BackUpPage(BasePage):
             task_name: 任务名称
             server_names: 云服务器名称列表
             policy: 备份策略配置字典
-            cloud_type: 云环境类型，如"VMware vSphere"、"曙光云"
-            cloud_list: 云环境列表，如"曙光云"
             **kwargs: 其他参数
         """
+        policy = policy or {}
 
         # 点击新建备份任务按钮
         self.get_by_text("新建备份任务").click()
-
-        # 选择云环境类型
-        self._select_cloud_type(cloud_type)
-        # 选择云环境列表
-        self._select_cloud_list(cloud_list)
 
         # 搜索选择添加服务器
         self._add_servers(server_names)
@@ -62,43 +54,6 @@ class BackUpPage(BasePage):
 
         # 设置任务名称，点击立即创建
         self._set_task_name_create(task_name)
-
-    def _select_cloud_type(self, cloud_type: str):
-        """选择云环境类型
-
-        Args:
-            cloud_type: 云环境类型，如"VMware vSphere"、"曙光云"
-        """
-
-        locs = [
-            self.get_by_label("云环境类型").get_by_placeholder("请选择"),
-            self.get_by_text("云环境类型").locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "云环境类型").click()
-        # 选择指定的云环境类型
-        self.locator("li").filter(has_text=cloud_type).click()
-        logger.info(f"选择云环境类型: {cloud_type}")
-
-    def _select_cloud_list(self, cloud_list: str):
-        """选择云环境列表
-
-        Args:
-            cloud_list: 云环境列表，如"曙光云"
-        """
-
-        locs = [
-            self.get_by_label("云环境列表").get_by_placeholder("请选择"),
-            self.get_by_text("云环境列表").locator("xpath=./following-sibling::div//input"),
-            self.locator("#cloud-container-content div").filter(has_text=re.compile(r"^云环境$")).get_by_placeholder("请选择"), # 适配恢复任务
-            self.locator("form").get_by_text("云环境", exact=True).locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "云环境").click()
-
-        # 选择指定的云环境列表
-        self.locator("ul").filter(has_text=re.compile(r"^曙光云$")).get_by_role("listitem").click()
-        logger.info(f"选择云环境列表: {cloud_list}")
-        # 点击下一步
-        self._click_next_step()
 
     def _add_servers(self, server_names):
         """添加云服务器
@@ -246,7 +201,6 @@ class BackUpPage(BasePage):
             cycle_key = "周期" if use_dialog else "备份周期"
             time_key = "时间" if use_dialog else "备份时间"
             frequency_key = "频率" if use_dialog else "备份频率"
-            month_key = "周期" if use_dialog else "备份周期"
             cycle_type = cycle.get(cycle_key)
 
             locs = [
@@ -257,12 +211,11 @@ class BackUpPage(BasePage):
             loc.click()
 
             # 根据周期类型选择具体配置
-            if cycle_type == "每周":
+            if cycle_type == "周":
                 # 选择星期 - 根据场景选择定位方式
                 days_of_week = cycle.get(time_key)
 
                 week_interval = cycle.get(frequency_key, "每周")
-                # if week_interval and week_interval != "每周":
                 self._select_frequency(week_interval, container)
 
                 # 第一步：取消所有已选中的星期
@@ -297,33 +250,39 @@ class BackUpPage(BasePage):
 
                 logger.info(f"时间策略配置完成: 周期= {week_interval}, 循环间隔={days_of_week}")
 
-            elif cycle_type == "每月":
-                month_interval = cycle.get(month_key, "每月")
-                month_days = cycle.get(time_key)
-                if month_interval and month_interval != "每月":
-                    self._select_frequency(month_interval)
+            elif cycle_type == "月":
+                month_interval = cycle.get(frequency_key, "每月")
+                month_days = cycle.get(time_key, [])
+                if isinstance(month_days, (str, int)):
+                    month_days = [str(month_days)]
+                else:
+                    month_days = [str(day) for day in month_days]
 
-                while True:
-                    selected_day = container.locator(".custom-calendar-table .include .day.selected").first
-                    if selected_day.count() == 0:
-                        break
-                    selected_day.click()
+                self._select_frequency(month_interval, container)
 
-                # 第二步：只选中传入的日期
+                date_content = container.locator(".date-content:visible").first
+                if date_content.count() == 0:
+                    date_content = container.locator(".date-content").first
+
+                # 第一步：取消所有不在目标日期内的已选中项
+                day_items = date_content.locator(".date-item")
+                for i in range(day_items.count()):
+                    day_item = day_items.nth(i)
+                    day_text = day_item.inner_text().strip()
+                    day_class = day_item.get_attribute("class") or ""
+                    if "selected" in day_class and day_text not in month_days:
+                        day_item.click()
+
+                # 第二步：选中目标日期
                 for month_day in month_days:
-                    # 定位具体的日期元素
-                    day_loc = container.locator(".custom-calendar-table .include .day")
-                    target_span = day_loc.locator(f"span:text-is('{month_day}')")
-                    day_element = target_span.locator("..")  # 获取父元素 .day
-
-                    # 检查是否已选中（通过检查是否有 selected 类）
-                    day_class = day_element.get_attribute("class") or ""
+                    day_item = date_content.locator(".date-item").filter(has_text=re.compile(rf"^\s*{re.escape(month_day)}\s*$")).first
+                    day_class = day_item.get_attribute("class") or ""
                     if "selected" not in day_class:
-                        day_element.click()
+                        day_item.click()
 
                 logger.info(f"时间策略配置完成: 周期= {month_interval}, 循环间隔={month_days}")
 
-            elif cycle_type == "每天":
+            elif cycle_type == "天":
                 logger.info(f"时间策略配置完成: 周期={cycle_type}")
 
             else:
@@ -920,7 +879,7 @@ class BackUpPage(BasePage):
                         days_str = days_str.replace("星期天", "星期日")
                     single_policy_str = f"（{speed_frequency},{days_str} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
                 elif "天" in speed_period:
-                    single_policy_str = f"（ {speed_period} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
+                    single_policy_str = f"（ 每{speed_period} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
                 else:
                     raise Exception(f"未知的备份频率: {speed_period}")
             else:
@@ -1420,6 +1379,7 @@ class BackUpPage(BasePage):
             source_vm: str,
             re_vm: str,
             re_task: str,
+            project: str = "默认项目",
             data: dict = None,
             **kwargs
     ):
@@ -1429,13 +1389,11 @@ class BackUpPage(BasePage):
             source_vm: 备份数据来源的虚机
             re_vm: 恢复虚机
             re_task: 恢复任务名称
+            project: 恢复至项目，默认"默认项目"
             data: 恢复任务数据字典，包含中文键：
-                - 云环境类型: 云环境类型，默认"曙光云"
-                - 云环境列表: 云环境列表，默认"曙光云"
-                - 恢复至项目: 恢复至项目，默认"默认项目"
                 - 备份数据: 备份数据标识（可选），用于选择具体的备份点
                 - 恢复配置: 恢复配置字典，按页面模块划分（中文键）：
-                    - 基本设置: 实例名称、集群
+                    - 基本设置: 实例名称、集群、项目
                     - 网络设置: 网络、子网
                     - 存储配置: 云硬盘模式
                     - 规格配置: 规格
@@ -1447,9 +1405,6 @@ class BackUpPage(BasePage):
         data = data or {}
 
         # 从字典中使用中文键获取值，kwargs可覆盖
-        cloud_type = kwargs.get("cloud_type") or data.get("云环境类型", "曙光云")
-        cloud_list = kwargs.get("cloud_list") or data.get("云环境列表", "曙光云")
-        project = kwargs.get("project") or data.get("恢复至项目", "默认项目")
         backup_data = kwargs.get("backup_data") or data.get("备份数据")
         resume_config = kwargs.get("resume_config") or data.get("恢复配置", {})
         re_method = kwargs.get("re_method") or data.get("恢复方式", {})
@@ -1457,17 +1412,11 @@ class BackUpPage(BasePage):
         # 点击新建恢复任务按钮
         self.get_by_text("新建恢复任务").click()
 
-        # 第一步: 选择云环境和项目
-        self._select_cloud_type(cloud_type)
-        self._select_cloud_list(cloud_list)
-        self._select_project(project)
-        self._click_next_step()
-
-        # 第二步: 搜索并选择要恢复的实例
+        # 第一步: 搜索并选择要恢复的实例
         self._search_and_select_backup_server(source_vm, backup_data)
         self._click_next_step()
 
-        # 第三步:
+        # 第二步:
         # (1) 配置恢复类型
         resume_type = resume_config.get("恢复类型", "新建资源")
         if resume_type != "新建资源":
@@ -1475,6 +1424,7 @@ class BackUpPage(BasePage):
         else:
             # (2) 配置基本设置（实例名称、集群）
             basic_settings = resume_config.get("基本设置", {})
+            basic_settings.setdefault("项目", kwargs.get("project", project))
             self._config_basic_settings(re_vm, basic_settings)
 
             # (3) 配置网络设置（网络、子网）
@@ -1506,20 +1456,6 @@ class BackUpPage(BasePage):
         self._set_resume_task_name(re_task)
         logger.info(f"恢复任务{re_task}已提交")
 
-    def _select_project(self, project: str):
-        """选择恢复至项目
-
-        Args:
-            project: 项目名称
-        """
-        locs = [
-            self.get_by_label("恢复至项目").get_by_placeholder("请选择"),
-            self.get_by_text("恢复至项目").locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "恢复至项目").click()
-        self.locator("li").filter(has_text=project).click()
-        logger.info(f"选择恢复至项目: {project}")
-
     def _select_backup_type(self, backup_type: str):
         """选择备份类型
 
@@ -1538,12 +1474,24 @@ class BackUpPage(BasePage):
             config: 基本设置字典
                 - 实例名称: 恢复后的实例名称
                 - 集群: 集群名称
+                - 项目: 恢复至项目名称
         """
         cluster = config.get("集群", "Autotest")
+        project = config.get("项目", "默认项目")
 
         # 填写实例名称
         self.get_by_placeholder("请输入名称").fill(re_vm)
         logger.info(f"设置实例名称: {re_vm}")
+
+        # 选择恢复至项目
+        self.get_by_placeholder("请选择项目").click()
+        locs = [
+            self.locator("li").filter(has_text=re.compile(rf"^{re.escape(project)}$")).first,
+            self.get_by_role("listitem").filter(has_text=project).first,
+            self.get_by_text(project, exact=True).last
+        ]
+        self._find_element(locs, "恢复至项目").click()
+        logger.info(f"选择恢复至项目: {project}")
 
         # 选择集群
         self.get_by_placeholder("请选择集群").click()

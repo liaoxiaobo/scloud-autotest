@@ -1,6 +1,7 @@
 import random
 import re
 from sugon_web.common.base import BasePage, submenu
+from sugon_web.config.config import Config
 from sugon_web.utils.util import random_data
 from sugon_web.common.playwright import expect
 
@@ -9,6 +10,10 @@ class SlbPage(BasePage):
     """
     负载均衡页面
     """
+
+    def _get_slb_basic_settings_form(self):
+        """获取创建负载均衡页面中的“基础设置”表单区域。"""
+        return self.locator("form").filter(has_text=re.compile(r"基础设置")).first
 
     @submenu("负载均衡（基础版）")
     def slb_create(self, name=None, version="V2", cluster=None, vpc=None,
@@ -39,17 +44,22 @@ class SlbPage(BasePage):
         self.get_by_role("radio", name=version).click()
 
         # HA开关设置（对V1和V2通用）
-        ha_switch = self.get_by_role("switch")
-        if ha_switch.is_visible():
-            is_checked = ha_switch.get_attribute("aria-checked") == "true"
-            if is_checked != ha_enable:
-                ha_switch.locator("span").click()
+        deploy_mode = Config.get("deploy_mode")
+        if deploy_mode == "stack" and ha_enable:
+            ha_switch = self._get_slb_basic_settings_form().get_by_role("switch").first
+            if ha_switch.count() > 0 and ha_switch.is_visible():
+                is_checked = ha_switch.get_attribute("aria-checked") == "true"
+                if is_checked != ha_enable:
+                    ha_switch.locator("span").click()
+        else:
+            self.logger.info(f"当前 deploy_mode={deploy_mode}，创建页不展示 HA 开关")
 
         # 只有在V2时才需要选择集群和规格
         if version == "V2":
             # 集群选择
             if cluster:
-                self.locator("form div").filter(has_text="基础设置 名称 版本类型 V1 V2 HA 集群").get_by_placeholder("请选择").click()
+                cluster_form_item = self._get_slb_basic_settings_form().locator("div.el-form-item").filter(has_text=re.compile(r"集群"))
+                cluster_form_item.get_by_placeholder("请选择").click()
                 self.locator("li").filter(has_text=re.compile(rf"^{re.escape(cluster)}$")).click()
 
         # 网络配置 - VPC

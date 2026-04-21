@@ -34,6 +34,7 @@ class VmFixtureParams(TypedDict, total=False):
     - manage: 对应 ECS 管理信息
     - advanced: 对应 ECS 高级配置
     - bind_mfip: vm fixture 自身开关，控制是否自动绑定 MFIP
+    - inject_sg: 是否自动注入测试中声明的 sg fixture，默认 True
 
     示例:
         @pytest.mark.parametrize(
@@ -48,6 +49,7 @@ class VmFixtureParams(TypedDict, total=False):
     """
 
     bind_mfip: bool
+    inject_sg: bool
     basic: EcsBasicConfig
     storage: EcsStorageConfig
     network: EcsNetworkConfig
@@ -133,6 +135,11 @@ VM_DEPENDENCY_RESOLVERS: dict[str, VmDependencyResolver] = {
     "sg": _build_vm_sg_dependency,
     "labels": _build_vm_labels_dependency,
     "affinity": _build_vm_affinity_dependency,
+}
+
+
+VM_DEPENDENCY_PARAM_SWITCHES: dict[str, str] = {
+    "sg": "inject_sg",
 }
 
 @pytest.fixture(scope="function")
@@ -313,7 +320,10 @@ def _merge_vm_create_sections(
     return merged
 
 
-def _collect_vm_dependency_overrides(request: pytest.FixtureRequest) -> EcsCreateRequest:
+def _collect_vm_dependency_overrides(
+    request: pytest.FixtureRequest,
+    params: VmFixtureParams,
+) -> EcsCreateRequest:
     """收集 vm 依赖 fixture 对 ECS 创建请求的自动注入项。
 
     行为说明：
@@ -327,6 +337,10 @@ def _collect_vm_dependency_overrides(request: pytest.FixtureRequest) -> EcsCreat
     """
     overrides: EcsCreateRequest = {}
     for fixture_name, resolver in VM_DEPENDENCY_RESOLVERS.items():
+        switch_name = VM_DEPENDENCY_PARAM_SWITCHES.get(fixture_name)
+        if switch_name and not params.get(switch_name, True):
+            logger.info(f"vm fixture 已禁用依赖 {fixture_name} 的自动注入")
+            continue
         if fixture_name not in request.fixturenames:
             continue
         fixture_value = request.getfixturevalue(fixture_name)
@@ -354,7 +368,7 @@ def _build_vm_create_request(
     - 若存在 `vpc` / `vip` fixture，则首张网卡的 network/subnet 会被强制覆盖
     - 返回值中的 `count`、`network`、`subnet` 会用于后续状态校验和元数据回填
     """
-    dependency_overrides = _collect_vm_dependency_overrides(request)
+    dependency_overrides = _collect_vm_dependency_overrides(request, params)
     default_network, default_subnet = _resolve_vm_fixture_network(request, params, dependency_overrides)
 
     basic = _merge_vm_section(
@@ -519,6 +533,7 @@ def vm(
 
     以及 vm 自身扩展参数：
     - `bind_mfip`
+    - `inject_sg`
 
     示例：
         @pytest.mark.parametrize(
@@ -528,6 +543,7 @@ def vm(
                 "storage": {"system_disk": 40},
                 "network": {"enable_ipv6": True},
                 "bind_mfip": False,
+                "inject_sg": False,
             }],
             indirect=True,
         )
@@ -556,6 +572,8 @@ def vm(
 
     特殊规则：
     - 若存在 `vpc` / `vip` fixture，首张网卡的 `network/subnet` 强制取自它们
+    - 若设置 `inject_sg=False`，则不会自动把测试中声明的 `sg` fixture 注入到
+      `network.security_groups`
 
     四、返回值
 

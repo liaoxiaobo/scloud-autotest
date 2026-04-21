@@ -327,7 +327,84 @@ def qos(qos_page):
         except Exception as e:
             logger.warning(f"清理网络QoS时出错: {e}")
 
-@pytest.fixture(scope="class")
+
+def _normalize_sg_names(value):
+    """将安全组名称统一转换为列表。"""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+def _normalize_vm_items(value):
+    """将 vm fixture 返回值统一转换为列表。"""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _create_security_groups(sg_page, count):
+    """创建指定数量的安全组并返回名称列表。"""
+    if count <= 0:
+        return []
+
+    names = []
+    with allure_step_log(f"创建 {count} 个安全组"):
+        for _ in range(count):
+            sg_name = random_data()
+            sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
+            expect(sg_page.popup).to_have_count(0)
+            names.append(sg_name)
+    return names
+
+
+def _cleanup_security_groups(sg_page, names):
+    """删除安全组。"""
+    if not names:
+        return
+    with allure_step_log(f"清理安全组 {names}"):
+        sg_page.goto_service("安全组")
+        sg_page.sg_delete(names)
+        sg_page.assert_deleted(names)
+
+
+def _bind_security_groups_to_vms(ecs_page, vm_data, sg_names):
+    """将安全组绑定到虚机。"""
+    vm_items = _normalize_vm_items(vm_data)
+    current_sgs = _normalize_sg_names(sg_names)
+    if not vm_items or not current_sgs:
+        return
+
+    with allure_step_log(f"绑定安全组 {current_sgs} 到虚机 {[item['name'] for item in vm_items]}"):
+        ecs_page.goto_service("弹性云服务器")
+        for item in vm_items:
+            ecs_page.ecs_to_sg_tab(item["name"], sub_tab=None)
+            ecs_page.ecs_set_security_groups(current_sgs, bind=True)
+
+
+def _unbind_security_groups_from_vms(ecs_page, vm_data, sg_names):
+    """从虚机解绑安全组。"""
+    vm_items = _normalize_vm_items(vm_data)
+    current_sgs = _normalize_sg_names(sg_names)
+    if not vm_items or not current_sgs:
+        return
+
+    with allure_step_log(f"从虚机 {[item['name'] for item in vm_items]} 解绑安全组 {current_sgs}"):
+        ecs_page.goto_service("弹性云服务器")
+        for item in vm_items:
+            ecs_page.ecs_to_sg_tab(item["name"], sub_tab=None)
+            bound_sgs = ecs_page.ecs_get_bound_security_groups()
+            target_sgs = [name for name in current_sgs if name in bound_sgs]
+            if target_sgs:
+                ecs_page.ecs_set_security_groups(target_sgs, bind=False)
+
+
+@pytest.fixture(scope="function")
 def sg(browser_context, config, request):
     """
     创建并返回安全组名称，测试结束后自动清理
@@ -348,21 +425,24 @@ def sg(browser_context, config, request):
         page.close()
         return
 
-    names = []
-    with allure_step_log(f"创建 {count} 个安全组"):
-        for _ in range(count):
-            sg_name = random_data()
-            sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
-            expect(sg_page.popup).to_have_count(0)
-            names.append(sg_name)
+    names = _create_security_groups(sg_page, count)
 
     yield names[0] if count == 1 else names
 
-    with allure_step_log(f"清理安全组 {names}"):
-        sg_page.goto_service("安全组")
-        sg_page.sg_delete(names)
-        sg_page.assert_deleted(names)
-    page.close()
+    try:
+        _cleanup_security_groups(sg_page, names)
+    finally:
+        page.close()
+
+
+@pytest.fixture(scope="function")
+def vm_sg_binding(ecs_page, vm, sg):
+    """将 function 级 sg 显式绑定到 class 级 vm，并在测试结束后自动解绑。"""
+    _bind_security_groups_to_vms(ecs_page, vm, sg)
+    try:
+        yield {"vm": vm, "sg": sg}
+    finally:
+        _unbind_security_groups_from_vms(ecs_page, vm, sg)
 
 @pytest.fixture(scope="function")
 def acl_page(page):
@@ -589,7 +669,7 @@ def acl_vpc_vms(acl, sg, vpc_page, sg_page, ecs_page, request):
 
 
 @pytest.fixture(scope="class")
-def acl_in_out_bound_rules(browser_context, config, acl, sg):
+def acl_in_out_bound_rules(browser_context, config, acl):
     """
     专门为具备复杂内外网规则场景定制的 class 级别夹具：
     固化了参数，确保该 fixture 在类中仅运行且缓存一次，不再需要用例进行 parametrize
@@ -599,10 +679,15 @@ def acl_in_out_bound_rules(browser_context, config, acl, sg):
     sg_page = SgPage(page)
     ecs_page = EcsPage(page)
     params = {"vpc_acl": False, "sub2_acl": True, "vms_per_subnet": 2}
+    sg_names = _create_security_groups(sg_page, 1)
+    sg_name = sg_names[0]
     try:
-        yield from _acl_env_resource(acl, sg, vpc_page, sg_page, ecs_page, params)
+        yield from _acl_env_resource(acl, sg_name, vpc_page, sg_page, ecs_page, params)
     finally:
-        page.close()
+        try:
+            _cleanup_security_groups(sg_page, sg_names)
+        finally:
+            page.close()
 
 def _do_clean_acl_inbound_rules(acl_page, acl_name):
     """执行清理ACL入方向规则的核心逻辑"""
