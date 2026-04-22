@@ -173,7 +173,7 @@ class TestSGScenario:
 
     @allure.title("验证入方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_two_vms(self, eip, sg, sg_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -255,7 +255,7 @@ class TestSGScenario:
 
     @allure.title("创建入方向规则-远程安全组类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_inter_binding(self, eip, sg, sg_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -353,7 +353,7 @@ class TestSGScenario:
 
     @allure.title("验证安全组规则添加与删除后的连通性")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_rule_visibility(self, eip, sg, sg_page, ssh_host, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -403,7 +403,7 @@ class TestSGScenario:
 
     @allure.title("验证出方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_egress_rule_logic(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -489,7 +489,7 @@ class TestSGScenario:
 
     @allure.title("验证出方向规则-远程安全组类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_egress_inter_binding(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -597,7 +597,7 @@ class TestSGScenario:
 
     @allure.title("验证出方向规则-默认规则删除")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_default_egress_deletion(self, sg, sg_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
@@ -660,7 +660,7 @@ class TestSGScenario:
 
     @allure.title("验证云服务器详情页自定义安全组规则绑定与生效性")
     @pytest.mark.parametrize("sg", [1], indirect=True)
-    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_sg": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
     def test_sg_vm_binding_connectivity(self, sg, ecs_page, sg_page, ssh_vm, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg

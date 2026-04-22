@@ -1,3 +1,4 @@
+import re
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
@@ -25,7 +26,7 @@ class VmFixtureParams(TypedDict, total=False):
 
     设计目标:
     1. 与 `ecs_create` 使用同一套分组字典结构，避免维护两套创建协议
-    2. 仅保留 `bind_mfip` 作为 vm fixture 自身的扩展参数
+    2. 仅增加少量 vm fixture 自身控制参数，避免把创建协议拆成两套
 
     支持的直接传参:
     - basic: 对应 ECS 基本信息
@@ -34,7 +35,12 @@ class VmFixtureParams(TypedDict, total=False):
     - manage: 对应 ECS 管理信息
     - advanced: 对应 ECS 高级配置
     - bind_mfip: vm fixture 自身开关，控制是否自动绑定 MFIP
-    - inject_sg: 是否自动注入测试中声明的 sg fixture，默认 True
+    - inject_dependencies: 统一控制依赖 fixture 自动注入，默认 True
+    - instances: 多实例创建清单；当需要为每台虚机指定不同参数时使用
+
+    兼容字段:
+    - inject_sg / inject_labels / inject_affinity
+      仅保留向后兼容；当 `inject_dependencies` 未提供时才生效
 
     示例:
         @pytest.mark.parametrize(
@@ -43,13 +49,18 @@ class VmFixtureParams(TypedDict, total=False):
                 "basic": {"count": 2},
                 "network": {"enable_ipv6": True},
                 "bind_mfip": False,
+                "inject_dependencies": ["sg"],
             }],
             indirect=True,
         )
     """
 
     bind_mfip: bool
+    inject_dependencies: bool | str | list[str]
     inject_sg: bool
+    inject_labels: bool
+    inject_affinity: bool
+    instances: list["VmFixtureParams"]
     basic: EcsBasicConfig
     storage: EcsStorageConfig
     network: EcsNetworkConfig
@@ -87,6 +98,15 @@ def _normalize_vm_fixture_list(value: Any) -> list[Any]:
 
 
 def _build_vm_sg_dependency(fixture_value: Any) -> EcsCreateRequest:
+    """将安全组 fixture 返回值转换为 ECS 创建请求片段。
+
+    Args:
+        fixture_value: `sg` fixture 的返回值，可以是单个安全组名称或名称列表。
+
+    Returns:
+        EcsCreateRequest: 可合并到 `network.security_groups` 的请求片段；
+        如果没有可用安全组，则返回空字典。
+    """
     security_groups = _normalize_vm_fixture_list(fixture_value)
     if not security_groups:
         return {}
@@ -94,6 +114,15 @@ def _build_vm_sg_dependency(fixture_value: Any) -> EcsCreateRequest:
 
 
 def _build_vm_labels_dependency(fixture_value: Any) -> EcsCreateRequest:
+    """将标签 fixture 返回值转换为 ECS 创建请求片段。
+
+    Args:
+        fixture_value: `labels` fixture 的返回值，可以是单个标签或标签列表。
+
+    Returns:
+        EcsCreateRequest: 可合并到 `basic.labels` 的请求片段；
+        如果没有可用标签，则返回空字典。
+    """
     labels = _normalize_vm_fixture_list(fixture_value)
     if not labels:
         return {}
@@ -101,6 +130,15 @@ def _build_vm_labels_dependency(fixture_value: Any) -> EcsCreateRequest:
 
 
 def _build_vm_affinity_dependency(fixture_value: Any) -> EcsCreateRequest:
+    """将亲和组 fixture 返回值转换为 ECS 创建请求片段。
+
+    Args:
+        fixture_value: `affinity` fixture 的返回值，可以是单个亲和组或列表。
+
+    Returns:
+        EcsCreateRequest: 可合并到 `advanced.affinity` 的请求片段；
+        如果没有可用亲和组，则返回空字典。
+    """
     affinities = _normalize_vm_fixture_list(fixture_value)
     if not affinities:
         return {}
@@ -138,9 +176,55 @@ VM_DEPENDENCY_RESOLVERS: dict[str, VmDependencyResolver] = {
 }
 
 
-VM_DEPENDENCY_PARAM_SWITCHES: dict[str, str] = {
+LEGACY_VM_DEPENDENCY_PARAM_SWITCHES: dict[str, str] = {
     "sg": "inject_sg",
+    "labels": "inject_labels",
+    "affinity": "inject_affinity",
 }
+
+
+def _normalize_vm_dependency_policy(raw_policy: Any) -> set[str]:
+    """将 vm 的依赖注入策略规范化为启用的依赖名称集合。"""
+    dependency_names = set(VM_DEPENDENCY_RESOLVERS)
+
+    if raw_policy is True or raw_policy == "all":
+        return dependency_names
+    if raw_policy is False or raw_policy == "none":
+        return set()
+    if isinstance(raw_policy, str):
+        if raw_policy in dependency_names:
+            return {raw_policy}
+        raise ValueError(
+            f"Unsupported inject_dependencies value: {raw_policy!r}. "
+            f"Expected one of 'all', 'none', or dependency names {sorted(dependency_names)!r}."
+        )
+    if isinstance(raw_policy, (list, tuple, set)):
+        enabled_dependencies = set(raw_policy)
+        invalid_dependencies = sorted(enabled_dependencies - dependency_names)
+        if invalid_dependencies:
+            raise ValueError(
+                f"Unsupported inject_dependencies entries: {invalid_dependencies!r}. "
+                f"Supported dependencies: {sorted(dependency_names)!r}."
+            )
+        return enabled_dependencies
+    raise TypeError(
+        f"'inject_dependencies' expects bool, 'all'/'none', or a list of dependency names; "
+        f"got {type(raw_policy).__name__!r}."
+    )
+
+
+def _resolve_vm_enabled_dependencies(params: VmFixtureParams) -> set[str]:
+    """解析 vm fixture 当前允许自动注入的依赖集合。"""
+    if "inject_dependencies" in params:
+        enabled_dependencies = _normalize_vm_dependency_policy(params["inject_dependencies"])
+        logger.info(f"vm fixture 使用统一依赖注入策略，启用依赖: {sorted(enabled_dependencies)}")
+        return enabled_dependencies
+
+    enabled_dependencies = set(VM_DEPENDENCY_RESOLVERS)
+    for fixture_name, switch_name in LEGACY_VM_DEPENDENCY_PARAM_SWITCHES.items():
+        if not params.get(switch_name, True):
+            enabled_dependencies.discard(fixture_name)
+    return enabled_dependencies
 
 @pytest.fixture(scope="function")
 def login_page(page):
@@ -249,6 +333,47 @@ def _get_vm_fixture_params(request: pytest.FixtureRequest) -> VmFixtureParams:
     return dict(params)
 
 
+def _resolve_fixture_param_refs(value: Any, request: pytest.FixtureRequest) -> Any:
+    """递归解析参数中的 `@fixture.path` 引用。
+
+    该工具函数允许在参数化数据中通过字符串引用其他 fixture 的返回值，
+    例如 `@vpc.name`、`@vpc.extra_subnets[0].name`。
+
+    Args:
+        value: 待解析的原始值，可以是标量、字典或列表。
+        request: 当前 pytest 请求对象，用于按名称取 fixture 值。
+
+    Returns:
+        Any: 解析后的值。若字符串不符合引用语法，则保持原值返回。
+    """
+    if isinstance(value, dict):
+        return {key: _resolve_fixture_param_refs(item, request) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_fixture_param_refs(item, request) for item in value]
+    if not isinstance(value, str) or not value.startswith("@"):
+        return value
+
+    expression = value[1:]
+    match = re.match(r"^(?P<fixture>[a-zA-Z_]\w*)(?P<path>(?:\.[^. \[\]]+|\[\d+\])*)$", expression)
+    if not match:
+        return value
+
+    resolved = request.getfixturevalue(match.group("fixture"))
+    path = match.group("path")
+    if not path:
+        return resolved
+
+    token_pattern = re.compile(r"\.(?P<key>[^.\[\]]+)|\[(?P<index>\d+)\]")
+    for token in token_pattern.finditer(path):
+        key = token.group("key")
+        index = token.group("index")
+        if key is not None:
+            resolved = resolved[key]
+        else:
+            resolved = resolved[int(index)]
+    return resolved
+
+
 def _resolve_vm_fixture_network(
     request: pytest.FixtureRequest,
     params: VmFixtureParams,
@@ -336,9 +461,9 @@ def _collect_vm_dependency_overrides(
     - `labels` 返回 `["l1", "l2"]` -> 注入到 `basic.labels`
     """
     overrides: EcsCreateRequest = {}
+    enabled_dependencies = _resolve_vm_enabled_dependencies(params)
     for fixture_name, resolver in VM_DEPENDENCY_RESOLVERS.items():
-        switch_name = VM_DEPENDENCY_PARAM_SWITCHES.get(fixture_name)
-        if switch_name and not params.get(switch_name, True):
+        if fixture_name not in enabled_dependencies:
             logger.info(f"vm fixture 已禁用依赖 {fixture_name} 的自动注入")
             continue
         if fixture_name not in request.fixturenames:
@@ -368,8 +493,9 @@ def _build_vm_create_request(
     - 若存在 `vpc` / `vip` fixture，则首张网卡的 network/subnet 会被强制覆盖
     - 返回值中的 `count`、`network`、`subnet` 会用于后续状态校验和元数据回填
     """
-    dependency_overrides = _collect_vm_dependency_overrides(request, params)
-    default_network, default_subnet = _resolve_vm_fixture_network(request, params, dependency_overrides)
+    resolved_params = _resolve_fixture_param_refs(params, request)
+    dependency_overrides = _collect_vm_dependency_overrides(request, resolved_params)
+    default_network, default_subnet = _resolve_vm_fixture_network(request, resolved_params, dependency_overrides)
 
     basic = _merge_vm_section(
         {
@@ -380,7 +506,7 @@ def _build_vm_create_request(
         },
         dependency_overrides.get("basic"),
     )
-    basic = _merge_vm_section(basic, params.get("basic"))
+    basic = _merge_vm_section(basic, resolved_params.get("basic"))
 
     storage = _merge_vm_section(
         {
@@ -390,7 +516,7 @@ def _build_vm_create_request(
         },
         dependency_overrides.get("storage"),
     )
-    storage = _merge_vm_section(storage, params.get("storage"))
+    storage = _merge_vm_section(storage, resolved_params.get("storage"))
 
     network_config = _merge_vm_section(
         {
@@ -399,9 +525,10 @@ def _build_vm_create_request(
         },
         dependency_overrides.get("network"),
     )
-    network_config = _merge_vm_section(network_config, params.get("network"))
+    network_config = _merge_vm_section(network_config, resolved_params.get("network"))
     networks = network_config.get("networks") or [{"network": default_network, "subnet": default_subnet}]
-    if "vpc" in request.fixturenames or "vip" in request.fixturenames:
+    explicit_networks = ((resolved_params.get("network") or {}).get("networks") or [])
+    if ("vpc" in request.fixturenames or "vip" in request.fixturenames) and not explicit_networks:
         networks = [dict(networks[0], network=default_network, subnet=default_subnet), *networks[1:]]
     network_config["networks"] = networks
     manage = _merge_vm_section(
@@ -412,9 +539,9 @@ def _build_vm_create_request(
         },
         dependency_overrides.get("manage"),
     )
-    manage = _merge_vm_section(manage, params.get("manage"))
+    manage = _merge_vm_section(manage, resolved_params.get("manage"))
     advanced = _merge_vm_section({}, dependency_overrides.get("advanced"))
-    advanced = _merge_vm_section(advanced, params.get("advanced"))
+    advanced = _merge_vm_section(advanced, resolved_params.get("advanced"))
 
     create_request = _normalize_ecs_create_request(
         basic=basic,
@@ -427,6 +554,48 @@ def _build_vm_create_request(
     primary_network = network_config["networks"][0]["network"]
     primary_subnet = network_config["networks"][0]["subnet"]
     return create_request, basic["count"], primary_network, primary_subnet
+
+
+def _build_vm_instance_params(shared_params: VmFixtureParams, instance_params: VmFixtureParams) -> VmFixtureParams:
+    """合并共享参数与单实例参数，生成单台虚机的最终创建参数。
+
+    `vm.instances` 用于描述同一场景下多台配置不同的虚机。
+    本函数负责把外层共享配置与当前实例的局部配置合并成标准 `vm` 入参。
+
+    Args:
+        shared_params: 所有实例共享的 `vm` 参数。
+        instance_params: 当前单台实例的覆盖参数。
+
+    Returns:
+        VmFixtureParams: 可直接传入 `_build_vm_create_request` 的单实例参数。
+    """
+    merged: VmFixtureParams = {
+        key: value
+        for key, value in shared_params.items()
+        if key in {
+            "basic",
+            "storage",
+            "network",
+            "manage",
+            "advanced",
+            "bind_mfip",
+            "inject_dependencies",
+            "inject_sg",
+            "inject_labels",
+            "inject_affinity",
+        }
+    }
+    for section_name in ("basic", "storage", "network", "manage", "advanced"):
+        merged_section = dict(merged.get(section_name, {}) or {})
+        instance_section = instance_params.get(section_name) or {}
+        if instance_section:
+            merged_section.update(instance_section)
+        if merged_section:
+            merged[section_name] = merged_section
+    for key in ("bind_mfip", "inject_dependencies", "inject_sg", "inject_labels", "inject_affinity"):
+        if key in instance_params:
+            merged[key] = instance_params[key]
+    return merged
 
 
 def _build_vm_fixture_names(base_name: str, count: int) -> list[str]:
@@ -489,12 +658,13 @@ def _bind_vm_fixture_mfips(
     network: str,
 ) -> None:
     """为虚机绑定 MFIP，并回填到元数据。"""
-    for vm_data in metadata_list:
-        ecs_page.goto_service("网络设施")
-        ecs_page.mfip_create(vm_data["project"], network, vm_data["ip"])
-        ecs_page.assert_popup_success()
-        ecs_page.mfip_search(vm_data["ip"])
-        vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("管理IP地址")
+    with allure_step_log(f"为虚机绑定 MFIP"):
+        for vm_data in metadata_list:
+            ecs_page.goto_service("网络设施")
+            ecs_page.mfip_create(vm_data["project"], network, vm_data["ip"])
+            ecs_page.assert_popup_success()
+            ecs_page.mfip_search(vm_data["ip"])
+            vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("管理IP地址")
     ecs_page.goto_service("弹性云服务器")
 
 
@@ -533,7 +703,13 @@ def vm(
 
     以及 vm 自身扩展参数：
     - `bind_mfip`
+    - `inject_dependencies`
+    - `instances`
+
+    兼容旧参数：
     - `inject_sg`
+    - `inject_labels`
+    - `inject_affinity`
 
     示例：
         @pytest.mark.parametrize(
@@ -543,7 +719,7 @@ def vm(
                 "storage": {"system_disk": 40},
                 "network": {"enable_ipv6": True},
                 "bind_mfip": False,
-                "inject_sg": False,
+                "inject_dependencies": ["labels"],
             }],
             indirect=True,
         )
@@ -572,8 +748,9 @@ def vm(
 
     特殊规则：
     - 若存在 `vpc` / `vip` fixture，首张网卡的 `network/subnet` 强制取自它们
-    - 若设置 `inject_sg=False`，则不会自动把测试中声明的 `sg` fixture 注入到
-      `network.security_groups`
+    - 若设置 `inject_dependencies=False` 或 `"none"`，则关闭全部自动注入
+    - 若设置 `inject_dependencies=["sg", "labels"]`，则仅注入列出的依赖
+    - 旧参数 `inject_sg/inject_labels/inject_affinity` 仍兼容，但仅建议用于存量用例
 
     四、返回值
 
@@ -594,26 +771,55 @@ def vm(
     - 新增返回字段：修改 `VmMetadata` 与元数据收集函数
     """
     params = _get_vm_fixture_params(request)
-    bind_mfip = params.get("bind_mfip", True)
+    instance_params_list = params.get("instances") or []
+    if instance_params_list and not isinstance(instance_params_list, list):
+        raise TypeError("'vm.instances' expects a list of dict items")
 
     page = _create_logged_in_page(browser_context, config)
     ecs_page = EcsPage(page)
-    base_name = random_data()
-    create_request, count, network, subnet = _build_vm_create_request(request, params, base_name)
-    vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+    vm_names: list[str] = []
 
     try:
-        _create_vm_resources(
-            ecs_page=ecs_page,
-            create_request=create_request,
-            vm_names=vm_names,
-        )
-        metadata_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
+        metadata_list: list[VmMetadata] = []
 
-        if bind_mfip:
-            _bind_vm_fixture_mfips(ecs_page, metadata_list, network)
+        if instance_params_list:
+            shared_params = {key: value for key, value in params.items() if key != "instances"}
+            for instance_params in instance_params_list:
+                instance_config = _build_vm_instance_params(shared_params, instance_params)
+                base_name = random_data()
+                create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
+                if count != 1:
+                    raise ValueError("'vm.instances' items do not support basic.count > 1")
 
-        yield metadata_list[0] if count == 1 else metadata_list
+                current_vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+                _create_vm_resources(
+                    ecs_page=ecs_page,
+                    create_request=create_request,
+                    vm_names=current_vm_names,
+                )
+                current_metadata = _collect_vm_fixture_metadata(ecs_page, current_vm_names, network, subnet)
+                if instance_config.get("bind_mfip", True):
+                    _bind_vm_fixture_mfips(ecs_page, current_metadata, network)
+
+                vm_names.extend(current_vm_names)
+                metadata_list.extend(current_metadata)
+        else:
+            bind_mfip = params.get("bind_mfip", True)
+            base_name = random_data()
+            create_request, count, network, subnet = _build_vm_create_request(request, params, base_name)
+            vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+
+            _create_vm_resources(
+                ecs_page=ecs_page,
+                create_request=create_request,
+                vm_names=vm_names,
+            )
+            metadata_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
+
+            if bind_mfip:
+                _bind_vm_fixture_mfips(ecs_page, metadata_list, network)
+
+        yield metadata_list[0] if len(metadata_list) == 1 else metadata_list
     finally:
         try:
             _cleanup_vm_resources(ecs_page, vm_names)

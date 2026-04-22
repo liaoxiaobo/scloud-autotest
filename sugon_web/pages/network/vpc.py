@@ -59,13 +59,13 @@ class VpcMixin:
     @property
     def _input_vlan_id(self):
         """VLAN ID输入框（仅VLAN网络类型显示）"""
-        return self.get_by_placeholder("请输入1到4094的正整数")
+        return self.get_by_placeholder("请输入1~16777215之间的正整数")
 
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
-                   network_type="Geneve", cluster="Autotest", gateway_mode="分布式网关",
-                   gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
-                   enable_ipv6=False, acl_policy=None):
+                   network_type="Geneve", cluster="Autotest", physical_network="business2",
+                   ipv6_pool="provider-ipv6(基础版)（2000:c002", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
+                   dns=None, vlan_id=None, mac=None, enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
         self.btn_create.click()
 
@@ -82,10 +82,16 @@ class VpcMixin:
         if network_type in ["Vlan", "Flat"] and mac is not None:
             self.get_by_placeholder("默认mac地址aa:bb:cc:dd:ee:ff").fill(mac)
 
-        if network_type == "Geneve" and enable_ipv6:
+        if network_type in ["Vlan", "Flat"] and physical_network is not None:
+            self.get_by_role("textbox", name="请选择二层网络").click()
+            self.get_by_role("listitem").filter(has_text=physical_network).click()
+
+        if network_type == "Geneve" and enable_ipv6 and ipv6_pool:
             ipv6_checkbox = self.get_by_text("开启IPv6", exact=True)
             if ipv6_checkbox.is_visible() and ipv6_checkbox.is_enabled():
                 ipv6_checkbox.click()
+                self.get_by_role("textbox", name="请选择").nth(3).click()
+                self.get_by_text(ipv6_pool).click()
             else:
                 self.goto_service("虚拟私有云")
                 pytest.skip("当前环境不支持双栈VPC")
@@ -281,7 +287,7 @@ class VpcMixin:
         if ip_address is not None:
             self.locator("label").filter(has_text="手动分配").click()
             last_segment = ip_address.split(".")[-1]
-            self.get_by_label("申请虚拟IP地址").get_by_role("textbox").nth(4).fill(last_segment)
+            self.get_by_role("textbox", name="例如：").fill(last_segment)
 
         self.get_by_label("申请虚拟IP地址").get_by_text("确定").click()
 
@@ -351,8 +357,7 @@ class VpcMixin:
 
         self.get_by_role("tab", name="端口").click()
 
-        self.get_by_label("端口", exact=True).get_by_text("新建").click()
-
+        self.get_by_label("端口", exact=True).get_by_text("新建", exact=True).click()
         self.get_by_placeholder("请选择子网").click()
         self.get_by_title(subnet_name).click()
 

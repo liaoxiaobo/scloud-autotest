@@ -844,7 +844,7 @@ class TestECSBasic:
             except_agent_version = {}
             for conf in agent_conf:
                 for agent_type, agent_version in conf.items():
-                    except_agent_version[f"{agent_type}版本"] = agent_version
+                    except_agent_version[f"{agent_type}"] = agent_version
             ecs_page.assert_ecs_details_info(name, info_items=except_agent_version)
 
     @allure.title("弹性云服务器-批量Agent版本设置")
@@ -862,7 +862,7 @@ class TestECSBasic:
             except_agent_version = {}
             for conf in agent_conf:
                 for agent_type, agent_version in conf.items():
-                    except_agent_version[f"{agent_type}版本"] = agent_version
+                    except_agent_version[f"{agent_type}"] = agent_version
             ecs_page.assert_ecs_details_info(names, info_items=except_agent_version)
 
     @allure.title("弹性云服务器-加载和卸载网卡")

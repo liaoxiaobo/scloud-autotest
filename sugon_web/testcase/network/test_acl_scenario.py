@@ -2,21 +2,49 @@ import time
 
 import allure
 import pytest
+from sugon_web.testcase.network._acl_helpers import build_acl_env
+from sugon_web.testcase.network._acl_fixtures import (
+    clean_acl_inbound_rules,
+    clean_acl_inbound_rules_4vms,
+    clean_acl_outbound_rules,
+)
 from sugon_web.utils.logger import logger, allure_step_log
 
+
+ACL_VM_PAIR_PARAMS = {
+    "inject_dependencies": False,
+    "instances": [
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+    ],
+}
+
+ACL_VM_4_INSTANCE_PARAMS = {
+    "inject_dependencies": False,
+    "instances": [
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+    ],
+}
 @allure.epic('网络服务')
 @allure.feature('网络安全-网络ACL')
 @allure.story('基本功能验证')
-class TestAclScenario:
-
+class TestAclAssociateSubnetAcl:
     @allure.title("网络ACL关联子网: 网络ACL列表关联子网")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": False}], indirect=True)
-    def test_acl_associate_subnet_acl(self, acl_vpc_vms, acl_page, ssh_vm, clean_acl_inbound_rules):
+    @pytest.mark.parametrize(
+        "vpc",
+        [{"cidr": "10.242.1.0/24", "extra_subnets": [{"cidr": "10.242.2.0/24"}]}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+    def test_acl_associate_subnet_acl(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules):
         """
         场景1：网络ACL列表，选择预置的ACL关联子网sub1。
         关联完成后ssh_vm连接虚机b，进行ping虚机a，预期是不通。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
         vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
         
@@ -40,14 +68,24 @@ class TestAclScenario:
             ssh_vm.connect(vmb_mfip)
             ssh_vm.ping(vma_ip, connected=True, count=5)
 
+
+@allure.epic('网络服务')
+@allure.feature('网络安全-网络ACL')
+@allure.story('基本功能验证')
+class TestAclAssociateVpcAcl:
     @allure.title("网络ACL关联子网: VPC页面关联ACL策略")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": True, "sub2_acl": False}], indirect=True)
-    def test_acl_associate_subnet_vpc(self, acl_vpc_vms, acl_page, ssh_vm, clean_acl_inbound_rules):
+    @pytest.mark.parametrize(
+        "vpc",
+        [{"cidr": "10.243.1.0/24", "acl_policy": "@acl", "extra_subnets": [{"cidr": "10.243.2.0/24"}]}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+    def test_acl_associate_subnet_vpc(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules):
         """
         场景2：新建vpc关联acl策略选择预置的acl，vpc新建子网sub2不关联预置的acl。
         基于这两个sub创建虚机a、b，ssh_vm连接虚机b，ping虚机a，预期是不通。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
         vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
         
@@ -68,14 +106,23 @@ class TestAclScenario:
             ssh_vm.ping(vma_ip, connected=True, count=5)
 
 
+@allure.epic('网络服务')
+@allure.feature('网络安全-网络ACL')
+@allure.story('基本功能验证')
+@pytest.mark.parametrize(
+    "vpc",
+    [{"cidr": "10.244.1.0/24", "extra_subnets": [{"cidr": "10.244.2.0/24", "acl_policy": "@acl"}]}],
+    indirect=True,
+)
+@pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+class TestAclSubnetAclReuse:
     @allure.title("网络ACL关联子网: VPC新建子网页面关联ACL策略")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
-    def test_acl_associate_subnet_sub(self, acl_vpc_vms, acl_page, ssh_vm, clean_acl_inbound_rules):
+    def test_acl_associate_subnet_sub(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules):
         """
         场景3：新建vpc不关联acl策略，vpc新建子网sub2关联预置的acl。
         基于这两个sub创建虚机a、b，ssh_vm连接虚机b，ping虚机a，预期不通。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
         vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
         
@@ -96,15 +143,14 @@ class TestAclScenario:
             ssh_vm.ping(vmb_ip, connected=True, count=5)
 
     @allure.title("网络ACL: 取消关联子网")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
-    def test_acl_disassociate_subnet(self, acl_vpc_vms, acl_page, ssh_vm):
+    def test_acl_disassociate_subnet(self, acl, vpc, vm, acl_page, ssh_vm):
         """
         前置：存在ACL，默认无任何规则，同一vpc下子网A、B。子网B已关联ACL，且ACL下没有任何规则。
         步骤1：ssh_vm连接虚机vma(B子网下)，ping 虚机vma(A子网下)，预期是不通。
         步骤2：acl取消关联子网B。检查关联子网列表无数据
         步骤3：ssh_vm连接虚机vmb，ping 虚机vma，预期是通。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
         vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
         
@@ -125,8 +171,19 @@ class TestAclScenario:
             ssh_vm.connect(vmb_mfip)
             ssh_vm.ping(vma_ip, connected=True, count=5)
 
+@allure.epic('网络服务')
+@allure.feature('网络安全-网络ACL')
+@allure.story('基本功能验证')
+@pytest.mark.parametrize(
+    "vpc",
+    [{"cidr": "10.246.1.0/24", "extra_subnets": [{"cidr": "10.246.2.0/24", "acl_policy": "@acl"}]}],
+    indirect=True,
+)
+@pytest.mark.parametrize("vm", [ACL_VM_4_INSTANCE_PARAMS], indirect=True)
+class TestAclRuleReuse:
+
     @allure.title("验证ACL新建入方向规则: 新建-允许全部")
-    def test_acl_create_inbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
+    def test_acl_create_inbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
         """
         前置：存在ACL，vpc下的两个子网A、B（分别存在2台云服务器实例，A下vma0, vma1，B下vmb0, vmb1）
         步骤1：入方向新建规则：源IP：vma0的ip及不含vma0的段，目的IP：vmb0的ip及不含vmb0的段，允许ALL
@@ -134,7 +191,7 @@ class TestAclScenario:
         步骤3：vma0 ping vmb1 预期不通
         步骤4：vmb0 ping vma0 预期不通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         
         vma0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -164,13 +221,13 @@ class TestAclScenario:
             ssh_vm.ping(vma0["ip"], connected=False, count=5)
 
     @allure.title("验证ACL操作入方向规则: 关闭-开启")
-    def test_acl_disable_enable_inbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
+    def test_acl_disable_enable_inbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
         """
         前置：基于test_acl_create_inbound_rule创建的允许全部入方向规则
         场景1：关闭规则，验证不通
         场景2：开启规则，验证通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
 
         vma0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -193,13 +250,13 @@ class TestAclScenario:
             ssh_vm.ping(vmb0["ip"], connected=True, count=5)
 
     @allure.title("验证ACL修改入方向规则: 修改目的IP和策略")
-    def test_acl_edit_inbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
+    def test_acl_edit_inbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
         """
         前置：基于test_acl_create_inner_rule创建的入方向规则
         场景1：修改目的地址
         场景2：修改策略为拒绝
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         
         vma0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -235,14 +292,14 @@ class TestAclScenario:
             ssh_vm.ping(vmb1["ip"], connected=False, count=5)
 
     @allure.title("验证ACL操作入方向规则: 删除规则")
-    def test_acl_delete_inbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
+    def test_acl_delete_inbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules_4vms):
         """
         场景1：删除入方向的所有规则
         场景2：创建入方向允许所有的规则。ssh_vm连接虚机vma-0，ping 虚机vmb-0，预期是通
         场景3：删除acl入方向的规则
         场景4：ssh_vm连接虚机vma-0，ping 虚机vmb-0，预期是不通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
 
         vma_0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -274,7 +331,7 @@ class TestAclScenario:
             ssh_vm.ping(vmb_0["ip"], connected=False, count=5)
 
     @allure.title("验证ACL新建出方向规则: 新建-允许全部")
-    def test_acl_create_outbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_outbound_rules):
+    def test_acl_create_outbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_outbound_rules):
         """
         前置：存在ACL，vpc下的两个子网A、B（分别存在2台云服务器实例，A下vm_a_0, vm_a_1，B下vm_b_0, vm_b_1）
         步骤1：出方向新建规则：源IP：vm_b_0的ip及不包含vm_b_0的段，目的IP：vm_a_0的ip及不包含vm_a_0的段，允许ALL
@@ -282,7 +339,7 @@ class TestAclScenario:
         步骤3：vm_b_0 ping vm_a_1 预期不通
         步骤4：vm_a_0 ping vm_b_0 预期不通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         
         vm_a_0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -313,13 +370,13 @@ class TestAclScenario:
             ssh_vm.ping(vm_b_0["ip"], connected=False, count=5)
 
     @allure.title("验证ACL操作出方向规则: 关闭-开启")
-    def test_acl_disable_enable_outbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_outbound_rules):
+    def test_acl_disable_enable_outbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_outbound_rules):
         """
         前置：基于test_acl_create_outbound_rule创建的允许全部出方向规则
         场景1：关闭规则，验证不通
         场景2：开启规则，验证通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
 
         vm_a_0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -342,13 +399,13 @@ class TestAclScenario:
             ssh_vm.ping(vm_a_0["ip"], connected=True, count=5)
 
     @allure.title("验证ACL修改出方向规则: 修改目的IP和策略")
-    def test_acl_edit_outbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_outbound_rules):
+    def test_acl_edit_outbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_outbound_rules):
         """
         前置：基于test_acl_create_outbound_rule创建的出方向规则
         场景1：修改目的地址
         场景2：修改策略为拒绝
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         
         vm_a_0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -391,13 +448,13 @@ class TestAclScenario:
             ssh_vm.ping(vm_a_1["ip"], connected=False, count=5)
 
     @allure.title("验证ACL操作出方向规则: 删除规则")
-    def test_acl_delete_outbound_rule(self, acl_in_out_bound_rules, acl_page, ssh_vm, clean_acl_outbound_rules):
+    def test_acl_delete_outbound_rule(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_outbound_rules):
         """
         前置：基于test_acl_create_outbound_rule创建的出方向规则（因复用fixture，当前为编辑后的拒绝状态）
         场景1：删除该出方向规则
         场景2：验证vm2-0 ping vm1-0不通
         """
-        env = acl_in_out_bound_rules
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
 
         vm_a_0 = next(vm for vm in env["vms"] if vm["tag"] == "A-0")
@@ -411,9 +468,19 @@ class TestAclScenario:
             ssh_vm.connect(vm_b_0["mfip"])
             ssh_vm.ping(vm_a_0["ip"], connected=False, count=5)
 
+@allure.epic('网络服务')
+@allure.feature('网络安全-网络ACL')
+@allure.story('基本功能验证')
+class TestAclBatchScenario:
+
     @allure.title("验证ACL出方向规则: 批量关闭和开启规则")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
-    def test_acl_outbound_rules_scenario(self, acl_vpc_vms, acl_page, ssh_vm):
+    @pytest.mark.parametrize(
+        "vpc",
+        [{"cidr": "10.247.1.0/24", "extra_subnets": [{"cidr": "10.247.2.0/24", "acl_policy": "@acl"}]}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+    def test_acl_outbound_rules_scenario(self, acl, vpc, vm, acl_page, ssh_vm):
         """
         场景：
         1. 存在ACL关联子网B，子网A无ACL。
@@ -426,7 +493,7 @@ class TestAclScenario:
         5. 批量关闭规则。
         6. 验证不通。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         cidr_a = env["cidr1"]
         cidr_b = env["cidr2"]
@@ -521,8 +588,13 @@ class TestAclScenario:
             assert curl_success in res_8082, f"重新开启规则后，curl {vm1_ip}:8080 --local-port 8082 失败"
 
     @allure.title("验证ACL入方向规则: 批量开启和关闭规则")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
-    def test_acl_inbound_batch_op_scenario(self, acl_vpc_vms, acl_page, ssh_vm, clean_acl_inbound_rules):
+    @pytest.mark.parametrize(
+        "vpc",
+        [{"cidr": "10.248.1.0/24", "extra_subnets": [{"cidr": "10.248.2.0/24", "acl_policy": "@acl"}]}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+    def test_acl_inbound_batch_op_scenario(self, acl, vpc, vm, acl_page, ssh_vm, clean_acl_inbound_rules):
         """
         场景：
         1. 存在ACL关联子网B，子网A无ACL。
@@ -532,7 +604,7 @@ class TestAclScenario:
         5. 批量关闭规则，验证不通。
         6. 批量开启规则，验证通 (按照已批准的 plan 执行)。
         """
-        env = acl_vpc_vms
+        env = build_acl_env(acl, vpc, vm)
         acl_name = env["acl_name"]
         cidr_a = env["cidr1"]
         cidr_b = env["cidr2"]

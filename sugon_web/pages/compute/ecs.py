@@ -524,7 +524,7 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         self.get_by_text("标签设置").first.click()
         self.select_rows_by_names(labels)
         self.get_by_role("dialog").get_by_text("确定").click()
-        self.logger.info(f"已选择物理机: {labels}")
+        self.logger.info(f"已选择标签: {labels}")
 
     def _select_storage_pool(self, storage_pool_name):
         """选择存储池"""
@@ -2183,10 +2183,27 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         """
         self.ecs_to_details(name)
         # 点击安全组页签
-        self.get_by_role("tab", name="安全组", exact=False).click()
+        sg_tab = self.get_by_role("tab", name="安全组", exact=False)
+        sg_tab.click()
+        expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
+        self.wait_for_page_ready()
+
+        # 详情页安全组区域存在异步渲染，先等待操作区或已绑定项出现，避免后续立刻读取为空。
+        self._find_element(
+            [
+                self.get_by_text("设置安全组", exact=True),
+                self.locator(".security-group-item").first,
+            ],
+            "安全组页签内容",
+        )
         if sub_tab:
             # 使用正则匹配精确文本，处理首尾空格和换行
-            self.locator(".security-group-item").filter(has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")).click()
+            sub_tab_loc = self.locator(".security-group-item").filter(
+                has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")
+            )
+            expect(sub_tab_loc.first).to_be_visible(timeout=10000)
+            sub_tab_loc.click()
+            self.wait_for_page_ready()
         logger.info(f"进入云服务器 {name} 的安全组页签")
 
     def ecs_set_security_groups(self, sg_names: list, bind: bool = True):
@@ -2233,7 +2250,16 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
     def ecs_get_bound_security_groups(self):
         """获取已绑定的安全组列表
         """
-        items = self.locator(".security-group-item").all_text_contents()
+        bound_items = self.locator(".security-group-item")
+        # 切页签后绑定列表有异步渲染延迟，短轮询避免误把“未渲染”当成空列表。
+        end_time = time.time() + 10
+        items = []
+        while time.time() < end_time:
+            items = [item.strip() for item in bound_items.all_text_contents() if item.strip()]
+            if items:
+                break
+            self.page.wait_for_timeout(500)
+
         # 清洗数据，提取安全组名称（通常在括号前或者开头）
         bound_sgs = []
         for item in items:
@@ -2455,7 +2481,7 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
                     info_item = self.get_by_label(tab).get_by_text(item_name, exact=True)
                     # 获取信息项的值
                     _list = ["亲和组", "硬件密码加速", "CPU QoS 优先级", "CPU QoS 上限", "NUMA 绑定", "vNUMA拓扑",
-                             "CPU独占", "VNC显卡类型", "CPU模式", "声卡类型"]
+                             "CPU独占", "VNC显卡类型", "CPU模式", "声卡类型", "FsAgent", "DingAgent"]
                     if item_name in _list:
                         info_value = info_item.locator("xpath=./following-sibling::*").first
                     else:

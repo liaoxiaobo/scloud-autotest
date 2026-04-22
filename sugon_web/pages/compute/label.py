@@ -18,7 +18,7 @@ class LabelPage(OpsPage):
             self.get_by_label("标签设置", exact=True).get_by_role("button").locator(".el-icon-arrow-left").click()
         self.assert_popup_success(f"实例{bind_text}标签成功,若数据未响应请刷新页面")
         self.dialog_close.click()
-        logger.info(f"标签 {label_names} 成功绑定到云服务器'{name}'")
+        logger.info(f"标签 {label_names} 成功{bind_text}到云服务器'{name}'")
 
     @submenu("标签")
     def create_label(self, name: str):

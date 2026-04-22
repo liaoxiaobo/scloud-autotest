@@ -365,7 +365,7 @@ class BasePage(Playwright):
             f"等待详情页资源行 '{row_name}' 超时，实例: '{instance_name}'"
         ) from last_error
 
-    def assert_popup_success(self, text=None, timeout=5):
+    def assert_popup_success(self, text=None, timeout=10):
         """公共方法: 根据弹窗文本和类型，断言操作成功
 
         Args:
@@ -701,7 +701,7 @@ class BasePage(Playwright):
                 row = self.get_row_by_name(resource_name)
                 interactive_row = self._get_interactive_row(row)
                 option_btn = interactive_row.get_by_text(option_text, exact=True)
-                
+
                 # 有可能找到多个同名文本，遍历尝试点击第一个可见并可用的按钮
                 for i in range(option_btn.count()):
                     btn = option_btn.nth(i)
@@ -709,7 +709,7 @@ class BasePage(Playwright):
                         btn.click()
                         self.logger.info(f"点击平铺操作选项: {resource_name} -> {option_text}")
                         return
-                        
+
                 self.logger.debug(f"未找到可用且可见的平铺选项: {option_text}，将尝试下拉菜单模式")
             except Exception as e:
                 self.logger.debug(f"定位平铺操作选项异常: {e}，将尝试下拉菜单模式")

@@ -1,8 +1,17 @@
 import allure
 import pytest
+from sugon_web.testcase.network._acl_helpers import build_acl_pair_env
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data
 
+
+ACL_VM_PAIR_PARAMS = {
+    "inject_dependencies": False,
+    "instances": [
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+    ],
+}
 @allure.epic('网络服务')
 @allure.feature('网络安全-网络ACL')
 @allure.story('基本功能验证')
@@ -14,7 +23,7 @@ class TestAclBasic:
 
         with allure_step_log(f"步骤1: 新建网络ACL"):
             acl_page.acl_create(acl_name, desc=f"创建网络ACL{acl_name}")
-            acl_page.assert_status(acl_name, status="开启")
+            acl_page.assert_status(acl_name, status="启用")
 
         with allure_step_log(f"步骤2: 单个删除网络ACL"):
             acl_page.acl_delete(acl_name)
@@ -25,7 +34,7 @@ class TestAclBasic:
         acl_name = acl
         with allure_step_log(f"步骤1: 搜索网络ACL: {acl_name}"):
             acl_page.acl_search(acl_name)
-            
+
             # 使用模糊匹配断言列表中包含搜索关键字
             acl_page.assert_list_contain(acl_name, exact_match=False)
 
@@ -42,7 +51,7 @@ class TestAclBasic:
         with allure_step_log(f"步骤1: 选定网络ACL进行修改: {acl_name} -> {new_name}"):
             acl_page.acl_edit(acl_name, new_name=new_name, new_desc=new_desc)
             acl_page.assert_popup_success()
-            
+
             # 搜索后验证修改是否成功
             acl_page.acl_search(new_name)
             acl_page.assert_list_contain(new_name, exact_match=False)
@@ -56,14 +65,22 @@ class TestAclBasic:
             acl_page.acl_search_reset()
 
     @allure.title("网络ACL-开启和关闭")
-    @pytest.mark.parametrize("acl_vpc_vms", [{"vpc_acl": False, "sub2_acl": True}], indirect=True)
-    def test_acl_enable_disable(self, acl_vpc_vms, acl_page, ssh_vm):
-        env = acl_vpc_vms
+    @pytest.mark.parametrize(
+        "vpc",
+        [{
+            "extra_subnets": [{"cidr": "10.241.2.0/24", "acl_policy": "@acl"}],
+            "cidr": "10.241.1.0/24",
+        }],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
+    def test_acl_enable_disable(self, acl, vpc, vm_sg_binding, sg_page, acl_page, ssh_vm):
+        env = build_acl_pair_env(acl, vpc, vm_sg_binding, sg_page)
         acl_name = env["acl_name"]
-        
+
         vm_a_info = next(vm for vm in env["vms"] if vm["tag"] == "A")
         vm_b_info = next(vm for vm in env["vms"] if vm["tag"] == "B")
-        
+
         vm_a_ip = vm_a_info["ip"]
         vm_b_ip = vm_b_info["ip"]
         vm_a_mfip = vm_a_info["mfip"]
@@ -120,10 +137,10 @@ class TestAclBasic:
 
         with allure_step_log(f"步骤2: 批量关闭网络ACL"):
             acl_page.acl_batch_disable(acl_names)
-            
+
         with allure_step_log(f"步骤3: 批量开启网络ACL"):
             acl_page.acl_batch_enable(acl_names)
-            
+
         with allure_step_log(f"步骤4: 批量删除测试临时生成的网络ACL"):
             acl_page.acl_batch_delete(acl_names)
             acl_page.assert_deleted(acl_names)
@@ -150,7 +167,7 @@ class TestAclScenario:
     def test_acl_rule_create_scenarios(self, acl_page, acl, scenario):
         acl_name = acl
         desc_text = f"autotest_{scenario['desc']}_{random_data(4)}"
-        
+
         with allure_step_log(f"步骤1: 创建入方向规则: {scenario['desc']}"):
             acl_page.acl_rule_create(
                 acl_name=acl_name,
@@ -164,7 +181,7 @@ class TestAclScenario:
                 dest_port=scenario.get("dest_port"),
                 description=desc_text
             )
-            
+
         # with allure_step_log(f"步骤2: 验证并清理刚才创建的规则以保证用例间隔离环境相对干净"):
         #     # 在单用例下我们建完之后将其删除
         #     # detail_mode=True 因为刚刚建完，页面会停留在详情页“入方向”规则列表中 (不用重新走列表进入详情)
