@@ -189,7 +189,7 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("解绑公网IP").click()
+        self.get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -232,7 +232,7 @@ class MySQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -399,6 +399,7 @@ class MySQLPage(BasePage):
         dialog = self.get_by_label("解除授权")
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=db_name).click()
+        self.page.keyboard.press("Escape")
         dialog.get_by_text("确定").click()
 
     @submenu("实例管理")
@@ -519,9 +520,11 @@ class MySQLPage(BasePage):
         """
         self.get_by_text("新建", exact=True).click()
         dialog = self.get_by_label("新建模板")
-        dialog.locator("div").filter(has_text=re.compile(r"^模板名称$")).get_by_role("textbox").fill(model_name)
+        dialog.get_by_role("textbox").first.fill(model_name)
         dialog.get_by_placeholder("请选择").click()
-        self.page.locator("li").filter(has_text=version).click()
+        self.page.locator(".el-select-dropdown:visible .el-select-dropdown__item").filter(
+            has_text=re.compile(rf"^{re.escape(version)}$")
+        ).click()
         self.get_by_text("下一步").click()
         # 添加一个默认参数以完成创建
         self.get_by_text("添加参数").click()
@@ -548,10 +551,16 @@ class MySQLPage(BasePage):
         """
         self.get_by_text(model_name).first.click()
         sleep(3)
-        self.locator(".table-tool-bar-left > div:nth-child(2) > .cloud-button-btn").click()
+        self.locator(".table-tool-bar-left").get_by_text("编辑", exact=True).click()
         sleep(3)
-        self.get_by_role("row", name=f"{param_name}").get_by_role("checkbox").check()
-        self.get_by_label("选择参数").get_by_text("确定").click()
+        dialog = self.get_by_label("选择参数")
+        row = dialog.get_by_role("row").filter(has_text=re.compile(re.escape(param_name))).first
+        checkbox = row.locator(".el-checkbox").first
+        if checkbox.count() > 0:
+            checkbox.click()
+        else:
+            row.locator("td").first.click()
+        dialog.get_by_text("确定").click()
 
     @submenu("参数管理")
     def apply_parameter_model(self, model_name: str, name: str):
@@ -561,22 +570,25 @@ class MySQLPage(BasePage):
         :param instance_name: 实例名称
         """
         self.get_by_text(model_name).first.click()
-        self.locator("div.cloud-button-btn").filter(has_text="应用").click()
+        self.get_by_text("应用", exact=True).click()
+        dialog = self.get_by_label("应用模板")
+
         # 选择实例
-        # self.locator("input[type=\"text\"]").filter(has_text="请选择").click()
-        # self.locator("input[type=\"text\"]").filter(has_text="请选择").fill(name)
-        # self.locator("div.cloud-button-btn").filter(has_text="前选择").click()
-        # self.filter(has_text=instance_name+"0").click()
-        self.locator("td").filter(has_text=name).get_by_placeholder("请选择").click()
-        self.locator("li").filter(has_text=name).click()
-        self.locator("td").filter(has_text=f"{name}-0").get_by_placeholder("请选择").click()
-        # self.locator("li").filter(has_text=name+"-0").click()
-        items = self.locator("li").filter(has_text=name + "-").all()
-        for item in items:
-            item.click()
+        dialog.locator("td").filter(has_text=re.compile(rf"^{re.escape(name)}$")).get_by_placeholder("请选择").click()
+        self.page.get_by_role("listitem").filter(
+            has_text=re.compile(rf"^{re.escape(name)}$")
+        ).click()
+
+        # 选择节点（多选）
+        dialog.get_by_role("cell", name="", exact=True).get_by_placeholder("请选择").click()
+        node_options = self.page.get_by_role("listitem").filter(
+            has_text=re.compile(rf"^{re.escape(name)}-\d+$")
+        )
+        for i in range(node_options.count()):
+            node_options.nth(i).click()
 
         # 确认应用
-        self.dialog_confirm.click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def edit_instance_parameter(self, name: str, param_name: str, param_value: str):
@@ -679,7 +691,7 @@ class MySQLPage(BasePage):
         :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("切换网络").click()
+        self.get_by_text("切换网络").first.click()
 
         dialog = self.get_by_label("切换网络")
 

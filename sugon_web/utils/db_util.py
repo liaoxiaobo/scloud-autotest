@@ -253,6 +253,33 @@ def get_node_mfip_from_db(self, ssh_host, db_name: str, node_name: str) -> str:
     return ip_from_db
 
 
+def get_instance_node_ips_from_db(self, ssh_host, db_name: str, instance_name: str) -> list:
+    """
+    通过数据库查询实例下所有节点名称和 mfip。
+    :param self: 页面对象实例
+    :param ssh_host: master节点的SSH连接对象
+    :param db_name: 数据库名称
+    :param instance_name: 实例名称前缀
+    :return: list[tuple[str, str]] 节点名称和IP列表
+    """
+    sql_query = (
+        f"use {db_name};"
+        f"select name,mfip from node where name like '{instance_name}-%' order by name;"
+    )
+    command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_query}\\\"\""
+    result = ssh_host.run(command)
+    node_infos = []
+    for line in result.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("name") or line.startswith("-"):
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith(f"{instance_name}-"):
+            node_infos.append((parts[0], parts[-1]))
+    self.logger.info(f"从数据库查询到实例 '{instance_name}' 节点列表: {node_infos}")
+    return node_infos
+
+
 def get_service_status(self, ssh_host, service_name: str) -> str:
     """
     获取系统服务状态

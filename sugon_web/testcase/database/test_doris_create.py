@@ -29,7 +29,7 @@ class TestDorisCreate:
         with allure_step_log("步骤二：验证创建结果"):
             doris_page.assert_popup_success("Doris创建任务提交成功")
             doris_page.assert_list_contain(instance_name)
-            doris_page.assert_status(instance_name, status="就绪", timeout=1800)
+            doris_page.assert_status(instance_name, status="就绪", timeout=1800, refresh=True)
 
         with allure_step_log("步骤三：删除实例"):
             doris_page.delete_instance(instance_name)
@@ -48,7 +48,7 @@ class TestDorisCreate:
                 doris_page.create_instance(name=instance_name)
                 doris_page.assert_popup_success("Doris创建任务提交成功")
                 doris_page.assert_list_contain(instance_name)
-                doris_page.assert_status(instance_name, status="就绪", timeout=1800)
+                doris_page.assert_status(instance_name, status="就绪", timeout=1800, refresh=True)
 
         with allure_step_log("步骤二：批量删除实例"):
             doris_page.batch_delete_instances(instance_names)

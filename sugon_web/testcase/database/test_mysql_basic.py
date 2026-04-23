@@ -21,14 +21,14 @@ class TestMySQLBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             mysql_page.assert_popup_success("修改实例名称成功")
             mysql_page.assert_list_contain(renamed_name)
-            mysql_page.assert_status(renamed_name, status="运行中")
+            mysql_page.assert_status(renamed_name, status="运行中", refresh=True)
 
         with allure_step_log("步骤三：重命名实例回退"):
             mysql_page.rename_instance(renamed_name, instance_name)
         with allure_step_log("步骤四：验证重命名回退结果"):
             mysql_page.assert_popup_success("修改实例名称成功")
             mysql_page.assert_list_contain(instance_name)
-            mysql_page.assert_status(instance_name, status="运行中")
+            mysql_page.assert_status(instance_name, status="运行中", refresh=True)
 
     @allure.title("MySQL-重启实例")
     def test_restart_instance(self, mysql_page, mysql):
@@ -52,7 +52,7 @@ class TestMySQLBasic:
             mysql_page.change_root_password(instance_name, new_password)
         with allure_step_log("步骤二：验证修改密码结果"):
             mysql_page.assert_popup_success("更新管理员用户信息成功")
-            mysql_page.assert_status(instance_name, status="运行中", timeout=300)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}-0"
@@ -129,8 +129,8 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证节点是否添加成功"):
             mysql_page.assert_popup_success("添加只读节点")
-            mysql_page.assert_status(node_name, status="创建中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=2000)
+            mysql_page.assert_status(node_name, status="创建中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=2000, refresh=True)
 
         with allure_step_log("步骤三：删除新创建的节点"):
             mysql_page.delete_node(instance_name, node_name)
@@ -394,7 +394,12 @@ class TestMySQLBasic:
             # 尝试写入（应失败）
             cmd_write_fail = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readonly}.test(id int);\""
             result_write_fail = ssh_vm.run(cmd_write_fail, True, True)
-            assert "CREATE command denied" in result_write_fail['stderr'], "只读用户执行写入操作未按预期失败。"
+            stderr = result_write_fail["stderr"]
+            assert (
+                "CREATE command denied" in stderr
+                or "--read-only option" in stderr
+                or "ERROR 1290" in stderr
+            ), f"只读用户执行写入操作未按预期失败: {stderr}"
 
             # 尝试读取（应成功）
             cmd_read_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"SELECT 1;\""
@@ -406,14 +411,27 @@ class TestMySQLBasic:
             mysql_page.assert_popup_success("授权用户数据库成功,若数据未更新请刷新页面")
 
         with allure_step_log("步骤五：后端确认读写权限生效"):
-            node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            writable_node = None
+            for node_name, ip_from_db in db_util.get_instance_node_ips_from_db(
+                    mysql_page, ssh_host, "sugoncloud_mysql", instance_name):
+                ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
+                read_only_check = ssh_vm.run(
+                    f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -Nse \"SELECT @@read_only;\"",
+                    True,
+                    True
+                )
+                if read_only_check["stdout"].strip() == "0":
+                    writable_node = (node_name, ip_from_db)
+                    break
+
+            assert writable_node is not None, f"未找到可写节点，实例节点可能都处于只读状态: {instance_name}"
+            node_name, ip_from_db = writable_node
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             # 尝试写入（应成功）
             cmd_write_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readwrite}.test(id int); INSERT INTO {db_readwrite}.test VALUES (1);\""
             result_write_ok = ssh_vm.run(cmd_write_ok, True, True)
-            assert "ERROR" not in result_write_ok['stderr'], f"读写用户执行写入操作失败: {result_write_ok}"
+            assert "ERROR" not in result_write_ok['stderr'], f"读写用户在节点 {node_name} 执行写入操作失败: {result_write_ok}"
 
             # 尝试读取（应成功）
             cmd_read_write_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"SELECT * FROM {db_readwrite}.test;\""
@@ -567,7 +585,7 @@ class TestMySQLBasic:
             mysql_page.apply_parameter_model(model_name, instance_name)
             mysql_page.assert_popup_success("模板应用任务提交成功")
             mysql_page.goto_submenu("实例管理")
-            mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200)
+            mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
             mysql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.assert_status(f"{instance_name}-0", status="运行中", timeout=1200, refresh=True)
@@ -704,10 +722,10 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
             mysql_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
             mysql_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
-            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)

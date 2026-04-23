@@ -2,6 +2,7 @@ import datetime
 
 import allure
 import pytest
+import re
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -9,6 +10,7 @@ from sugon_web.utils.logger import logger
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
+from sugon_web.pages.login import LoginPage
 from sugon_web.config.config import Config
 
 def pytest_addoption(parser):
@@ -129,14 +131,16 @@ def _create_logged_in_page(browser_context, config):
     base_url = config.get("base_url")
     username = config.get("username")
     password = config.get("password")
-    login_url = f"{base_url.rstrip('/')}/#/login"
 
     logger.info("创建新页面...")
     page = browser_context.new_page()
     logger.info("页面创建成功")
 
-    logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url)
+    login_url = f"{base_url.rstrip('/')}/#/login"
+    logger.info(f"导航到登录URL: {login_url}")
+    page.goto(login_url)
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_timeout(1000)
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     if not _is_logged_in(page):
@@ -255,18 +259,8 @@ def ssh_vm(jump_host):
 
 def _is_logged_in(page):
     """检查是否已登录"""
-    try:
-        # 如果当前就在登录页，直接判定为未登录
-        if "#/login" in page.url:
-            return False
-
-        # 先等一等登录表单，如果能看到说明未登录
-        login_form = page.get_by_placeholder("请输入登录账号")
-        login_form.wait_for(state="visible", timeout=5000)
-        return False
-    except:
-        # 找不到登录表单，或已经离开登录页，说明已登录
-        return True
+    current_url = page.url or ""
+    return "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -297,27 +291,25 @@ def _login(page, config, max_retries=3):
             logger.info(f"{'=' * 40}")
 
         try:
+            login_page = LoginPage(page)
             logger.info(f"开始登录: user={username}")
-            username_input = page.get_by_placeholder("请输入登录账号")
-            password_input = page.get_by_placeholder("请输入登录密码")
-            login_button = page.get_by_role("button", name="登 录")
 
-            username_input.wait_for(state="visible", timeout=5000)
-            password_input.wait_for(state="visible", timeout=5000)
-            login_button.wait_for(state="visible", timeout=5000)
+            login_page._input_username.wait_for(state="visible", timeout=10000)
+            login_page._input_password.wait_for(state="visible", timeout=10000)
+            login_page._btn_login.wait_for(state="visible", timeout=10000)
 
-            username_input.click()
-            username_input.fill(username)
-            username_input.press("Enter")
-            username_input.press("Tab")
-            password_input.fill(password)
-            login_button.click()
+            login_page.login(username, password)
 
-            page.wait_for_timeout(2000)
+            # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
+            page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(1000)
 
-            logged_in = _is_logged_in(page)
-            logger.info(f"登录判定结果: {logged_in}, 当前URL: {page.url}")
-            return logged_in
+            if _is_logged_in(page):
+                logger.info(f"登录判定结果: True, 当前URL: {page.url}")
+                return True
+
+            raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
 
         except Exception as e:
             logger.info(f"第{attempt}次登录未成功: {e}")

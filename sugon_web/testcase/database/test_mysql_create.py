@@ -27,7 +27,7 @@ class TestMySQLCreate:
         with allure_step_log("步骤二：验证创建结果"):
             mysql_page.assert_popup_success("创建MySQL资源成功")
             mysql_page.assert_list_contain(instance_name)
-            mysql_page.assert_status(instance_name, status="运行中", timeout=1200)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤三：删除实例"):
             mysql_page.delete_instance(instance_name)
@@ -45,7 +45,7 @@ class TestMySQLCreate:
                 mysql_page.create_instance(name=instance_name)
                 mysql_page.assert_popup_success("创建MySQL资源成功")
                 mysql_page.assert_list_contain(instance_name)
-                mysql_page.assert_status(instance_name, status="运行中", timeout=1200)
+                mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤二：批量删除实例"):
             mysql_page.batch_delete_instances(instance_names)

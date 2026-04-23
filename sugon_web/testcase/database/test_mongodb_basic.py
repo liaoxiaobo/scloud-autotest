@@ -22,7 +22,7 @@ class TestMongoDBBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             mongodb_page.assert_popup_success("执行成功")
             mongodb_page.assert_list_contain(renamed_name)
-            mongodb_page.assert_status(renamed_name, status="运行中")
+            mongodb_page.assert_status(renamed_name, status="运行中", refresh=True)
 
         # 增加等待，并刷新页面，确保列表数据最新
         sleep(5)
@@ -32,7 +32,7 @@ class TestMongoDBBasic:
         with allure_step_log("步骤四：验证重命名回退结果"):
             mongodb_page.assert_popup_success("执行成功")
             mongodb_page.assert_list_contain(instance_name)
-            mongodb_page.assert_status(instance_name, status="运行中")
+            mongodb_page.assert_status(instance_name, status="运行中", refresh=True)
 
     @allure.title("MongoDB-修改实例管理员密码")
     def test_change_root_password(self, mongodb_page, mongodb, ssh_host, ssh_vm):
@@ -45,7 +45,7 @@ class TestMongoDBBasic:
             mongodb_page.change_root_password(instance_name, new_password)
         with allure_step_log("步骤二：验证修改密码结果"):
             mongodb_page.assert_popup_success("修改root密码成功")
-            mongodb_page.assert_status(instance_name, status="运行中", timeout=300)
+            mongodb_page.assert_status(instance_name, status="运行中", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             # 获取节点IP进行连接验证

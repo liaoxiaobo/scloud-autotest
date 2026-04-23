@@ -12,15 +12,13 @@ class LoginPage(BasePage):
             name: 登录用户名
             pwd: 登录密码
         """
-        username = self._input_username
-        password = self._input_password
-
         self.page.wait_for_timeout(1000)
-        username.click()
-        username.fill(name)
-        username.press("Enter")
-        username.press("Tab")
-        password.fill(pwd)
+        self._input_username.click()
+        self._input_username.fill(name)
+        self._input_username.press("Enter")
+        self._input_username.press("Tab")
+        self._input_password.click()
+        self._input_password.fill(pwd)
         self._btn_login.click()
 
     @property
