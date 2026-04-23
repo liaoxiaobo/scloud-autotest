@@ -1,23 +1,40 @@
 import re
 import time
 import pytest
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
 
 class OpsPage(BasePage):
 
+    def _select_project_and_wait_networks_reload(self, project: str):
+        """选择项目，并等待网络列表接口刷新完成。"""
+        self.get_by_placeholder("请选择项目").click()
+        try:
+            with self.page.expect_response(
+                lambda response: (
+                    response.request.method == "GET"
+                    and "/api/ops/vpc/networks" in response.url
+                    and response.status == 200
+                ),
+                timeout=8000,
+            ):
+                self.get_by_title(project).click()
+            logger.info(f"选择项目后已捕获网络列表刷新请求: {project}")
+        except PlaywrightTimeoutError:
+            logger.warning(f"选择项目 {project} 后未捕获到网络列表刷新请求，回退到 DOM 稳定等待")
+            self.get_by_title(project).click()
+
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(300)
+
     @submenu("平台网络")
     def mfip_create(self, project: str, network: str, ip: str, exact=True):
         """创建 MFIP"""
         self.btn_create.click()
-        self.get_by_placeholder("请选择项目").click()
-        self.get_by_title(project).click()
-        # 选择项目后会触发接口请求重绘网络列表，此处等待接口请求完成
-        self.page.wait_for_load_state("networkidle")
+        self._select_project_and_wait_networks_reload(project)
 
-        # 等待接口返回并渲染网络下拉列表
         self.get_by_placeholder("请选择网络").click()
         # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
         dropdown = self.page.locator(".el-select-dropdown:visible")

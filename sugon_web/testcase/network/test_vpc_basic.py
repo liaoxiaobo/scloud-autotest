@@ -552,7 +552,7 @@ class TestVPCBasic:
         with allure_step_log("步骤2: 获取新建的端口IP"):
             # 在当前处于的端口 Tab 页中获取 IP 列表
             port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[-1]  # 通常新增的数据在最后一行
+            port_ip = port_list[0]  # 通常新增的数据在最后一行
             logger.info(f"自动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤3: 删除端口"):
@@ -569,7 +569,7 @@ class TestVPCBasic:
         vpc_name = vpc['name']
         subnet_name = vpc['subnet_name']
         cidr = vpc['cidr']
-        
+
         # 根据cidr生成随机ip，避免与网关、已有接口等冲突
         network = ipaddress.ip_network(cidr, strict=False)
         hosts = list(network.hosts())
@@ -620,7 +620,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤2: 获取选中的端口IP"):
             port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[-1]
+            port_ip = port_list[0]
             logger.info(f"快速选择分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤3: 删除端口"):

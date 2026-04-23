@@ -252,13 +252,13 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         if count > 1:
             self.get_by_role("spinbutton").first.fill(str(count))
 
-        # 选择规格
-        flavor_info = _config_get(basic, "flavor", default={"base": "ecs.c6.Autotest"})
-        self._select_flavor(flavor_info)
-
         # 选择集群
         cluster_name = _config_get(basic, "cluster", default="Autotest")
         self._select_cluster(cluster_name)
+
+        # 选择规格
+        flavor_info = _config_get(basic, "flavor", default={"base": "ecs.c6.Autotest"})
+        self._select_flavor(flavor_info)
 
         # 选择物理机
         host = _config_get(basic, "host", default="")
@@ -2184,7 +2184,14 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         self.ecs_to_details(name)
         # 点击安全组页签
         sg_tab = self.get_by_role("tab", name="安全组", exact=False)
-        sg_tab.click()
+        viewport = self.page.viewport_size or {"width": 1280, "height": 720}
+        self.page.mouse.move(viewport["width"] - 5, 5)
+        self.page.wait_for_timeout(200)
+        try:
+            sg_tab.click()
+        except Exception as exc:
+            logger.warning(f"安全组页签普通点击失败，尝试强制点击: {exc}")
+            sg_tab.click(force=True)
         expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
         self.wait_for_page_ready()
 
@@ -2202,7 +2209,11 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
                 has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")
             )
             expect(sub_tab_loc.first).to_be_visible(timeout=10000)
-            sub_tab_loc.click()
+            try:
+                sub_tab_loc.click()
+            except Exception as exc:
+                logger.warning(f"安全组子页签 {sub_tab} 普通点击失败，尝试强制点击: {exc}")
+                sub_tab_loc.click(force=True)
             self.wait_for_page_ready()
         logger.info(f"进入云服务器 {name} 的安全组页签")
 
@@ -2653,44 +2664,6 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         # 只有在真正超时后返回True
         logger.warning(f"等待快照创建状态超时, 检查快照")
         return True
-
-    def assign_ip(self, pool: str = "public_net(基础版)", count: str = "1", method: str = "快速选择", ip: str = None):
-        """
-        分配公网IP
-        Args:
-            pool: 资源池
-            count: 数量
-            method: 模式
-            ip: 公网IP
-        """
-        self.goto_service("虚拟私有云")
-        self.goto_submenu("弹性公网IPv4")
-        self.get_by_text("分配公网IP").first.click()
-        basic_loc = self.get_by_label("分配公网IP")
-        # 选择资源池
-        basic_loc.get_by_placeholder("请选择").first.click()
-        self.locator("li").filter(has_text=pool).click()
-
-        # 选择数量
-        basic_loc.get_by_placeholder("请选择").nth(1).click()
-        self.locator("li").filter(has_text=re.compile(rf"^{count}$")).last.click()
-
-        if count == "1":
-            if method == "快速选择":
-                if ip is not None:
-                    self.locator("div").filter(has_text=re.compile(r"^IP$")).get_by_placeholder("请选择").click()
-                    self.locator("li").filter(has_text=ip).click()
-                else:
-                    pass
-            elif method == "手动输入":
-                self.locator("label").filter(has_text="手动输入").click()
-                ip_loc = self.locator("div").filter(has_text=re.compile(r"^IP$")).get_by_role("textbox")
-                ip_loc.clear()
-                ip_loc.fill(ip)
-
-        self.dialog_confirm.click()
-        self.assert_popup_success("执行成功")
-        logger.info(f"操作完成: 存储池{pool}, 数量:{count} {ip}")
 
     def assert_ecs_info(self, name: str, row_name: str, exception: str):
         """验证云服务器信息

@@ -111,6 +111,7 @@ class SgPage(BasePage):
         """
         self.get_by_text(sg_name, exact=True).click()
         self.page.wait_for_url("**/security-group-detail/**")
+        self.wait_for_page_ready()
         self.logger.info(f"进入安全组{sg_name}详情页")
 
     def select_all_rows(self):

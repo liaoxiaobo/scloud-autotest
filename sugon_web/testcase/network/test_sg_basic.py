@@ -65,12 +65,9 @@ class TestSGBasic:
             sg_page.sg_search_reset()
 
     @allure.title("安全组-克隆")
-    def test_sg_clone(self, ecs_page, sg_page, ssh_host, sg, vpc):
+    def test_sg_clone(self, ecs_page, sg_page, ssh_host, sg, vpc, eip):
         sg_name = sg
         clone_name = f"{sg_name}-clone"
-
-        with allure_step_log(f"前置准备: 申请/分配一个可用公网 IP 以备后续测试使用"):
-            ecs_page.assign_ip()
 
         with allure_step_log(f"步骤1: 原安全组 {sg_name} 添加放行所有IPv4的入方向规则"):
             sg_page.sg_rule_create(
@@ -184,6 +181,7 @@ class TestSGBasic:
         allure.dynamic.title(f"安全组规则-创建场景（{scenario['desc']}）")
         with allure_step_log(f"步骤1: 为安全组 {sg_name} 创建规则: {scenario['desc']}"):
             sg_page.goto_service("安全组")
+            sg_page.search(sg_name)
             sg_page.sg_rule_create(
                 sg_name=sg_name,
                 protocol=scenario.get("protocol"),

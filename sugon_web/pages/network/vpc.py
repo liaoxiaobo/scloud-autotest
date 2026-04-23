@@ -63,7 +63,7 @@ class VpcMixin:
 
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
-                   network_type="Geneve", cluster="Autotest", physical_network="business2",
+                   network_type="Geneve", cluster="Autotest", physical_network="physnet1",
                    ipv6_pool="provider-ipv6(基础版)（2000:c002", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
                    dns=None, vlan_id=None, mac=None, enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
@@ -286,7 +286,8 @@ class VpcMixin:
 
         if ip_address is not None:
             self.locator("label").filter(has_text="手动分配").click()
-            last_segment = ip_address.split(".")[-1]
+            # last_segment = ip_address.split(".")[-1]
+            last_segment = ip_address
             self.get_by_role("textbox", name="例如：").fill(last_segment)
 
         self.get_by_label("申请虚拟IP地址").get_by_text("确定").click()

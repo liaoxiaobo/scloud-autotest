@@ -192,6 +192,7 @@ def eip(vpc_page, request):
     ip = params.get('ip')
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
+        vpc_page.goto_service("虚拟私有云")
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
 
     yield created_ips[0] if count == 1 else created_ips
@@ -200,8 +201,10 @@ def eip(vpc_page, request):
         if not created_ips:
             return
         try:
+            vpc_page.goto_service("虚拟私有云")
             current_ips = created_ips if isinstance(created_ips, list) else [created_ips]
             for current_ip in current_ips:
+                vpc_page.switch_eip_pool(pool)
                 vpc_page.search(current_ip)
                 if vpc_page.get_eip_list():
                     vpc_page.eip_release(current_ip)

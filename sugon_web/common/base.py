@@ -99,6 +99,7 @@ class BasePage(Playwright):
         # 使用 Playwright 的惰性定位器（Locator）机制，只有在调用如 is_visible() 时才会真正执行DOM查询
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
+            self.get_by_role("textbox", name="搜索（名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（公网IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),

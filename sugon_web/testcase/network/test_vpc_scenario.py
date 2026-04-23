@@ -165,8 +165,8 @@ class TestVPCNetwork:
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
@@ -319,8 +319,8 @@ class TestVPCNetwork:
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
@@ -418,8 +418,8 @@ class TestVPCNetwork:
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])

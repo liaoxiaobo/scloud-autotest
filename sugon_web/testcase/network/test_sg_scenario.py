@@ -64,7 +64,8 @@ class TestSGScenario:
                 direction="入口",
                 remote_type="CIDR",
                 ip_version="IPv4",
-                description="放行所有IPv4流量"
+                description="放行所有IPv4流量",
+                from_list=False
             )
 
         with allure_step_log(f"步骤7: 再次执行生效性验证的步骤(1)(2)，期望结果：均可以ping通，ssh也可以登录"):
