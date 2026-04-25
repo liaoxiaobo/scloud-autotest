@@ -237,9 +237,7 @@ def login_page(page):
 @pytest.fixture(scope="function")
 def evs_page(page):
     """初始化云硬盘页对象"""
-    evs_page = EvsPage(page)
-    evs_page.goto_service('云硬盘')
-    return evs_page
+    return EvsPage(page)
 
 
 @pytest.fixture()
@@ -276,7 +274,6 @@ def volume(evs_page, request):
         logger.info(f"检测到存储类型为{evs_page.stor}，从虚机 {resource['name']} 获取 host: {host}")
 
     name = random_data()
-    evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
 
     # 构建云硬盘创建参数
     create_kwargs = {
@@ -297,7 +294,6 @@ def volume(evs_page, request):
 
     yield volume
 
-    evs_page.goto_service('云硬盘')  # 保证在同一服务页面,满足云盘挂载测试
     evs_page.evs_remove([volume["name"]])
     evs_page.evs_delete([volume["name"]])
     evs_page.assert_deleted(volume["name"])

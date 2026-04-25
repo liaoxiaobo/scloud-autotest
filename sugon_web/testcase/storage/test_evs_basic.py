@@ -118,9 +118,6 @@ class TestEVSBasic:
 
     @allure.title("云硬盘-挂载和卸载")
     def test_volume_bind_vm(self, evs_page, vm, volume, ssh_vm):
-
-        evs_page.goto_service('云硬盘')  # TODO: 引入vm fixture导致evs_page定位不到云硬盘菜单，加跳转解决
-
         with allure_step_log("步骤1: 挂载云硬盘"):
             evs_page.evs_mount(volume["name"], vm["name"])
             evs_page.assert_popup_success()
@@ -165,7 +162,6 @@ class TestEVSBasic:
             ecs_page.ecs_image_delete(image_name)
             ecs_page.assert_deleted(image_name)
             # 删除创建的云硬盘
-            evs_page.goto_service("云硬盘")
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
