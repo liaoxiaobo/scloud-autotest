@@ -574,13 +574,15 @@ class MySQLPage(BasePage):
         dialog = self.get_by_label("应用模板")
 
         # 选择实例
-        dialog.locator("td").filter(has_text=re.compile(rf"^{re.escape(name)}$")).get_by_placeholder("请选择").click()
+        dialog.get_by_placeholder("请选择").first.click()
+        sleep(3)
         self.page.get_by_role("listitem").filter(
             has_text=re.compile(rf"^{re.escape(name)}$")
         ).click()
 
         # 选择节点（多选）
-        dialog.get_by_role("cell", name="", exact=True).get_by_placeholder("请选择").click()
+        dialog.get_by_placeholder("请选择").nth(1).click()
+        sleep(3)
         node_options = self.page.get_by_role("listitem").filter(
             has_text=re.compile(rf"^{re.escape(name)}-\d+$")
         )

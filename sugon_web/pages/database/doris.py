@@ -233,9 +233,7 @@ class DorisPage(BasePage):
         self.goto_detail_page(name, node_name)
         self.click_action(node_name, "修改规格")
         dialog = self.get_by_role("dialog").last
-        dialog.get_by_role("cell", name=specification_name, exact=True) \
-            .locator("xpath=ancestor::tr") \
-            .get_by_role("radio").click()
+        dialog.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -271,7 +269,7 @@ class DorisPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("解绑公网IP").first.click()
+        self.get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -332,7 +330,7 @@ class DorisPage(BasePage):
         :param specification_name: 节点规格名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新增BE节点").click()
+        self.get_by_text("新增BE节点").first.click()
 
         # 选择数据盘类型
         dialog = self.get_by_label("新增节点")
@@ -344,9 +342,7 @@ class DorisPage(BasePage):
         self.page.locator("li").filter(has_text=selected_disk_type).click()
 
         # 选择计算规格
-        dialog.get_by_role("cell", name=specification_name, exact=True) \
-            .locator("xpath=ancestor::tr") \
-            .get_by_role("radio").click()
+        dialog.get_by_role("row", name=specification_name).get_by_role("radio").click()
 
         # 确认添加
         dialog.get_by_text("确定").click()

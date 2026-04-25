@@ -135,7 +135,7 @@ class TestDorisBasic:
             node_name = f"{instance_name}_fe_node01"
             doris_page.assert_popup_success("调整云硬盘中")
             doris_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
-            doris_page.assert_status(node_name, status="就绪", timeout=500, refresh=True)
+            doris_page.assert_status(node_name, status="运行中", timeout=500, refresh=True)
             assert db_util.get_disk_size(doris_page, node_name, ssh_host) == new_disk_size
 
     @allure.title("Doris-修改节点规格")
