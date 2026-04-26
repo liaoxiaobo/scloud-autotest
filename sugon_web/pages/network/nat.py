@@ -109,7 +109,7 @@ class NatMixin:
 
         self.get_by_role("tab", name="DNAT规则").click()
 
-        self.get_by_text("新建").click()
+        self.get_by_text("新建", exact=True).click()
 
         self.locator("label").filter(has_text=protocol).click()
         self.get_by_placeholder("端口范围1~32767").fill(str(ext_port))

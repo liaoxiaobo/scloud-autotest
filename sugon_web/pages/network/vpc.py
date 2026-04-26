@@ -309,9 +309,12 @@ class VpcMixin:
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=network_type).click()
         available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
+        if not available_rows:
+            raise AssertionError("当前环境无可用的弹性公网IP（状态为'关闭'）")
         selected_row = random.choice(available_rows)
+        selected_row.get_by_role("radio").click()
         ip_info = selected_row.get_by_role("cell")
-        ip = ip_info.nth(1).text_content()
+        ip = ip_info.nth(1).text_content().strip()
         self.dialog_confirm.click()
         return ip
 

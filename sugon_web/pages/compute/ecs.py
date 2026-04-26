@@ -1039,7 +1039,7 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
 
         self.get_by_text("立即登录").click()
 
-        self.get_by_text("立即登录 取消").get_by_text("取消").click() # 手动关闭登录选择方式弹窗
+        # self.get_by_text("立即登录 取消").get_by_text("取消").click() # 手动关闭登录选择方式弹窗
 
     @submenu("弹性云服务器")
     def ecs_rebuild(self, name: str, image: str, pre_type: str = "精简置备"):
@@ -2183,16 +2183,19 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         """
         self.ecs_to_details(name)
         # 点击安全组页签
-        sg_tab = self.get_by_role("tab", name="安全组", exact=False)
-        viewport = self.page.viewport_size or {"width": 1280, "height": 720}
-        self.page.mouse.move(viewport["width"] - 5, 5)
-        self.page.wait_for_timeout(200)
-        try:
-            sg_tab.click()
-        except Exception as exc:
-            logger.warning(f"安全组页签普通点击失败，尝试强制点击: {exc}")
-            sg_tab.click(force=True)
-        expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
+        sg_tab = self.get_by_role("tab", name="安全组", exact=False).first
+        expect(sg_tab).to_be_visible(timeout=10000)
+        sg_tab.scroll_into_view_if_needed()
+        for attempt in range(3):
+            try:
+                sg_tab.click(force=True)
+                expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=5000)
+                break
+            except Exception as exc:
+                logger.warning(f"安全组页签第{attempt + 1}次强制点击后仍未选中: {exc}")
+        else:
+            expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
+
         self.wait_for_page_ready()
 
         # 详情页安全组区域存在异步渲染，先等待操作区或已绑定项出现，避免后续立刻读取为空。
@@ -2202,17 +2205,23 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
                 self.locator(".security-group-item").first,
             ],
             "安全组页签内容",
+            timeout=10000,
         )
         if sub_tab:
             # 使用正则匹配精确文本，处理首尾空格和换行
             sub_tab_loc = self.locator(".security-group-item").filter(
                 has_text=re.compile(rf"^\s*{re.escape(sub_tab)}\s*$")
-            )
-            expect(sub_tab_loc.first).to_be_visible(timeout=10000)
-            try:
-                sub_tab_loc.click()
-            except Exception as exc:
-                logger.warning(f"安全组子页签 {sub_tab} 普通点击失败，尝试强制点击: {exc}")
+            ).first
+            expect(sub_tab_loc).to_be_visible(timeout=10000)
+            sub_tab_loc.scroll_into_view_if_needed()
+            for attempt in range(3):
+                try:
+                    sub_tab_loc.click(timeout=3000)
+                    break
+                except Exception as exc:
+                    logger.warning(f"安全组子页签 {sub_tab} 第{attempt + 1}次普通点击失败: {exc}")
+            else:
+                logger.warning(f"安全组子页签 {sub_tab} 普通点击仍失败，尝试强制点击")
                 sub_tab_loc.click(force=True)
             self.wait_for_page_ready()
         logger.info(f"进入云服务器 {name} 的安全组页签")
@@ -2481,6 +2490,7 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
             exact = False if tab == "安全组" or tab == "事件列表" else True
             if tab == "详情":
                 sleep(2)
+                self.wait_for_page_ready()
             else:
                 self.get_by_role("tab", name=tab, exact=exact).click()
                 if sub_tab:

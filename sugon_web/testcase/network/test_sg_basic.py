@@ -34,7 +34,7 @@ class TestSGBasic:
         with allure_step_log(f"步骤1: 搜索安全组: {sg_name}"):
             sg_page.goto_service("安全组")
             sg_page.sg_search(sg_name)
-            
+
             # 使用模糊匹配断言列表中包含搜索关键字
             sg_page.assert_list_contain(sg_name, exact_match=False)
 
@@ -50,6 +50,8 @@ class TestSGBasic:
         orig_desc = f"{sg_name}测试安全组"
 
         with allure_step_log(f"步骤1: 编辑安全组名称和描述: {sg_name} -> {new_name}"):
+            sg_page.goto_submenu("安全组")
+            sg_page._btn_search.click()
             sg_page.sg_edit(sg_name, new_name=new_name, new_desc=new_desc)
             sg_page.assert_popup_success(f"{new_name}安全组修改成功")
             # 搜索后验证修改是否成功
@@ -99,7 +101,7 @@ class TestSGBasic:
         with allure_step_log(f"步骤4: 进入ECS模块，使用安全组 {clone_name} 创建云服务器vm1，并绑定弹性公网ip:fip1"):
             network_name = vpc["name"]
             subnet_name = vpc["subnet_name"]
-            
+
             ecs_page.goto_service("弹性云服务器")
             network = {"networks":[{"network": network_name, "subnet": subnet_name}], "security_groups": [clone_name]}
             vm1_info = ecs_page.ecs_create({}, {}, network, {}, {})
@@ -139,7 +141,7 @@ class TestSGBasic:
                 cidr="0.0.0.0/0",
                 description="放行HTTP"
             )
-            
+
             # 删除创建的入口规则
             sg_page.sg_rule_delete(sg_name, direction="入口")
 
@@ -148,7 +150,7 @@ class TestSGBasic:
         sg_name = sg
         protocol_type = "HTTPS"
         direction = "入口"
-        
+
         with allure_step_log(f"步骤1: 在列表页直接为安全组 {sg_name} 创建入方向规则"):
             sg_page.goto_service("安全组")
             sg_page.sg_rule_create(
@@ -180,7 +182,7 @@ class TestSGBasic:
 
         allure.dynamic.title(f"安全组规则-创建场景（{scenario['desc']}）")
         with allure_step_log(f"步骤1: 为安全组 {sg_name} 创建规则: {scenario['desc']}"):
-            sg_page.goto_service("安全组")
+            sg_page.goto_submenu("安全组")
             sg_page.search(sg_name)
             sg_page.sg_rule_create(
                 sg_name=sg_name,
@@ -206,12 +208,12 @@ class TestSGBasic:
             direction_key = next((k for k in row_data.keys() if "方向" in k), None)
             if direction_key:
                 assert scenario.get("direction") in row_data[direction_key], f"方向不匹配，期望: {scenario.get('direction')}, 实际: {row_data[direction_key]}"
-                
+
             # 验证以太网类型
             eth_type_key = next((k for k in row_data.keys() if "以太网类型" in k), None)
             if eth_type_key:
                 assert scenario.get("ip_version") in row_data[eth_type_key], f"以太网类型不匹配，期望: {scenario.get('ip_version')}, 实际: {row_data[eth_type_key]}"
-                
+
             # 验证IP协议
             protocol_key = next((k for k in row_data.keys() if "IP协议" in k or "协议" in k), None)
             if protocol_key:
@@ -227,12 +229,12 @@ class TestSGBasic:
                     }
                     expected_p = protocol_map.get(p_type, p_type.lower())
                     assert expected_p in row_data[protocol_key], f"IP协议不匹配，期望: {expected_p}, 实际: {row_data[protocol_key]}"
-                    
+
             # 验证端口范围
             port_key = next((k for k in row_data.keys() if "端口范围" in k), None)
             if port_key and scenario.get("port"):
                 assert str(scenario.get("port")) in row_data[port_key], f"端口不匹配，期望: {scenario.get('port')}, 实际: {row_data[port_key]}"
-                
+
             # 验证远端
             if scenario.get("remote_type") == "CIDR":
                 remote_ip_key = next((k for k in row_data.keys() if "远端IP前缀" in k), None)

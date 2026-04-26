@@ -105,9 +105,9 @@ def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
         ecs_page.goto_service("备份设施")
         ecs_page.goto_submenu("备份节点")
 
-        state = ecs_page.get_column_data("服务状态")
-        ips = ecs_page.get_column_data("IP地址")
-        nodes_by_ip = {ip: st for ip, st in zip(ips, state) if ip and st}
+        all_states = ecs_page.get_column_data("服务状态")
+        all_nodes = ecs_page.get_column_data("节点名称")
+        nodes_by_ip = {ip: st for ip, st in zip(all_nodes, all_states) if ip and st}
         enabled_nodes = [ip for ip, status in nodes_by_ip.items() if status == "已启用"]
         if not enabled_nodes:
             pytest.skip("无已启用的备份节点")
@@ -181,7 +181,7 @@ def _prepare_single_vm_backup_metadata(
         一个新的虚机元数据字典，除原始字段外，还包含 ``backup_nodes``、
         ``md5_dict``、``mfip`` 和 ``arch``。
     """
-    ecs_page.goto_service("弹性云服务器")
+    # ecs_page.goto_service("弹性云服务器")
     ecs_page.set_table_header("架构")
     ecs_page.ecs_bind_pub_ip(vm_data["name"])
     ecs_page.assert_popup_success("执行成功")

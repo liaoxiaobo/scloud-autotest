@@ -1393,7 +1393,8 @@ class BackUpPage(BasePage):
             data: 恢复任务数据字典，包含中文键：
                 - 备份数据: 备份数据标识（可选），用于选择具体的备份点
                 - 恢复配置: 恢复配置字典，按页面模块划分（中文键）：
-                    - 基本设置: 实例名称、集群、项目
+                    - 恢复至项目: 项目名称
+                    - 基本设置: 实例名称、集群
                     - 网络设置: 网络、子网
                     - 存储配置: 云硬盘模式
                     - 规格配置: 规格
@@ -1408,6 +1409,7 @@ class BackUpPage(BasePage):
         backup_data = kwargs.get("backup_data") or data.get("备份数据")
         resume_config = kwargs.get("resume_config") or data.get("恢复配置", {})
         re_method = kwargs.get("re_method") or data.get("恢复方式", {})
+        basic_settings = resume_config.get("基本设置", {})
 
         # 点击新建恢复任务按钮
         self.get_by_text("新建恢复任务").click()
@@ -1421,26 +1423,34 @@ class BackUpPage(BasePage):
         resume_type = resume_config.get("恢复类型", "新建资源")
         if resume_type != "新建资源":
             self._select_backup_type(resume_type)
-        else:
-            # (2) 配置基本设置（实例名称、集群）
-            basic_settings = resume_config.get("基本设置", {})
-            basic_settings.setdefault("项目", kwargs.get("project", project))
+
+        # (2) 配置恢复至项目
+        resume_project = (
+            resume_config.get("恢复至项目")
+            or basic_settings.get("项目")
+            or kwargs.get("project")
+            or project
+        )
+        self._config_resume_project(resume_project)
+
+        if resume_type == "新建资源":
+            # (3) 配置基本设置（实例名称、集群）
             self._config_basic_settings(re_vm, basic_settings)
 
-            # (3) 配置网络设置（网络、子网）
+            # (4) 配置网络设置（网络、子网）
             network_settings = resume_config.get("网络设置", {})
             self._config_network_settings(network_settings)
 
-            # (4) 配置存储配置（云硬盘模式）
+            # (5) 配置存储配置（云硬盘模式）
             storage_settings = resume_config.get("存储配置", {"存储类型": Config.get('stor'), "云硬盘模式": "精简置备"})
             if storage_settings:
                 self._config_storage_settings(storage_settings)
 
-            # (5) 配置规格配置
+            # (6) 配置规格配置
             flavor_settings = resume_config.get("规格配置", {})
             self._config_flavor_settings(flavor_settings)
 
-            # (6) 配置管理配置（登录密码、VNC密码）
+            # (7) 配置管理配置（登录密码、VNC密码）
             management_settings = resume_config.get("管理配置", {})
             self._config_management_settings(management_settings)
 
@@ -1467,23 +1477,8 @@ class BackUpPage(BasePage):
             loc.click()
         logger.info(f"选择备份类型: {backup_type}")
 
-    def _config_basic_settings(self, re_vm: str, config: dict):
-        """配置基本设置
-
-        Args:
-            config: 基本设置字典
-                - 实例名称: 恢复后的实例名称
-                - 集群: 集群名称
-                - 项目: 恢复至项目名称
-        """
-        cluster = config.get("集群", "Autotest")
-        project = config.get("项目", "默认项目")
-
-        # 填写实例名称
-        self.get_by_placeholder("请输入名称").fill(re_vm)
-        logger.info(f"设置实例名称: {re_vm}")
-
-        # 选择恢复至项目
+    def _config_resume_project(self, project: str = "默认项目"):
+        """配置恢复至项目"""
         self.get_by_placeholder("请选择项目").click()
         locs = [
             self.locator("li").filter(has_text=re.compile(rf"^{re.escape(project)}$")).first,
@@ -1492,6 +1487,20 @@ class BackUpPage(BasePage):
         ]
         self._find_element(locs, "恢复至项目").click()
         logger.info(f"选择恢复至项目: {project}")
+
+    def _config_basic_settings(self, re_vm: str, config: dict):
+        """配置基本设置
+
+        Args:
+            config: 基本设置字典
+                - 实例名称: 恢复后的实例名称
+                - 集群: 集群名称
+        """
+        cluster = config.get("集群", "Autotest")
+
+        # 填写实例名称
+        self.get_by_placeholder("请输入名称").fill(re_vm)
+        logger.info(f"设置实例名称: {re_vm}")
 
         # 选择集群
         self.get_by_placeholder("请选择集群").click()

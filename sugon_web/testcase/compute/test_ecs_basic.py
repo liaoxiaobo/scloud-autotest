@@ -124,6 +124,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤1: 修改云服务器{name}状态为错误，重置状态"):
             sql_statement = f"UPDATE instances SET vm_state = 'error' WHERE uuid = '{ecs_id}'"
             ssh_host.run_sql("gova", sql_statement)
+            ecs_page.goto_submenu("弹性云服务器")
             ecs_page.btn_refresh.click()
             ecs_page.ecs_operations(name, "重置状态")
             ecs_page.assert_popup_success(f"{name}实例重置状态任务下发成功")
@@ -819,7 +820,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-搜索和重置")
     def test_ecs_search(self, ecs_page, vm):
-        ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_submenu("弹性云服务器")
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = vm['name'][:-2]

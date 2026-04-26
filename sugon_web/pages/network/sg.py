@@ -169,7 +169,7 @@ class SgPage(BasePage):
 
         if from_list:
             # 在列表页直接点击“创建规则”
-            self.goto_service("安全组")
+            self.goto_submenu("安全组")
             self.click_action(sg_name, "创建规则")
         elif detail_mode:
             # 在详情页/页签中直接创建

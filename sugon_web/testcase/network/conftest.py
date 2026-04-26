@@ -228,14 +228,14 @@ def vip(vpc_page, vpc):
     vip_address = str(random.choice(hosts[10:])) if len(hosts) > 20 else str(random.choice(hosts[2:]))
 
     logger.info(f"准备创建虚拟IP {vip_address}")
-    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
     vpc_page.vip_create(vpc_name=vpc_name, subnet_name=subnet_name, ip_address=vip_address)
     vpc_page.assert_popup_success("申请虚拟IP端口成功")
 
     yield vip_address
 
     # 确保在正确的 tab 页
-    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
     vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
     vpc_page.get_by_role("tab", name="虚拟IP管理").click()
 
