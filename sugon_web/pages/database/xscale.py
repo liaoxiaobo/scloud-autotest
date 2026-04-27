@@ -6,6 +6,7 @@ import pytest
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
+from sugon_web.config.config import Config
 
 
 class XScalePage(BasePage):
@@ -19,9 +20,17 @@ class XScalePage(BasePage):
         dialog.wait_for(state="visible", timeout=10000)
         return dialog
 
-    def _select_first_visible_spec(self, dialog) -> str:
-        """选择规格弹窗中第一条可用且可见的规格，返回规格名称"""
-        rows = dialog.locator(".el-table__body-wrapper tbody tr.el-table__row")
+    def _select_spec_by_name(self, dialog, spec_name: str) -> str:
+        """在规格弹窗中按规格名搜索，并选择搜索结果中的第一条规格"""
+        search_input = dialog.get_by_placeholder("搜索（规格名称）")
+        if search_input.count() > 0:
+            search_input.fill(spec_name)
+            dialog.get_by_text("搜索", exact=True).click()
+            rows = dialog.locator(".el-table__body-wrapper tbody tr.el-table__row")
+            rows.first.wait_for(state="visible", timeout=5000)
+        else:
+            rows = dialog.locator(".el-table__body-wrapper tbody tr.el-table__row")
+
         count = rows.count()
         for i in range(count):
             row = rows.nth(i)
@@ -32,12 +41,13 @@ class XScalePage(BasePage):
                 continue
             class_name = radio.first.get_attribute("class") or ""
             if "is-disabled" in class_name:
-                continue
+                raise AssertionError(f"搜索结果中的目标规格不可选: {spec_name}")
             row.scroll_into_view_if_needed()
-            spec_name = row.locator("td").nth(2).inner_text().strip()
+            actual_spec_name = row.locator("td").nth(2).inner_text().strip()
             radio.first.click(force=True)
-            return spec_name
-        raise AssertionError("未找到可用的规格单选项")
+            return actual_spec_name
+
+        raise AssertionError(f"未找到规格搜索结果: {spec_name}")
 
     def _get_node_section(self, section_title: str):
         """根据节点列表标题获取对应的表格区域"""
@@ -502,20 +512,23 @@ class XScalePage(BasePage):
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
-    def change_node_specification(self, instance_name: str, node_type: str) -> tuple[str, str]:
+    def change_node_specification(self, instance_name: str, node_type: str, spec_name: str | None = None) -> str:
         """
-        修改节点规格并返回节点名称与目标规格名
+        修改节点规格并返回节点名称
         :param instance_name: 实例名称
         :param node_type: 节点类型
-        :return: (节点名称, 目标规格名称)
+        :param spec_name: 目标规格名
+        :return: 节点名称
         """
+        if not spec_name:
+            raise AssertionError("修改规格时必须显式传入目标规格名")
         self.goto_detail_page(instance_name)
         node_name = self.get_first_node_name_by_type(instance_name, node_type)
         self.click_action(node_name, "修改规格")
         dialog = self._get_dialog("修改规格")
-        target_spec = self._select_first_visible_spec(dialog)
+        self._select_spec_by_name(dialog, spec_name)
         dialog.get_by_text("确定", exact=True).click()
-        return node_name, target_spec
+        return node_name
 
     @submenu("实例管理")
     def scale_out_compute_node(self, instance_name: str, disk_type: str = None, disk_size: int = 100) -> str:
@@ -535,26 +548,17 @@ class XScalePage(BasePage):
         selected_disk_type = disk_type if disk_type else self.stor
         self._select_dropdown_option(dialog.locator(".el-select").first.locator("input"), selected_disk_type)
         dialog.get_by_role("spinbutton").fill(str(disk_size))
-        self._select_first_visible_spec(dialog)
         dialog.get_by_text("确定", exact=True).click()
         return new_node_name
 
     @submenu("实例管理")
-    def scale_in_compute_node(self, instance_name: str) -> str:
+    def scale_in_compute_node(self, instance_name: str) -> None:
         """
-        通过详情页按钮为 XScale 实例缩容一个计算节点，并返回预期被删除的节点名称
+        通过详情页按钮为 XScale 实例缩容一个计算节点
         :param instance_name: 实例名称
-        :return: 预期被删除的计算节点名称
         """
         self.goto_detail_page(instance_name)
-        current_nodes = self.get_node_names_by_type(instance_name, "计算节点")
-
-        target_node_name = current_nodes[-1]
         self.get_by_text("计算节点缩容", exact=True).click()
-        dialog = self.get_by_role("dialog").filter(has_text=re.compile(r"缩容|删除|移除|节点")).last
-        dialog.get_by_text("确定", exact=True).click()
-
-        return target_node_name
 
     @submenu("实例管理")
     def restart_compute_nodes(self, instance_name: str) -> list[str]:
@@ -570,26 +574,44 @@ class XScalePage(BasePage):
         return node_names
 
     @submenu("实例管理")
-    def scale_out_storage_node(self, instance_name: str, disk_type: str = None, disk_size: int = 100) -> str:
+    def scale_out_storage_node(self, instance_name: str, disk_type: str = None, disk_size: int = 100) -> list[str]:
         """
-        通过详情页按钮为 XScale 实例扩容一个存储节点，并返回新节点名称
+        通过详情页按钮为 XScale 实例扩容一个存储节点组，并返回新增的三个节点名称
         :param instance_name: 实例名称
         :param disk_type: 数据盘类型，不传时使用当前环境默认磁盘类型
         :param disk_size: 数据盘大小
-        :return: 新存储节点名称
+        :return: 新增节点名称列表
         """
         self.goto_detail_page(instance_name)
         current_nodes = self.get_node_names_by_type(instance_name, "存储节点")
-        new_node_name = f"{instance_name}-dn-{len(current_nodes)}"
+        group_indexes = []
+        for node_name in current_nodes:
+            match = re.search(rf"^{re.escape(instance_name)}-dn-(\d+)-", node_name)
+            if match:
+                group_indexes.append(int(match.group(1)))
+        next_group_index = max(group_indexes, default=-1) + 1
+        new_node_names = [
+            f"{instance_name}-dn-{next_group_index}-cand-0",
+            f"{instance_name}-dn-{next_group_index}-cand-1",
+            f"{instance_name}-dn-{next_group_index}-log-0",
+        ]
 
         self.get_by_text("存储节点扩容", exact=True).click()
         dialog = self._get_dialog("新增节点")
         selected_disk_type = disk_type if disk_type else self.stor
         self._select_dropdown_option(dialog.locator(".el-select").first.locator("input"), selected_disk_type)
         dialog.get_by_role("spinbutton").fill(str(disk_size))
-        self._select_first_visible_spec(dialog)
         dialog.get_by_text("确定", exact=True).click()
-        return new_node_name
+        return new_node_names
+
+    @submenu("实例管理")
+    def scale_in_storage_node(self, instance_name: str) -> None:
+        """
+        通过详情页按钮为 XScale 实例缩容一个存储节点组
+        :param instance_name: 实例名称
+        """
+        self.goto_detail_page(instance_name)
+        self.get_by_text("存储节点缩容", exact=True).click()
 
     @submenu("实例管理")
     def restart_storage_nodes(self, instance_name: str) -> list[str]:
@@ -636,7 +658,7 @@ class XScalePage(BasePage):
         self.click_action(node_name, "绑定公网IP")
         dialog = self.get_by_label("绑定公网IP", exact=True)
         dialog.get_by_placeholder("请选择").click()
-        self.get_by_text("public").click()
+        self.get_by_text(Config.get("network")).click()
 
         # 选择第一个状态为"关闭"的IP
         ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
@@ -683,53 +705,62 @@ class XScalePage(BasePage):
         node_type: str,
         bandwidth: str = "50%",
         cpu_auto: bool = True,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         """
-        节点热迁移并返回节点名称与目标物理机
+        节点热迁移并返回节点名称、原物理机与目标物理机
         :param instance_name: 实例名称
         :param node_type: 节点类型
         :param bandwidth: 迁移速率
         :param cpu_auto: 是否开启CPU自动收敛
-        :return: (节点名称, 选择的目标物理机)
+        :return: (节点名称, 原物理机, 选择的目标物理机)
         """
         self.goto_detail_page(instance_name)
         node_name = self.get_first_node_name_by_type(instance_name, node_type)
         self.click_action(node_name, "热迁移")
+        dialog = self._get_dialog("热迁移")
+        old_host = dialog.locator("input").nth(2).input_value().strip()
 
         # 选择目标物理机
-        self.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()
+        dialog.locator("form div").filter(has_text="目标物理机").get_by_placeholder("请选择").click()
 
         # 获取下拉列表中的所有选项
         dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
+        dropdown.wait_for(state="visible", timeout=5000)
         options = dropdown.locator("li.el-select-dropdown__item")
+        options.first.wait_for(state="visible", timeout=5000)
 
         checked_host = None
         count = options.count()
         for i in range(count):
             opt = options.nth(i)
-            if "is-disabled" not in opt.get_attribute("class"):
-                checked_host = opt.inner_text().strip().split()[0]
-                opt.click()
-                break
+            class_name = opt.get_attribute("class") or ""
+            option_text = opt.inner_text().strip()
+            host_name = option_text.split()[0] if option_text else ""
+            if "is-disabled" in class_name or not host_name:
+                continue
+            if host_name == old_host or "当前节点" in option_text:
+                continue
+            checked_host = host_name
+            opt.click()
+            break
 
         if not checked_host:
-            self.get_by_role("dialog").get_by_text("取消").click()
-            import pytest
+            dialog.get_by_text("取消").click()
             pytest.skip("没有可用的物理机可供迁移")
 
         # 选择迁移速率
         if bandwidth:
-            self.locator("div").filter(has_text=re.compile(r"^迁移速率")).get_by_placeholder("请选择").click()
+            dialog.locator("div").filter(has_text=re.compile(r"^迁移速率")).get_by_placeholder("请选择").click()
             sleep(1)
             self.locator("li").filter(has_text=bandwidth).click()
 
         # 设置CPU自动收敛
         if cpu_auto:
-            switch_locator = self.get_by_role("switch").locator("span")
+            switch_locator = dialog.get_by_role("switch").locator("span")
             if switch_locator.is_visible():
                 switch_locator.click()
 
         # 确认热迁移
-        self.get_by_role("dialog").get_by_text("确定").click()
+        dialog.get_by_text("确定").click()
 
-        return node_name, checked_host
+        return node_name, old_host, checked_host

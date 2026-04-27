@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 import shlex
@@ -191,6 +192,70 @@ class SSH:
         if len(result) == 1:
             return result['stdout']
         return result
+
+    @staticmethod
+    def _find_json_value(data, key):
+        """递归查找 JSON 中第一个指定 key 的值。"""
+        if isinstance(data, dict):
+            if key in data:
+                return data[key]
+            for value in data.values():
+                found = SSH._find_json_value(value, key)
+                if found is not None:
+                    return found
+        elif isinstance(data, list):
+            for item in data:
+                found = SSH._find_json_value(item, key)
+                if found is not None:
+                    return found
+        return None
+
+    def find_mfip(self, fixed_ip: str, host: str = None) -> str:
+        """
+        通过 SDN mfip 接口查询 fixed_ip 对应的 mfip_address。
+
+        :param fixed_ip: 节点 fixed_ip 地址
+        :param host: 控制台/SDN VIP，默认使用框架配置中的 host
+        :return: str mfip_address
+        """
+        vip = host or Config.get("host")
+        if not vip:
+            raise ValueError("未传入 host，且配置中未找到 host，无法查询 mfip_address")
+
+        token_command = (
+            "curl -s -X POST "
+            "-H 'Content-Type: application/json' "
+            "-d '{\"origin_login\": true, \"password\": \"Inner@fullstackOwner\", \"username\": \"inner\"}' "
+            "http://sugoncloud-iam-api-http.micro-service.svc.cluster.local:8080/api/oauth/token"
+        )
+        token_response = self.run(token_command, check_rc=True)
+        try:
+            token_data = json.loads(token_response)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"获取 token 返回非 JSON 内容: {token_response}") from exc
+
+        token = self._find_json_value(token_data, "content")
+        if not token:
+            raise RuntimeError(f"获取 token 失败，响应内容: {token_response}")
+
+        mfip_command = (
+            f"curl -s 'http://{vip}:14830/sdn/v2.0/mfip/?per_page=10&fixed_ip={fixed_ip}&page=1' "
+            "-H 'accept: application/json' "
+            f"-H {shlex.quote(f'X-Auth-Token: {token}')} "
+            "--compressed --insecure"
+        )
+        mfip_response = self.run(mfip_command, check_rc=True)
+        try:
+            mfip_data = json.loads(mfip_response)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"查询 mfip 返回非 JSON 内容: {mfip_response}") from exc
+
+        mfip_address = self._find_json_value(mfip_data, "mfip_address")
+        if not mfip_address:
+            raise RuntimeError(f"未查询到 fixed_ip={fixed_ip} 对应的 mfip_address，响应内容: {mfip_response}")
+
+        logger.info(f"查询到 fixed_ip '{fixed_ip}' 对应的 mfip_address: {mfip_address}")
+        return mfip_address
 
     def wait_resource_deleted(self, names, check_command, timeout=600, interval=5):
         """

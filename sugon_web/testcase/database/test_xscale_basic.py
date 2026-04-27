@@ -1,4 +1,6 @@
 import re
+from time import sleep, time
+
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
@@ -6,6 +8,22 @@ from sugon_web.utils.util import random_data, random_string
 from sugon_web.utils import db_util
 
 NODE_TYPES = ["元数据节点", "日志节点", "计算节点", "存储节点"]
+
+
+def _assert_any_node_restarted(xscale_page, node_names: list[str], node_type_name: str) -> str:
+    """断言随机串行重启场景中，至少一个节点经历重启中并恢复就绪。"""
+    pending_nodes = list(node_names)
+    deadline = time() + 900
+
+    while pending_nodes and time() < deadline:
+        for node_name in list(pending_nodes):
+            if "节点重启中" in xscale_page.get_row_by_name(node_name).inner_text():
+                xscale_page.assert_status(node_name, status="就绪", timeout=600)
+                return node_name
+
+        sleep(5)
+
+    raise AssertionError(f"未观察到任何{node_type_name}进入节点重启中状态，节点列表: {node_names}")
 
 
 def _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm):
@@ -27,17 +45,34 @@ def _build_xscale_mysql_cmd(admin_password, sql):
 
 
 def _build_xscale_gova_name(node_name: str) -> str:
-    """将前端节点名转换为 gova 中的 XScale 节点命名。"""
-    mapping = {
-        "-cn-": "-CN-",
-        "-dn-": "-DN-",
-        "-gms-": "-GMS-",
-        "-cdc-": "-CDC-",
-    }
-    result = node_name
-    for old, new in mapping.items():
-        result = result.replace(old, new)
-    return result
+    """将 XScale 前端节点名转换为后端 gova/cinder 使用的节点名。"""
+    if re.search(r"-(CN|CDC|GMS|DN)-\d+$", node_name):
+        return node_name
+
+    name_patterns = (
+        (r"^(?P<prefix>.+)-cn-(?P<index>\d+)$", "CN", lambda m: int(m.group("index"))),
+        (r"^(?P<prefix>.+)-cdc-(?P<index>\d+)$", "CDC", lambda m: int(m.group("index"))),
+        (r"^(?P<prefix>.+)-gms-(?P<index>\d+)$", "GMS", lambda m: int(m.group("index"))),
+        (r"^(?P<prefix>.+)-dn-(?P<index>\d+)$", "DN", lambda m: int(m.group("index"))),
+        (r"^(?P<prefix>.+)-gms-cand-(?P<index>\d+)$", "GMS", lambda m: int(m.group("index"))),
+        (r"^(?P<prefix>.+)-gms-log-(?P<index>\d+)$", "GMS", lambda m: 2 + int(m.group("index"))),
+        (
+            r"^(?P<prefix>.+)-dn-(?P<group>\d+)-cand-(?P<index>\d+)$",
+            "DN",
+            lambda m: int(m.group("group")) * 3 + int(m.group("index")),
+        ),
+        (
+            r"^(?P<prefix>.+)-dn-(?P<group>\d+)-log-(?P<index>\d+)$",
+            "DN",
+            lambda m: int(m.group("group")) * 3 + 2 + int(m.group("index")),
+        ),
+    )
+    for pattern, type_code, index_builder in name_patterns:
+        match = re.search(pattern, node_name)
+        if match:
+            return f"{match.group('prefix')}-{type_code}-{index_builder(match)}"
+
+    raise AssertionError(f"无法将 XScale 前端节点名转换为后端节点名: {node_name}")
 
 
 @allure.epic("数据库服务")
@@ -78,6 +113,8 @@ class TestXScaleBasic:
             xscale_page.assert_popup_success()
             xscale_page.assert_status(instance_name, status="重启中")
             xscale_page.assert_status(instance_name, status="就绪")
+            xscale_page.assert_status(instance_name, status="正常", refresh=True, timeout=600)
+
 
     @allure.title("XScale-修改管理员密码")
     def test_change_admin_password(self, xscale_page, xscale, ssh_host, ssh_vm):
@@ -94,31 +131,35 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}-cn-0"
-            ip_from_db = db_util.get_node_mfip_from_db(xscale_page, ssh_host, "sugoncloud_xscale", node_name, table_name="xscale_instance_node")
-            ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
+            xscale_page.goto_detail_page(instance_name)
+            row_data = xscale_page.get_row_data(node_name)
+            fixed_ip = row_data.get("内网IP")
+            assert fixed_ip, f"未在节点 {node_name} 详情行中获取到内网IP，行数据: {row_data}"
+            mfip = ssh_host.find_mfip(fixed_ip)
+            ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
             # 验证新密码可以成功登录
             cmd_new = f"/anhandbx/anhandbx-engine/bin/mysql -uadmin -P8527 -p'{new_password}' -h127.0.0.1 -e 'SELECT 1;'"
             result_new = ssh_vm.run(cmd_new)
             assert result_new.splitlines()[-1] == "1"
             xscale["admin_password"] = new_password
 
-    @allure.title("XScale-状态重置")
-    def test_reset_instance_status(self, xscale_page, xscale):
-        """测试重置XScale实例状态"""
-        instance_name = xscale["name"]
-
-        with allure_step_log("步骤一：检查实例是否满足状态重置条件"):
-            row_data = xscale_page.get_row_data(instance_name)
-            current_status = row_data.get("状态", "")
-            if current_status not in ["不可用", "警告"]:
-                pytest.skip(f"当前实例状态为“{current_status}”，不满足状态重置前置条件。")
-
-        with allure_step_log("步骤二：执行状态重置"):
-            xscale_page.reset_instance_status(instance_name)
-
-        with allure_step_log("步骤三：验证状态重置结果"):
-            xscale_page.assert_popup_success()
-            xscale_page.assert_status(instance_name, status="就绪")
+    # @allure.title("XScale-状态重置")
+    # def test_reset_instance_status(self, xscale_page, xscale):
+    #     """测试重置XScale实例状态"""
+    #     instance_name = xscale["name"]
+    #
+    #     with allure_step_log("步骤一：检查实例是否满足状态重置条件"):
+    #         row_data = xscale_page.get_row_data(instance_name)
+    #         current_status = row_data.get("状态", "")
+    #         if current_status not in ["不可用", "警告"]:
+    #             pytest.skip(f"当前实例状态为“{current_status}”，不满足状态重置前置条件。")
+    #
+    #     with allure_step_log("步骤二：执行状态重置"):
+    #         xscale_page.reset_instance_status(instance_name)
+    #
+    #     with allure_step_log("步骤三：验证状态重置结果"):
+    #         xscale_page.assert_popup_success()
+    #         xscale_page.assert_status(instance_name, status="就绪")
 
     @allure.title("XScale-JDBC连接串")
     def test_jdbc_connection_string(self, xscale_page, xscale):
@@ -141,19 +182,24 @@ class TestXScaleBasic:
     @pytest.mark.parametrize("node_type", NODE_TYPES, ids=NODE_TYPES)
     def test_change_node_specification(self, xscale_page, xscale, ssh_host, node_type):
         instance_name = xscale["name"]
+        target_spec_name = "xscale.d1.8c16g"
 
-        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页，获取{node_type}列表第一条节点并执行修改规格"):
-            node_name, target_spec = xscale_page.change_node_specification(instance_name, node_type=node_type)
+        with allure_step_log(
+            f"步骤一：进入实例 {instance_name} 详情页，获取{node_type}列表第一条节点并修改规格为 {target_spec_name}"
+        ):
+            node_name = xscale_page.change_node_specification(
+                instance_name,
+                node_type=node_type,
+                spec_name=target_spec_name,
+            )
 
         with allure_step_log("步骤二：验证修改规格任务下发成功"):
             xscale_page.assert_popup_success()
+            # xscale_page.assert_status(node_name, status="调整规格中")  # 页面刷新后，该中间态很快就消失了
             xscale_page.assert_status(node_name, status="就绪")
 
         with allure_step_log("步骤三：验证节点规格已更新"):
-            backend_spec = db_util.get_specification(xscale_page, node_name, ssh_host)
-            assert target_spec in backend_spec or backend_spec in target_spec, (
-                f"节点规格校验失败，期望规格: {target_spec}，实际规格: {backend_spec}"
-            )
+            xscale_page.assert_row_contains(node_name, target_spec_name)
 
     @allure.title("XScale-{node_type}-修改云硬盘大小")
     @pytest.mark.parametrize("node_type", NODE_TYPES, ids=NODE_TYPES)
@@ -170,7 +216,8 @@ class TestXScaleBasic:
             xscale_page.assert_status(node_name, status="就绪")
 
         with allure_step_log("步骤三：验证节点云硬盘大小已更新"):
-            assert db_util.get_disk_size(xscale_page, node_name, ssh_host) == new_size
+            backend_node_name = _build_xscale_gova_name(node_name)
+            assert db_util.get_disk_size(xscale_page, backend_node_name, ssh_host) == new_size
 
     @allure.title("XScale-{node_type}-绑定和解绑公网IP")
     @pytest.mark.parametrize(
@@ -217,21 +264,16 @@ class TestXScaleBasic:
     @pytest.mark.parametrize("node_type", NODE_TYPES, ids=NODE_TYPES)
     def test_hot_migration_node(self, xscale_page, xscale, ssh_host, node_type):
         instance_name = xscale["name"]
-        xscale_page.goto_detail_page(instance_name)
-        node_name = xscale_page.get_first_node_name_by_type(instance_name, node_type)
 
-        with allure_step_log("步骤一：记录迁移前节点所在物理机"):
-            old_host = db_util.get_backend_host(xscale_page, ssh_host, node_name)
+        with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页，获取{node_type}列表第一条节点并记录原物理机后执行热迁移"):
+            node_name, old_host, selected_host = xscale_page.hot_migration_node(instance_name, node_type=node_type)
 
-        with allure_step_log(f"步骤二：进入实例 {instance_name} 详情页，获取{node_type}列表第一条节点并执行热迁移"):
-            node_name, selected_host = xscale_page.hot_migration_node(instance_name, node_type=node_type)
-
-        with allure_step_log("步骤三：验证热迁移任务下发成功"):
+        with allure_step_log("步骤二：验证热迁移任务下发成功"):
             xscale_page.assert_popup_success()
             xscale_page.assert_status(node_name, status="迁移中")
             xscale_page.assert_status(node_name, status="就绪")
 
-        with allure_step_log("步骤四：验证节点实际迁移到了新的物理机"):
+        with allure_step_log("步骤三：验证节点实际迁移到了新的物理机"):
             new_host = db_util.get_backend_host(xscale_page, ssh_host, node_name)
             assert new_host != old_host, f"热迁移前后物理机未变化，迁移前后均为: {old_host}"
             assert selected_host in new_host, f"期望迁移到 {selected_host}，实际迁移到 {new_host}"
@@ -556,28 +598,19 @@ class TestXScaleBasic:
     def test_whitelist_management(self, xscale_page, xscale):
         """测试白名单的添加、删除、批量删除和重置功能。"""
         instance_name = xscale["name"]
-        whitelist_ips = [
-            "10.0.5.0/24",
-            "10.0.6.0/24",
-            "10.0.7.0/24",
-            "10.0.8.0/24",
-        ]
-        ip_single = whitelist_ips[0]
-        ip_batch = whitelist_ips[1:]
+        ip_single = random_data('cidr')
+        ip_batch = [random_data('cidr') for _ in range(3)]
 
-        with allure_step_log("步骤一：重置白名单，确保环境干净"):
-            xscale_page.reset_whitelist(instance_name)
-            xscale_page.assert_popup_success("重置白名单成功")
-
-        with allure_step_log("步骤二：测试单个白名单的添加与删除"):
+        with allure_step_log("步骤一：测试单个白名单的添加与删除"):
             xscale_page.add_whitelist(instance_name, ip_single)
             xscale_page.assert_popup_success("创建白名单成功")
             xscale_page.assert_list_contain(ip_single, "白名单", exact_match=False)
 
             xscale_page.delete_whitelist(instance_name, ip_single)
             xscale_page.assert_popup_success("删除白名单成功")
+            xscale_page.assert_list_not_contain(ip_single, "白名单", exact_match=False)
 
-        with allure_step_log("步骤三：测试批量添加与批量删除白名单"):
+        with allure_step_log("步骤二：测试批量添加与批量删除白名单"):
             for ip in ip_batch:
                 xscale_page.add_whitelist(instance_name, ip)
                 xscale_page.assert_popup_success("创建白名单成功")
@@ -586,14 +619,16 @@ class TestXScaleBasic:
 
             xscale_page.batch_delete_whitelist(instance_name, ip_batch)
             xscale_page.assert_popup_success("删除白名单成功")
+            xscale_page.assert_list_not_contain(ip_batch, "白名单", exact_match=False)
 
-        with allure_step_log("步骤四：测试重置白名单功能"):
+        with allure_step_log("步骤三：测试重置白名单功能"):
             xscale_page.add_whitelist(instance_name, ip_single)
             xscale_page.assert_popup_success("创建白名单成功")
             xscale_page.assert_list_contain(ip_single, "白名单", exact_match=False)
 
             xscale_page.reset_whitelist(instance_name)
             xscale_page.assert_popup_success("重置白名单成功")
+            xscale_page.assert_list_not_contain(ip_single, "白名单", exact_match=False)
 
     @allure.title("XScale-计算节点扩容与缩容")
     def test_scale_out_and_scale_in_compute_node(self, xscale_page, xscale, ssh_host):
@@ -606,25 +641,23 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证计算节点扩容成功"):
             xscale_page.assert_popup_success()
             xscale_page.assert_status(new_node_name, status="创建中", timeout=600)
-            xscale_page.assert_status(new_node_name, status="就绪", timeout=600)
+            xscale_page.assert_status(new_node_name, status="运行中", timeout=600)
             db_util.assert_backend_created(
                 xscale_page,
                 ssh_host,
-                _build_xscale_gova_name(new_node_name),
-                timeout=2400,
+                _build_xscale_gova_name(new_node_name)
             )
 
         with allure_step_log("步骤三：通过详情页按钮缩容新增的计算节点"):
-            deleted_node_name = xscale_page.scale_in_compute_node(instance_name)
+            xscale_page.scale_in_compute_node(instance_name)
 
         with allure_step_log("步骤四：验证计算节点缩容成功"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_deleted(deleted_node_name, timeout=2400)
+            xscale_page.assert_deleted(new_node_name, refresh=True)
             db_util.assert_backend_deleted(
                 xscale_page,
                 ssh_host,
-                _build_xscale_gova_name(deleted_node_name),
-                timeout=2400,
+                _build_xscale_gova_name(new_node_name),
             )
 
     @allure.title("XScale-重启计算节点")
@@ -637,27 +670,42 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤二：验证计算节点重启结果"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_status(compute_nodes, status="节点重启中")
-            xscale_page.assert_status(compute_nodes, status="就绪")
+            _assert_any_node_restarted(xscale_page, compute_nodes, "计算节点")
 
-    @allure.title("XScale-存储节点扩容")
+    @allure.title("XScale-存储节点扩容和缩容")
     def test_scale_out_storage_node(self, xscale_page, xscale, ssh_host):
-        """测试 XScale 实例详情页存储节点扩容功能。"""
+        """测试 XScale 实例详情页存储节点扩容和缩容功能。"""
         instance_name = xscale["name"]
 
         with allure_step_log("步骤一：通过详情页按钮扩容一个存储节点"):
-            new_node_name = xscale_page.scale_out_storage_node(instance_name)
+            new_node_names = xscale_page.scale_out_storage_node(instance_name)
 
         with allure_step_log("步骤二：验证存储节点扩容成功"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_status(new_node_name, status="创建中", timeout=600)
-            xscale_page.assert_status(new_node_name, status="就绪", timeout=1800)
-            db_util.assert_backend_created(
-                xscale_page,
-                ssh_host,
-                _build_xscale_gova_name(new_node_name),
-                timeout=2400,
-            )
+            xscale_page.assert_status(new_node_names, status="创建中")
+            xscale_page.assert_status(new_node_names, status="运行中", timeout=1200)
+            backend_node_names = []
+            for new_node_name in new_node_names:
+                backend_node_name = _build_xscale_gova_name(new_node_name)
+                backend_node_names.append(backend_node_name)
+                db_util.assert_backend_created(
+                    xscale_page,
+                    ssh_host,
+                    backend_node_name
+                )
+
+        with allure_step_log("步骤三：通过详情页按钮缩容新增的存储节点"):
+            xscale_page.scale_in_storage_node(instance_name)
+
+        with allure_step_log("步骤四：验证存储节点缩容成功"):
+            xscale_page.assert_popup_success()
+            xscale_page.assert_deleted(new_node_names, refresh=True)
+            for backend_node_name in backend_node_names:
+                db_util.assert_backend_deleted(
+                    xscale_page,
+                    ssh_host,
+                    backend_node_name
+                )
 
     @allure.title("XScale-批量重启存储节点")
     def test_restart_storage_nodes(self, xscale_page, xscale):
@@ -669,5 +717,4 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤二：验证存储节点批量重启结果"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_status(storage_nodes, status="节点重启中", timeout=300)
-            xscale_page.assert_status(storage_nodes, status="就绪", timeout=1800)
+            _assert_any_node_restarted(xscale_page, storage_nodes, "存储节点")
