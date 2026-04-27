@@ -10,7 +10,6 @@ from sugon_web.utils.logger import logger
 
 class PgSQLPage(BasePage):
     """PostgreSQL实例管理页面对象"""
-
     @submenu("实例管理")
     def create_instance(self, name: str, instance_type: str = "单机", version: str = "14",
                         password: str = "admin1234@sugon", network: str = "Autotest",
@@ -251,6 +250,7 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
+        sleep(5)
         self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
@@ -332,7 +332,7 @@ class PgSQLPage(BasePage):
         dialog.locator("form div").filter(has_text="用户名").get_by_role("textbox").fill(user_name)
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(password)
-        dialog.get_by_text("确定").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def change_user_privileges(self, name: str, user_name: str, new_password: str):
@@ -348,7 +348,7 @@ class PgSQLPage(BasePage):
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
-        dialog.get_by_text("确定").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def authorize_user(self, name: str, user_name: str, db_name: str, privileges: str = "读写"):
@@ -369,7 +369,7 @@ class PgSQLPage(BasePage):
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=privileges).click()
-        dialog.get_by_text("确定").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def delete_user(self, name: str, user_name: str):

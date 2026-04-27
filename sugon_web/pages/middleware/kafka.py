@@ -284,17 +284,20 @@ class KafkaPage(BasePage):
         return checked_host
 
     @submenu("实例管理")
-    def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.",
-                       selection_type: str = "快速选择", node_count: int = 3):
-        """切换Kafka实例网络，运行中时会先触发关闭服务，再次执行才进入网络切换"""
+    def close_service_for_switch_network(self, name: str):
+        """切换网络前先关闭Kafka服务"""
         self.ensure_instance_tab(name, "详情")
         self.get_by_label("详情").get_by_text("切换网络").click()
 
-        # Kafka实例运行中时，首次点击“切换网络”会先弹出“关闭服务”确认框。
-        close_service_dialog = self.get_by_label("关闭服务")
-        if close_service_dialog.count() > 0:
-            close_service_dialog.last.get_by_text("确定", exact=True).click()
-            return "close_service"
+        close_service_dialog = self.page.locator("div.el-dialog:visible").filter(has_text=re.compile(r"关闭服务"))
+        close_service_dialog.first.get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.",
+                       selection_type: str = "快速选择", node_count: int = 3):
+        """Kafka服务停止后执行切换网络"""
+        self.ensure_instance_tab(name, "详情")
+        self.get_by_label("详情").get_by_text("切换网络").click()
 
         dialog = self.get_by_label("切换网络")
 
@@ -337,7 +340,6 @@ class KafkaPage(BasePage):
                 logger.error(f"Kafka切换网络可用IP不足，无法为第 {i + 1} 个节点分配IP")
 
         dialog.get_by_text("确定", exact=True).click()
-        return "switch_network"
 
     @submenu("实例管理")
     def create_topic(self, name: str, topic_name: str, partition_count: int = 3,

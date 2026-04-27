@@ -109,6 +109,7 @@ class MongoDBPage(BasePage):
         :param old_name: 旧实例名称
         :param new_name: 新实例名称
         """
+        sleep(5)
         self.click_action(old_name, "修改实例名称")
         dialog = self.get_by_label("修改实例名称").get_by_role("textbox")
         dialog.click()
@@ -122,6 +123,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         :param new_password: 新密码
         """
+        sleep(5)
         self.click_action(name, "修改root密码")
         dialog = self.get_by_role("dialog")
         pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^新密码$")).get_by_role("textbox")

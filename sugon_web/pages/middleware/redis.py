@@ -180,7 +180,7 @@ class RedisPage(BasePage):
     def add_shard(self, name: str):
         """为Redis实例添加分片"""
         self.ensure_instance_tab(name)
-        self.get_by_label("详情").get_by_text("添加分片").click()
+        self.get_by_text("添加分片").first.click()
         self.get_by_label("添加分片").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -228,16 +228,25 @@ class RedisPage(BasePage):
         return checked_host
 
     @submenu("实例管理")
+    def close_service_for_switch_network(self, name: str):
+        """切换网络前先关闭Redis服务"""
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        self.get_by_text("切换网络").first.click()
+
+        close_service_dialog = self.page.locator("div.el-dialog:visible").filter(has_text=re.compile(r"关闭服务"))
+        close_service_dialog.first.get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
     def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.", selection_type: str = "快速选择"):
         """
-        切换Redis实例网络
+        Redis服务停止后执行切换网络
         :param name: 实例名称
         :param network: 网络名称
         :param subnet: 子网名称
         :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("切换网络").click()
+        self.get_by_text("切换网络").first.click()
 
         dialog = self.get_by_label("切换网络")
 
@@ -366,10 +375,13 @@ class RedisPage(BasePage):
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
