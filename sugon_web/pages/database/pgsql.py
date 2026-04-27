@@ -207,7 +207,7 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("解绑公网IP").click()
+        self.get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -251,7 +251,7 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")

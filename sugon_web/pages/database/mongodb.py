@@ -206,7 +206,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建备节点").click()
+        self.get_by_text("新建备节点").first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -216,7 +216,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -226,7 +226,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("添加Mongos节点").click()
+        self.get_by_text("添加Mongos节点").first.click()
         self.get_by_label("添加Mongos节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -237,7 +237,7 @@ class MongoDBPage(BasePage):
         :param shard_count: 分片数量
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("调整分片").click()
+        self.get_by_text("调整分片").first.click()
         dialog = self.get_by_label("调整分片")
         # 假设是一个 spinbutton 或带有特定 label 的单选/输入
         dialog.get_by_role("spinbutton").fill(str(shard_count))
