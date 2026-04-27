@@ -1,9 +1,8 @@
-from sugon_web.common.base import submenu
-from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.utils.logger import logger
 
 
-class RecyclePage(OpsPage):
+class RecycleMixin(BasePage):
 
     @submenu("回收站")
     def ecs_delete(self, names, secure=False, delete_volume: bool = False, release_ip: bool = False):

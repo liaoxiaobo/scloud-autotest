@@ -302,9 +302,7 @@ def volume(evs_page, request):
 @pytest.fixture(scope="function")
 def ecs_page(page):
     """初始化弹性云服务器页对象"""
-    ecs_page = EcsPage(page)
-    ecs_page.goto_service('弹性云服务器')
-    return ecs_page
+    return EcsPage(page)
 
 @pytest.fixture(scope="function")
 def ops_page(page):
@@ -650,17 +648,18 @@ def _collect_vm_fixture_metadata(
 
 def _bind_vm_fixture_mfips(
     ecs_page: EcsPage,
+    ops_page: OpsPage,
     metadata_list: list[VmMetadata],
     network: str,
 ) -> None:
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            ecs_page.goto_service("网络设施")
-            ecs_page.mfip_create(vm_data["project"], network, vm_data["ip"])
-            ecs_page.assert_popup_success()
-            ecs_page.mfip_search(vm_data["ip"])
-            vm_data["mfip"] = ecs_page.get_row_data(vm_data["ip"]).get("管理IP地址")
+            ops_page.goto_service("网络设施")
+            ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
+            ops_page.assert_popup_success()
+            ops_page.mfip_search(vm_data["ip"])
+            vm_data["mfip"] = ops_page.get_row_data(vm_data["ip"]).get("管理IP地址")
     ecs_page.goto_service("弹性云服务器")
 
 
@@ -773,6 +772,7 @@ def vm(
 
     page = _create_logged_in_page(browser_context, config)
     ecs_page = EcsPage(page)
+    ops_page = OpsPage(page)
     vm_names: list[str] = []
 
     try:
@@ -795,7 +795,7 @@ def vm(
                 )
                 current_metadata = _collect_vm_fixture_metadata(ecs_page, current_vm_names, network, subnet)
                 if instance_config.get("bind_mfip", True):
-                    _bind_vm_fixture_mfips(ecs_page, current_metadata, network)
+                    _bind_vm_fixture_mfips(ecs_page, ops_page, current_metadata, network)
 
                 vm_names.extend(current_vm_names)
                 metadata_list.extend(current_metadata)
@@ -813,7 +813,7 @@ def vm(
             metadata_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
 
             if bind_mfip:
-                _bind_vm_fixture_mfips(ecs_page, metadata_list, network)
+                _bind_vm_fixture_mfips(ecs_page, ops_page, metadata_list, network)
 
         yield metadata_list[0] if len(metadata_list) == 1 else metadata_list
     finally:

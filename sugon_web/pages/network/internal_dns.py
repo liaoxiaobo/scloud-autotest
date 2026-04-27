@@ -2,10 +2,10 @@ import re
 
 from playwright.sync_api import expect
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class InternalDnsMixin:
+class InternalDnsMixin(BasePage):
     """内网解析页面动作。"""
 
     def _get_dns_dialog(self, title: str):

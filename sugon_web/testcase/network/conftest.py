@@ -3,10 +3,9 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import SgPage, VpcPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
-from sugon_web.pages.network import AclPage, SlbPage, IpGroupPage
 from sugon_web.conftest import _create_logged_in_page
 
 
@@ -371,23 +370,7 @@ def nat(vpc_page, vpc, request):
             logger.warning(f"清理NAT网关时出错: {e}")
 
 @pytest.fixture(scope="function")
-def sg_page(page):
-    """初始化虚拟私有云页面对象"""
-    vpc_page = SgPage(page)
-    vpc_page.goto_service('安全组')
-    return vpc_page
-
-
-@pytest.fixture(scope="function")
-def qos_page(page):
-    """初始化网络QoS页面对象"""
-    vpc_page = VpcPage(page)
-    vpc_page.goto_service("网络QoS")
-    return vpc_page
-
-
-@pytest.fixture(scope="function")
-def qos(qos_page):
+def qos(vpc_page):
     """创建并返回一个网络QoS，测试结束后自动清理"""
     qos_info = {
         "name": f"qos-{random_data()}",
@@ -397,21 +380,20 @@ def qos(qos_page):
     }
 
     with allure_step_log("Setup: 创建网络QoS"):
-        qos_page.qos_create(
+        vpc_page.qos_create(
             name=qos_info["name"],
             send_rate=qos_info["send_rate"],
             recv_rate=qos_info["recv_rate"],
             desc=qos_info["desc"]
         )
-        qos_page.assert_popup_success()
+        vpc_page.assert_popup_success()
 
     yield qos_info
 
     with allure_step_log(f"Teardown: 删除网络QoS {qos_info['name']}"):
         try:
-            qos_page.goto_service("网络QoS")
-            qos_page.qos_delete(qos_info["name"])
-            qos_page.assert_deleted(qos_info["name"])
+            vpc_page.qos_delete(qos_info["name"])
+            vpc_page.assert_deleted(qos_info["name"])
         except Exception as e:
             logger.warning(f"清理网络QoS时出错: {e}")
 
@@ -436,7 +418,7 @@ def _normalize_vm_items(value):
     return [value]
 
 
-def _create_security_groups(sg_page, count):
+def _create_security_groups(vpc_page, count):
     """创建指定数量的安全组并返回名称列表。"""
     if count <= 0:
         return []
@@ -445,20 +427,19 @@ def _create_security_groups(sg_page, count):
     with allure_step_log(f"创建 {count} 个安全组"):
         for _ in range(count):
             sg_name = random_data()
-            sg_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
-            expect(sg_page.popup).to_have_count(0)
+            vpc_page.sg_create(sg_name, desc=f"{sg_name}自动创建的安全组")
+            expect(vpc_page.popup).to_have_count(0)
             names.append(sg_name)
     return names
 
 
-def _cleanup_security_groups(sg_page, names):
+def _cleanup_security_groups(vpc_page, names):
     """删除安全组。"""
     if not names:
         return
     with allure_step_log(f"清理安全组 {names}"):
-        sg_page.goto_service("安全组")
-        sg_page.sg_delete(names)
-        sg_page.assert_deleted(names)
+        vpc_page.sg_delete(names)
+        vpc_page.assert_deleted(names)
 
 
 def _bind_security_groups_to_vms(ecs_page, vm_data, sg_names):
@@ -508,8 +489,7 @@ def sg(browser_context, config, request):
         str | list[str]: 单个安全组名称或安全组名称列表
     """
     page = _create_logged_in_page(browser_context, config)
-    sg_page = SgPage(page)
-    sg_page.goto_service('安全组')
+    vpc_page = VpcPage(page)
 
     count = getattr(request, "param", 1)
     if count <= 0:
@@ -517,12 +497,12 @@ def sg(browser_context, config, request):
         page.close()
         return
 
-    names = _create_security_groups(sg_page, count)
+    names = _create_security_groups(vpc_page, count)
 
     yield names[0] if count == 1 else names
 
     try:
-        _cleanup_security_groups(sg_page, names)
+        _cleanup_security_groups(vpc_page, names)
     finally:
         page.close()
 
@@ -536,44 +516,28 @@ def vm_sg_binding(ecs_page, vm, sg):
     finally:
         _unbind_security_groups_from_vms(ecs_page, vm, sg)
 
-@pytest.fixture(scope="function")
-def acl_page(page):
-    """返回网络AclPage实例"""
-    vpc_page = AclPage(page)
-    vpc_page.goto_service('网络ACL')
-    return vpc_page
-
 @pytest.fixture(scope="class")
 def acl(browser_context, config):
     """
     创建并返回一个网络ACL名称，测试结束后自动清理
     该fixture使用function scope的page会引发ScopeMismatch异常，
-    如果您的项目中 sg_page 是 function scope，而 sg(sg_page) 声明了 class scope，说明项目做了特定处理。
+    如果您的项目中 vpc_page 是 function scope，而 sg(vpc_page) 声明了 class scope，说明项目做了特定处理。
     为安全起见，这里提供标准实现。
     """
     page = _create_logged_in_page(browser_context, config)
-    acl_page = AclPage(page)
+    vpc_page = VpcPage(page)
     acl_name = f"acl-{random_data()}"
 
     # 创建网络ACL
     with allure_step_log(f"fixture前置: 创建网络ACL{acl_name}"):
-        acl_page.goto_service("网络ACL")
-        acl_page.acl_create(acl_name, desc=f"{acl_name} 自动化测试创建")
+        vpc_page.acl_create(acl_name, desc=f"{acl_name} 自动化测试创建")
 
     yield acl_name
 
     # 测试结束后清理
     with allure_step_log(f"fixture后置: 清理网络ACL{acl_name}"):
-        acl_page.goto_service("网络ACL")
-        acl_page.acl_batch_delete([acl_name])
+        vpc_page.acl_batch_delete([acl_name])
     page.close()
-
-@pytest.fixture(scope="function")
-def slb_page(page):
-    """初始化负载均衡页面对象"""
-    slb_page = SlbPage(page)
-    slb_page.goto_service("负载均衡")
-    return slb_page
 
 
 @pytest.fixture(scope="class")
@@ -590,8 +554,7 @@ def slb(browser_context, config, vpc, request):
     - spec: V2 时的规格 (默认 "slb.d6.large 2核 4GiB 内网带宽")
     """
     page = _create_logged_in_page(browser_context, config)
-    slb_page = SlbPage(page)
-    slb_page.goto_service("负载均衡")
+    vpc_page = VpcPage(page)
     params = getattr(request, 'param', {})
     version = params.get('version', "V2")
     ha_enable = params.get('ha_enable', False)
@@ -612,8 +575,7 @@ def slb(browser_context, config, vpc, request):
     slb_name = params.get("name", f"slb-{random_data()}")
 
     with allure_step_log(f"Setup: 创建负载均衡 {slb_name}"):
-        slb_page.goto_service("负载均衡")
-        slb_page.slb_create(
+        vpc_page.slb_create(
             name=slb_name,
             version=version,
             ha_enable=ha_enable,
@@ -624,15 +586,14 @@ def slb(browser_context, config, vpc, request):
             spec=spec
         )
         # 等待创建成功并验证状态入运行中
-        slb_page.assert_status(slb_name, status="运行中")
+        vpc_page.assert_status(slb_name, status="运行中")
 
     yield slb_name
 
     with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):
         try:
-            slb_page.goto_service("负载均衡")
-            slb_page.slb_delete(slb_name)
-            slb_page.assert_deleted(slb_name)
+            vpc_page.slb_delete(slb_name)
+            vpc_page.assert_deleted(slb_name)
         except Exception as e:
             logger.warning(f"清理负载均衡 {slb_name} 失败: {e}")
         finally:
@@ -645,8 +606,7 @@ def lb(browser_context, config, slb, request):
     可以通过 pytest.mark.parametrize("lb", [{"port": 81}], indirect=True) 传参定制。
     """
     page = _create_logged_in_page(browser_context, config)
-    slb_page = SlbPage(page)
-    slb_page.goto_service("负载均衡")
+    vpc_page = VpcPage(page)
     params = getattr(request, "param", {})
 
     params.setdefault("slb_name", slb)
@@ -665,9 +625,9 @@ def lb(browser_context, config, slb, request):
     lb_name = params["lb_name"]
 
     with allure_step_log(f"Setup: 创建默认监听器 {lb_name}"):
-        slb_page.slb_lb_create(**params)
-        slb_page.assert_popup_success()
-        slb_page.assert_listener_exists(lb_name)
+        vpc_page.slb_lb_create(**params)
+        vpc_page.assert_popup_success()
+        vpc_page.assert_listener_exists(lb_name)
 
     listener_info = {
         "slb_name": params["slb_name"],
@@ -689,31 +649,21 @@ def lb(browser_context, config, slb, request):
     with allure_step_log(f"Teardown: 删除监听器 {listener_info['name']}"):
         try:
             current_name = listener_info["name"]
-            slb_page.goto_service("负载均衡")
-            slb_page.goto_slb_detail(listener_info["slb_name"], "监听器")
-            slb_page.assert_listener_exists(current_name)
-            slb_page.slb_lb_delete(listener_info["slb_name"], current_name)
-            slb_page.assert_popup_success()
+            vpc_page.goto_slb_detail(listener_info["slb_name"], "监听器")
+            vpc_page.assert_listener_exists(current_name)
+            vpc_page.slb_lb_delete(listener_info["slb_name"], current_name)
+            vpc_page.assert_popup_success()
         except Exception as exc:
             logger.warning(f"listener cleanup failed: {current_name}, error={exc}")
         finally:
             page.close()
 
 
-@pytest.fixture(scope="function")
-def ip_group_page(page):
-    """初始化 IP 地址组页面对象。"""
-    page_obj = IpGroupPage(page)
-    page_obj.goto_service("负载均衡")
-    return page_obj
-
-
 @pytest.fixture(scope="class")
 def ip_group(browser_context, config, request):
     """创建 IP 地址组，并在测试结束后自动清理。"""
     page = _create_logged_in_page(browser_context, config)
-    ip_group_page = IpGroupPage(page)
-    ip_group_page.goto_service("负载均衡")
+    vpc_page = VpcPage(page)
 
     params = getattr(request, "param", {})
     group_info = {
@@ -725,24 +675,23 @@ def ip_group(browser_context, config, request):
     group_info.update(params)
 
     with allure_step_log(f"Setup: 创建 IP 地址组 {group_info['name']}"):
-        ip_group_page.ip_group_create(
+        vpc_page.ip_group_create(
             name=group_info["name"],
             ip_addresses=group_info["ip_addresses"],
             desc=group_info["desc"],
             enable_ipv6=group_info["enable_ipv6"],
         )
-        ip_group_page.assert_popup_success()
+        vpc_page.assert_popup_success()
 
     yield group_info
 
     with allure_step_log(f"Teardown: 清理 IP 地址组 {group_info['name']}"):
         try:
-            ip_group_page.goto_service("负载均衡")
-            ip_group_page.ip_group_search(group_info["name"])
-            names = ip_group_page.get_column_data("名称")
+            vpc_page.ip_group_search(group_info["name"])
+            names = vpc_page.get_column_data("名称")
             if group_info["name"] in names:
-                ip_group_page.ip_group_delete(group_info["name"])
-                ip_group_page.assert_deleted(group_info["name"])
+                vpc_page.ip_group_delete(group_info["name"])
+                vpc_page.assert_deleted(group_info["name"])
         except Exception as exc:
             logger.warning(f"清理 IP 地址组失败: {exc}")
         finally:

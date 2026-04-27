@@ -232,7 +232,7 @@ class TestResumeCreate:
     @allure.title("恢复任务-创建和恢复")
     # @pytest.mark.slow
     @pytest.mark.parametrize("data", load_data('test_resume_create_scenario', 'test_backup.yaml'))
-    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data):
+    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ops_page, ssh_vm, cleanup_resume_data, data):
         """测试创建恢复任务的各种场景"""
         allure.dynamic.title(f"恢复任务-创建和恢复（{data['用例名称']}）")
         backup_page.goto_service('备份')
@@ -281,7 +281,7 @@ class TestResumeCreate:
 
             # 获取新虚机的 IP 并建立 SSH 连接
             new_vm_ip = ecs_page.get_row_data(re_vm).get("IP地址").split('固定:')[1].strip()
-            new_mfip = ecs_page.bind_mfip(new_vm_ip.strip())
+            new_mfip = ops_page.bind_mfip(new_vm_ip.strip())
             mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
             login_pwd = mgmt_config.get("登录密码", "admin1234@sugon")
             ssh_vm.connect(new_mfip, pwd=login_pwd)
@@ -318,6 +318,7 @@ class TestResumeCreate:
             self,
             backup_page,
             ecs_page,
+            ops_page,
             ssh_vm,
             backup_task,
             cleanup_resume_data,
@@ -420,7 +421,7 @@ class TestResumeCreate:
                 assert row_data.get("架构x86_64aarch64   筛选   重置 ") == original_arch, "架构与原始虚机不一致"
 
                 new_vm_ip = row_data.get("IP地址").split('固定:')[1].strip()
-                new_mfip = ecs_page.bind_mfip(new_vm_ip.strip())
+                new_mfip = ops_page.bind_mfip(new_vm_ip.strip())
                 mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
                 login_pwd = mgmt_config.get("登录密码", "sugon@20")
                 ssh_vm.connect(new_mfip, pwd=login_pwd)

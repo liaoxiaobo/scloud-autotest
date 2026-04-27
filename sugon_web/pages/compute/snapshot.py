@@ -1,11 +1,10 @@
 import re
 
-from sugon_web.common.base import submenu
-from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.utils.logger import logger
 
 
-class SnapshotPage(OpsPage):
+class SnapshotMixin(BasePage):
 
 
     @submenu("快照")

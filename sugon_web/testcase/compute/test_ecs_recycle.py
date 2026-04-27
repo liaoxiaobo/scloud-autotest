@@ -29,7 +29,7 @@ class TestECSRecycle:
             ecs_page.assert_deleted(name)
 
         with allure_step_log("步骤4: 验证恢复结果"):
-            ecs_page.goto_service('弹性云服务器')
+            ecs_page.goto_submenu('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm, timeout=90)
@@ -60,7 +60,7 @@ class TestECSRecycle:
             ecs_page.ecs_recover(name)
             ecs_page.assert_popup_success(f"移出回收站成功")
             ecs_page.assert_deleted(name)
-            ecs_page.goto_service('弹性云服务器')
+            ecs_page.goto_submenu('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
 
     @allure.title("弹性云服务器-回收站删除")

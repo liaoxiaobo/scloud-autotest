@@ -185,7 +185,7 @@ def _normalize_ecs_create_request(
     )
 
 
-class EcsPageBase(DrawerSelectMixin, OpsPage):
+class EcsMixin(DrawerSelectMixin, OpsPage):
     @submenu("弹性云服务器")
     def ecs_create(
         self,
@@ -934,7 +934,7 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
 
         return md5_dict
 
-
+    @submenu("弹性云服务器")
     def ecs_batch_bind_labels(self, names: list, label_names: list):
         logger.info(f"绑定标签{label_names}到云服务器{names}")
         self.select_rows_by_names(names)
@@ -2699,21 +2699,6 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
         logger.info(f"验证{name}服务器镜像名称: {image_name}")
         assert self.get_row_data(name).get("镜像名称").__eq__(image_name), f"{name}服务器镜像名称与{image_name}不一致"
 
-    def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
-        """虚机绑定mfip
-        Args:
-            project: 项目名称
-            network: 网络名称
-            ip: 公网ip地址
-
-        """
-        self.goto_service("网络设施")
-        self.mfip_create(project, network, ip)
-        self.assert_popup_success("执行成功")
-        self.mfip_search(ip)
-        # return self.get_column_data("Mfip 地址")[0]
-        return self.get_row_data(ip).get("管理IP地址")
-
     def stout_to_dict(self, strs):
         """将gova show字输出的符串转为字典
         Args:
@@ -2813,4 +2798,3 @@ class EcsPageBase(DrawerSelectMixin, OpsPage):
 
         self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
 
-__all__ = ["EcsPageBase"]

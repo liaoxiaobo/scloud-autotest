@@ -1,9 +1,8 @@
-from sugon_web.common.base import submenu
-from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.utils.logger import logger
 
 
-class LabelPage(OpsPage):
+class LabelMixin(BasePage):
 
     @submenu("弹性云服务器")
     def bind_labels(self, name: str, label_names: list, bind: bool = True):

@@ -5,8 +5,11 @@ from typing import Any, Dict, Iterator, List, Tuple, Union
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
+from sugon_web.pages.ops import OpsPage
+from sugon_web.pages.network import VpcPage
 from sugon_web.testcase.conftest import (
     VmFixtureParams,
+    _allocate_eips,
     _build_vm_create_request,
     _build_vm_fixture_names,
     _collect_vm_fixture_metadata,
@@ -84,6 +87,14 @@ def _create_ecs_page_with_session(browser_context: Any, config: Any) -> tuple[An
     ecs_page = EcsPage(page)
     ecs_page.goto_service("弹性云服务器")
     return page, ecs_page
+
+
+def _create_vpc_page_with_session(browser_context: Any, config: Any) -> tuple[Any, VpcPage]:
+    """为备份资源准备流程创建已登录的 VPC 页面对象。"""
+    page = _create_logged_in_page(browser_context, config)
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service("虚拟私有云")
+    return page, vpc_page
 
 
 def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
@@ -181,16 +192,16 @@ def _prepare_single_vm_backup_metadata(
         一个新的虚机元数据字典，除原始字段外，还包含 ``backup_nodes``、
         ``md5_dict``、``mfip`` 和 ``arch``。
     """
-    # ecs_page.goto_service("弹性云服务器")
-    ecs_page.set_table_header("架构")
-    ecs_page.ecs_bind_pub_ip(vm_data["name"])
-    ecs_page.assert_popup_success("执行成功")
-    row_data = ecs_page.get_row_data(vm_data["name"])
-    arch = row_data.get("架构x86_64aarch64   筛选   重置 ")
-    ip = row_data.get("IP地址").split("固定:")[1].strip()
-    mfip = ecs_page.bind_mfip(ip)
-    ssh_vm.connect(mfip)
-    md5_dict = ecs_page.vm_pre_data(ssh_vm)
+    with allure_step_log(f"准备备份源虚机: {vm_data['name']}"):
+        ecs_page.set_table_header("架构")
+        ecs_page.ecs_bind_pub_ip(vm_data["name"])
+        ecs_page.assert_popup_success("执行成功")
+        row_data = ecs_page.get_row_data(vm_data["name"])
+        arch = row_data.get("架构x86_64aarch64   筛选   重置 ")
+        ip = row_data.get("IP地址").split("固定:")[1].strip()
+        mfip = OpsPage(ecs_page.page).bind_mfip(ip)
+        ssh_vm.connect(mfip)
+        md5_dict = ecs_page.vm_pre_data(ssh_vm)
 
     enriched_vm = dict(vm_data)
     enriched_vm.update({"backup_nodes": backup_nodes, "md5_dict": md5_dict, "mfip": mfip, "arch": arch})
@@ -237,10 +248,11 @@ def _cleanup_vm_backup_resources(ecs_page: EcsPage, vm_names: List[str]) -> None
     """
     if not vm_names:
         return
-    ecs_page.goto_service("弹性云服务器")
-    ecs_page.ecs_remove(vm_names)
-    ecs_page.ecs_delete(vm_names, delete_volume=True, release_ip=True)
-    ecs_page.assert_deleted(vm_names)
+    with allure_step_log(f"清理备份源虚机: {vm_names}"):
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.ecs_remove(vm_names)
+        ecs_page.ecs_delete(vm_names, delete_volume=True, release_ip=True)
+        ecs_page.assert_deleted(vm_names)
 
 
 def _load_backup_policy(params: RequestParams) -> Dict[str, Any]:
@@ -427,6 +439,7 @@ def vm_backup(
             assert len(vm_backup) == 2
     """
     page, ecs_page = _create_ecs_page_with_session(browser_context, config)
+    vpc_page_raw, vpc_page = _create_vpc_page_with_session(browser_context, config)
     params = _get_request_params(request)
     vm_params = _build_vm_backup_params(ecs_page, params)
     enabled_nodes = _get_enabled_backup_nodes(ecs_page)
@@ -435,21 +448,23 @@ def vm_backup(
     vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
 
     try:
-        with allure_step_log("预置虚机及数据"):
-            _create_vm_resources(
-                ecs_page=ecs_page,
-                create_request=create_request,
-                vm_names=vm_names,
-            )
-            vm_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
-            vm_list = _prepare_vm_backup_metadata(ecs_page, ssh_vm, vm_list, enabled_nodes)
-            logger.info(f"vm_list: {vm_list}")
+        _allocate_eips(vpc_page, count=count)
+        _create_vm_resources(
+            ecs_page=ecs_page,
+            create_request=create_request,
+            vm_names=vm_names,
+        )
+        vm_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
+        vm_list = _prepare_vm_backup_metadata(ecs_page, ssh_vm, vm_list, enabled_nodes)
+        logger.info(f"vm_list: {vm_list}")
 
         ecs_page.goto_service("备份")
         yield vm_list
     finally:
-        with allure_step_log("清理虚机"):
+        try:
             _cleanup_vm_backup_resources(ecs_page, vm_names)
+        finally:
+            vpc_page_raw.close()
             page.close()
 
 

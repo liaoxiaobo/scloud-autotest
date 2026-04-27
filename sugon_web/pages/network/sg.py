@@ -3,7 +3,7 @@ import re
 from sugon_web.common.base import BasePage, submenu
 
 
-class SgPage(BasePage):
+class SgMixin(BasePage):
     """安全组页面类"""
 
     def _get_sg_rule_table(self):

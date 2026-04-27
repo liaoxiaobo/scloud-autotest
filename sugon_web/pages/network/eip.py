@@ -2,11 +2,17 @@ import re
 
 from playwright.sync_api import expect
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class EipMixin:
+class EipMixin(BasePage):
     """弹性公网IP页面动作。"""
+
+    @staticmethod
+    def _get_ipv4_segment(ip: str):
+        """返回 IPv4 的前三段，用于同网段匹配。"""
+        match = re.fullmatch(r"((?:\d{1,3}\.){2}\d{1,3})\.\d{1,3}", ip or "")
+        return match.group(1) if match else None
 
     def _get_eip_list(self):
         """获取当前列表中的弹性公网IP"""
@@ -49,7 +55,18 @@ class EipMixin:
             """
         )
         current_ips = set(self._get_eip_list())
-        candidate_ips = [ip for ip in visible_ips if ip not in current_ips]
+        current_segments = {
+            self._get_ipv4_segment(ip) for ip in current_ips if self._get_ipv4_segment(ip)
+        }
+        candidate_ips = [
+            ip
+            for ip in visible_ips
+            if ip not in current_ips
+            and (
+                not current_segments
+                or self._get_ipv4_segment(ip) in current_segments
+            )
+        ]
         return candidate_ips or visible_ips
 
     @submenu("弹性公网IPv4")
@@ -73,6 +90,7 @@ class EipMixin:
         search_input = pool_panel.get_by_placeholder("请输入资源池名称")
         expect(search_input).to_be_visible(timeout=8000)
         search_input.fill(pool_name)
+        search_input.press("Enter")
         self.page.wait_for_timeout(300)
 
         pool_items = pool_panel.locator(".left-box-list .left-box-list-item")

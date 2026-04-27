@@ -58,7 +58,8 @@ def image(ssh_host, ecs_page, request):
     if backend.startswith("local"):
         backend = "local-test"
     image_name = params.get("image", "AnolisOS-8.9-x86_64-minimal.iso")
-    ssh_host.glance_image_create(name, image=image_name, backend=backend)
+    with allure_step_log(f"创建镜像 {name}"):
+        ssh_host.glance_image_create(name, image=image_name, backend=backend)
     yield {"name": name}
     ssh_host.glance_image_delete(name)
 

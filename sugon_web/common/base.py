@@ -351,6 +351,7 @@ class BasePage(Playwright):
         #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
         # 处理默认收起的菜单
+        expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)   # 确保菜单栏完全加载
         menu_left = self.locator("#cloud-menu-left")
         parent_nodes = menu_left.locator(".one-tree-parent-node")
         count = parent_nodes.count()
@@ -366,6 +367,19 @@ class BasePage(Playwright):
         self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
+
+    def _dismiss_hover_tips(self, timeout: float = 1.5, poll_interval: float = 0.3) -> None:
+        """清理进入页面后残留的悬浮提示，避免遮挡后续按钮。"""
+        tip_locators = [
+            self.page.locator(".el-tooltip__popper:visible"),
+            self.page.locator(".el-popper:visible"),
+        ]
+        end_time = time.time() + timeout
+
+        while time.time() < end_time:
+            if all(locator.count() == 0 for locator in tip_locators):
+                return
+            self.page.wait_for_timeout(int(poll_interval * 1000))
 
     def goto_detail_page(
         self,
@@ -386,6 +400,7 @@ class BasePage(Playwright):
         """
         self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
         self.wait_for_page_ready()
+        self._dismiss_hover_tips()
 
         if tab_name:
             tab = self.page.locator(".el-tabs__item").filter(
@@ -394,6 +409,7 @@ class BasePage(Playwright):
             tab.dispatch_event("click")
             expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
             self.wait_for_page_ready()
+            self._dismiss_hover_tips()
 
         if not row_name:
             return None

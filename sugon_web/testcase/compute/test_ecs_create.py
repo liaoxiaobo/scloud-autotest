@@ -27,7 +27,7 @@ class TestECSCreate:
 
     @allure.title("创建功能验证: 快照来源")
     @skip_stor("usan","local", "nfs")
-    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
+    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ops_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")
         with allure_step_log("步骤1: 创建启动方式为 快照 的云服务器"):
@@ -44,7 +44,7 @@ class TestECSCreate:
 
             # 登录虚机验证
             ip = ecs_page.get_row_data(name).get("IP地址").split(':')[1]
-            mfip = ecs_page.bind_mfip(ip.strip())
+            mfip = ops_page.bind_mfip(ip.strip())
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
@@ -129,7 +129,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 云硬盘来源")
-    def test_ecs_create_from_volume(self, ecs_page, ssh_vm, evs_page):
+    def test_ecs_create_from_volume(self, ecs_page, ops_page, ssh_vm, evs_page):
         """
         测试从云硬盘创建云服务器
         """
@@ -149,7 +149,7 @@ class TestECSCreate:
         with allure_step_log("步骤3: 验证云服务器创建成功"):
             ecs_page.assert_status(vm_name)
             ip = ecs_page.get_row_data(vm_name).get("IP地址").split(':')[1]
-            mfip = ecs_page.bind_mfip(ip.strip())
+            mfip = ops_page.bind_mfip(ip.strip())
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(vm_name, ssh_vm)
 

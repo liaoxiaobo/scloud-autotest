@@ -1,15 +1,15 @@
 from sugon_web.utils.logger import allure_step_log
 
 
-def ensure_sg_ingress_allow_all(sg_page, sg_name):
+def ensure_sg_ingress_allow_all(vpc_page, sg_name):
     """确保 ACL 场景使用的安全组具备基础入方向放行规则。"""
     with allure_step_log(f"前置步骤: 在安全组 {sg_name} 中放开所有入方向流量"):
-        rules = sg_page.sg_get_all_rules(sg_name=sg_name)
+        rules = vpc_page.sg_get_all_rules(sg_name=sg_name)
         has_ipv4 = any(rule.get("方向", "") == "入口" and rule.get("以太网类型", "") == "IPv4" for rule in rules)
         has_ipv6 = any(rule.get("方向", "") == "入口" and rule.get("以太网类型", "") == "IPv6" for rule in rules)
 
         if not has_ipv4:
-            sg_page.sg_rule_create(
+            vpc_page.sg_rule_create(
                 sg_name=sg_name,
                 direction="入口",
                 protocol="所有",
@@ -19,7 +19,7 @@ def ensure_sg_ingress_allow_all(sg_page, sg_name):
                 detail_mode=True,
             )
         if not has_ipv6:
-            sg_page.sg_rule_create(
+            vpc_page.sg_rule_create(
                 sg_name=sg_name,
                 direction="入口",
                 protocol="所有",
@@ -78,10 +78,10 @@ def build_acl_env(acl_name, vpc_data, vm_data):
     }
 
 
-def build_acl_pair_env(acl_name, vpc_data, vm_sg_binding, sg_page):
+def build_acl_pair_env(acl_name, vpc_data, vm_sg_binding, vpc_page):
     """组装带安全组前置的 ACL 双子网场景环境数据。"""
     sg_name = vm_sg_binding["sg"]
-    ensure_sg_ingress_allow_all(sg_page, sg_name)
+    ensure_sg_ingress_allow_all(vpc_page, sg_name)
 
     env = build_acl_env(acl_name, vpc_data, vm_sg_binding["vm"])
     env["sg_name"] = sg_name

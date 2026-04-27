@@ -8,6 +8,14 @@ from sugon_web.utils.logger import logger
 
 class OpsPage(BasePage):
 
+    def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
+        """绑定 MFIP 并返回管理 IP。"""
+        self.goto_service("网络设施")
+        self.mfip_create(project, network, ip)
+        self.assert_popup_success("执行成功")
+        self.mfip_search(ip)
+        return self.get_row_data(ip).get("管理IP地址")
+
     def _select_project_and_wait_networks_reload(self, project: str):
         """选择项目，并等待网络列表接口刷新完成。"""
         self.get_by_placeholder("请选择项目").click()
@@ -20,6 +28,7 @@ class OpsPage(BasePage):
                 ),
                 timeout=8000,
             ):
+                self.page.wait_for_timeout(1000)
                 self.get_by_title(project).click()
             logger.info(f"选择项目后已捕获网络列表刷新请求: {project}")
         except PlaywrightTimeoutError:
@@ -43,7 +52,12 @@ class OpsPage(BasePage):
         expect(target_item).to_have_count(1)
         target_item.click()
         self.get_by_placeholder("请选择端口").click()
-        self.get_by_text(ip, exact=exact).click()
+        # self.get_by_text(ip, exact=exact).click()
+        port_dropdown = self.page.locator(".el-select-dropdown:visible")
+        ip_pattern = rf"^\s*{re.escape(ip)}\s*$" if exact else re.escape(ip)
+        ip_option = port_dropdown.get_by_role("listitem").filter(has_text=re.compile(ip_pattern))
+        expect(ip_option).to_have_count(1)
+        ip_option.click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()
 
     @submenu("平台网络")

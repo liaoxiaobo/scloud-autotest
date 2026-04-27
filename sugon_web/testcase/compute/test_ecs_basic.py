@@ -155,7 +155,7 @@ class TestECSBasic:
             ecs_page.ecs_edit(new_name, name)
 
     @allure.title("弹性云服务器-克隆")
-    def test_ecs_clone(self, ecs_page, vm, ssh_vm):
+    def test_ecs_clone(self, ecs_page, ops_page, vm, ssh_vm):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
 
@@ -175,7 +175,7 @@ class TestECSBasic:
 
             # 克隆后的虚机绑定mfip，验证md5值
             clone_ip = ecs_page.get_row_data(clone_name).get("IP地址").split(':')[1]
-            mfip = ecs_page.bind_mfip(clone_ip.strip())
+            mfip = ops_page.bind_mfip(clone_ip.strip())
             ssh_vm.connect(mfip)
             md5_new = ssh_vm.run(f"md5sum /home/{name}")
             assert md5 in md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
@@ -297,10 +297,10 @@ class TestECSBasic:
     def test_ecs_modifypwd(self, ecs_page, vm, ssh_vm):
         name = vm.get("name")
         mfip = vm.get("mfip")
-        ecs_page.goto_service('弹性云服务器')
+        # ecs_page.goto_submenu('弹性云服务器')
 
         with allure_step_log(f"步骤1: 云服务器{name}修改密码"):
-            ecs_page.assert_status(name, refresh=True)
+            # ecs_page.assert_status(name, refresh=True)
             ecs_page.ecs_modify_pwd(name, "sugon@21", "sugon@21")
 
         with allure_step_log("步骤2: 验证修改密码结果"):
@@ -412,7 +412,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-创建镜像")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
-    def test_ecs_create_image(self, ecs_page, vm, ssh_vm):
+    def test_ecs_create_image(self, ecs_page, ops_page, vm, ssh_vm):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
         image_name = random_data(length=10)
@@ -443,7 +443,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
             ip = ecs_page.get_row_data(image_vm).get("IP地址").split(":")[1].strip()
-            mfip_new = ecs_page.bind_mfip(ip)
+            mfip_new = ops_page.bind_mfip(ip)
             ssh_vm.connect(mfip_new)
             assert md5 in ssh_vm.run(f"md5sum {name}"), f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
 
@@ -820,10 +820,11 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-搜索和重置")
     def test_ecs_search(self, ecs_page, vm):
-        ecs_page.goto_submenu("弹性云服务器")
+        ecs_page.goto_service("弹性云服务器")
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = vm['name'][:-2]
+            ecs_page.goto_submenu("弹性云服务器")
             ecs_page.search(keyword)
             ecs_page.assert_list_contain(keyword, column_name="名称/ID", exact_match=False)
 

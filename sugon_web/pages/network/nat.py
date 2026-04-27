@@ -4,10 +4,10 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class NatMixin:
+class NatMixin(BasePage):
     """NAT 网关页面动作。"""
 
     @submenu("NAT网关")

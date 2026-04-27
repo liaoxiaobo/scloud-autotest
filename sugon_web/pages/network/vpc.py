@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class VpcMixin:
+class VpcMixin(BasePage):
     """虚拟私有云相关页面动作。"""
 
     @property
@@ -64,7 +64,7 @@ class VpcMixin:
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
                    network_type="Geneve", cluster="Autotest", physical_network="physnet1",
-                   ipv6_pool="provider-ipv6(基础版)（2000:c002", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
+                   ipv6_pool="provider-ipv6(基础版)（2000:c00", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
                    dns=None, vlan_id=None, mac=None, enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
         self.btn_create.click()
@@ -172,6 +172,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def vpc_generate_auth_code(self, name):
         """生成VPC授权码并复制"""
         self.click_action(name, "生成授权码")
@@ -213,6 +214,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def subnet_create_in_detail(self, vpc_name, subnet_name, cidr, desc="",
                                 available_ip=None, dns=None, acl_policy=None, gateway_ip=None):
         """在VPC详情页的子网tab页中新建子网"""
@@ -275,6 +277,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def vip_create(self, vpc_name, subnet_name, ip_address=None):
         """创建虚拟IP地址"""
         self.get_by_role("row", name=vpc_name).locator("a").click()
@@ -352,14 +355,13 @@ class VpcMixin:
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
 
+    @submenu("虚拟私有云")
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
                     quick_select=True, mac_address: str = None, port_security: bool = False):
         """在虚拟私有云中创建端口"""
         self.logger.info(f"开始在 VPC '{vpc_name}' 中创建端口")
 
-        self.get_row_by_name(vpc_name).locator("a").first.click()
-
-        self.get_by_role("tab", name="端口").click()
+        self.goto_detail_page(vpc_name, tab_name="端口")
 
         self.get_by_label("端口", exact=True).get_by_text("新建", exact=True).click()
         self.get_by_placeholder("请选择子网").click()
@@ -428,6 +430,7 @@ class VpcMixin:
 
         self.get_by_label("编辑").get_by_text("确定").click()
 
+    @submenu("虚拟私有云")
     def route_rule_create(self, vpc_name, dest_cidr, next_hop, next_hop_type="ECS实例", ip_version="IPv4", desc=None):
         """在VPC详情页的路由表tab中新建路由表规则"""
         self.get_row_by_name(vpc_name).locator("a").first.click()
