@@ -725,10 +725,10 @@ class TestDorisBasic:
 
         with allure_step_log(f"步骤三：编辑BE参数 {be_param_name} 值为 {be_param_value}"):
             doris_page.edit_be_parameter(instance_name, be_param_name, be_param_value)
-            doris_page.assert_list_contain("47", "运行值", exact_match=True)
 
         with allure_step_log("步骤四：验证BE参数编辑结果"):
             doris_page.assert_popup_success("执行成功")
+            doris_page.assert_list_contain("47", "运行值", exact_match=True)
 
     @allure.title("Doris-参数设置页搜索")
     def test_parameter_search(self, doris_page, doris):

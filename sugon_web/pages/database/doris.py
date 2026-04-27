@@ -357,7 +357,13 @@ class DorisPage(BasePage):
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         sleep(3)
         self.click_action(node_name, "删除节点")
-        self.dialog_confirm.click()
+        confirm_btn = self.page.locator(
+            ".sugon-dialog-box .sugon-dialog-footer .cloud-button-btn.cl-btn-primary"
+        ).first
+        confirm_btn.wait_for(state="visible", timeout=5000)
+        confirm_btn.click(force=True)
+        self.wait_for_page_ready()
+        self.wait_for_operation_complete(timeout=120)
 
     @submenu("实例管理")
     def stop_node(self, name: str, node_name: str):
@@ -622,10 +628,13 @@ class DorisPage(BasePage):
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
@@ -687,9 +696,12 @@ class DorisPage(BasePage):
         # 应用更改
         self.get_by_text("应用", exact=True).click()
 
-        # 尝试点击可能出现的确认对话框
         try:
-            self.dialog_confirm.click()
+            confirm_btn = self.page.locator(
+                ".sugon-dialog-box .sugon-dialog-footer .cloud-button-btn.cl-btn-primary"
+            ).first
+            confirm_btn.wait_for(state="visible", timeout=5000)
+            confirm_btn.click(force=True)
         except:
             pass
 
