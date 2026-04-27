@@ -41,9 +41,7 @@ def mongodb_page(page):
 @pytest.fixture(scope="function")
 def xscale_page(page):
     """初始化XScale实例管理页面"""
-    xscale_page = XScalePage(page)
-    xscale_page.goto_service('AnhanDB-XScale')
-    return xscale_page
+    return XScalePage(page)
 
 
 @pytest.fixture(scope="class")
@@ -200,7 +198,6 @@ def xscale(browser_context, config):
     """创建一个供整个测试类使用的XScale实例对象"""
     page = _create_logged_in_page(browser_context, config)
     xscale_page = XScalePage(page)
-    xscale_page.goto_service('AnhanDB-XScale')
     name = f"xscale-{random_data()}"
     admin_password = "admin1234@sugon"
     data = {"name": name, "admin_password": admin_password}
@@ -210,12 +207,11 @@ def xscale(browser_context, config):
         xscale_page.create_instance(name, password=admin_password)
         xscale_page.assert_popup_success()
         xscale_page.assert_list_contain(name)
-        xscale_page.assert_status(name, status="就绪", timeout=3600, refresh=True)
+        xscale_page.assert_status(name, status="就绪", timeout=1500)
 
     yield data
 
     with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
-        xscale_page.goto_service('AnhanDB-XScale')
         logger.info(f"清理共享XScale实例: {data['name']}")
         xscale_page.delete_instance(data["name"])
 

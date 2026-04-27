@@ -11,6 +11,8 @@ from sugon_web.utils.logger import logger
 class XScalePage(BasePage):
     """XScale实例管理页面对象"""
 
+    service_name = "xscale"
+
     def _get_dialog(self, title: str):
         """获取指定标题的可见弹窗"""
         dialog = self.get_by_role("dialog").filter(has_text=title).last

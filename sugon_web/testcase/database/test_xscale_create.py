@@ -20,11 +20,11 @@ class TestXScaleCreate:
         with allure_step_log("步骤二：验证创建结果"):
             xscale_page.assert_popup_success()
             xscale_page.assert_list_contain(instance_name)
-            xscale_page.assert_status(instance_name, status="就绪", timeout=2400, refresh=True)
+            xscale_page.assert_status(instance_name, status="就绪", timeout=2400)
 
         with allure_step_log("步骤三：删除实例"):
             xscale_page.delete_instance(instance_name)
 
         with allure_step_log("步骤四：验证删除结果"):
-            xscale_page.assert_deleted(instance_name, refresh=True)
+            xscale_page.assert_deleted(instance_name)
             db_util.assert_backend_deleted(xscale_page, ssh_host, instance_name)

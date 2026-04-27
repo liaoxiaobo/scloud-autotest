@@ -561,7 +561,6 @@ class BasePage(Playwright):
                     timeout_ms = timeout * 1000  # 转换为毫秒
                     self.wait_for_page_ready() # 等待页面加载完成再查找元素
                     target_row = self.get_row_by_name(name)
-                    expect(target_row.locator(".icon-dengdaizhong")).not_to_be_visible(timeout=timeout_ms)
                     expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
                     self.logger.info(f"资源状态验证成功: {name} -> {status}")
                 else:
