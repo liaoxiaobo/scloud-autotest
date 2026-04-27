@@ -201,23 +201,22 @@ def xscale(browser_context, config):
     page = _create_logged_in_page(browser_context, config)
     xscale_page = XScalePage(page)
     xscale_page.goto_service('AnhanDB-XScale')
-    # name = f"xscale-{random_data()}"
-    name="xscale-test"
+    name = f"xscale-{random_data()}"
     admin_password = "admin1234@sugon"
     data = {"name": name, "admin_password": admin_password}
     logger.info(f"为测试类创建共享XScale实例: {name}")
 
-    # with allure_step_log(f"前置操作：创建共享实例 {name}"):
-    #     xscale_page.create_instance(name, password=admin_password)
-    #     xscale_page.assert_popup_success()
-    #     xscale_page.assert_list_contain(name)
-    #     xscale_page.assert_status(name, status="就绪", timeout=3600, refresh=True)
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        xscale_page.create_instance(name, password=admin_password)
+        xscale_page.assert_popup_success()
+        xscale_page.assert_list_contain(name)
+        xscale_page.assert_status(name, status="就绪", timeout=3600, refresh=True)
 
     yield data
 
-    # with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
-    #     xscale_page.goto_service('AnhanDB-XScale')
-    #     logger.info(f"清理共享XScale实例: {data['name']}")
-    #     xscale_page.delete_instance(data["name"])
+    with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
+        xscale_page.goto_service('AnhanDB-XScale')
+        logger.info(f"清理共享XScale实例: {data['name']}")
+        xscale_page.delete_instance(data["name"])
 
     page.close()

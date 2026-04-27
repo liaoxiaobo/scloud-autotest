@@ -334,7 +334,7 @@ class BasePage(Playwright):
             timeout: 超时时间（秒）
             poll_interval: 轮询间隔（秒）
         """
-        self.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+        self.locator("#cloud-container-content").get_by_text(instance_name, exact=True).first.click()
         self.wait_for_page_ready()
 
         if tab_name:

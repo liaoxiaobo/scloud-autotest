@@ -173,7 +173,16 @@ class TestXScaleBasic:
             assert db_util.get_disk_size(xscale_page, node_name, ssh_host) == new_size
 
     @allure.title("XScale-{node_type}-绑定和解绑公网IP")
-    @pytest.mark.parametrize("node_type", NODE_TYPES, ids=NODE_TYPES)
+    @pytest.mark.parametrize(
+        "node_type",
+        [
+            pytest.param("元数据节点", marks=pytest.mark.skip(reason="元数据节点不支持绑定和解绑公网IP")),
+            "日志节点",
+            "计算节点",
+            "存储节点",
+        ],
+        ids=NODE_TYPES,
+    )
     def test_node_bind_and_unbind_public_ip(self, xscale_page, xscale, ssh_host, node_type):
         instance_name = xscale["name"]
 
