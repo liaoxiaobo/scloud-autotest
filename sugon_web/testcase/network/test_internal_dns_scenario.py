@@ -13,7 +13,7 @@ from sugon_web.utils.logger import allure_step_log
 class TestInternalDnsScenario:
 
     @allure.title("内网解析详情页-解析记录-主机记录与SRV记录解析生效验证")
-    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
     def test_internal_dns_record_resolution_scenario(self, vpc_page, internal_dns, vm, ssh_vm):
         """验证 A 记录与 SRV 记录创建后，可在同 VPC 云主机内被正确解析。"""
         vm_client = vm[0]

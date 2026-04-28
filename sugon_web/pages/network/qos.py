@@ -1,9 +1,9 @@
 import re
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class QosMixin:
+class QosMixin(BasePage):
     """网络 QoS 页面动作。"""
 
     @submenu("网络QoS")

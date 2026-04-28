@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class VpcMixin:
+class VpcMixin(BasePage):
     """虚拟私有云相关页面动作。"""
 
     @property
@@ -20,6 +20,11 @@ class VpcMixin:
     def _input_desc(self):
         """VPC描述输入框"""
         return self.locator("textarea").nth(0)
+
+    def _select_cluster(self, cluster_name="Autotest"):
+        """选择VPC所属集群。"""
+        self.get_by_role("textbox", name="请选择集群").click()
+        self.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(cluster_name)}$")).click()
 
     @property
     def _input_subnet_name(self):
@@ -54,17 +59,18 @@ class VpcMixin:
     @property
     def _input_vlan_id(self):
         """VLAN ID输入框（仅VLAN网络类型显示）"""
-        return self.get_by_placeholder("请输入1到4094的正整数")
+        return self.get_by_placeholder("请输入1~16777215之间的正整数")
 
     @submenu("虚拟私有云")
     def vpc_create(self, name, subnet_name, cidr, desc="", subnet_desc="",
-                   network_type="Geneve", gateway_mode="分布式网关",
-                   gateway_ip=None, available_ip=None, dns=None, vlan_id=None, mac=None,
-                   enable_ipv6=False, acl_policy=None):
+                   network_type="Geneve", cluster="Autotest", physical_network="physnet1",
+                   ipv6_pool="provider-ipv6(基础版)（2000:c00", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
+                   dns=None, vlan_id=None, mac=None, enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
         self.btn_create.click()
 
         self._input_name.fill(name)
+        self._select_cluster(cluster)
         self._input_desc.fill(desc)
         self.get_by_role("radio", name=network_type).click()
 
@@ -76,10 +82,16 @@ class VpcMixin:
         if network_type in ["Vlan", "Flat"] and mac is not None:
             self.get_by_placeholder("默认mac地址aa:bb:cc:dd:ee:ff").fill(mac)
 
-        if network_type == "Geneve" and enable_ipv6:
+        if network_type in ["Vlan", "Flat"] and physical_network is not None:
+            self.get_by_role("textbox", name="请选择二层网络").click()
+            self.get_by_role("listitem").filter(has_text=physical_network).click()
+
+        if network_type == "Geneve" and enable_ipv6 and ipv6_pool:
             ipv6_checkbox = self.get_by_text("开启IPv6", exact=True)
             if ipv6_checkbox.is_visible() and ipv6_checkbox.is_enabled():
                 ipv6_checkbox.click()
+                self.get_by_role("textbox", name="请选择").nth(3).click()
+                self.get_by_text(ipv6_pool).click()
             else:
                 self.goto_service("虚拟私有云")
                 pytest.skip("当前环境不支持双栈VPC")
@@ -160,6 +172,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def vpc_generate_auth_code(self, name):
         """生成VPC授权码并复制"""
         self.click_action(name, "生成授权码")
@@ -201,6 +214,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def subnet_create_in_detail(self, vpc_name, subnet_name, cidr, desc="",
                                 available_ip=None, dns=None, acl_policy=None, gateway_ip=None):
         """在VPC详情页的子网tab页中新建子网"""
@@ -263,6 +277,7 @@ class VpcMixin:
 
         self.dialog_confirm.click()
 
+    @submenu("虚拟私有云")
     def vip_create(self, vpc_name, subnet_name, ip_address=None):
         """创建虚拟IP地址"""
         self.get_by_role("row", name=vpc_name).locator("a").click()
@@ -274,8 +289,9 @@ class VpcMixin:
 
         if ip_address is not None:
             self.locator("label").filter(has_text="手动分配").click()
-            last_segment = ip_address.split(".")[-1]
-            self.get_by_label("申请虚拟IP地址").get_by_role("textbox").nth(4).fill(last_segment)
+            # last_segment = ip_address.split(".")[-1]
+            last_segment = ip_address
+            self.get_by_role("textbox", name="例如：").fill(last_segment)
 
         self.get_by_label("申请虚拟IP地址").get_by_text("确定").click()
 
@@ -296,9 +312,12 @@ class VpcMixin:
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=network_type).click()
         available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
+        if not available_rows:
+            raise AssertionError("当前环境无可用的弹性公网IP（状态为'关闭'）")
         selected_row = random.choice(available_rows)
+        selected_row.get_by_role("radio").click()
         ip_info = selected_row.get_by_role("cell")
-        ip = ip_info.nth(1).text_content()
+        ip = ip_info.nth(1).text_content().strip()
         self.dialog_confirm.click()
         return ip
 
@@ -336,17 +355,15 @@ class VpcMixin:
         self.get_by_role("listitem").filter(has_text=instance_name).click()
         dialog.get_by_text("确定").click()
 
+    @submenu("虚拟私有云")
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
                     quick_select=True, mac_address: str = None, port_security: bool = False):
         """在虚拟私有云中创建端口"""
         self.logger.info(f"开始在 VPC '{vpc_name}' 中创建端口")
 
-        self.get_row_by_name(vpc_name).locator("a").first.click()
+        self.goto_detail_page(vpc_name, tab_name="端口")
 
-        self.get_by_role("tab", name="端口").click()
-
-        self.get_by_label("端口", exact=True).get_by_text("新建").click()
-
+        self.get_by_label("端口", exact=True).get_by_text("新建", exact=True).click()
         self.get_by_placeholder("请选择子网").click()
         self.get_by_title(subnet_name).click()
 
@@ -413,6 +430,7 @@ class VpcMixin:
 
         self.get_by_label("编辑").get_by_text("确定").click()
 
+    @submenu("虚拟私有云")
     def route_rule_create(self, vpc_name, dest_cidr, next_hop, next_hop_type="ECS实例", ip_version="IPv4", desc=None):
         """在VPC详情页的路由表tab中新建路由表规则"""
         self.get_row_by_name(vpc_name).locator("a").first.click()

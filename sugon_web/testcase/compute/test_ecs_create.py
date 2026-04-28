@@ -1,7 +1,7 @@
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import skip_stor, render_data, load_data, random_data
+from sugon_web.utils.util import skip_stor, random_data
 
 
 @allure.epic('计算服务')
@@ -14,7 +14,7 @@ class TestECSCreate:
         name = random_data()
 
         with allure_step_log("步骤1: 创建云服务器"):
-            ecs_page.ecs_create(name=name)
+            ecs_page.ecs_create(basic={"name": name})
 
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例命令下发成功")
@@ -27,11 +27,14 @@ class TestECSCreate:
 
     @allure.title("创建功能验证: 快照来源")
     @skip_stor("usan","local", "nfs")
-    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm):
+    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ops_page, ssh_vm):
         name = random_data()
         snapshot_name = ecss.get("name")
         with allure_step_log("步骤1: 创建启动方式为 快照 的云服务器"):
-            ecs_page.ecs_create(name=name, image_source="快照", image_name=snapshot_name)
+            ecs_page.ecs_create(
+                basic={"name": name},
+                storage={"image": {"source": "快照", "name": snapshot_name}},
+            )
 
         with allure_step_log("步骤2: 验证创建结果"):
             # 页面验证
@@ -41,7 +44,7 @@ class TestECSCreate:
 
             # 登录虚机验证
             ip = ecs_page.get_row_data(name).get("IP地址").split(':')[1]
-            mfip = ecs_page.bind_mfip(ip.strip())
+            mfip = ops_page.bind_mfip(ip.strip())
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
@@ -57,7 +60,10 @@ class TestECSCreate:
         name = random_data()
         iso_name = image.get("name")
         with allure_step_log("步骤1: 创建启动方式为 ISO 的云服务器"):
-            ecs_page.ecs_create(name=name, image_source="ISO", image_name=iso_name)
+            ecs_page.ecs_create(
+                basic={"name": name},
+                storage={"image": {"source": "ISO", "name": iso_name}},
+            )
 
         with allure_step_log("步骤2: 验证创建结果"):
             # 页面验证
@@ -80,7 +86,10 @@ class TestECSCreate:
         name = random_data()
         iso_name = image.get("name")
         with allure_step_log("步骤1: 创建启动方式为 空启动 的云服务器"):
-            ecs_page.ecs_create(name=name, image_source="空启动")
+            ecs_page.ecs_create(
+                basic={"name": name},
+                storage={"image": {"source": "空启动"}},
+            )
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
         with allure_step_log("步骤2: 验证创建结果"):
@@ -120,8 +129,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 云硬盘来源")
-    @pytest.mark.parametrize("params", load_data("test_ecs_create_from_volume", data_file='test_ecs_create.yaml'))
-    def test_ecs_create_from_volume(self, ecs_create_page, params, ssh_vm, evs_page):
+    def test_ecs_create_from_volume(self, ecs_page, ops_page, ssh_vm, evs_page):
         """
         测试从云硬盘创建云服务器
         """
@@ -132,27 +140,22 @@ class TestECSCreate:
             evs_page.assert_status(volume_name, status="可用")
 
         with allure_step_log("步骤2: 创建云服务器"):
-            rendered_params = render_data(params, volume_name=volume_name)
-            basic = rendered_params.get('basic', {})
-            storage = rendered_params.get('storage', {})
-            network = rendered_params.get('network', {})
-            manage = rendered_params.get('manage', {})
-            advanced = rendered_params.get('advanced', {})
-
-            ecs_create_page.goto_service('弹性云服务器')
-            vm_info = ecs_create_page.ecs_create(basic, storage, network, manage, advanced)
+            ecs_page.goto_service('弹性云服务器')
+            vm_info = ecs_page.ecs_create(
+                storage={"image": {"source": "云硬盘", "name": volume_name}},
+            )
             vm_name = vm_info.get('name')
 
         with allure_step_log("步骤3: 验证云服务器创建成功"):
-            ecs_create_page.assert_status(vm_name)
-            ip = ecs_create_page.get_row_data(vm_name).get("IP地址").split(':')[1]
-            mfip = ecs_create_page.bind_mfip(ip.strip())
+            ecs_page.assert_status(vm_name)
+            ip = ecs_page.get_row_data(vm_name).get("IP地址").split(':')[1]
+            mfip = ops_page.bind_mfip(ip.strip())
             ssh_vm.connect(mfip)
-            ecs_create_page.assert_ecs_enable(vm_name, ssh_vm)
+            ecs_page.assert_ecs_enable(vm_name, ssh_vm)
 
         with allure_step_log("步骤4: 清理资源"):
             # 云服务器创建成功，删除云服务器（会自动删除云硬盘）
-            ecs_create_page.goto_service('弹性云服务器')
-            ecs_create_page.ecs_remove(vm_name)
-            ecs_create_page.ecs_delete(vm_name)
-            ecs_create_page.assert_deleted(vm_name)
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_remove(vm_name)
+            ecs_page.ecs_delete(vm_name)
+            ecs_page.assert_deleted(vm_name)

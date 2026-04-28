@@ -1,11 +1,9 @@
 import re
-
-from sugon_web.common.base import submenu
-from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.utils.logger import logger
 
 
-class AffinityGroupPage(OpsPage):
+class AffinityGroupMixin(BasePage):
 
     @submenu("亲和组")
     def ecs_create_affinity_group(self, name: str, policy="亲和"):

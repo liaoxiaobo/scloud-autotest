@@ -1,11 +1,9 @@
 import re
-
-from sugon_web.common.base import submenu
-from sugon_web.pages.ops import OpsPage
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.utils.logger import logger
 
 
-class ImageServicePage(OpsPage):
+class ImageServiceMixin(BasePage):
 
     @submenu("弹性云服务器")
     def ecs_create_image(self, name: str, image_name: str):

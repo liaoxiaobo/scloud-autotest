@@ -18,6 +18,7 @@ class TestEipBasic:
             eip = created_ips[0]
 
         with allure_step_log("步骤2: 验证快速选择分配结果"):
+            vpc_page.switch_eip_pool()
             vpc_page.search(eip)
             vpc_page.assert_list_contain(eip, column_name="IP地址", exact_match=False)
 
@@ -31,6 +32,7 @@ class TestEipBasic:
             eip = created_ips[0]
 
         with allure_step_log("步骤2: 验证手动输入分配结果"):
+            vpc_page.switch_eip_pool()
             vpc_page.search(eip)
             vpc_page.assert_list_contain(eip, column_name="IP地址", exact_match=False)
 
@@ -40,6 +42,7 @@ class TestEipBasic:
         """测试释放单个弹性公网IPv4"""
 
         with allure_step_log("步骤1: 验证待释放的弹性公网IPv4已存在"):
+            vpc_page.switch_eip_pool()
             vpc_page.search(eip)
             vpc_page.assert_list_contain(eip, column_name="IP地址", exact_match=False)
 
@@ -55,6 +58,7 @@ class TestEipBasic:
         """测试弹性公网IPv4搜索与重置"""
 
         with allure_step_log("步骤1: 搜索指定弹性公网IPv4"):
+            vpc_page.switch_eip_pool()
             vpc_page.search(eip)
             row_text = vpc_page.get_row_by_name(eip).inner_text()
             assert eip in row_text, f"搜索结果校验失败，期望包含: {eip}，实际行内容: {row_text}"
@@ -70,6 +74,7 @@ class TestEipBasic:
         """测试勾选列表页前两行弹性公网IPv4并批量释放"""
 
         with allure_step_log("步骤1: 获取列表页前两条弹性公网IPv4"):
+            vpc_page.switch_eip_pool()
             eips = vpc_page.get_eip_list()
             assert len(eips) >= 2, f"当前列表页弹性公网IPv4数量不足2条，实际: {len(eips)}"
             target_eips = eips[:2]

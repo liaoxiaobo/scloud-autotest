@@ -24,7 +24,7 @@ class TestEVSBasic:
             evs_page.assert_popup_success("创建云硬盘成功")
 
             # 生成批量创建的云硬盘名称列表
-            for i in range(3):
+            for i in range(1, 4):
                 volume_names.append(f"{base_name}-{i}")
 
             # 验证所有云硬盘创建成功
@@ -94,7 +94,7 @@ class TestEVSBasic:
             evs_page.evs_expand(name, new_size)
             evs_page.assert_popup_success("执行成功")
             evs_page.assert_status(name, status="可用")
-            assert ssh_host.run(f"cinder list | grep {name} |awk {{'print $8'}}") == str(new_size)
+            assert ssh_host.get_volume_size(volume["name"]) == int(new_size)
 
     @allure.title("云硬盘-启用QoS")
     def test_volume_enable_qos(self, evs_page, volume):
@@ -171,7 +171,7 @@ class TestEVSBasic:
     def test_volume_reset_status(self, evs_page, volume, ssh_host):
 
         with allure_step_log("步骤1: 构造删除中的云硬盘"):
-            ssh_host.run(f'cinder reset-state --state deleting {volume["name"]}')
+            ssh_host.set_volume_state(volume["name"], "deleting")
             evs_page.goto_submenu('云硬盘')
             evs_page.assert_status(volume["name"], status="删除中", refresh=True)
 
@@ -181,7 +181,7 @@ class TestEVSBasic:
             evs_page.assert_status(volume["name"], status="错误")
 
         with allure_step_log("步骤3: 恢复云硬盘状态"):
-            ssh_host.run(f'cinder reset-state --state available {volume["name"]}')
+            ssh_host.set_volume_state(volume["name"], "available")
             evs_page.assert_status(volume["name"], status="可用", refresh=True)
 
     @allure.title("云硬盘-查看快照")

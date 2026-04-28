@@ -15,16 +15,16 @@ def _get_snat_public_ip(data):
 @allure.feature('NAT网关')
 @allure.story('基本功能验证')
 class TestNAT:
-    
+
     @allure.title("NAT网关-创建和删除")
     def test_nat_create_delete(self, vpc_page, vpc):
         """测试创建和删除NAT网关功能"""
         nat_name = random_data()
         vpc_name = vpc['name']
-        
+
         with allure_step_log("步骤1: 创建NAT网关"):
             # 记录里的操作入口在NAT网关
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.nat_create(
                 name=nat_name,
                 vpc_name=vpc_name,
@@ -32,7 +32,7 @@ class TestNAT:
             )
             # 根据录制脚本，会有“新建NAT网关成功”的提示
             vpc_page.assert_popup_success("新建NAT网关成功")
-            
+
         with allure_step_log("步骤2: 验证NAT网关列表数据"):
             data = vpc_page.get_row_data(nat_name)
             logger.info(f"NAT网关行数据: {data}")
@@ -40,10 +40,10 @@ class TestNAT:
                 f"连接资源断言失败: 期望包含 {vpc_name}, 实际 {data.get('连接资源')}"
             assert "NAT网关单条创建删除测试" in data.get("描述", ""), \
                 f"描述断言失败: 期望包含 'NAT网关单条创建删除测试', 实际 {data.get('描述')}"
-            
+
         with allure_step_log("步骤3: 删除NAT网关"):
             vpc_page.nat_delete(nat_name)
-            
+
         with allure_step_log("步骤4: 验证NAT网关已删除"):
             vpc_page.assert_deleted(nat_name)
 
@@ -52,24 +52,24 @@ class TestNAT:
         """测试批量删除多个NAT网关"""
         vpc_name = vpc['name']
         nat_names = []
-        
+
         with allure_step_log("步骤1: 创建2个NAT网关"):
             for i in range(2):
                 nat_name = random_data()
                 nat_names.append(nat_name)
-                
+
                 # 每次创建前回到列表页
-                vpc_page.goto_service("NAT网关")
+                vpc_page.goto_submenu("NAT网关")
                 vpc_page.nat_create(
                     name=nat_name,
                     vpc_name=vpc_name,
                     desc=f"NAT网关批量删除测试_{i}"
                 )
                 vpc_page.assert_popup_success("新建NAT网关成功")
-                
+
         with allure_step_log("步骤2: 批量删除NAT网关"):
             vpc_page.nat_delete(nat_names)
-            
+
         with allure_step_log("步骤3: 验证NAT网关已删除"):
             vpc_page.assert_deleted(nat_names)
 
@@ -81,7 +81,7 @@ class TestNAT:
         with allure_step_log("步骤1: 输入名称关键字进行搜索"):
             # 取名称前几位作为模糊搜索关键字（随机名通常较长，取前 4 位即可区分）
             keyword = nat_name[:-2]
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.search(keyword)
 
 
@@ -105,7 +105,7 @@ class TestNAT:
         new_desc = "修改后的NAT网关描述"
 
         with allure_step_log("步骤1: 修改NAT网关名称和描述"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.nat_edit(
                 name=old_name,
                 new_name=new_name,
@@ -130,7 +130,7 @@ class TestNAT:
         nat_name = nat['name']
 
         with allure_step_log("步骤1: 解绑弹性公网IP"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             eip = vpc_page.nat_unbind_eip(nat_name)
             logger.info(f"被解绑的EIP: {eip}")
             vpc_page.assert_popup_success("绑定/解绑 FIP成功")
@@ -183,7 +183,7 @@ class TestNAT:
             source_address = source_value
 
         with allure_step_log(f"步骤1: 进入NAT网关详情页，创建{params['case_name']}的SNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.snat_rule_create(
                 nat_name=nat_name,
                 source_type=source_type,
@@ -216,7 +216,7 @@ class TestNAT:
         new_desc = "SNAT规则修改后描述"
 
         with allure_step_log("步骤1: 新建一条SNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.snat_rule_create(
                 nat_name=nat_name,
                 source_type="所有",
@@ -225,7 +225,7 @@ class TestNAT:
             vpc_page.assert_popup_success("新建SNAT规则成功")
 
         with allure_step_log("步骤2: 修改SNAT规则的源地址和描述"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.snat_rule_edit(
                 nat_name=nat_name,
                 source_address=old_source_address,
@@ -257,7 +257,7 @@ class TestNAT:
         ]
 
         with allure_step_log("步骤1: 创建2条SNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             for source_address in source_addresses:
                 vpc_page.snat_rule_create(
                     nat_name=nat_name,
@@ -280,7 +280,7 @@ class TestNAT:
         source_address = "0.0.0.0/0"
 
         with allure_step_log("步骤1: 进入NAT网关详情页，创建一个SNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.snat_rule_create(
                 nat_name=nat_name,
                 source_type="所有",
@@ -303,7 +303,7 @@ class TestNAT:
 
     @allure.title("DNAT规则-创建和删除-{params[case_name]}")
     @pytest.mark.parametrize("params", load_data('test_dnat_rule_create_delete', data_file='test_network.yaml'))
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_create_delete(self, vpc_page, nat, vpc, vm, params):
 
         """测试在NAT网关详情页创建和删除DNAT规则"""
@@ -317,7 +317,7 @@ class TestNAT:
         logger.info(f"使用虚机 {vm['name']} 的内网IP {private_ip} 作为DNAT私网IP")
 
         with allure_step_log("步骤1: 进入NAT网关详情页，创建DNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.dnat_rule_create(
                 nat_name=nat_name,
                 ext_port=ext_port,
@@ -350,7 +350,7 @@ class TestNAT:
             vpc_page.assert_deleted(str(ext_port))
 
     @allure.title("DNAT规则-修改协议和端口等配置")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_edit(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页修改DNAT规则的协议、公网端口、内部端口和描述"""
         nat_name = nat['name']
@@ -366,7 +366,7 @@ class TestNAT:
         new_desc = "DNAT规则修改后描述"
 
         with allure_step_log("步骤1: 进入NAT网关详情页，创建一条DNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.dnat_rule_create(
                 nat_name=nat_name,
                 ext_port=ext_port,
@@ -379,7 +379,7 @@ class TestNAT:
             vpc_page.assert_popup_success("新建DNAT规则成功")
 
         with allure_step_log("步骤2: 修改DNAT规则的协议、公网端口、内部端口和描述"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.dnat_rule_edit(
                 nat_name=nat_name,
                 ext_port=ext_port,
@@ -411,16 +411,16 @@ class TestNAT:
             vpc_page.assert_deleted(str(new_ext_port))
 
     @allure.title("DNAT规则-批量删除")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_batch_delete(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页批量删除DNAT规则"""
         nat_name = nat['name']
         subnet_cidr = vpc['cidr']
         private_ip = vm['ip']
         ports = ["8080", "8082"]
-        
+
         with allure_step_log("步骤1: 进入NAT网关详情页，创建2条DNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             for port in ports:
                 vpc_page.dnat_rule_create(
                     nat_name=nat_name,
@@ -440,7 +440,7 @@ class TestNAT:
             vpc_page.assert_deleted(ports)
 
     @allure.title("DNAT规则-搜索和重置")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_dnat_rule_search_reset(self, vpc_page, nat, vpc, vm):
         """测试在NAT网关详情页搜索和重置DNAT规则"""
         nat_name = nat['name']
@@ -449,9 +449,9 @@ class TestNAT:
         ext_port = 9090
         int_port = 80
         protocol = "TCP"
-        
+
         with allure_step_log("步骤1: 进入NAT网关详情页，创建一个DNAT规则"):
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.dnat_rule_create(
                 nat_name=nat_name,
                 ext_port=ext_port,
@@ -498,8 +498,8 @@ class TestNAT:
         vm_password = "admin1234@sugon"
         ext_port = 2222
         int_port = 22
-        
-        vpc_page.goto_service("NAT网关")
+
+        vpc_page.goto_submenu("NAT网关")
         with allure_step_log("步骤1: 获取NAT网关的公网IP"):
             data = vpc_page.get_row_data(nat_name)
             eip = data.get("弹性公网IP", "").strip()
@@ -517,7 +517,7 @@ class TestNAT:
                 desc="DNAT TCP SSH登录验证"
             )
             vpc_page.assert_popup_success("新建DNAT规则成功")
-            
+
         with allure_step_log("步骤3: 添加VPC路由表规则(下一跳NAT网关)"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.route_rule_create(
@@ -540,13 +540,13 @@ class TestNAT:
             finally:
                 ssh.close()
                 # 清理数据：删除DNAT规则和路由表规则
-                vpc_page.goto_service("NAT网关")
+                vpc_page.goto_submenu("NAT网关")
                 # 需要进入详情页删除规则
                 vpc_page.get_by_role("cell", name=nat_name).locator("a").click()
                 vpc_page.get_by_role("tab", name="DNAT规则").click()
                 vpc_page.dnat_rule_delete(ext_port)
                 vpc_page.assert_deleted(str(ext_port))
-                
+
                 # 清理路由表规则
                 vpc_page.goto_service("虚拟私有云")
                 # 路由表规则删除
@@ -565,8 +565,8 @@ class TestNAT:
 
         udp_ext_port = 4080  # UDP探测公网端口
         int_port = 8080      # UDP服务端私网端口
-        
-        vpc_page.goto_service("NAT网关")
+
+        vpc_page.goto_submenu("NAT网关")
         with allure_step_log("步骤1: 获取NAT网关的公网IP"):
             data = vpc_page.get_row_data(nat_name)
             eip = data.get("弹性公网IP", "").strip()
@@ -638,7 +638,7 @@ class TestNAT:
 
         with allure_step_log("步骤6: 清理UDP监听进程和测试配置"):
             ssh_vm.run(f"pkill -f \"nc -uvl {int_port}\"")
-            vpc_page.goto_service("NAT网关")
+            vpc_page.goto_submenu("NAT网关")
             vpc_page.get_by_role("cell", name=nat_name).locator("a").click()
             vpc_page.get_by_role("tab", name="DNAT规则").click()
             vpc_page.dnat_rule_delete(str(udp_ext_port))

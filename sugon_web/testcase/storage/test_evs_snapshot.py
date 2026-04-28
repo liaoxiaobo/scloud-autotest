@@ -212,7 +212,7 @@ class TestEVSS:
             )
             evs_page.assert_popup_success("创建云硬盘成功")
 
-            for i in range(3):
+            for i in range(1, 4):
                 volume_names.append(f"{base_name}-{i}")
 
             for name in volume_names:

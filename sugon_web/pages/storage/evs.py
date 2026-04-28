@@ -1,9 +1,11 @@
 import re
 import pytest
+from playwright.sync_api import expect
 from sugon_web.common.base import BasePage, submenu
+from sugon_web.common.mixins import DrawerSelectMixin
 
 
-class EvsPage(BasePage):
+class EvsPage(DrawerSelectMixin, BasePage):
     """云硬盘页面对象。"""
 
     @property
@@ -33,8 +35,18 @@ class EvsPage(BasePage):
 
     def _select_image(self, name):
         """选择镜像"""
-        self.locator("div:nth-child(6) > .el-form-item__content > .el-select > .el-input").click()
-        self.get_by_text(name, exact=True).click()
+        create_dialog = self.get_by_role("dialog", name="新建云硬盘")
+        expect(create_dialog).to_be_visible()
+
+        trigger_locators = [
+            create_dialog
+            .locator(".el-form-item")
+            .filter(has=create_dialog.locator("label.el-form-item__label", has_text=re.compile(r"^镜像$")))
+            .get_by_text("选择镜像", exact=True),
+            create_dialog.get_by_text("选择镜像", exact=True).first,
+        ]
+        self._find_element(trigger_locators, "选择镜像入口").click()
+        self._select_from_named_drawer("选择镜像", name, open_drawer=False)
 
     def _select_mode(self, mode):
         """选择云硬盘模式"""

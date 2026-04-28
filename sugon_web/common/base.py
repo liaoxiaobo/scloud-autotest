@@ -103,6 +103,7 @@ class BasePage(Playwright):
         # 使用 Playwright 的惰性定位器（Locator）机制，只有在调用如 is_visible() 时才会真正执行DOM查询
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
+            self.get_by_role("textbox", name="搜索（名称）"),
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（公网IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
@@ -350,6 +351,7 @@ class BasePage(Playwright):
         #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
 
         # 处理默认收起的菜单
+        expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)   # 确保菜单栏完全加载
         menu_left = self.locator("#cloud-menu-left")
         parent_nodes = menu_left.locator(".one-tree-parent-node")
         count = parent_nodes.count()
@@ -366,6 +368,33 @@ class BasePage(Playwright):
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
+    def _dismiss_hover_tips(self, timeout: float = 1.5, poll_interval: float = 0.3) -> None:
+        """清理进入页面后残留的悬浮提示，避免遮挡后续按钮。"""
+        tip_locators = [
+            self.page.locator(".el-tooltip__popper:visible"),
+            self.page.locator(".el-popper:visible"),
+        ]
+        end_time = time.time() + timeout
+
+        while time.time() < end_time:
+            if all(locator.count() == 0 for locator in tip_locators):
+                return
+            self.page.wait_for_timeout(int(poll_interval * 1000))
+
+    def _first_visible_locator(self, locators, element_name: str) -> Locator:
+        """返回多个定位器中第一个可见元素。"""
+        for locator in locators:
+            for i in range(locator.count()):
+                candidate = locator.nth(i)
+                if candidate.is_visible():
+                    return candidate
+        raise AssertionError(f"未找到可见的{element_name}")
+
+    @staticmethod
+    def _is_tab_active(tab: Locator) -> bool:
+        """判断页签是否已处于激活状态。"""
+        return tab.get_attribute("aria-selected") == "true" or "is-active" in (tab.get_attribute("class") or "")
+
     def goto_detail_page(
         self,
         instance_name: str,
@@ -378,21 +407,55 @@ class BasePage(Playwright):
 
         Args:
             instance_name: 实例名称
-            row_name: 详情页中期望出现的资源行名称
+            row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
             tab_name: 进入详情页后需要切换的页签名称
             timeout: 超时时间（秒）
             poll_interval: 轮询间隔（秒）
         """
-        self.locator("#cloud-container-content").get_by_text(instance_name, exact=True).first.click()
+        instance_links = self.locator("#cloud-container-content").get_by_text(instance_name, exact=True)
+        clicked = False
+
+        for i in range(instance_links.count()):
+            candidate = instance_links.nth(i)
+            if candidate.is_visible():
+                candidate.click()
+                clicked = True
+                break
+
+        if not clicked:
+            raise AssertionError(f"未找到可见的实例名称节点: '{instance_name}'")
+
         self.wait_for_page_ready()
+        self._dismiss_hover_tips()
 
         if tab_name:
-            tab = self.page.locator(".el-tabs__item").filter(
-                has_text=re.compile(rf"^{re.escape(tab_name)}$")
-            ).first
-            tab.dispatch_event("click")
-            expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
+            tab_name_pattern = re.compile(rf"^\s*{re.escape(tab_name)}(?:\s.*)?$")
+            tab = self._first_visible_locator(
+                [
+                    self.get_by_role("tab", name=tab_name_pattern),
+                    self.get_by_role("tab", name=tab_name, exact=False),
+                    self.page.locator(".el-tabs__item").filter(has_text=tab_name_pattern),
+                ],
+                f"详情页签: '{tab_name}'",
+            )
+            tab.scroll_into_view_if_needed()
+            if not self._is_tab_active(tab):
+                for attempt in range(3):
+                    try:
+                        tab.click(timeout=3000)
+                        break
+                    except Exception as exc:
+                        self.logger.warning(f"详情页签 {tab_name} 第{attempt + 1}次普通点击失败: {exc}")
+                else:
+                    self.logger.warning(f"详情页签 {tab_name} 普通点击仍失败，尝试强制点击")
+                    tab.click(force=True)
+
+            if tab.get_attribute("aria-selected") is not None:
+                expect(tab).to_have_attribute("aria-selected", "true", timeout=10000)
+            else:
+                expect(tab).to_have_class(re.compile("is-active"), timeout=10000)
             self.wait_for_page_ready()
+            self._dismiss_hover_tips()
 
         if not row_name:
             return None
@@ -414,7 +477,7 @@ class BasePage(Playwright):
             f"等待详情页资源行 '{row_name}' 超时，实例: '{instance_name}'"
         ) from last_error
 
-    def assert_popup_success(self, text=None, timeout=5):
+    def assert_popup_success(self, text=None, timeout=10):
         """公共方法: 根据弹窗文本和类型，断言操作成功
 
         Args:
@@ -561,6 +624,7 @@ class BasePage(Playwright):
                     timeout_ms = timeout * 1000  # 转换为毫秒
                     self.wait_for_page_ready() # 等待页面加载完成再查找元素
                     target_row = self.get_row_by_name(name)
+                    # expect(target_row.locator(".icon-dengdaizhong")).not_to_be_visible(timeout=timeout_ms)
                     expect(target_row).to_contain_text(status, timeout=timeout_ms, use_inner_text=True)
                     self.logger.info(f"资源状态验证成功: {name} -> {status}")
                 else:
@@ -749,7 +813,7 @@ class BasePage(Playwright):
                 row = self.get_row_by_name(resource_name)
                 interactive_row = self._get_interactive_row(row)
                 option_btn = interactive_row.get_by_text(option_text, exact=True)
-                
+
                 # 有可能找到多个同名文本，遍历尝试点击第一个可见并可用的按钮
                 for i in range(option_btn.count()):
                     btn = option_btn.nth(i)
@@ -757,7 +821,7 @@ class BasePage(Playwright):
                         btn.click()
                         self.logger.info(f"点击平铺操作选项: {resource_name} -> {option_text}")
                         return
-                        
+
                 self.logger.debug(f"未找到可用且可见的平铺选项: {option_text}，将尝试下拉菜单模式")
             except Exception as e:
                 self.logger.debug(f"定位平铺操作选项异常: {e}，将尝试下拉菜单模式")

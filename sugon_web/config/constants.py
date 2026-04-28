@@ -9,8 +9,45 @@
 # - 未配置入口路径的服务，仍可退回到菜单导航
 SERVICE_PATH_MAP = {
     '云硬盘': '/evs',
-    'xscale': '/xscale',
+    '对象存储': '/oss',
+    '对象存储专业版': '/obs',
+    '文件存储': '/sfs',
+    '弹性云服务器': '/ecs',
+    '裸金属': '/bms',
+    '虚拟私有云': '/vpc',
+    '云防火墙': '/cfw',
+    '专有网络VPN': '/vpn',
+    '备份': '/backup',
+    'AnhanDB(for MySQL)': '/mysql/#/overview',
+    'AnhanDB(for PostgreSQL)': '/pgsql/#/overview',
+    'AnhanDB(for MongoDB)': '/mongodb/#/overview',
+    '数据仓库 Doris': '/doris/#/overview',
+    '云容器引擎': '/cce',
+    '容器镜像服务': '/scr/#/overview',
+    '服务治理': '/ssm/#/Overview',
+    'AnhanDB(for Redis)': '/redis/#/overview',
+    '分布式消息服务 Kafka': '/kafka/#/kafka-list',
+    '分布式消息服务 RabbitMQ': '/rbs/#/instance',
+    '云搜索服务': '/es/#/es-list',
+    '监控服务': '/prom/#/overview',
+    # 基础设施
+    '区域资源': '/ops/#/region-management-list',
+    '计算设施': '/ops/#/system-physical-machine-list',
+    '网络设施': '/ops/#/platform-network',
+    '存储设施': '/ops/#/storage-node-management',
+    '备份设施': '/ops/#/backup-node',
 
+    # 运维
+    '监控': '/cms/#/overview',
+    '告警': '/cms/#/alarm/not-recovered',
+    '消息日志': '/cms/#/message',
+    '智能搜索': '/cms/#/log-index',
+    '一键巡检': '/cms/#/oneclick-inspection',
+    '平台升级': '/cms/#/platform-upgrade',
+
+    # 其它
+    '可信密码模块': '/sdf/#/overview',
+    '大数据计算': '/emr/#/map-reduce-list',
 }
 
 # 服务菜单导航映射表
