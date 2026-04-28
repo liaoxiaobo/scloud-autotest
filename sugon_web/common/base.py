@@ -399,7 +399,7 @@ class BasePage(Playwright):
         self,
         instance_name: str,
         row_name: str = None,
-        tab_name: str = None,
+        tab_name: str = "详情",
         timeout: int = 10,
         poll_interval: float = 0.2,
     ) -> Locator | None:
@@ -412,7 +412,7 @@ class BasePage(Playwright):
             timeout: 超时时间（秒）
             poll_interval: 轮询间隔（秒）
         """
-        instance_links = self.locator("#cloud-container-content").get_by_text(instance_name)
+        instance_links = self.locator("#cloud-container-content").get_by_text(instance_name, exact=True)
         clicked = False
 
         for i in range(instance_links.count()):
