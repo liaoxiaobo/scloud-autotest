@@ -704,7 +704,7 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
             found = False
             for i in range(items_count):
                 try:
-                    if vol_type in dropdown_list.nth(i).inner_text(timeout=1000):
+                    if vol_type in dropdown_list.nth(i).inner_text(timeout=2000):
                         logger.info(f"找到并点击数据盘类型: {vol_type}")
                         dropdown_list.nth(i).click()
                         found = True
@@ -2181,20 +2181,22 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
             name: 云服务器名称
             sub_tab: 子页签名称，默认 "自定义安全组"
         """
-        self.ecs_to_details(name)
-        # 点击安全组页签
-        sg_tab = self.get_by_role("tab", name="安全组", exact=False).first
-        expect(sg_tab).to_be_visible(timeout=10000)
-        sg_tab.scroll_into_view_if_needed()
-        for attempt in range(3):
-            try:
-                sg_tab.click(force=True)
-                expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=5000)
-                break
-            except Exception as exc:
-                logger.warning(f"安全组页签第{attempt + 1}次强制点击后仍未选中: {exc}")
-        else:
-            expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
+        # self.ecs_to_details(name)
+        # # 点击安全组页签
+        # self.page.wait_for_timeout(1500)
+        # sg_tab = self.get_by_role("tab", name="安全组", exact=False).first
+        # expect(sg_tab).to_be_visible(timeout=10000)
+        # sg_tab.scroll_into_view_if_needed()
+        self.goto_detail_page(name, tab_name="安全组")
+        # for attempt in range(3):
+        #     try:
+        #         sg_tab.click(force=True)
+        #         expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=5000)
+        #         break
+        #     except Exception as exc:
+        #         logger.warning(f"安全组页签第{attempt + 1}次强制点击后仍未选中: {exc}")
+        # else:
+        #     expect(sg_tab).to_have_attribute("aria-selected", "true", timeout=10000)
 
         self.wait_for_page_ready()
 

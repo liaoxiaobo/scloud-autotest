@@ -272,7 +272,8 @@ class TestResumeCreate:
             original_md5_dict = backup_task.get("source_md5")
 
             # 获取恢复的新虚机信息并连接
-            backup_page.goto_service("弹性云服务器")
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("弹性云服务器")
             ecs_page.assert_status(re_vm)
             ecs_page.set_table_header("架构")
             row_data = ecs_page.get_row_data(re_vm)
@@ -410,7 +411,8 @@ class TestResumeCreate:
             backup_page.assert_resume_task_details(re_task, {"云服务器名": re_vm, "恢复进度": "100%"}, "云服务器列表")
 
         with allure_step_log("步骤4: 验证恢复虚机"):
-            backup_page.goto_service("弹性云服务器")
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("弹性云服务器")
             ecs_page.assert_status(re_vm)
 
             # 新建资源场景：验证配置并获取新IP连接

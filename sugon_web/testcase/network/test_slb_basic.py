@@ -15,7 +15,7 @@ class TestSlbCreate:
     def test_slb_create_orthogonal(self, vpc_page, vpc, params):
         vpc_name = vpc["name"]
         cidr = vpc["cidr"]
-        
+
         # 处理 IP 地址相关逻辑
         ip_address = None
         if params["ip_type"] in ["快速选择", "手动输入"]:
@@ -27,10 +27,10 @@ class TestSlbCreate:
                 hosts = list(network.hosts())
                 # 避开前10个和最后10个地址以防网关或保留IP冲突
                 safe_hosts = hosts[10:-10] if len(hosts) > 20 else hosts
-                ip_address = str(random.choice(safe_hosts)) 
-            
+                ip_address = str(random.choice(safe_hosts))
+
         slb_name = f"slb-{random_data()}"
-        
+
         with allure_step_log(f"步骤1: 创建负载均衡 {slb_name}"):
             vpc_page.slb_create(
                 name=slb_name,
@@ -43,12 +43,12 @@ class TestSlbCreate:
                 spec=params.get("spec"),
                 desc=params.get("slb_desc", f"Autotest created SLB {slb_name}")
             )
-        
+
         with allure_step_log("步骤2: 验证负载均衡状态"):
             expected_msg = f"新建负载均衡 {slb_name} 成功" if params["version"] == "V1" else "新建负载均衡成功"
             vpc_page.assert_popup_success(expected_msg)
             vpc_page.assert_status(slb_name, status="运行中")
-            
+
         with allure_step_log(f"步骤3: 删除负载均衡 {slb_name}"):
             vpc_page.slb_delete(slb_name)
             vpc_page.assert_deleted(slb_name)
@@ -224,6 +224,5 @@ class TestSlbCreate:
             vpc_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
 
         with allure_step_log(f"步骤4: 再次删除负载均衡 {slb}"):
-            vpc_page.goto_service("负载均衡")
             vpc_page.slb_delete(slb)
             vpc_page.assert_deleted(slb)

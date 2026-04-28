@@ -11,7 +11,25 @@ from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
 def vpc_page(page):
-    """初始化虚拟私有云页面对象"""
+    """初始化虚拟私有云页面对象并导航至服务页面。
+
+    本 fixture 用于创建 VpcPage 实例并自动导航到虚拟私有云服务页面，
+    为后续的 VPC 相关测试操作提供页面对象基础。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        VpcPage: 已导航至虚拟私有云服务的页面对象实例。
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的页面对象
+        - 页面导航在 fixture 内部完成，测试可直接使用返回的对象
+
+    Example:
+        def test_vpc_create(vpc_page):
+            vpc_page.vpc_create(name="test-vpc", cidr="10.0.0.0/24")
+    """
     vpc_page = VpcPage(page)
     vpc_page.goto_service('虚拟私有云')
     return vpc_page
@@ -156,7 +174,53 @@ def _cleanup_vpc_resource(vpc_page, name):
 
 @pytest.fixture(scope="class")
 def vpc(browser_context, config, request):
-    """创建并返回一个VPC资源数据，测试结束后自动清理。"""
+    """创建并返回虚拟私有云资源，测试结束后自动清理。
+
+    本 fixture 支持单个或批量创建 VPC，并为每个 VPC 自动创建默认子网。
+    创建的资源在测试结束后自动清理，确保测试环境干净。
+
+    Args:
+        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        config: 测试配置对象，由 pytest fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        name (str): VPC 名称，未提供时自动生成随机名称。
+        subnet_name (str): 默认子网名称，未提供时自动生成。
+        cidr (str): 子网 CIDR，未提供时自动生成随机 CIDR。
+        desc (str): VPC 描述，默认为空。
+        subnet_desc (str): 子网描述，默认为空。
+        network_type (str): 网络类型，默认为 "Geneve"。
+        gateway_mode (str): 网关模式，默认为 "分布式网关"。
+        enable_ipv6 (bool): 是否启用 IPv6，默认为 False。
+        acl_policy (str): ACL 策略名称，可选。
+        count (int): 创建 VPC 数量，默认为 1。
+        extra_subnets (list[dict]): 额外子网参数列表，每个元素支持 subnet_name、cidr、acl_policy。
+
+    Yields:
+        dict | list[dict]: 创建单个 VPC 时返回资源字典，批量创建时返回列表。
+        每个资源字典包含：
+            - name (str): VPC 名称
+            - subnet_name (str): 默认子网名称
+            - cidr (str): 子网 CIDR
+            - desc (str): VPC 描述
+            - extra_subnets (list[dict]): 额外子网元数据列表（如有）
+
+    Note:
+        - scope 为 class 级别，在整个测试类内共享复用
+        - 支持通过 `@fixture.path` 语法引用其他 fixture（如 `@vpc[0].name`）
+        - 批量创建时名称自动添加 `-index` 后缀
+
+    Example:
+        @pytest.mark.parametrize("vpc", [{"name": "test-vpc", "cidr": "192.168.0.0/16"}], indirect=True)
+        def test_vpc_single(vpc):
+            assert vpc["name"] == "test-vpc"
+
+        @pytest.mark.parametrize("vpc", [{"count": 2}], indirect=True)
+        def test_vpc_batch(vpc):
+            # vpc 返回包含 2 个 VPC 的列表
+            assert len(vpc) == 2
+    """
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
     vpc_page.goto_service('虚拟私有云')
@@ -183,7 +247,35 @@ def vpc(browser_context, config, request):
 
 @pytest.fixture(scope="function")
 def eip(vpc_page, request):
-    """创建并返回弹性公网IP，测试结束后自动清理"""
+    """创建并返回弹性公网 IP，测试结束后自动清理。
+
+    本 fixture 支持从指定 IP 池分配单个或多个弹性公网 IP，
+    并在测试结束后自动释放已分配的 IP 资源。
+
+    Args:
+        vpc_page: VPC 页面对象，由 vpc_page fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        count (int): 需分配的 EIP 数量，默认为 1。
+        pool (str): IP 池名称，默认为 "public_net(基础版)"。
+        method (str): 分配方式，支持 "快速选择"、"手动输入"，默认为 "快速选择"。
+        ip (str): 手动分配时指定的 IP 地址，可选。
+
+    Yields:
+        str | list[str]: 分配单个 IP 时返回 IP 地址字符串，批量分配时返回 IP 地址列表。
+
+    Note:
+        - scope 为 function 级别，每个测试函数分配独立的 IP 资源
+        - 清理时会自动切换到对应的 IP 池进行释放操作
+
+    Example:
+        @pytest.mark.parametrize("eip", [{"count": 2}], indirect=True)
+        def test_eip_batch(eip):
+            # eip 返回包含 2 个 IP 地址的列表
+            for ip in eip:
+                print(f"分配的 IP: {ip}")
+    """
     params = getattr(request, 'param', {})
     count = params.get('count', 1)
     pool = params.get('pool', 'public_net(基础版)')
@@ -215,7 +307,28 @@ def eip(vpc_page, request):
 
 @pytest.fixture(scope="function")
 def vip(vpc_page, vpc):
-    """创建一个手动分配的虚拟IP"""
+    """创建并返回手动分配的虚拟 IP，测试结束后自动清理。
+
+    本 fixture 在指定 VPC 的子网中创建一个虚拟 IP 端口，
+    IP 地址从子网可用 IP 段中随机选择，避开前 10 个地址以防冲突。
+
+    Args:
+        vpc_page: VPC 页面对象，由 vpc_page fixture 提供。
+        vpc: VPC 资源字典，由 vpc fixture 提供，包含 name、subnet_name、cidr。
+
+    Yields:
+        str: 创建的虚拟 IP 地址。
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的虚拟 IP
+        - IP 地址从子网 hosts 中随机选择，跳过前 10 个地址
+        - 适用于高可用场景或需要固定 IP 的测试用例
+
+    Example:
+        def test_vip_usage(vip, vpc):
+            # vip 返回虚拟 IP 地址字符串
+            print(f"虚拟 IP: {vip}, 所属 VPC: {vpc['name']}")
+    """
     vpc_name = vpc['name']
     subnet_name = vpc['subnet_name']
     cidr = vpc['cidr']
@@ -244,16 +357,36 @@ def vip(vpc_page, vpc):
 
 @pytest.fixture(scope="function")
 def port(vpc_page, vpc, request):
-    """
-    创建并返回指定数量的端口，测试结束后自动清理
+    """创建并返回指定数量的端口，测试结束后自动清理。
+
+    本 fixture 在指定 VPC 的子网中创建多个端口，IP 地址从子网可用 IP 段
+    中随机选择，跳过前 20 个地址以避开网关、DHCP 和系统保留地址。
 
     Args:
-        vpc_page: VPC页面对象
-        vpc: VPC fixture
-        request: pytest request对象
+        vpc_page: VPC 页面对象，由 vpc_page fixture 提供。
+        vpc: VPC 资源字典，由 vpc fixture 提供，包含 name、subnet_name、cidr。
+        request: pytest 请求对象，用于获取参数化配置。
 
-    Returns:
-        list: 端口IP列表
+    request.param 支持的参数：
+        count (int): 需创建的端口数量，默认为 1。
+
+    Yields:
+        list[str]: 创建的端口 IP 地址列表。
+
+    Raises:
+        ValueError: 当子网 IP 资源不足以创建指定数量的端口时抛出。
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的端口
+        - IP 地址使用手动分配-快速选择模式创建
+        - 批量删除在 teardown 时自动执行
+
+    Example:
+        @pytest.mark.parametrize("port", [{"count": 3}], indirect=True)
+        def test_port_batch(port):
+            # port 返回包含 3 个端口 IP 的列表
+            for ip in port:
+                print(f"端口 IP: {ip}")
     """
     # 获取参数，如果没有提供则使用默认值
     params = getattr(request, 'param', {})
@@ -323,15 +456,34 @@ def port(vpc_page, vpc, request):
 
 @pytest.fixture(scope="function")
 def nat(vpc_page, vpc, request):
-    """创建一个NAT网关，测试结束后自动删除
+    """创建并返回 NAT 网关，测试结束后自动清理。
+
+    本 fixture 在指定 VPC 中创建 NAT 网关，支持绑定弹性公网 IP。
+    网关名称自动生成，资源在测试结束后自动删除。
 
     Args:
-        vpc_page: VPC页面对象
-        vpc: VPC fixture，提供 vpc_name
-        request: pytest request对象，可通过 indirect 传入 eip 等参数
+        vpc_page: VPC 页面对象，由 vpc_page fixture 提供。
+        vpc: VPC 资源字典，由 vpc fixture 提供，包含 name。
+        request: pytest 请求对象，用于获取参数化配置。
 
-    Returns:
-        dict: 包含 nat_name、vpc_name 的字典
+    request.param 支持的参数：
+        eip (str): 绑定的弹性公网 IP，可选。
+        public_ip_pool (str): 公网 IP 池名称，默认为 "public_net(基础版)"。
+        desc (str): NAT 网关描述，默认为 "NAT网关fixture自动创建"。
+
+    Yields:
+        dict: NAT 网关信息字典，包含：
+            - name (str): NAT 网关名称
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的 NAT 网关
+        - teardown 从返回字典中读取名称，支持测试中修改名称后正确清理
+        - 名称使用 random_data 自动生成
+
+    Example:
+        @pytest.mark.parametrize("nat", [{"eip": "1.2.3.4"}], indirect=True)
+        def test_nat_with_eip(nat):
+            print(f"NAT 网关: {nat['name']}")
     """
     from sugon_web.utils.util import random_data
 
@@ -371,7 +523,30 @@ def nat(vpc_page, vpc, request):
 
 @pytest.fixture(scope="function")
 def qos(vpc_page):
-    """创建并返回一个网络QoS，测试结束后自动清理"""
+    """创建并返回网络 QoS 策略，测试结束后自动清理。
+
+    本 fixture 创建一个网络 QoS 策略，用于限制虚机的网络带宽。
+    QoS 名称自动生成，资源在测试结束后自动删除。
+
+    Args:
+        vpc_page: VPC 页面对象，由 vpc_page fixture 提供。
+
+    Yields:
+        dict: QoS 策略信息字典，包含：
+            - name (str): QoS 策略名称
+            - send_rate (int): 发送速率限制（Mbps），默认为 10
+            - recv_rate (int): 接收速率限制（Mbps），默认为 20
+            - desc (str): QoS 描述
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的 QoS 策略
+        - QoS 参数固定为 send_rate=10, recv_rate=20
+        - 名称格式为 "qos-{random_data()}"
+
+    Example:
+        def test_qos_create(qos):
+            print(f"QoS 名称: {qos['name']}, 发送速率: {qos['send_rate']} Mbps")
+    """
     qos_info = {
         "name": f"qos-{random_data()}",
         "send_rate": 10,
@@ -479,14 +654,35 @@ def _unbind_security_groups_from_vms(ecs_page, vm_data, sg_names):
 
 @pytest.fixture(scope="function")
 def sg(browser_context, config, request):
-    """
-    创建并返回安全组名称，测试结束后自动清理
+    """创建并返回安全组名称，测试结束后自动清理。
+
+    本 fixture 支持创建单个或多个安全组，安全组名称自动生成。
+    资源在测试结束后自动删除，确保测试环境干净。
+
+    Args:
+        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        config: 测试配置对象，由 pytest fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
 
     request.param:
-        int: 需要创建的安全组数量，默认 1
+        int: 需要创建的安全组数量，默认为 1。若值为 <= 0，则返回空列表。
 
     Yields:
-        str | list[str]: 单个安全组名称或安全组名称列表
+        str | list[str]: 创建单个安全组时返回名称字符串，批量创建时返回名称列表。
+        若 count <= 0，返回空列表。
+
+    Note:
+        - scope 为 function 级别，每个测试函数创建独立的安全组
+        - 安全组描述自动设置为 "{name}自动创建的安全组"
+        - 名称使用 random_data 自动生成
+        - 使用独立的浏览器页面，避免与其他 fixture 的页面冲突
+
+    Example:
+        @pytest.mark.parametrize("sg", [2], indirect=True)
+        def test_sg_batch(sg):
+            # sg 返回包含 2 个安全组名称的列表
+            for name in sg:
+                print(f"安全组: {name}")
     """
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
@@ -765,3 +961,79 @@ def internal_dns_record(vpc_page, internal_dns):
                 vpc_page.assert_deleted(record_info["alias"])
         except Exception as exc:
             logger.warning(f"清理解析记录失败: {exc}")
+
+@pytest.fixture(scope="class")
+def lb_pool_candidate_vms(browser_context, config, request):
+    """创建资源池候选虚机列表，供监听器资源池新增资源用例复用。
+
+    本 fixture 通过复用 vm fixture 的辅助函数实现批量创建，遵循最小可复用原则：
+    - 使用 `_build_vm_create_request` 构建标准 ECS 创建请求
+    - 使用 `_create_vm_resources` 执行批量创建
+    - 使用 `_collect_vm_fixture_metadata` 收集元数据
+    - 使用 `_cleanup_vm_resources` 执行清理
+
+    Args:
+        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        config: 测试配置对象，由 pytest fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置和其他 fixture。
+
+    request.param 支持的参数：
+        count (int): 需创建的虚机数量，默认为 2。
+        cluster (str): 目标集群名称，默认为 "Autotest"。
+        name_prefix (str): 虚机名称前缀，默认为 "lb-pool-vm"。
+
+    Yields:
+        list[dict]: 已创建虚机的最小元数据列表，每个元素包含：
+            - name (str): 虚机名称，格式为 "{prefix}-{random}-{index}"
+            - ip (str): 虚机固定 IP 地址
+
+    Note:
+        - 虚机命名采用批量创建风格（带数字后缀），而非独立随机名
+        - 自动使用 vpc fixture 提供的网络和子网
+        - 不绑定 MFIP（bind_mfip=False），适用于内网场景
+        - scope 为 class 级别，在整个测试类内共享复用
+
+    Example:
+        @pytest.mark.parametrize(
+            "lb_pool_candidate_vms",
+            [{"count": 3, "cluster": "Production", "name_prefix": "test-vm"}],
+            indirect=True,
+        )
+        def test_example(lb_pool_candidate_vms):
+            # lb_pool_candidate_vms 返回 3 台虚机的元数据列表
+            for vm in lb_pool_candidate_vms:
+                print(f"VM: {vm['name']}, IP: {vm['ip']}")
+    """
+    from sugon_web.pages.compute import EcsPage
+    from sugon_web.testcase.conftest import (
+        _build_vm_create_request,
+        _build_vm_fixture_names,
+        _create_vm_resources,
+        _collect_vm_fixture_metadata,
+        _cleanup_vm_resources,
+    )
+
+    params = getattr(request, "param", {})
+    count = params.get("count", 2)
+    cluster = params.get("cluster", "Autotest")
+    vm_prefix = params.get("name_prefix", "lb-pool-vm")
+    base_name = f"{vm_prefix}-{random_data(length=4)}"
+
+    vm_params = {"basic": {"count": count, "cluster": cluster}, "bind_mfip": False}
+
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+
+    create_request, actual_count, network, subnet = _build_vm_create_request(request, vm_params, base_name)
+    vm_names = _build_vm_fixture_names(create_request["basic"]["name"], actual_count)
+
+    with allure_step_log(f"Setup: 创建 {count} 台资源池候选虚机"):
+        _create_vm_resources(ecs_page, create_request, vm_names)
+
+    metadata_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
+    created_vms = [{"name": m["name"], "ip": m["ip"]} for m in metadata_list]
+
+    yield created_vms
+
+    _cleanup_vm_resources(ecs_page, vm_names)
+    page.close()

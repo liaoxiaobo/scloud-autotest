@@ -20,7 +20,6 @@ class TestSGScenario:
             assert eip, "未获取到可用公网IP"
 
         with allure_step_log(f"步骤1: 新建安全组"):
-            vpc_page.goto_service("安全组")
             sg_name = random_data()
             vpc_page.sg_create(sg_name, desc=f"{sg_name}测试安全组")
             vpc_page.assert_status(sg_name, status=f"{sg_name}测试安全组")
@@ -34,7 +33,7 @@ class TestSGScenario:
             assert all(d.strip() == "出口" for d in directions), f"期望所有规则都是'出口'方向，实际: {directions}"
 
         with allure_step_log(f"步骤3: 进入ECS模块，使用安全组{sg_name}创建弹性云服务器vm2，并绑定弹性公网ip"):
-            ecs_page.goto_service("弹性云服务器")
+            # ecs_page.goto_service("弹性云服务器")
             network = {"networks":[{"network": network_name,"subnet": subnet_name}], "security_groups": [sg_name]}
             vm2_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm2 = vm2_info.get("name")
@@ -57,7 +56,7 @@ class TestSGScenario:
             ssh_vm.ping(vm2_ip, connected=False)
 
         with allure_step_log(f"步骤6: 进入安全组{sg_name}详情页，创建入方向规则，放行所有ipv4流量"):
-            vpc_page.goto_service("安全组")
+            vpc_page.goto_submenu("安全组")
             vpc_page.sg_rule_create(
                 sg_name=sg_name,
                 protocol="所有",
@@ -77,20 +76,18 @@ class TestSGScenario:
             ssh_vm.ping(vm2_ip, connected=True)
 
         with allure_step_log(f"步骤8: 清理测试资源-虚机"):
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove(vm2)
             ecs_page.ecs_delete(vm2, release_ip=True)
             ecs_page.assert_deleted(vm2)
 
         with allure_step_log(f"步骤9: 清理测试资源-安全组"):
-            vpc_page.goto_service("安全组")
             vpc_page.sg_delete(sg_name)
             vpc_page.assert_deleted(sg_name)
 
     @allure.title("验证删除安全组场景")
     def test_sg_delete_scenario(self, vpc_page, ecs_page, vpc):
         base_name = random_data()
-        vpc_page.goto_service("安全组")
+        # vpc_page.goto_service("安全组")
 
         with allure_step_log(f"步骤1: 创建4个未使用的SG{base_name}, 1个VM使用的SG"):
             sg_unused_1, sg_unused_2, sg_unused_3, sg_unused_4, sg_used = [f"{base_name}-{s}" for s in ("u1", "u2", "u3", "u4", "used")]
@@ -103,14 +100,14 @@ class TestSGScenario:
         with allure_step_log(f"步骤2: 使用安全组 {sg_used} 创建 ECS 用于占用"):
             network_name = vpc["name"]
             subnet_name = vpc["subnet_name"]
-            ecs_page.goto_service("弹性云服务器")
+            # ecs_page.goto_service("弹性云服务器")
             network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg_used]}
             vm_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm_name = vm_info.get("name")
             ecs_page.assert_status(vm_name)
 
         with allure_step_log(f"步骤3: 场景(1):删除单个未使用的安全组 {sg_unused_1}"):
-            vpc_page.goto_service("安全组")
+            # vpc_page.goto_service("安全组")
             vpc_page.sg_delete(sg_unused_1)
             # 验证不存在
             vpc_page.assert_deleted(sg_unused_1)
@@ -163,12 +160,12 @@ class TestSGScenario:
             vpc_page.assert_status(sg_used, status=f"{sg_used}删除测试用")
 
         with allure_step_log(f"步骤7: 清理测试资源{vm_name}、{sg_used}"):
-            ecs_page.goto_service("弹性云服务器")
+            # ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove(vm_name)
             ecs_page.ecs_delete(vm_name, release_ip=True)
             ecs_page.assert_deleted(vm_name)
 
-            vpc_page.goto_service("安全组")
+            # vpc_page.goto_service("安全组")
             vpc_page.sg_delete(sg_used)
             vpc_page.assert_deleted(sg_used)
 
@@ -190,12 +187,12 @@ class TestSGScenario:
                 fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
                 ecs_page.assert_popup_success("执行成功")
 
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
                 sg2_created = True
 
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm2_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network, {}, {})
                 vm2_name = vm2_info.get("name")
@@ -203,7 +200,7 @@ class TestSGScenario:
                 vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
             with allure_step_log(f"步骤2: {sg1}、{sg2}下添加入方向放行所有IPv4的规则，出方向保持默认"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 for sg_name in [sg1, sg2]:
                     vpc_page.sg_rule_create(
                         sg_name=sg_name,
@@ -244,13 +241,13 @@ class TestSGScenario:
             if vm2_name or sg2_created:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
                     if vm2_name:
-                        ecs_page.goto_service("弹性云服务器")
+                        # ecs_page.goto_service("弹性云服务器")
                         ecs_page.ecs_remove(vm2_name)
                         ecs_page.ecs_delete(vm2_name, release_ip=True)
                         ecs_page.assert_deleted(vm2_name)
 
-                    ecs_page.goto_service("弹性云服务器")
-                    vpc_page.goto_service("安全组")
+                    # ecs_page.goto_service("弹性云服务器")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -268,13 +265,13 @@ class TestSGScenario:
 
         try:
             with allure_step_log(f"步骤1: 创建安全组sg2({sg2})；sg1({sg1})保持默认"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
                 sg2_created = True
 
             with allure_step_log(f"步骤2: 在同一VPC创建vm2，并绑定安全组sg2({sg2})"):
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm2_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network, {}, {})
                 vm2_name = vm2_info.get("name")
@@ -282,7 +279,7 @@ class TestSGScenario:
                 vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
             with allure_step_log(f"步骤3: sg2({sg2})放行所有IPv4；进入sg1({sg1})详情页验证默认规则列表显示"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 vpc_page.sg_rule_create(
                     sg_name=sg2,
                     protocol="所有",
@@ -310,7 +307,7 @@ class TestSGScenario:
                 )
 
             with allure_step_log("步骤5: SSH登录管控节点，对fip1发起ping请求，预期结果：无法ping通"):
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 assert eip, "未获取到可用公网IP"
                 fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
                 ssh_host.ping(fip1, connected=False)
@@ -321,7 +318,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm1["ip"], connected=True)
 
             with allure_step_log(f"步骤7: 更新sg1({sg1})规则。删除跨组规则，改为放行所有IPv4流量(CIDR空)"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.goto_sg_detail(sg1)
                 vpc_page.sg_rule_delete(sg1, direction="入口")
 
@@ -343,12 +340,12 @@ class TestSGScenario:
             if vm2_name or sg2_created:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
                     if vm2_name:
-                        ecs_page.goto_service("弹性云服务器")
+                        # ecs_page.goto_service("弹性云服务器")
                         ecs_page.ecs_remove(vm2_name)
                         ecs_page.ecs_delete(vm2_name, release_ip=True)
                         ecs_page.assert_deleted(vm2_name)
 
-                    vpc_page.goto_service("安全组")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -361,7 +358,7 @@ class TestSGScenario:
         subnet_name = vpc.get("subnet_name")
 
         with allure_step_log(f"步骤1: sg1({sg1})下添加入方向放行所有ipv4的规则"):
-            vpc_page.goto_service("安全组")
+            vpc_page.goto_submenu("安全组")
             vpc_page.sg_rule_create(
                 sg_name=sg1,
                 protocol="所有",
@@ -385,7 +382,7 @@ class TestSGScenario:
 
         with allure_step_log("步骤3: SSH登录管控节点，对fip1发起ping请求，预期结果：可以ping通"):
             # 给vm1绑定公网IP (FIP)
-            ecs_page.goto_service("弹性云服务器")
+            # ecs_page.goto_service("弹性云服务器")
             assert eip, "未获取到可用公网IP"
             fip1 = ecs_page.ecs_bind_pub_ip(vm1["name"], subnet=subnet_name)
             ecs_page.assert_popup_success("执行成功")
@@ -393,7 +390,7 @@ class TestSGScenario:
             ssh_host.ping(fip1, connected=True)
 
         with allure_step_log("步骤4: 进入sg1详情页，删除掉步骤0中增加的入方向规则"):
-            vpc_page.goto_service("安全组")
+            # vpc_page.goto_service("安全组")
             vpc_page.goto_sg_detail(sg1)
             # 删除方向为“入口”的规则
             vpc_page.sg_rule_delete(sg1, direction="入口")
@@ -416,7 +413,7 @@ class TestSGScenario:
 
         try:
             with allure_step_log(f"步骤1: 创建安全组sg2({sg2})和虚机vm2，并在{sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
                 sg2_created = True
@@ -432,7 +429,7 @@ class TestSGScenario:
                         from_list=True
                     )
 
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm2_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network, {}, {})
                 vm2_name = vm2_info.get("name")
@@ -445,15 +442,13 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤3: 进入sg1详情页，确认列表可以正常显示所有规则"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.goto_sg_detail(sg1)
                 rules = vpc_page.sg_get_all_rules()
                 assert len(rules) == 3, f"sg1 规则数量非3，实际: {len(rules)}"
 
             with allure_step_log(f"步骤4: 删除sg1下所有的出方向规则"):
-                egress_rules = [r for r in rules if r["方向"] == "出口"]
-                for _ in range(len(egress_rules)):
-                    vpc_page.sg_rule_delete(sg1, direction="出口")
+                vpc_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
             with allure_step_log(f"步骤5: 再次新增出方向规则, 放行ipv4所有流量, 但网段写成非vpc1的子网cidr"):
                 dummy_cidr = "172.172.172.0/24" if "172.172.172" not in vpc["cidr"] else "173.173.173.0/24"
@@ -479,12 +474,12 @@ class TestSGScenario:
             if vm2_name or sg2_created:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
                     if vm2_name:
-                        ecs_page.goto_service("弹性云服务器")
+                        # ecs_page.goto_service("弹性云服务器")
                         ecs_page.ecs_remove(vm2_name)
                         ecs_page.ecs_delete(vm2_name, release_ip=True)
                         ecs_page.assert_deleted(vm2_name)
 
-                    vpc_page.goto_service("安全组")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -502,12 +497,12 @@ class TestSGScenario:
 
         try:
             with allure_step_log(f"步骤1: 创建安全组sg2({sg2})和虚机vm2"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
                 sg2_created = True
 
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm2_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network, {}, {})
                 vm2_name = vm2_info.get("name")
@@ -515,7 +510,7 @@ class TestSGScenario:
                 vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
             with allure_step_log(f"步骤2: 在{sg1}、{sg2}下添加入方向放行所有ipv4的规则，出方向保持默认"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 for sg_name in [sg1, sg2]:
                     vpc_page.sg_rule_delete_all_by_direction(sg_name, "入口")
                     vpc_page.sg_rule_create(
@@ -549,7 +544,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤6: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程选择安全组sg2"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 vpc_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
                 vpc_page.sg_rule_create(
@@ -567,7 +562,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤8: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程字段修改为CIDR，网段保持为空"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 vpc_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
                 vpc_page.sg_rule_create(
@@ -587,12 +582,12 @@ class TestSGScenario:
             if vm2_name or sg2_created:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
                     if vm2_name:
-                        ecs_page.goto_service("弹性云服务器")
+                        # ecs_page.goto_service("弹性云服务器")
                         ecs_page.ecs_remove(vm2_name)
                         ecs_page.ecs_delete(vm2_name, release_ip=True)
                         ecs_page.assert_deleted(vm2_name)
 
-                    vpc_page.goto_service("安全组")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -609,7 +604,7 @@ class TestSGScenario:
 
         try:
             with allure_step_log(f"步骤1: 创建安全组sg2({sg2})和虚机vm2，并在{sg1}、{sg2}下添加入方向放行所有ipv4的规则"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
                 for sg_name in [sg1, sg2]:
@@ -624,7 +619,7 @@ class TestSGScenario:
                         from_list=True
                     )
 
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm2_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network, {}, {})
                 vm2_name = vm2_info.get("name")
@@ -637,12 +632,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤3: 删除掉{sg1}安全下出方向规则"):
-                vpc_page.goto_service("安全组")
-                vpc_page.goto_sg_detail(sg1)
-                rules = vpc_page.sg_get_all_rules()
-                egress_rules = [r for r in rules if r["方向"] == "出口"]
-                for _ in range(len(egress_rules)):
-                    vpc_page.sg_rule_delete(sg1, direction="出口")
+                vpc_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
             with allure_step_log(f"步骤4: vm1 ping vm2, 预期无法ping通"):
                 ssh_vm.connect(vm1_mfip)
@@ -650,12 +640,12 @@ class TestSGScenario:
         finally:
             if vm2_name:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
-                    ecs_page.goto_service("弹性云服务器")
+                    # ecs_page.goto_service("弹性云服务器")
                     ecs_page.ecs_remove(vm2_name)
                     ecs_page.ecs_delete(vm2_name, release_ip=True)
                     ecs_page.assert_deleted(vm2_name)
 
-                    vpc_page.goto_service("安全组")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -672,7 +662,7 @@ class TestSGScenario:
 
         try:
             with allure_step_log(f"步骤1: sg1({sg1})放行所有IPv4"):
-                vpc_page.goto_service("安全组")
+                vpc_page.goto_submenu("安全组")
                 vpc_page.sg_rule_create(
                     sg_name=sg1,
                     protocol="所有",
@@ -685,11 +675,11 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤2: 创建安全组sg2({sg2})，并使用vm1同一vpc创建虚机vm2绑定到sg2"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_create(sg2, desc=f"{sg2}自动创建的安全组")
                 vpc_page.assert_status(sg2, status=f"{sg2}自动创建的安全组")
 
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 network_vm1 = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg2]}
                 vm1_info = ecs_page.ecs_create({"name": f"{random_data()}-vm2"}, {}, network_vm1, {}, {})
                 vm2_name = vm1_info.get("name")
@@ -706,7 +696,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤5: 在vm2的安全组页签下，创建入方向规则，放行ipv4所有流量"):
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 ecs_page.ecs_to_sg_tab(vm2_name)
                 ecs_page.ecs_create_custom_sg_rule(
                     protocol="所有",
@@ -730,12 +720,12 @@ class TestSGScenario:
         finally:
             if vm2_name:
                 with allure_step_log(f"清理资源: 删除手动创建的 vm2({vm2_name}) 和 sg2({sg2})"):
-                    ecs_page.goto_service("弹性云服务器")
+                    # ecs_page.goto_service("弹性云服务器")
                     ecs_page.ecs_remove(vm2_name)
                     ecs_page.ecs_delete(vm2_name, release_ip=True)
                     ecs_page.assert_deleted(vm2_name)
 
-                    vpc_page.goto_service("安全组")
+                    # vpc_page.goto_service("安全组")
                     vpc_page.sg_delete(sg2)
                     vpc_page.assert_deleted(sg2)
 
@@ -745,7 +735,7 @@ class TestSGScenario:
         sg1, sg2, sg3 = [f"{base_name}-sg{_}" for _ in range(3)]
 
         with allure_step_log(f"步骤1: 创建安全组 {sg1}, {sg2}, {sg3}"):
-            vpc_page.goto_service("安全组")
+            # vpc_page.goto_service("安全组")
             vpc_page.sg_create(sg1, desc="测试虚机详情页管理安全组")
             vpc_page.sg_rule_create(sg1, direction="入口", remote_type="CIDR", from_list=True)
 
@@ -755,7 +745,7 @@ class TestSGScenario:
         with allure_step_log(f"步骤2: 使用安全组 {sg1} 创建虚机 vm1"):
             network_name = vpc.get("name")
             subnet_name = vpc.get("subnet_name")
-            ecs_page.goto_service("弹性云服务器")
+            # ecs_page.goto_service("弹性云服务器")
             network = {"networks": [{"network": network_name, "subnet": subnet_name}], "security_groups": [sg1]}
             vm_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm_name = vm_info.get("name")
@@ -803,7 +793,7 @@ class TestSGScenario:
                 assert desc in rules.get("描述", ""), f"自定义安全组创建规则验证失败: {rules}"
 
             with allure_step_log(f"步骤7: 验证安全组列表不显示该自定义安全组"):
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 # 自定义安全组不搜素到
                 vpc_page.sg_search("自定义安全组")
                 names = vpc_page.get_column_data("名称")
@@ -811,10 +801,10 @@ class TestSGScenario:
 
         finally:
             with allure_step_log("步骤8: 删除虚机和安全组"):
-                ecs_page.goto_service("弹性云服务器")
+                # ecs_page.goto_service("弹性云服务器")
                 ecs_page.ecs_remove(vm_name)
                 ecs_page.ecs_delete(vm_name, release_ip=True)
                 ecs_page.assert_deleted(vm_name, refresh=True)
 
-                vpc_page.goto_service("安全组")
+                # vpc_page.goto_service("安全组")
                 vpc_page.sg_delete([sg1, sg2, sg3])

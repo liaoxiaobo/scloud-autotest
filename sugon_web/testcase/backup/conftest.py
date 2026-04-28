@@ -1,7 +1,7 @@
 from __future__ import annotations
 import time
 import pytest
-from typing import Any, Dict, Iterator, List, Tuple, Union
+from typing import Any, Dict, Iterator, List, Tuple, TypedDict, Union
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
@@ -22,9 +22,22 @@ from sugon_web.utils.util import load_data, random_data
 RequestParams = Dict[str, Any]
 VmInfo = Dict[str, Any]
 VmList = List[VmInfo]
-TaskInfo = Dict[str, Any]
-TaskList = List[TaskInfo]
-BackupTaskData = Union[TaskInfo, TaskList]
+
+class BackupTaskMetadata(TypedDict):
+    """backup_task fixture 返回的标准任务元数据。"""
+
+    server_names: str
+    task_name: str
+    cur_target: str
+    backup_nodes: List[str]
+    source_md5: Dict[str, Any]
+    source_mfip: str
+    source_arch: str
+
+
+TaskInfo = BackupTaskMetadata
+TaskList = List[BackupTaskMetadata]
+BackupTaskData = Union[BackupTaskMetadata, TaskList]
 
 
 def _get_request_params(request: pytest.FixtureRequest) -> RequestParams:
@@ -51,50 +64,30 @@ def _get_request_params(request: pytest.FixtureRequest) -> RequestParams:
     return getattr(request, "param", {})
 
 
-def _create_backup_page_with_session(browser_context: Any, config: Any) -> tuple[Any, BackUpPage]:
-    """为类级资源创建已登录的备份页面对象。
+def _create_service_page(
+    browser_context: Any,
+    config: Any,
+    page_cls: type[Any],
+    service_name: str,
+) -> tuple[Any, Any]:
+    """为类级资源创建已登录的服务页面对象。
 
-    该 helper 统一封装了“打开页面 -> 登录 -> 进入备份服务”的流程，供多个
-    class scope 的 fixture 复用，避免重复写会话初始化逻辑。
-
-    Args:
-        browser_context: 全局测试环境提供的 Playwright browser context。
-        config: ``_create_logged_in_page`` 所需的运行配置。
-
-    Returns:
-        ``(page, backup_page)`` 二元组。调用方负责在使用结束后关闭 ``page``。
-    """
-    page = _create_logged_in_page(browser_context, config)
-    backup_page = BackUpPage(page)
-    backup_page.goto_service("备份")
-    return page, backup_page
-
-
-def _create_ecs_page_with_session(browser_context: Any, config: Any) -> tuple[Any, EcsPage]:
-    """为备份资源准备流程创建已登录的 ECS 页面对象。
-
-    返回的页面已切换到“弹性云服务器”服务，适合 ``vm_backup`` 这类 class scope
-    资源 fixture 直接复用。
+    该 helper 统一封装了“打开页面 -> 登录 -> 进入指定服务”的流程，供多个
+    class scope 的资源 fixture 复用，避免为每个服务维护一份几乎相同的 helper。
 
     Args:
         browser_context: 全局测试环境提供的 Playwright browser context。
         config: ``_create_logged_in_page`` 所需的运行配置。
+        page_cls: 目标页面对象类型，例如 ``BackUpPage`` / ``EcsPage``。
+        service_name: 页面初始化后需要切换到的服务名称。
 
     Returns:
-        ``(page, ecs_page)`` 二元组。调用方负责页面生命周期。
+        ``(page, page_object)`` 二元组。调用方负责在使用结束后关闭 ``page``。
     """
     page = _create_logged_in_page(browser_context, config)
-    ecs_page = EcsPage(page)
-    ecs_page.goto_service("弹性云服务器")
-    return page, ecs_page
-
-
-def _create_vpc_page_with_session(browser_context: Any, config: Any) -> tuple[Any, VpcPage]:
-    """为备份资源准备流程创建已登录的 VPC 页面对象。"""
-    page = _create_logged_in_page(browser_context, config)
-    vpc_page = VpcPage(page)
-    vpc_page.goto_service("虚拟私有云")
-    return page, vpc_page
+    page_object = page_cls(page)
+    page_object.goto_service(service_name)
+    return page, page_object
 
 
 def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
@@ -168,6 +161,42 @@ def _build_vm_backup_params(ecs_page: EcsPage, params: RequestParams) -> VmFixtu
     }
 
 
+def _create_backup_vm_base_resources(
+    ecs_page: EcsPage,
+    vpc_page: VpcPage,
+    request: pytest.FixtureRequest,
+    params: RequestParams,
+) -> tuple[VmList, List[str]]:
+    """按通用 VM 协议创建备份源虚机，并返回基础元数据。
+
+    该 helper 只负责资源准备层，不处理备份场景特有的 MD5、MFIP、备份节点等增强字段。
+
+    Args:
+        ecs_page: ECS 页面对象，用于创建和查询虚机。
+        vpc_page: VPC 页面对象，用于分配创建前置所需的 EIP。
+        request: 当前 fixture request，对齐通用 VM 创建协议。
+        params: ``vm_backup`` 的参数字典。
+
+    Returns:
+        ``(base_vm_list, vm_names)`` 二元组：
+        - ``base_vm_list``: 通用 VM 元数据列表
+        - ``vm_names``: 创建出的虚机名称列表，供 teardown 清理使用
+    """
+    vm_params = _build_vm_backup_params(ecs_page, params)
+    base_name = random_data()
+    create_request, count, network, subnet = _build_vm_create_request(request, vm_params, base_name)
+    vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+
+    _allocate_eips(vpc_page, count=count)
+    _create_vm_resources(
+        ecs_page=ecs_page,
+        create_request=create_request,
+        vm_names=vm_names,
+    )
+    base_vm_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
+    return base_vm_list, vm_names
+
+
 def _prepare_single_vm_backup_metadata(
     ecs_page: EcsPage,
     ssh_vm: Any,
@@ -193,6 +222,8 @@ def _prepare_single_vm_backup_metadata(
         ``md5_dict``、``mfip`` 和 ``arch``。
     """
     with allure_step_log(f"准备备份源虚机: {vm_data['name']}"):
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_submenu("弹性云服务器")
         ecs_page.set_table_header("架构")
         ecs_page.ecs_bind_pub_ip(vm_data["name"])
         ecs_page.assert_popup_success("执行成功")
@@ -208,18 +239,18 @@ def _prepare_single_vm_backup_metadata(
     return enriched_vm
 
 
-def _prepare_vm_backup_metadata(
+def _enrich_vm_backup_metadata(
     ecs_page: EcsPage,
     ssh_vm: Any,
-    vm_list: VmList,
+    base_vm_list: VmList,
     backup_nodes: List[str],
 ) -> VmList:
-    """批量补齐备份场景所需的虚机元数据。
+    """基于通用 VM 元数据，补齐备份场景专用校验字段。
 
     Args:
         ecs_page: ECS 页面对象，用于执行虚机相关操作。
         ssh_vm: SSH fixture，用于准备源数据。
-        vm_list: 通用 VM helper 返回的虚机元数据列表。
+        base_vm_list: 通用 VM helper 返回的基础虚机元数据列表。
         backup_nodes: 当前环境可用的备份节点列表。
 
     Returns:
@@ -232,7 +263,7 @@ def _prepare_vm_backup_metadata(
             vm_data=vm_data,
             backup_nodes=backup_nodes,
         )
-        for vm_data in vm_list
+        for vm_data in base_vm_list
     ]
 
 
@@ -305,6 +336,16 @@ def _build_backup_task_record(backup_page: BackUpPage, vm: VmInfo, task_name: st
     }
 
 
+def _extract_backup_task_names(task_list: TaskList) -> List[str]:
+    """从任务元数据列表中提取任务名。"""
+    return [task["task_name"] for task in task_list]
+
+
+def _extract_backup_source_vm_names(task_list: TaskList) -> List[str]:
+    """从任务元数据列表中提取源虚机名。"""
+    return [task["server_names"] for task in task_list]
+
+
 def _create_backup_tasks(
     backup_page: BackUpPage,
     vm_list: VmList,
@@ -336,7 +377,7 @@ def _create_backup_tasks(
     return task_list
 
 
-def _cleanup_backup_tasks(backup_page: BackUpPage, task_names: List[str]) -> None:
+def _cleanup_backup_task_entries(backup_page: BackUpPage, task_names: List[str]) -> None:
     """以尽力而为模式清理备份任务。
 
     某些测试在业务流程中可能已经删除、回收或停止了被测任务，因此 teardown
@@ -364,7 +405,7 @@ def _cleanup_backup_tasks(backup_page: BackUpPage, task_names: List[str]) -> Non
         pass
 
 
-def _cleanup_backup_data(backup_page: BackUpPage, vm_names: List[str]) -> None:
+def _cleanup_backup_source_data(backup_page: BackUpPage, vm_names: List[str]) -> None:
     """清理指定源虚机产生的备份数据。
 
     Args:
@@ -379,7 +420,13 @@ def _cleanup_backup_data(backup_page: BackUpPage, vm_names: List[str]) -> None:
             logger.warning(f"清理 {vm_name} 备份数据失败, 错误: {e}")
 
 
-def _normalize_backup_task_data(task_list: TaskList, task_count: int) -> BackupTaskData:
+def _cleanup_backup_task_resources(backup_page: BackUpPage, task_list: TaskList) -> None:
+    """清理 backup_task fixture 创建的任务及其备份数据。"""
+    _cleanup_backup_task_entries(backup_page, _extract_backup_task_names(task_list))
+    _cleanup_backup_source_data(backup_page, _extract_backup_source_vm_names(task_list))
+
+
+def _select_backup_task_result(task_list: TaskList, task_count: int) -> BackupTaskData:
     """规范化 ``backup_task`` 的返回值，兼容历史用例约定。
 
     Args:
@@ -390,6 +437,32 @@ def _normalize_backup_task_data(task_list: TaskList, task_count: int) -> BackupT
         当 ``task_count == 1`` 时返回 ``task_list[0]``，否则返回完整列表。
     """
     return task_list[0] if task_count == 1 else task_list
+
+
+def _cleanup_resume_task_entries(backup_page: BackUpPage, resume_tasks: List[str]) -> None:
+    """清理恢复任务列表。"""
+    if not resume_tasks:
+        return
+    try:
+        with allure_step_log(f"清理恢复任务: {resume_tasks}"):
+            backup_page.goto_service("备份")
+            backup_page.delete_resume_task(resume_tasks)
+    except Exception as e:
+        logger.warning(f"清理恢复任务失败: {resume_tasks}, 错误: {e}")
+
+
+def _cleanup_resumed_vm_resources(ecs_page: EcsPage, new_vm_names: List[str]) -> None:
+    """清理恢复流程中新创建的虚机资源。"""
+    if not new_vm_names:
+        return
+    try:
+        with allure_step_log(f"清理恢复产生的新虚拟机: {new_vm_names}"):
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove(new_vm_names)
+            ecs_page.ecs_delete(new_vm_names, delete_volume=True, release_ip=True)
+            ecs_page.assert_deleted(new_vm_names)
+    except Exception as e:
+        logger.warning(f"清理虚拟机失败: {new_vm_names}, 错误: {e}")
 
 
 @pytest.fixture(scope="function")
@@ -438,24 +511,21 @@ def vm_backup(
         def test_xxx(vm_backup):
             assert len(vm_backup) == 2
     """
-    page, ecs_page = _create_ecs_page_with_session(browser_context, config)
-    vpc_page_raw, vpc_page = _create_vpc_page_with_session(browser_context, config)
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+    vpc_page = VpcPage(page)
     params = _get_request_params(request)
-    vm_params = _build_vm_backup_params(ecs_page, params)
-    enabled_nodes = _get_enabled_backup_nodes(ecs_page)
-    base_name = random_data()
-    create_request, count, network, subnet = _build_vm_create_request(request, vm_params, base_name)
-    vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+    vm_names: List[str] = []
 
     try:
-        _allocate_eips(vpc_page, count=count)
-        _create_vm_resources(
+        base_vm_list, vm_names = _create_backup_vm_base_resources(
             ecs_page=ecs_page,
-            create_request=create_request,
-            vm_names=vm_names,
+            vpc_page=vpc_page,
+            request=request,
+            params=params,
         )
-        vm_list = _collect_vm_fixture_metadata(ecs_page, vm_names, network, subnet)
-        vm_list = _prepare_vm_backup_metadata(ecs_page, ssh_vm, vm_list, enabled_nodes)
+        enabled_nodes = _get_enabled_backup_nodes(ecs_page)
+        vm_list = _enrich_vm_backup_metadata(ecs_page, ssh_vm, base_vm_list, enabled_nodes)
         logger.info(f"vm_list: {vm_list}")
 
         ecs_page.goto_service("备份")
@@ -464,7 +534,6 @@ def vm_backup(
         try:
             _cleanup_vm_backup_resources(ecs_page, vm_names)
         finally:
-            vpc_page_raw.close()
             page.close()
 
 
@@ -497,7 +566,7 @@ def backup_task(
         def test_batch(backup_task):
             assert len(backup_task) == 2
     """
-    page, backup_page = _create_backup_page_with_session(browser_context, config)
+    page, backup_page = _create_service_page(browser_context, config, BackUpPage, "备份")
 
     params = _get_request_params(request)
     task_count = params.get("task_count", 1)
@@ -508,12 +577,11 @@ def backup_task(
     task_list = _create_backup_tasks(backup_page, vm_list, policy, task_count)
     logger.info(f"task_list: {task_list}")
 
-    backup_task_data = _normalize_backup_task_data(task_list, task_count)
+    backup_task_data = _select_backup_task_result(task_list, task_count)
     yield backup_task_data
 
     try:
-        _cleanup_backup_tasks(backup_page, [task.get("task_name") for task in task_list])
-        _cleanup_backup_data(backup_page, [task.get("server_names") for task in task_list])
+        _cleanup_backup_task_resources(backup_page, task_list)
     finally:
         page.close()
 
@@ -578,22 +646,7 @@ def cleanup_resume_data(ecs_page: EcsPage, backup_page: BackUpPage) -> Iterator[
 
     yield resume_tasks, new_vm_names
 
-    if resume_tasks:
-        try:
-            with allure_step_log(f"清理恢复任务: {resume_tasks}"):
-                backup_page.goto_service("备份")
-                backup_page.delete_resume_task(resume_tasks)
-        except Exception as e:
-            logger.warning(f"清理恢复任务失败: {resume_tasks}, 错误: {e}")
-
-    if new_vm_names:
-        try:
-            with allure_step_log(f"清理恢复产生的新虚拟机: {new_vm_names}"):
-                ecs_page.goto_service("弹性云服务器")
-                ecs_page.ecs_remove(new_vm_names)
-                ecs_page.ecs_delete(new_vm_names, delete_volume=True, release_ip=True)
-                ecs_page.assert_deleted(new_vm_names)
-        except Exception as e:
-            logger.warning(f"清理虚拟机失败: {new_vm_names}, 错误: {e}")
+    _cleanup_resume_task_entries(backup_page, resume_tasks)
+    _cleanup_resumed_vm_resources(ecs_page, new_vm_names)
 
     backup_page.goto_service("备份")

@@ -107,7 +107,6 @@ class TestIpGroupBasic:
                 assert ip not in detail_ips, f"详情页旧IP未被替换，期望不包含: {ip}，实际: {detail_ips}"
             ip_group["ip_addresses"] = new_ip_addresses
         with allure_step_log("步骤3: 验证列表页修改结果"):
-            # vpc_page.goto_service("负载均衡")
             vpc_page.goto_submenu("IP地址组")
             row_data = vpc_page.get_row_data(group_name)
             assert row_data.get("名称") == group_name, \

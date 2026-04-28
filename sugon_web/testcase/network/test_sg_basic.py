@@ -13,7 +13,7 @@ class TestSGBasic:
     def test_sg_create(self, vpc_page):
 
         with allure_step_log(f"步骤1: 新建安全组"):
-            vpc_page.goto_service("安全组")
+            vpc_page.goto_submenu("安全组")
             sg_name = random_data()
             vpc_page.sg_create(sg_name, desc=f"{sg_name}测试安全组")
             vpc_page.assert_status(sg_name, status=f"{sg_name}测试安全组")
@@ -24,7 +24,6 @@ class TestSGBasic:
             assert len(directions) == 2, "安全组详情页默认出方向规则数非2"
 
         with allure_step_log(f"步骤3: 清理测试资源-安全组"):
-            vpc_page.goto_service("安全组")
             vpc_page.sg_delete(sg_name)
             vpc_page.assert_deleted(sg_name)
 
@@ -32,7 +31,6 @@ class TestSGBasic:
     def test_sg_search(self, vpc_page, sg):
         sg_name = sg
         with allure_step_log(f"步骤1: 搜索安全组: {sg_name}"):
-            vpc_page.goto_service("安全组")
             vpc_page.sg_search(sg_name)
 
             # 使用模糊匹配断言列表中包含搜索关键字
@@ -102,7 +100,6 @@ class TestSGBasic:
             network_name = vpc["name"]
             subnet_name = vpc["subnet_name"]
 
-            ecs_page.goto_service("弹性云服务器")
             network = {"networks":[{"network": network_name, "subnet": subnet_name}], "security_groups": [clone_name]}
             vm1_info = ecs_page.ecs_create({}, {}, network, {}, {})
             vm1_name = vm1_info.get("name")
@@ -116,13 +113,11 @@ class TestSGBasic:
             ssh_host.telnet(fip1, port=22, timeout=15)
 
         with allure_step_log(f"步骤6: 清理测试资源-虚机 {vm1_name}"):
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove(vm1_name)
             ecs_page.ecs_delete(vm1_name, release_ip=True)
             ecs_page.assert_deleted(vm1_name)
 
         with allure_step_log(f"步骤7: 清理克隆出的安全组"):
-            vpc_page.goto_service("安全组")
             vpc_page.sg_delete(clone_name)
             vpc_page.assert_deleted(clone_name)
 
@@ -130,7 +125,7 @@ class TestSGBasic:
     def _test_sg_rule_delete(self, vpc_page, sg):
         sg_name = sg
         with allure_step_log(f"步骤1: 在安全组 {sg_name} 中创建入口规则并删除"):
-            vpc_page.goto_service("安全组")
+            vpc_page.goto_submenu("安全组")
             vpc_page.sg_rule_create(
                 sg_name=sg_name,
                 protocol="选择常用协议",
@@ -152,7 +147,7 @@ class TestSGBasic:
         direction = "入口"
 
         with allure_step_log(f"步骤1: 在列表页直接为安全组 {sg_name} 创建入方向规则"):
-            vpc_page.goto_service("安全组")
+            vpc_page.goto_submenu("安全组")
             vpc_page.sg_rule_create(
                 sg_name=sg_name,
                 protocol="选择常用协议",

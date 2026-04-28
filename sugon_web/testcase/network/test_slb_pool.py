@@ -19,7 +19,6 @@ class TestSlbPool:
         added_vm_names = []
 
         with allure_step_log(f"步骤1: 进入监听器 {lb['name']} 的资源池详情页"):
-            vpc_page.goto_service("负载均衡")
             vpc_page.goto_slb_detail(lb["slb_name"], "监听器")
             vpc_page.goto_lb_pool_detail(lb["name"], lb["pool_name"])
             vpc_page.assert_lb_pool_basic_info(

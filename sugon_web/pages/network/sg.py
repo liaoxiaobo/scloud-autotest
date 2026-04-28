@@ -6,6 +6,13 @@ from sugon_web.common.base import BasePage, submenu
 class SgMixin(BasePage):
     """安全组页面类"""
 
+    @staticmethod
+    def _normalize_rule_text(value):
+        """统一规则字段文本，便于跨读取/删除逻辑做一致比较。"""
+        if value is None:
+            return ""
+        return re.sub(r"\s+", " ", str(value)).strip()
+
     def _get_sg_rule_table(self):
         """定位安全组详情页中的规则表。"""
         active_tabs = self.locator(".el-tab-pane:not([aria-hidden='true']) .el-table:visible").all()
@@ -22,6 +29,53 @@ class SgMixin(BasePage):
                 continue
 
         raise AssertionError("未找到安全组详情规则表")
+
+    def _build_rule_data(self, headers, cell_contents):
+        """将页面行数据按规则字段做标准化映射。"""
+        row_data = dict(zip(headers, cell_contents))
+        rule_data = {}
+
+        for key, val in row_data.items():
+            normalized_value = self._normalize_rule_text(val)
+            if "方向" in key:
+                rule_data["方向"] = normalized_value
+            elif "以太网类型" in key:
+                rule_data["以太网类型"] = normalized_value
+            elif "IP协议" in key:
+                rule_data["IP协议"] = normalized_value
+            elif "端口范围" in key:
+                rule_data["端口范围"] = normalized_value
+            elif "远端IP前缀" in key:
+                rule_data["远端IP前缀"] = normalized_value
+            elif "远端安全组" in key:
+                rule_data["远端安全组"] = normalized_value
+            elif "描述" in key:
+                rule_data["描述"] = normalized_value
+
+        return rule_data
+
+    def _get_rule_rows_with_data(self):
+        """获取当前规则表中的页面行及其结构化规则数据。"""
+        rules_table, headers = self._get_sg_rule_table()
+        row_locators = rules_table.locator(".el-table__body-wrapper tr")
+        rows = []
+
+        for i in range(row_locators.count()):
+            row_locator = row_locators.nth(i)
+            cell_contents = self._get_cell_contents(row_locator)
+            rows.append((row_locator, self._build_rule_data(headers, cell_contents)))
+
+        return rows
+
+    def _rule_matches(self, actual_rule, expected_rule):
+        """判断页面规则是否与期望规则匹配。"""
+        for key, expected_value in expected_rule.items():
+            expected_text = self._normalize_rule_text(expected_value)
+            if not expected_text:
+                continue
+            if self._normalize_rule_text(actual_rule.get(key)) != expected_text:
+                return False
+        return True
 
     @submenu("安全组")
     def sg_create(self, name, desc=None):
@@ -252,30 +306,50 @@ class SgMixin(BasePage):
             f"{f', 端口={port}' if port else ''}{f', 描述={description}' if description else ''}"
         )
 
-    def sg_rule_delete(self, sg_name, direction="入口", detail_mode=False):
+    def sg_rule_delete(self, sg_name, direction="入口", detail_mode=False, rule_filter=None):
         """删除安全组规则
 
         Args:
             sg_name: 安全组名称
             direction: "入口" 或者是 "出口"
             detail_mode: 是否已在详情页中
+            rule_filter: 可选，按结构化规则字段精确过滤目标规则
         """
         # 进入安全组详情
         if not detail_mode:
             self.goto_sg_detail(sg_name)
 
-        rules_table, _ = self._get_sg_rule_table()
-        target_row = rules_table.locator(".el-table__body-wrapper tr").filter(
-            has=rules_table.locator("td").filter(has_text=re.compile(rf"^{direction}$"))
-        ).first
+        target_row = None
+        target_rule = None
+        expected_direction = self._normalize_rule_text(direction)
 
-        if target_row.count() == 0:
-            self.logger.warning(f"未找到方向为 {direction} 的规则行")
-            return
+        for attempt in range(3):
+            for row_locator, row_rule in self._get_rule_rows_with_data():
+                if self._normalize_rule_text(row_rule.get("方向")) != expected_direction:
+                    continue
+                if rule_filter and not self._rule_matches(row_rule, rule_filter):
+                    continue
+                target_row = row_locator
+                target_rule = row_rule
+                break
+
+            if target_row:
+                break
+
+            self.logger.warning(f"第{attempt + 1}次未定位到方向为 {direction} 的规则行，等待页面稳定后重试")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(500)
+
+        if target_row is None:
+            current_rules = self.sg_get_all_rules()
+            self.logger.warning(
+                f"未找到方向为 {direction} 的规则行, 过滤条件={rule_filter}, 当前规则={current_rules}"
+            )
+            return False
 
         # 获取该行的所有文本信息
         row_text = " | ".join(target_row.inner_text().split())
-        self.logger.info(f"已删除[{sg_name}]的一条[{direction}]规则: {row_text}")
+        self.logger.info(f"准备删除[{sg_name}]的一条[{direction}]规则: {target_rule or row_text}")
 
         # 点击该行的删除按钮
         target_row.get_by_text("删除").click()
@@ -284,6 +358,7 @@ class SgMixin(BasePage):
         self.dialog_confirm.click()
 
         self.logger.info(f"已删除 {sg_name} 的一条规则: {row_text}")
+        return True
 
     def sg_rule_delete_all_by_direction(self, sg_name, direction="入口", detail_mode=False):
         """删除指定方向的所有安全组规则。"""
@@ -295,7 +370,17 @@ class SgMixin(BasePage):
             target_rules = [rule for rule in rules if rule["方向"] == direction]
             if not target_rules:
                 break
-            self.sg_rule_delete(sg_name, direction=direction, detail_mode=True)
+
+            deleted = self.sg_rule_delete(
+                sg_name,
+                direction=direction,
+                detail_mode=True,
+                rule_filter=target_rules[0],
+            )
+            if not deleted:
+                raise AssertionError(f"存在方向为 {direction} 的规则，但未能在页面表格中定位到可删除的行")
+
+            self.wait_for_page_ready()
 
         self.logger.info(f"已清空 {sg_name} 的所有[{direction}]规则")
 
@@ -357,32 +442,8 @@ class SgMixin(BasePage):
             self.goto_service("安全组")
             self.goto_sg_detail(sg_name)
 
-        rules_table, headers = self._get_sg_rule_table()
         rules = []
-        row_locators = rules_table.locator(".el-table__body-wrapper tr").all()
-
-        for i in range(len(row_locators)):
-            row_locator = row_locators[i]
-            cell_contents = self._get_cell_contents(row_locator)
-            row_data = dict(zip(headers, cell_contents))
-
-            # 提取需要的字段。表头可能因为包含筛选/下拉带有额外字符，我们通过遍历keys进行子串匹配寻找真实值
-            rule_data = {}
-            for key, val in row_data.items():
-                if "方向" in key:
-                    rule_data["方向"] = val
-                elif "以太网类型" in key:
-                    rule_data["以太网类型"] = val
-                elif "IP协议" in key:
-                    rule_data["IP协议"] = val
-                elif "端口范围" in key:
-                    rule_data["端口范围"] = val
-                elif "远端IP前缀" in key:
-                    rule_data["远端IP前缀"] = val
-                elif "远端安全组" in key:
-                    rule_data["远端安全组"] = val
-                elif "描述" in key:
-                    rule_data["描述"] = val
+        for _, rule_data in self._get_rule_rows_with_data():
             rules.append(rule_data)
 
         # 为了比较，需要对列表里的字典按固定某种排序组合

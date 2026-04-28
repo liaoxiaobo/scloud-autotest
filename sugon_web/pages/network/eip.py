@@ -113,6 +113,8 @@ class EipMixin(BasePage):
     @submenu("弹性公网IPv4")
     def eip_allocate(self, pool: str = "public_net(基础版)", count: int = 1, method: str = "快速选择", ip: str = None):
         """分配弹性公网IP并返回本次新分配的IP列表"""
+        self.switch_eip_pool(pool)
+        previous_ips = self._get_eip_list()
         dialog = self._open_eip_allocate_dialog()
 
         dialog.get_by_placeholder("请选择").first.click()
@@ -162,7 +164,9 @@ class EipMixin(BasePage):
         if selected_ips:
             return selected_ips
 
-        raise AssertionError("当前仅支持数量为1的弹性公网IP精确分配场景")
+        current_ips = self._get_eip_list()
+        created_ips = [current_ip for current_ip in current_ips if current_ip not in set(previous_ips)]
+        return created_ips[:count]
 
     @submenu("弹性公网IPv4")
     def eip_release(self, ips):

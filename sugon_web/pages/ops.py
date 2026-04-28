@@ -16,48 +16,68 @@ class OpsPage(BasePage):
         self.mfip_search(ip)
         return self.get_row_data(ip).get("管理IP地址")
 
-    def _select_project_and_wait_networks_reload(self, project: str):
-        """选择项目，并等待网络列表接口刷新完成。"""
-        self.get_by_placeholder("请选择项目").click()
-        try:
-            with self.page.expect_response(
-                lambda response: (
-                    response.request.method == "GET"
-                    and "/api/ops/vpc/networks" in response.url
-                    and response.status == 200
-                ),
-                timeout=8000,
-            ):
-                self.page.wait_for_timeout(1000)
-                self.get_by_title(project).click()
-            logger.info(f"选择项目后已捕获网络列表刷新请求: {project}")
-        except PlaywrightTimeoutError:
-            logger.warning(f"选择项目 {project} 后未捕获到网络列表刷新请求，回退到 DOM 稳定等待")
-            self.get_by_title(project).click()
+    def _select_dropdown_and_wait_api(
+        self,
+        placeholder: str,
+        value: str,
+        locator_type: str = "listitem",
+        api_url_pattern: str | None = None,
+        timeout: int = 5000,
+    ):
+        """点击下拉框选择选项，并等待指定 API 接口返回。
 
-        self.wait_for_page_ready()
-        self.page.wait_for_timeout(300)
+        Args:
+            placeholder: 下拉框的 placeholder 文本
+            value: 需要选中的精确文本
+            locator_type: 选项定位器类型，"title" 使用 get_by_title，"listitem" 使用下拉框内 listitem
+            api_url_pattern: 需要等待响应的 API URL 包含的模式，None 表示不等待
+            timeout: 接口等待超时时间（毫秒）
+        """
+        self.get_by_placeholder(placeholder).click()
+        dropdown = self.page.locator(".el-select-dropdown:visible")
+
+        if locator_type == "title":
+            target_item = self.get_by_title(value)
+        else:
+            target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(value)}$"))
+            expect(target_item).to_have_count(1, timeout=timeout)
+        if api_url_pattern:
+            try:
+                with self.page.expect_response(
+                    lambda response: (
+                        response.request.method == "GET"
+                        and api_url_pattern in response.url
+                        and response.status == 200
+                    ),
+                    timeout=timeout
+                ):
+                    self.page.wait_for_timeout(1000)
+                    target_item.click()
+                logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
+            except PlaywrightTimeoutError:
+                logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
+                target_item.click()
+        else:
+            self.page.wait_for_timeout(2000)
+            target_item.click()
 
     @submenu("平台网络")
-    def mfip_create(self, project: str, network: str, ip: str, exact=True):
-        """创建 MFIP"""
-        self.btn_create.click()
-        self._select_project_and_wait_networks_reload(project)
+    def mfip_create(self, project: str, network: str, ip: str, exact: bool = True):
+        """创建 MFIP
 
-        self.get_by_placeholder("请选择网络").click()
-        # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
-        dropdown = self.page.locator(".el-select-dropdown:visible")
-        target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$"))
-        # 接口返回后页面重绘可能存在延迟，导致短暂出现两个同名项，等待直到只有一个匹配项
-        expect(target_item).to_have_count(1)
-        target_item.click()
+        Args:
+            project: 项目名称
+            network: 网络名称
+            ip: 管理IP地址
+            exact: 是否精确匹配IP文本
+        """
+        self.btn_create.click()
+        self._select_dropdown_and_wait_api("请选择项目", project, "title", api_url_pattern="/api/ops/vpc/networks")
+        self._select_dropdown_and_wait_api("请选择网络", network, api_url_pattern="/ports")
+
+        # 选择端口
         self.get_by_placeholder("请选择端口").click()
-        # self.get_by_text(ip, exact=exact).click()
-        port_dropdown = self.page.locator(".el-select-dropdown:visible")
-        ip_pattern = rf"^\s*{re.escape(ip)}\s*$" if exact else re.escape(ip)
-        ip_option = port_dropdown.get_by_role("listitem").filter(has_text=re.compile(ip_pattern))
-        expect(ip_option).to_have_count(1)
-        ip_option.click()
+        self.get_by_text(ip, exact=exact).click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()
 
     @submenu("平台网络")
