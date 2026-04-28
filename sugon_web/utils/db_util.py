@@ -210,7 +210,7 @@ def get_disk_size(self, node_name: str, ssh_host) -> int:
     """
     try:
         output = ssh_host.run(
-            f"cinder list | grep {node_name} | awk -F'|' '{{print $5}}' | tr -d ' '"
+            f"scli volume list | grep -F '{node_name}' | head -n 1 | cut -d '|' -f 6 | xargs"
         ).strip()
         return int(output)
     except Exception as e:
@@ -227,10 +227,37 @@ def get_specification(self, node_name: str, ssh_host) -> str:
     :raises RuntimeError: 命令执行或解析失败时
     """
     try:
-        output = ssh_host.run(
-            f"gova show $(gova list | grep {node_name} | awk '{{print $2}}') | awk -F'|' '/flavor_name/ {{gsub(/^ +| +$/, \"\", $3); print $3}}'"
+        guest_id = ssh_host.run(
+            f"scli guest list --name '{node_name}' | grep -F '{node_name}' | head -n 1 | cut -d '|' -f 2 | xargs"
         ).strip()
-        return output
+        if not guest_id and node_name.endswith("-0"):
+            instance_name = node_name.rsplit("-0", 1)[0]
+            guest_id = ssh_host.run(
+                f"scli guest list --name '{instance_name}' | grep -F '{instance_name}' | head -n 1 | cut -d '|' -f 2 | xargs"
+            ).strip()
+        if not guest_id:
+            raise RuntimeError(f"未找到节点对应的 guest id: {node_name}")
+
+        output = ssh_host.run(f"scli guest show {guest_id}").strip()
+
+        for line in output.splitlines():
+            if "flavor_name" in line and "│" in line:
+                parts = [part.strip() for part in line.split("│") if part.strip()]
+                if len(parts) >= 2 and parts[0] == "flavor_name":
+                    return parts[1]
+
+        patterns = [
+            re.compile(r"flavor_name\s*\|\s*([^\|\n]+)"),
+            re.compile(r"flavor_name\s*:\s*([^\n]+)"),
+            re.compile(r"flavor\s*\|\s*([^\|\n]+)"),
+            re.compile(r"flavor\s*:\s*([^\n]+)"),
+        ]
+        for pattern in patterns:
+            match = pattern.search(output)
+            if match:
+                return match.group(1).strip()
+
+        raise RuntimeError(f"未能从 scli guest show 输出中解析规格信息: {output}")
     except Exception as e:
         raise RuntimeError(f"获取节点规格失败 (节点: {node_name}): {e}")
 
@@ -317,14 +344,14 @@ def get_service_status(self, ssh_host, service_name: str) -> str:
     except Exception as e:
         raise RuntimeError(f"获取服务状态失败 (服务: {service_name}): {e}")
 
-def assert_backend_created(self, ssh_host, name: str, command: str = "gova list", timeout: int = 600,
+def assert_backend_created(self, ssh_host, name: str, command: str = "scli guest list", timeout: int = 600,
                            interval: int = 10):
     """
     断言资源已在后端创建成功，支持轮询检查
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象
     :param name: 要检查的资源名称
-    :param command: 用于检查的命令模板，默认为 "gova list"
+    :param command: 用于检查的命令模板，默认为 "scli guest list"
     :param timeout: 超时时间（秒），默认为 600 秒（10 分钟）
     :param interval: 轮询间隔时间（秒），默认为 10 秒
     :raises pytest.skip: 当SSH连接未配置时
@@ -338,7 +365,10 @@ def assert_backend_created(self, ssh_host, name: str, command: str = "gova list"
         return
 
     end_time = time.time() + timeout
-    check_command = f"{command} | grep {name}"
+    if command.strip() == "scli guest list":
+        check_command = f"scli guest list --name '{name}' | grep -F '{name}'"
+    else:
+        check_command = f"{command} | grep {name}"
     self.logger.info(f"开始轮询检查后端资源 '{name}' 是否已创建...")
 
     while time.time() < end_time:
@@ -360,14 +390,14 @@ def assert_backend_created(self, ssh_host, name: str, command: str = "gova list"
         pytest.fail(f"超时错误：资源 '{name}' 在 {timeout} 秒内未能在后端创建。")
 
 
-def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list", timeout: int = 600,
+def assert_backend_deleted(self, ssh_host, name: str, command: str = "scli guest list", timeout: int = 600,
                            interval: int = 10):
     """
     断言资源已从后端删除，支持轮询检查
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象
     :param name: 要检查的资源名称
-    :param command: 用于检查的命令模板，默认为 "gova list"
+    :param command: 用于检查的命令模板，默认为 "scli guest list"
     :param timeout: 超时时间（秒），默认为 600 秒（10 分钟）
     :param interval: 轮询间隔时间（秒），默认为 10 秒
     :raises pytest.skip: 当SSH连接未配置时
@@ -381,7 +411,10 @@ def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list"
         return
 
     end_time = time.time() + timeout
-    check_command = f"{command} | grep {name}"
+    if command.strip() == "scli guest list":
+        check_command = f"scli guest list --name '{name}' | grep -F '{name}'"
+    else:
+        check_command = f"{command} | grep {name}"
     self.logger.info(f"开始轮询检查后端资源 '{name}' 是否已删除...")
 
     while time.time() < end_time:
@@ -403,18 +436,21 @@ def assert_backend_deleted(self, ssh_host, name: str, command: str = "gova list"
 
 def get_backend_host(self, ssh_host, name: str) -> str:
     """
-    通过 gova list 查询后端资源所在的物理机节点
+    通过 scli guest list 查询后端资源所在的物理机节点
     :param self: 页面对象实例
     :param ssh_host: SSH连接对象 (通常是 master 节点)
     :param name: 资源名称
     :return: str 物理机节点名称
     """
     try:
-        command = f"gova list -name {name}"
+        command = f"scli guest list --name '{name}' | grep -F '{name}'"
         result = ssh_host.run(command)
-        self.logger.info(f"gova list 输出:\n{result}")
+        if not result and name.endswith("-0"):
+            instance_name = name.rsplit("-0", 1)[0]
+            result = ssh_host.run(f"scli guest list --name '{instance_name}' | grep -F '{instance_name}'")
+        self.logger.info(f"scli guest list 输出:\n{result}")
 
-        # 解析表格，寻找对应的行并提取 NODE 列 (第3列)
+        # 解析表格，寻找对应的行并提取 NODE 列
         for line in result.splitlines():
             if name in line and "|" in line:
                 # 分割并过滤掉空字符串
