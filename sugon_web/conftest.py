@@ -10,7 +10,6 @@ from sugon_web.utils.logger import logger
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
-from sugon_web.pages.login import LoginPage
 from sugon_web.config.config import Config
 
 def pytest_addoption(parser):
@@ -136,11 +135,13 @@ def _create_logged_in_page(browser_context, config):
     page = browser_context.new_page()
     logger.info("页面创建成功")
 
-    login_url = f"{base_url.rstrip('/')}/#/login"
-    logger.info(f"导航到登录URL: {login_url}")
-    page.goto(login_url)
-    page.wait_for_load_state("domcontentloaded")
-    page.wait_for_timeout(1000)
+    logger.info(f"导航到目标URL: {base_url}")
+    page.goto(base_url)
+    try:
+        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=5000)
+    except Exception:
+        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     if not _is_logged_in(page):
@@ -291,22 +292,17 @@ def _login(page, config, max_retries=3):
             logger.info(f"{'=' * 40}")
 
         try:
-            login_page = LoginPage(page)
-            logger.info(f"开始登录: user={username}")
-
-            login_page._input_username.wait_for(state="visible", timeout=10000)
-            login_page._input_password.wait_for(state="visible", timeout=10000)
-            login_page._btn_login.wait_for(state="visible", timeout=10000)
-
-            login_page.login(username, password)
+            # 填写登录信息
+            page.get_by_placeholder("请输入登录账号").fill(username)
+            page.get_by_placeholder("请输入登录密码").fill(password)
+            page.get_by_text("登 录").click()
 
             # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
             page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
             page.wait_for_load_state("domcontentloaded")
-            page.wait_for_timeout(1000)
+            page.wait_for_load_state("load")
 
             if _is_logged_in(page):
-                logger.info(f"登录判定结果: True, 当前URL: {page.url}")
                 return True
 
             raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
