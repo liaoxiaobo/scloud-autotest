@@ -45,6 +45,9 @@ image: centos7.9_test.raw
 # SSH私钥名称
 pkey: pkey_scloudadmin
 
+# 默认公网网络
+network: public_net(基础版)
+
 # XStor存储配置
 xstor: |
   iscsi_helper=lioadm

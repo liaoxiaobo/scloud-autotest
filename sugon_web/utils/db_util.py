@@ -262,16 +262,17 @@ def get_specification(self, node_name: str, ssh_host) -> str:
         raise RuntimeError(f"获取节点规格失败 (节点: {node_name}): {e}")
 
 
-def get_node_mfip_from_db(self, ssh_host, db_name: str, node_name: str) -> str:
+def get_node_mfip_from_db(self, ssh_host, db_name: str, node_name: str, table_name: str = "node") -> str:
     """
     通过在master节点执行anhan命令，从数据库中查询节点的mfip
     :param self: 页面对象实例
     :param ssh_host: master节点的SSH连接对象
     :param db_name: 数据库名称
     :param node_name: 节点名称
+    :param table_name: 表名，默认为node
     :return: str 节点的mfip地址
     """
-    sql_query = f"use {db_name};select mfip from node where name='{node_name}'"
+    sql_query = f"use {db_name};select mfip from {table_name} where name='{node_name}'"
     command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_query}\\\"\""
     result = ssh_host.run(command)
     # 假设结果的最后一行是IP地址
