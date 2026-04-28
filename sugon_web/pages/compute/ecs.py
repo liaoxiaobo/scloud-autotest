@@ -2099,6 +2099,7 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
         for conf in agent_conf:
             for agent_type, agent_version in conf.items():
                 self.locator("label").filter(has_text=agent_type).click()
+                self.page.wait_for_timeout(1000) # 等待页面加载完成
                 locator = self.get_by_role("row",
                                            name=f"默认{agent_type} {agent_version} 系统默认，禁止修改").get_by_role(
                     "radio")

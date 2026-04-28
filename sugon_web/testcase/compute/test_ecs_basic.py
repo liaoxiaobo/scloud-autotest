@@ -71,7 +71,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤2: 验证{name}挂起结果"):
             ecs_page.assert_popup_success(f"{name}实例挂起任务下发成功", timeout=60)
-            # ecs_page.wait_for_source_complete(name)
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name, status="挂起")
             ssh_host.assert_guest_fields(ecs_id, {"vm_state": "suspended"}, f"{name}状态变更失败")
 
@@ -105,7 +105,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤4: 验证{name}取消暂停结果"):
             ecs_page.assert_popup_success(f"{name}实例恢复运行任务下发成功")
-            # ecs_page.wait_for_source_complete(name)
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
             ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}状态变更失败")
             time.sleep(5)
@@ -170,6 +170,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤3: 验证克隆结果{clone_name}"):
             ecs_page.assert_popup_success(f"{name}实例克隆成功")
             image_name = ecs_page.get_row_data(name).get("镜像名称")
+            ecs_page.wait_for_source_complete(clone_name)
             ecs_page.assert_status(clone_name)
             ecs_page.assert_image_name(clone_name, image_name)
 
@@ -373,6 +374,7 @@ class TestECSBasic:
             ecs_page.ecs_modify_cpu_mode(name, cpu_mode, custom_value )
 
         with allure_step_log(f"步骤2: 验证CPU模式修改结果"):
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
             cpu_mode = "host-passthrough" if cpu_mode == "host-passthrough" else custom_value
             ecs_page.assert_ecs_details_info([name], info_items={"CPU模式": cpu_mode})
@@ -486,8 +488,8 @@ class TestECSBasic:
             ecs_page.assert_popup_success("热迁移命令下发成功")
 
         with allure_step_log("步骤3: 验证迁移结果"):
-            ecs_page.assert_status(names[1], status="迁移中", refresh=True, refresh_interval=2)
-            # ecs_page.wait_for_source_complete(names[1])
+            # ecs_page.assert_status(names[1], status="迁移中", refresh=True, refresh_interval=2)
+            ecs_page.wait_for_source_complete(names[1])
             ecs_page.assert_status(names[1])
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
@@ -541,8 +543,8 @@ class TestECSBasic:
             ecs_page.assert_popup_success("冷迁移命令下发成功")
 
         with allure_step_log("步骤2: 验证迁移结果"):
-            ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
-            # ecs_page.wait_for_source_complete(name)
+            # ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
 
             # 验证迁移后页面展示的物理机节点 和 通过gova show 获取的物理机节点是否一致
@@ -630,6 +632,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤2: 验证虚机{name}挂载CD-ROM结果"):
             ecs_page.assert_popup_success(f"挂载CD-ROM到虚拟机{name}成功")
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
 
             # 验证CD-ROM已成功挂载
@@ -792,6 +795,7 @@ class TestECSBasic:
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()
+            ecs_page.wait_for_source_complete(name)
             ecs_page.assert_status(name)
             assert ecs_page.get_row_data(name).get("挂载云硬盘").startswith("cdrom-")
 
