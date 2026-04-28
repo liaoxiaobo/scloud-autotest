@@ -27,7 +27,7 @@ class TestPgSQLCreate:
         with allure_step_log("步骤二：验证创建结果"):
             pgsql_page.assert_popup_success("创建PostgreSQL资源成功")
             pgsql_page.assert_list_contain(instance_name)
-            pgsql_page.assert_status(instance_name, status="运行中", timeout=1200)
+            pgsql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤三：删除实例"):
             pgsql_page.delete_instance(instance_name)
@@ -45,7 +45,7 @@ class TestPgSQLCreate:
                 pgsql_page.create_instance(name=instance_name)
                 pgsql_page.assert_popup_success("创建PostgreSQL资源成功")
                 pgsql_page.assert_list_contain(instance_name)
-                pgsql_page.assert_status(instance_name, status="运行中", timeout=1200)
+                pgsql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤二：批量删除实例"):
             pgsql_page.batch_delete_instances(instance_names)

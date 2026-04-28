@@ -357,27 +357,17 @@ class TestKafkaBasic:
         instance_name = kafka["name"]
 
         with allure_step_log("步骤一：切换网络 - 快速选择"):
-            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            if result == "close_service":
-                kafka_page.assert_popup_success("执行成功")
-                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
-                result = kafka_page.switch_network(
-                    instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择"
-                )
-
-            assert result == "switch_network"
+            kafka_page.close_service_for_switch_network(instance_name)
+            kafka_page.assert_popup_success("执行成功")
+            kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
+            kafka_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
             kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
             kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
 
         with allure_step_log("步骤二：切换网络 - 手动输入"):
-            result = kafka_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
-            if result == "close_service":
-                kafka_page.assert_popup_success("执行成功")
-                kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
-                result = kafka_page.switch_network(
-                    instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入"
-                )
-
-            assert result == "switch_network"
+            kafka_page.close_service_for_switch_network(instance_name)
+            kafka_page.assert_popup_success("执行成功")
+            kafka_page.assert_status(instance_name, status="服务已停止", timeout=1200, refresh=True)
+            kafka_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
             kafka_page.assert_status(instance_name, status="VPC切换中", timeout=600, refresh=True)
             kafka_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)

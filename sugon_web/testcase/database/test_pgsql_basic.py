@@ -62,14 +62,14 @@ class TestPgSQLBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             pgsql_page.assert_popup_success("修改实例名称成功")
             pgsql_page.assert_list_contain(renamed_name)
-            pgsql_page.assert_status(renamed_name, status="运行中")
+            pgsql_page.assert_status(renamed_name, status="运行中", refresh=True)
 
         with allure_step_log("步骤三：重命名实例回退"):
             pgsql_page.rename_instance(renamed_name, instance_name)
         with allure_step_log("步骤四：验证重命名回退结果"):
             pgsql_page.assert_popup_success("修改实例名称成功")
             pgsql_page.assert_list_contain(instance_name)
-            pgsql_page.assert_status(instance_name, status="运行中")
+            pgsql_page.assert_status(instance_name, status="运行中", refresh=True)
 
     @allure.title("PostgreSQL-修改实例管理员密码")
     def test_change_root_password(self, pgsql_page, pgsql, ssh_host, ssh_vm):
@@ -81,7 +81,7 @@ class TestPgSQLBasic:
             pgsql_page.change_root_password(instance_name, new_password)
         with allure_step_log("步骤二：验证修改密码结果"):
             pgsql_page.assert_popup_success("执行成功", timeout=10)
-            pgsql_page.assert_status(instance_name, status="运行中", timeout=300)
+            pgsql_page.assert_status(instance_name, status="运行中", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}-0"
@@ -105,8 +105,8 @@ class TestPgSQLBasic:
         with allure_step_log("步骤二：验证调整结果"):
             node_name = f"{instance_name}-0"
             pgsql_page.assert_popup_success("执行成功")
-            pgsql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200)
-            pgsql_page.assert_status(node_name, status="运行中", timeout=500)
+            pgsql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
+            pgsql_page.assert_status(node_name, status="运行中", timeout=500, refresh=True)
             assert db_util.get_disk_size(pgsql_page, node_name, ssh_host) == new_disk_size
 
     @allure.title("PostgreSQL-修改实例规格")
@@ -122,8 +122,8 @@ class TestPgSQLBasic:
         with allure_step_log("步骤二：验证规格是否修改成功"):
             node_name = f"{instance_name}-0"
             pgsql_page.assert_popup_success("执行成功")
-            pgsql_page.assert_status(node_name, status="调整规格中", timeout=1200)
-            pgsql_page.assert_status(node_name, status="运行中", timeout=5000)
+            pgsql_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
+            pgsql_page.assert_status(node_name, status="运行中", timeout=5000, refresh=True)
             assert db_util.get_specification(pgsql_page, node_name, ssh_host) == real_specification
 
     @allure.title("PostgreSQL-实例绑定和解绑公网IP")

@@ -73,17 +73,18 @@ class KafkaPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # 存储设置
-        self.locator("div").filter(has_text=re.compile(r"^云硬盘类型")).locator("input").first.click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        select_visible_option(selected_disk_type)
+        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["云硬盘类型"])
         self.locator("div").filter(has_text=re.compile(r"^云硬盘大小\(GiB\)$")).get_by_role("spinbutton").fill(str(disk_size))
 
         # 规格
-        specification_row = self.get_by_role("row", name=re.compile(re.escape(specification_name)))
+        specification_row = self.locator("tr").filter(has_text=re.compile(re.escape(specification_name)))
         if specification_row.count() > 0:
-            specification_row.get_by_role("radio").click()
+            specification_row.first.locator(".el-radio, label[role='radio']").first.click()
         else:
-            self.locator(".el-table__body-wrapper").get_by_role("radio").first.click()
+            self.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr").first.locator(
+                ".el-radio, label[role='radio']"
+            ).first.click()
 
         self.btn_submit.click()
 
@@ -283,17 +284,20 @@ class KafkaPage(BasePage):
         return checked_host
 
     @submenu("实例管理")
-    def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.",
-                       selection_type: str = "快速选择", node_count: int = 3):
-        """切换Kafka实例网络，运行中时会先触发关闭服务，再次执行才进入网络切换"""
+    def close_service_for_switch_network(self, name: str):
+        """切换网络前先关闭Kafka服务"""
         self.ensure_instance_tab(name, "详情")
         self.get_by_label("详情").get_by_text("切换网络").click()
 
-        # Kafka实例运行中时，首次点击“切换网络”会先弹出“关闭服务”确认框。
-        close_service_dialog = self.get_by_label("关闭服务")
-        if close_service_dialog.count() > 0:
-            close_service_dialog.last.get_by_text("确定", exact=True).click()
-            return "close_service"
+        close_service_dialog = self.page.locator("div.el-dialog:visible").filter(has_text=re.compile(r"关闭服务"))
+        close_service_dialog.first.get_by_text("确定", exact=True).click()
+
+    @submenu("实例管理")
+    def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.",
+                       selection_type: str = "快速选择", node_count: int = 3):
+        """Kafka服务停止后执行切换网络"""
+        self.ensure_instance_tab(name, "详情")
+        self.get_by_label("详情").get_by_text("切换网络").click()
 
         dialog = self.get_by_label("切换网络")
 
@@ -336,7 +340,6 @@ class KafkaPage(BasePage):
                 logger.error(f"Kafka切换网络可用IP不足，无法为第 {i + 1} 个节点分配IP")
 
         dialog.get_by_text("确定", exact=True).click()
-        return "switch_network"
 
     @submenu("实例管理")
     def create_topic(self, name: str, topic_name: str, partition_count: int = 3,

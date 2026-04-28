@@ -10,7 +10,6 @@ from sugon_web.utils.logger import logger
 
 class PgSQLPage(BasePage):
     """PostgreSQL实例管理页面对象"""
-
     @submenu("实例管理")
     def create_instance(self, name: str, instance_type: str = "单机", version: str = "14",
                         password: str = "admin1234@sugon", network: str = "Autotest",
@@ -54,10 +53,8 @@ class PgSQLPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        db_util.disk_type_dropdown(self).click()
-        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 数据盘大小
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))
@@ -146,7 +143,7 @@ class PgSQLPage(BasePage):
         confirm_pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox")
         confirm_pwd_input.wait_for(state="visible", timeout=5000)
         confirm_pwd_input.fill(new_password)
-        self.dialog_confirm.click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def change_disk_size(self, name: str, new_size: int):
@@ -209,7 +206,7 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("解绑公网IP").click()
+        self.get_by_text("解绑公网IP").first.click()
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -253,7 +250,8 @@ class PgSQLPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        sleep(5)
+        self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -334,7 +332,7 @@ class PgSQLPage(BasePage):
         dialog.locator("form div").filter(has_text="用户名").get_by_role("textbox").fill(user_name)
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(password)
-        dialog.get_by_text("确定").click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def change_user_privileges(self, name: str, user_name: str, new_password: str):
@@ -350,7 +348,7 @@ class PgSQLPage(BasePage):
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
-        dialog.get_by_text("确定").click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def authorize_user(self, name: str, user_name: str, db_name: str, privileges: str = "读写"):
@@ -371,7 +369,7 @@ class PgSQLPage(BasePage):
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
         dialog.get_by_placeholder("请选择").click()
         self.page.locator("li").filter(has_text=privileges).click()
-        dialog.get_by_text("确定").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def delete_user(self, name: str, user_name: str):
@@ -399,7 +397,11 @@ class PgSQLPage(BasePage):
             self.get_by_role("row", name=re.compile(user_name)).locator("span").nth(1).click()
 
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.dialog_confirm.click()
+        confirm_btn = self.page.locator(
+            ".sugon-dialog-box .sugon-dialog-footer .cloud-button-btn.cl-btn-primary"
+        ).first
+        confirm_btn.wait_for(state="visible", timeout=5000)
+        confirm_btn.click(force=True)
 
     @submenu("实例管理")
     def deauthorize_user(self, name: str, user_name: str, db_name: str):
@@ -454,10 +456,13 @@ class PgSQLPage(BasePage):
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
