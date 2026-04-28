@@ -9,7 +9,7 @@ from sugon_web.utils.logger import allure_step_log, logger
 class TestVPCNetwork:
 
     @allure.title("Geneve网络-同子网的两台虚机互通验证")
-    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
     def test_vpc_two_vms_ping(self, vm, ssh_vm):
         """
         测试Geneve网络内两台虚拟机通过内网IP互相ping通
@@ -76,11 +76,12 @@ class TestVPCNetwork:
             existing_subnet_name = "subnet"
 
             ecs_page.ecs_create(
-                name=vm2_name,
-                count=1,
-                network=vm1_network,  # 使用第一台虚机的网络
-                subnet=existing_subnet_name,  # 使用环境中预置的subnet子网
-                cluster=vm1_network  # 使用第一台虚机的集群
+                basic={"name": vm2_name, "count": 1, "cluster": vm1_network},
+                network={
+                    "networks": [
+                        {"network": vm1_network, "subnet": existing_subnet_name}
+                    ]
+                },
             )
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status([vm2_name])
@@ -95,7 +96,7 @@ class TestVPCNetwork:
             ecs_page.mfip_create(vm2_project, vm1_network, vm2_ip)
             ecs_page.assert_popup_success()
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
             ecs_page.goto_service("弹性云服务器")
 
             logger.info(
@@ -158,16 +159,14 @@ class TestVPCNetwork:
             # 一次性创建两台虚机，使用count=2
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
-                name=vm_base_name,
-                count=2,  # 创建2台虚机
-                network=vpc_name,  # 使用Vlan VPC
-                subnet=vpc_subnet_name  # 使用VPC的子网
+                basic={"name": vm_base_name, "count": 2},
+                network={"networks": [{"network": vpc_name, "subnet": vpc_subnet_name}]},
             )
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
@@ -198,10 +197,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -237,7 +236,7 @@ class TestVPCNetwork:
     #     "gateway_mode": "分布式网关",
     #     "vlan_id": random.randint(3000, 4000)
     # }], indirect=True)
-    # @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    # @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
     # def test_vlan_two_vms_ping2(self, vpc, vm, ssh_vm):
     #     """
     #     测试Vlan网络内两台虚拟机通过内网IP互相ping通
@@ -314,16 +313,14 @@ class TestVPCNetwork:
             # 一次性创建两台虚机，使用count=2
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
-                name=vm_base_name,
-                count=2,  # 创建2台虚机
-                network=vpc_name,  # 使用Vlan VPC
-                subnet=vpc_subnet_name  # 使用VPC的子网
+                basic={"name": vm_base_name, "count": 2},
+                network={"networks": [{"network": vpc_name, "subnet": vpc_subnet_name}]},
             )
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
@@ -354,10 +351,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -412,17 +409,17 @@ class TestVPCNetwork:
             # 一次性创建两台虚机，使用count=2
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
-                name=vm_base_name,
-                count=2,  # 创建2台虚机
-                network=vpc_name,  # 使用Flat VPC
-                subnet=vpc_subnet_name,  # 使用VPC的子网
-                enable_ipv6=True
+                basic={"name": vm_base_name, "count": 2},
+                network={
+                    "networks": [{"network": vpc_name, "subnet": vpc_subnet_name}],
+                    "enable_ipv6": True,
+                },
             )
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 多台虚机时，名称会自动添加序号后缀
-            vm1_name = f"{vm_base_name}-0"
-            vm2_name = f"{vm_base_name}-1"
+            vm1_name = f"{vm_base_name}-1"
+            vm2_name = f"{vm_base_name}-2"
 
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
@@ -455,10 +452,10 @@ class TestVPCNetwork:
 
             # 搜索并获取两台虚机的Mfip地址
             ecs_page.mfip_search(vm1_ip)
-            vm1_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm1_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             ecs_page.mfip_search(vm2_ip)
-            vm2_mfip = ecs_page.get_column_data("Mfip 地址")[0]
+            vm2_mfip = ecs_page.get_column_data("管理IP地址")[0]
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -491,7 +488,7 @@ class TestVPCNetwork:
             logger.info(f"已手动清理虚机: {vm1_name}, {vm2_name}")
 
     @allure.title("虚拟IP-绑定云服务器及内网连通性验证")
-    @pytest.mark.parametrize("vm", [{"count": 2}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}}], indirect=True)
     def test_vip_bind_unbind_instance(self, vpc_page, vip, vm, ssh_vm):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，通过另一台测试机验证VIP的数据面连通性；随后解绑并验证网络隔离"""
 

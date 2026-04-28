@@ -51,10 +51,6 @@ class TestEVSCreate:
     @only_stor("xstor","usan")
     @allure.title("创建HCT加密类型的云硬盘")
     def test_create_hct_encrypted_volume(self, evs_page, kms_key:dict, ssh_host):
-
-        # 进入云硬盘页面
-        evs_page.goto_service("云硬盘")
-
         # 生成随机云硬盘名称
         volume_name = f"encrypted-{random_data()}"
 
@@ -87,10 +83,6 @@ class TestEVSCreate:
     @allure.title("创建OPENSSL纯软加密类型的云硬盘")
     @pytest.mark.parametrize("kms_key", ["OPENSSL纯软"], indirect=True)
     def test_create_openssl_encrypted_volume(self, evs_page, kms_key:dict, ssh_host):
-
-        # 进入云硬盘页面
-        evs_page.goto_service("云硬盘")
-
         # 生成随机云硬盘名称
         volume_name = f"encrypted-{random_data()}"
 

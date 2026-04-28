@@ -135,7 +135,7 @@ class TestECSS:
         with allure_step_log("步骤5: 重建虚机并删除快照"):
             image = ecs_page.storage_pool  # 获取存储池同名镜像
             if ecs_page.stor not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
-                ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
+                ecs_page.ecs_rebuild(vm['name'], image)
                 ecs_page.assert_popup_success(f"{vm['name']}实例重建成功")
                 # ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.assert_status(vm['name'])
@@ -315,7 +315,7 @@ class TestECSS:
             ecs_page.ecss_bind_unbind_snapshot_policy(vm_name, policy, bind=False)
 
     @allure.title("快照任务-删除快照任务")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     def test_ecss_delete_snapshot_task(self, ecs_page, ecss_policy, vm):
         """测试删除快照任务功能"""
         vm_names = [vm[i].get("name") for i in range(len(vm))]

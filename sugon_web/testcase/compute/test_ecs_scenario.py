@@ -10,7 +10,7 @@ from sugon_web.utils.util import random_data, skip_stor, skip_if_nodes_less_than
 class TestECSScenario:
 
     @allure.title("验证已挂载云硬盘的虚机, 克隆后系统盘和数据盘与源虚机数据一致")
-    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm):
+    def test_ecs_clone_vm(self, ecs_page, ops_page, evs_page, vm, volume, ssh_vm):
         """测试克隆已挂载云硬盘的虚机"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -53,7 +53,7 @@ class TestECSScenario:
 
             # 克隆后的虚机绑定mfip，验证md5值
             clone_ip = ecs_page.get_row_data(clone_name).get("IP地址").split(':')[1]
-            mfip = ecs_page.bind_mfip(clone_ip.strip())
+            mfip = ops_page.bind_mfip(clone_ip.strip())
             ssh_vm.connect(mfip)
 
             # 克隆的虚机重新mount数据盘，验证md5值
@@ -83,7 +83,7 @@ class TestECSScenario:
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, vm, volume, ssh_vm):
+    def test_ecs_snapshot_vm(self, ecs_page, ops_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -122,7 +122,10 @@ class TestECSScenario:
             ecs_page.assert_status(vm['name'])
 
         with allure_step_log(f"步骤4: 基于快照{snapshot_name}创建云服务器{new_vm}"):
-            ecs_page.ecs_create(new_vm, image_source="快照", image_name=snapshot_name)
+            ecs_page.ecs_create(
+                basic={"name": new_vm},
+                storage={"image": {"source": "快照", "name": snapshot_name}},
+            )
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(new_vm)
             newvm_disk = ecs_page.get_row_data(vm_name).get("挂载云硬盘")
@@ -139,8 +142,9 @@ class TestECSScenario:
 
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
             ecs_page.goto_service('弹性云服务器')
+            ecs_page.goto_submenu('弹性云服务器')
             new_vm_ip = ecs_page.get_row_data(new_vm).get("IP地址").split(':')[1].strip()
-            new_vm_mfip = ecs_page.bind_mfip(new_vm_ip)
+            new_vm_mfip = ops_page.bind_mfip(new_vm_ip)
             ssh_vm.connect(new_vm_mfip)
 
             # 快照新建的虚机重新mount数据盘，验证md5值
@@ -166,7 +170,7 @@ class TestECSScenario:
             ecs_page.assert_deleted(snapshot_name, refresh=True)
 
     @allure.title("验证虚机绑定亲和组批量迁移功能")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     @skip_if_nodes_less_than(2)
     def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
         policy = "亲和"
@@ -230,7 +234,7 @@ class TestECSScenario:
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
             for name, ecs_id in zip(all_vms, ecs_ids):
                 ecs_page.assert_status(name)
-                nodes.append(ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}")).get("node"))
+                nodes.append(ssh_host.guest_show(ecs_id).get("node"))
             assert len(set(nodes)) >= 1
 
         with allure_step_log(f"步骤10: 删除{policy}组: {group_name}"):

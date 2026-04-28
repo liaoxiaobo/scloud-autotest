@@ -2,10 +2,10 @@ import re
 
 from playwright.sync_api import expect
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class PeerConnectMixin:
+class PeerConnectMixin(BasePage):
     """对等连接页面动作。"""
 
     @submenu("对等连接")

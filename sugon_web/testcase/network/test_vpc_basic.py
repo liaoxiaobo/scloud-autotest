@@ -24,6 +24,7 @@ class TestVPCBasic:
 
             # ✨ 先设置每页显示 100 条，确保能看到所有数据
             logger.info("设置每页显示 100 条数据")
+            vpc_page.goto_submenu("虚拟私有云")
             vpc_page.locator("#cloud-container-content").get_by_placeholder("请选择").click()
             vpc_page.get_by_text("100条/页").click()
 
@@ -176,6 +177,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
             keyword = vpc['name'][:-2]
+            vpc_page.goto_submenu("虚拟私有云")
             vpc_page.search(keyword)
             vpc_page.assert_list_contain(keyword, exact_match=False)
 
@@ -229,8 +231,6 @@ class TestVPCBasic:
             default_gateway = str(next(ipaddress.ip_network(cidr, strict=False).hosts()))
         else:
             default_gateway = gateway_ip
-
-        vpc_page.goto_service("虚拟私有云")  # 跳转到虚拟私有云页面
 
         with allure_step_log("步骤1: 在VPC详情页创建子网"):
             vpc_page.subnet_create_in_detail(
@@ -289,17 +289,15 @@ class TestVPCBasic:
         vpc_name = vpc['name']
         cidr = random_data("cidr")
         original_subnet_name = f"{vpc_name}-subnet-to-edit"
-        
+
         new_subnet_name = f"{vpc_name}-subnet-edited"
         new_desc = "修改后的子网描述"
-        
+
         network = ipaddress.ip_network(cidr, strict=False)
         hosts = list(network.hosts())
         # 从该 CIDR 中选取一段作为新的可用 IP 地址池
         new_available_ip = f"{hosts[10]}-{hosts[20]}"
         new_dns = "8.8.8.8"
-
-        vpc_page.goto_service("虚拟私有云")
 
         with allure_step_log("步骤1: 准备测试数据，在VPC详情页创建一个初始子网"):
             vpc_page.subnet_create_in_detail(
@@ -325,7 +323,7 @@ class TestVPCBasic:
 
             assert new_subnet_name == subnet_data['名称'], f"名称断言失败: 期望 {new_subnet_name}, 实际 {subnet_data['名称']}"
             assert new_desc == subnet_data['描述'], f"描述断言失败: 期望 {new_desc}, 实际 {subnet_data['描述']}"
-            
+
             # 由于页面上显示的可能是以逗号分隔或者其他形式，使用 in 判断更加稳定，但根据要求完全匹配也是可以的。
             # 这里按照要求通过列表表头值进行断言：
             assert new_available_ip in subnet_data.get('IP地址池', ''), f"IP地址池断言失败: 期望包含 {new_available_ip}, 实际 {subnet_data.get('IP地址池', '')}"
@@ -354,8 +352,6 @@ class TestVPCBasic:
                 desc = f"批量删除测试子网{i}"
 
                 # 每次循环都返回VPC列表页
-                vpc_page.goto_service("虚拟私有云")
-
                 vpc_page.subnet_create_in_detail(
                     vpc_name=vpc_name,
                     subnet_name=subnet_name,
@@ -380,21 +376,19 @@ class TestVPCBasic:
         subnet_name = vpc['subnet_name']
 
         with allure_step_log("步骤1: 创建虚拟IP（自动分配）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.vip_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name
             )
             vpc_page.assert_popup_success("申请虚拟IP端口成功")
 
-        with allure_step_log("步骤3: 删除虚拟IP"):
+        with allure_step_log("步骤2: 删除虚拟IP"):
             # 删除列表中的第一个虚拟IP
             vip_list = vpc_page.get_column_data('虚拟IP地址')
-            print(vip_list)
             vip_name = vip_list[0]
             vpc_page.vip_delete(vip_name)
 
-        with allure_step_log("步骤4: 验证虚拟IP已删除"):
+        with allure_step_log("步骤3: 验证虚拟IP已删除"):
             vpc_page.assert_deleted(vip_name)
             logger.info(f"✓ 虚拟IP {vip_name} 删除成功")
 
@@ -413,7 +407,6 @@ class TestVPCBasic:
         logger.info(f"虚拟IP地址: {vip_address}")
 
         with allure_step_log("步骤1: 创建虚拟IP（手动分配）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.vip_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name,
@@ -443,8 +436,6 @@ class TestVPCBasic:
 
         with allure_step_log("步骤1: 创建2个虚拟IP"):
             for i in range(2):
-                # 每次循环都返回VPC列表页，确保 vip_create 的起始状态正确
-                vpc_page.goto_service("虚拟私有云")
                 vpc_page.vip_create(
                     vpc_name=vpc_name,
                     subnet_name=subnet_name
@@ -462,7 +453,7 @@ class TestVPCBasic:
             logger.info(f"✓ 批量删除虚拟IP验证通过: {target_vips}")
 
     @allure.title("虚拟IP-绑定&解绑实例")
-    @pytest.mark.parametrize("vm", [{"count": 1, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": False}], indirect=True)
     def test_vip_bind_unbind_instance(self, ecs_page, vpc_page, vip, vm):
 
         with allure_step_log("步骤1: 绑定实例"):
@@ -502,7 +493,7 @@ class TestVPCBasic:
             assert eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {eip}"
 
     @allure.title("虚拟IP-搜索和重置")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)
     def test_vip_search(self, ecs_page, vpc_page, vip, vm):
         """测试虚拟IP搜索&重置"""
 
@@ -552,7 +543,7 @@ class TestVPCBasic:
         with allure_step_log("步骤2: 获取新建的端口IP"):
             # 在当前处于的端口 Tab 页中获取 IP 列表
             port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[-1]  # 通常新增的数据在最后一行
+            port_ip = port_list[0]  # 通常新增的数据在最后一行
             logger.info(f"自动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤3: 删除端口"):
@@ -569,7 +560,7 @@ class TestVPCBasic:
         vpc_name = vpc['name']
         subnet_name = vpc['subnet_name']
         cidr = vpc['cidr']
-        
+
         # 根据cidr生成随机ip，避免与网关、已有接口等冲突
         network = ipaddress.ip_network(cidr, strict=False)
         hosts = list(network.hosts())
@@ -620,7 +611,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤2: 获取选中的端口IP"):
             port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[-1]
+            port_ip = port_list[0]
             logger.info(f"快速选择分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤3: 删除端口"):
@@ -638,7 +629,7 @@ class TestVPCBasic:
         port_ips = port  # fixture 返回的是 IP 列表
 
         with allure_step_log("步骤1: 进入端口列表页"):
-            vpc_page.goto_service("虚拟私有云")
+            vpc_page.goto_submenu("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
             vpc_page.get_by_role("tab", name="端口").click()
 
@@ -664,12 +655,12 @@ class TestVPCBasic:
     @pytest.mark.parametrize("port", [{"count": 3}], indirect=True)
     def test_port_batch_delete(self, vpc_page, vpc, port):
         """测试端口的批量删除功能"""
-        
+
         vpc_name = vpc['name']
         port_ips = port  # fixture 返回的是 IP 列表
 
         with allure_step_log("步骤1: 进入端口列表页"):
-            vpc_page.goto_service("虚拟私有云")
+            vpc_page.goto_submenu("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
             vpc_page.get_by_role("tab", name="端口").click()
 
@@ -683,17 +674,17 @@ class TestVPCBasic:
     @allure.title("端口-修改IP和MAC")
     def test_port_edit(self, vpc_page, vpc, port):
         """测试端口修改IP和MAC功能"""
-        
+
         vpc_name = vpc['name']
         cidr = vpc['cidr']
         old_ip = port[0]  # fixture默认创建1个端口
-        
+
         # 找一个新的可用IP
         network = ipaddress.ip_network(cidr, strict=False)
         hosts = list(network.hosts())
         # 从最后面选一个IP，大概率不会和前面的冲突
         new_ip = str(hosts[-10])
-        
+
         # 生成随机MAC地址 (unicast, locally administered)
         # 第二个字符必须是 2, 6, A, 或 E
         mac_hex = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00]
@@ -702,9 +693,8 @@ class TestVPCBasic:
         new_mac = ':'.join(map(lambda x: "%02x" % x, mac_hex))
 
         with allure_step_log("步骤1: 进入端口列表页"):
-            vpc_page.goto_service("虚拟私有云")
-            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.get_by_role("tab", name="端口").click()
+            vpc_page.goto_submenu("虚拟私有云")
+            vpc_page.goto_detail_page(vpc_name, tab_name="端口")
 
         with allure_step_log("步骤2: 修改端口IP和MAC"):
             logger.info(f"将端口 {old_ip} 修改为 IP: {new_ip}, MAC: {new_mac}")
@@ -716,7 +706,7 @@ class TestVPCBasic:
             vpc_page.assert_list_contain(new_ip, column_name="固定IP")
             # 验证新MAC存在于列表中
             vpc_page.assert_list_contain(new_mac, column_name="MAC地址")
-            
+
             # 更新fixture的返回值，以便清理资源时能找到正确的IP
             port[0] = new_ip
 
@@ -724,22 +714,21 @@ class TestVPCBasic:
     @allure.title("路由表-创建和删除规则")
     def test_route_rule_create_delete(self, vpc_page, vpc, vip):
         """测试在VPC的路由表中创建和单条删除路由表规则"""
-        
+
         vpc_name = vpc['name']
         dest_cidr = random_data("cidr")
         desc = "路由表规则单次创建删除测试"
-        
+
         with allure_step_log("步骤1: 进入路由表并在VPC详情页新建路由表规则（下一跳为虚拟IP）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.route_rule_create(
-                vpc_name=vpc_name, 
-                dest_cidr=dest_cidr, 
-                next_hop=vip, 
+                vpc_name=vpc_name,
+                dest_cidr=dest_cidr,
+                next_hop=vip,
                 next_hop_type="虚拟IP",
                 desc=desc
             )
             vpc_page.assert_popup_success("新建路由表规则成功")
-            
+
         with allure_step_log("步骤2: 验证路由表规则创建成功，列表呈现对应目的地址和下一跳信息"):
             # 创建成功后自动会刷新处于路由表列表页
             data = vpc_page.get_row_data(dest_cidr)
@@ -747,11 +736,11 @@ class TestVPCBasic:
             assert "虚拟IP" in data.get("下一跳类型", ""), f"下一跳类型断言失败: {data}"
             assert vip in data.get("下一跳", ""), f"下一跳断言失败: {data}"
             assert desc in data.get("描述", ""), f"描述断言失败: {data}"
-            
+
         with allure_step_log("步骤3: 删除选定的路由表规则"):
             vpc_page.route_rule_delete(dest_cidrs=dest_cidr)
             # 在某些系统中，统一弹窗 "删除成功" 或类似提示，如果框架内有自带在此之后断言，也可以直接沿用 assert_deleted
-            
+
         with allure_step_log("步骤4: 验证路由表规则已成功从列表中删除"):
             vpc_page.assert_deleted(dest_cidr)
 
@@ -759,22 +748,20 @@ class TestVPCBasic:
     @allure.title("路由表-批量删除规则")
     def test_route_rule_batch_delete(self, vpc_page, vpc, vip):
         """测试在VPC的路由表中批量删除多条路由表规则"""
-        
+
         vpc_name = vpc['name']
         dest_cidrs = []
-        
+
         with allure_step_log("步骤1: 在VPC详情页连续新建2条路由表规则"):
             for i in range(2):
                 dest_cidr = random_data("cidr")
                 dest_cidrs.append(dest_cidr)
-                
+
                 # 回到 VPC 列表页面起始点，因为 route_rule_create 会先去找名叫 vpc_name 的行
-                vpc_page.goto_service("虚拟私有云")
-                
                 vpc_page.route_rule_create(
-                    vpc_name=vpc_name, 
-                    dest_cidr=dest_cidr, 
-                    next_hop=vip, 
+                    vpc_name=vpc_name,
+                    dest_cidr=dest_cidr,
+                    next_hop=vip,
                     next_hop_type="虚拟IP",
                     desc=f"批量删除测试规则{i}"
                 )
@@ -783,7 +770,7 @@ class TestVPCBasic:
         with allure_step_log("步骤2: 勾选多条规则执行批量删除路由表规则"):
             # 由于最后一次 create 完，页面依然留停在 VPC详情 -> 路由表 tab 下，这里可以直接调用 delete
             vpc_page.route_rule_delete(dest_cidrs=dest_cidrs)
-            
+
         with allure_step_log("步骤3: 验证路由表规则批量删除成功，列表中不存在被删除的目的地址"):
             vpc_page.assert_deleted(dest_cidrs)
 
@@ -796,9 +783,8 @@ class TestVPCBasic:
         new_rtb_desc = "修改后的路由表描述"
 
         with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
-            vpc_page.goto_service("虚拟私有云")
-            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.get_by_role("tab", name="路由表").click()
+            vpc_page.goto_submenu("虚拟私有云")
+            vpc_page.goto_detail_page(vpc_name, tab_name="路由表")
 
         with allure_step_log("步骤2: 修改路由表名称和描述"):
             vpc_page.route_table_edit(new_name=new_rtb_name, new_desc=new_rtb_desc)
@@ -818,9 +804,8 @@ class TestVPCBasic:
         keyword = vpc['cidr']   # VPC默认路由规则中包含子网CIDR作为目的地址
 
         with allure_step_log("步骤1: 进入VPC详情页的路由表Tab"):
-            vpc_page.goto_service("虚拟私有云")
-            vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-            vpc_page.get_by_role("tab", name="路由表").click()
+            vpc_page.goto_submenu("虚拟私有云")
+            vpc_page.goto_detail_page(vpc_name, tab_name="路由表")
 
         with allure_step_log(f"步骤2: 按目的地址 '{keyword}' 搜索，验证结果包含该规则"):
             vpc_page.search(keyword)
@@ -843,7 +828,6 @@ class TestVPCBasic:
         new_desc = "修改后的路由表规则描述"
 
         with allure_step_log("步骤1: 在路由表Tab下创建路由表规则（前置数据）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.route_rule_create(
                 vpc_name=vpc_name,
                 dest_cidr=dest_cidr,

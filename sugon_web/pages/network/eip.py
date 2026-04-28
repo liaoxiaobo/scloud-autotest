@@ -2,11 +2,17 @@ import re
 
 from playwright.sync_api import expect
 
-from sugon_web.common.base import submenu
+from sugon_web.common.base import BasePage, submenu
 
 
-class EipMixin:
+class EipMixin(BasePage):
     """弹性公网IP页面动作。"""
+
+    @staticmethod
+    def _get_ipv4_segment(ip: str):
+        """返回 IPv4 的前三段，用于同网段匹配。"""
+        match = re.fullmatch(r"((?:\d{1,3}\.){2}\d{1,3})\.\d{1,3}", ip or "")
+        return match.group(1) if match else None
 
     def _get_eip_list(self):
         """获取当前列表中的弹性公网IP"""
@@ -49,7 +55,18 @@ class EipMixin:
             """
         )
         current_ips = set(self._get_eip_list())
-        candidate_ips = [ip for ip in visible_ips if ip not in current_ips]
+        current_segments = {
+            self._get_ipv4_segment(ip) for ip in current_ips if self._get_ipv4_segment(ip)
+        }
+        candidate_ips = [
+            ip
+            for ip in visible_ips
+            if ip not in current_ips
+            and (
+                not current_segments
+                or self._get_ipv4_segment(ip) in current_segments
+            )
+        ]
         return candidate_ips or visible_ips
 
     @submenu("弹性公网IPv4")
@@ -58,8 +75,46 @@ class EipMixin:
         return self._get_eip_list()
 
     @submenu("弹性公网IPv4")
+    def switch_eip_pool(self, pool_name: str = "public_net(基础版)"):
+        """根据资源池名称切换左侧资源池。"""
+        pool_panel = self.locator(".floating-ip-content-box")
+        expect(pool_panel).to_be_visible(timeout=8000)
+
+        active_item = pool_panel.locator(".left-box-list-item-active").first
+        expect(active_item).to_be_visible(timeout=8000)
+        current_pool = re.sub(r"\s+", " ", active_item.text_content() or "").strip()
+        if current_pool == pool_name:
+            self.logger.info(f"当前已在目标资源池，无需切换: {pool_name}")
+            return current_pool
+
+        search_input = pool_panel.get_by_placeholder("请输入资源池名称")
+        expect(search_input).to_be_visible(timeout=8000)
+        search_input.fill(pool_name)
+        search_input.press("Enter")
+        self.page.wait_for_timeout(300)
+
+        pool_items = pool_panel.locator(".left-box-list .left-box-list-item")
+        target_item = pool_items.filter(has_text=re.compile(rf"^{re.escape(pool_name)}$")).first
+        if target_item.count() == 0:
+            visible_pools = []
+            for i in range(pool_items.count()):
+                item_text = re.sub(r"\s+", " ", pool_items.nth(i).text_content() or "").strip()
+                if item_text:
+                    visible_pools.append(item_text)
+            raise AssertionError(f"未找到资源池 '{pool_name}'，当前可见资源池: {visible_pools}")
+
+        target_item.click()
+        expect(target_item).to_have_class(re.compile(r"left-box-list-item-active"), timeout=10000)
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(500)
+        self.logger.info(f"切换资源池成功: {current_pool} -> {pool_name}")
+        return pool_name
+
+    @submenu("弹性公网IPv4")
     def eip_allocate(self, pool: str = "public_net(基础版)", count: int = 1, method: str = "快速选择", ip: str = None):
         """分配弹性公网IP并返回本次新分配的IP列表"""
+        self.switch_eip_pool(pool)
+        previous_ips = self._get_eip_list()
         dialog = self._open_eip_allocate_dialog()
 
         dialog.get_by_placeholder("请选择").first.click()
@@ -109,7 +164,9 @@ class EipMixin:
         if selected_ips:
             return selected_ips
 
-        raise AssertionError("当前仅支持数量为1的弹性公网IP精确分配场景")
+        current_ips = self._get_eip_list()
+        created_ips = [current_ip for current_ip in current_ips if current_ip not in set(previous_ips)]
+        return created_ips[:count]
 
     @submenu("弹性公网IPv4")
     def eip_release(self, ips):

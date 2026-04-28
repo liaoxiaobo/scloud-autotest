@@ -1,9 +1,9 @@
 import re
 
-from sugon_web.common.base import BasePage, submenu
+from sugon_web.common.base import submenu, BasePage
 
 
-class AclPage(BasePage):
+class AclMixin(BasePage):
     """
     网络ACL页面
     """
@@ -57,10 +57,10 @@ class AclPage(BasePage):
             tab_name: 详情页内的页签名称，例如 "入方向规则"、"出方向规则"、"关联子网"
         """
         self.get_by_text(acl_name, exact=True).nth(1).click()
-        
+
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
-            
+
         self.logger.info(f"进入网络ACL {acl_name} 详情页" + (f"，并切换至 {tab_name} 页签" if tab_name else ""))
 
     @submenu("网络ACL")
@@ -163,13 +163,13 @@ class AclPage(BasePage):
         self.select_rows_by_names(acl_names)
         self.get_by_role("button", name="批量操作").click()
         self.get_by_text("批量开启").click()
-        
+
         dialog = self.get_by_label("开启")
         if dialog.count() == 0:
             dialog = self.get_by_role("dialog")
-            
+
         dialog.get_by_text("确定", exact=True).click()
-        
+
         # 处理如果有ACL已经是开启状态导致弹窗无法关闭（按钮置灰或报错）
         self.page.wait_for_timeout(1000)
         if dialog.is_visible():
@@ -187,17 +187,17 @@ class AclPage(BasePage):
         self.select_rows_by_names(acl_names)
         self.get_by_role("button", name="批量操作").click()
         self.get_by_text("批量关闭").click()
-        
+
         dialog = self.get_by_label("关闭")
         if dialog.count() == 0:
             dialog = self.get_by_role("dialog")
-            
+
         btn_ok = dialog.get_by_text("确定", exact=True)
         if btn_ok.is_visible():
             btn_ok.click()
         else:
             dialog.locator(".cloud-button-btn").first.click()
-            
+
         # 处理重复关闭的场景
         self.page.wait_for_timeout(1000)
         if dialog.is_visible():
@@ -219,30 +219,30 @@ class AclPage(BasePage):
         self.select_rows_by_names(acl_names)
         self.get_by_role("button", name="批量操作").click()
         self.get_by_text("批量删除").click()
-        
+
         dialog = self.locator("#cloud-container-content")
         btn_ok = dialog.get_by_text("确定", exact=True)
         if btn_ok.is_visible():
             btn_ok.click()
         else:
             self.dialog_confirm.click()
-            
+
         self.logger.info(f"批量删除网络ACL完成: {acl_names}")
 
-    def _fill_rule_form(self, dialog, ip_version=None, policy=None, protocol=None, 
-                        source_ip=None, source_port=None, 
+    def _fill_rule_form(self, dialog, ip_version=None, policy=None, protocol=None,
+                        source_ip=None, source_port=None,
                         dest_ip=None, dest_port=None, description=None):
         """通用方法：填充 ACL 规则表单"""
         # 选择IP类型
         if ip_version:
             dialog.get_by_placeholder("请选择类型").click()
             self.locator("li:visible").filter(has_text=ip_version).click()
-            
+
         # 选择策略
         if policy:
             dialog.get_by_placeholder("请选择策略").click()
             self.locator("li:visible").filter(has_text=policy).click()
-            
+
         # 选择协议
         if protocol:
             dialog.locator("label").filter(has_text=re.compile(f"^{protocol}$", re.IGNORECASE)).click()
@@ -265,20 +265,21 @@ class AclPage(BasePage):
                 src_port_input = dialog.locator("form div").filter(has_text="源端口").locator("textarea, input[type='text']").first
                 src_port_input.click()
                 src_port_input.fill(source_port)
-                
+
             # 填写目的端口
             if dest_port is not None:
                 dest_port_input = dialog.locator("form div").filter(has_text="目的端口").locator("textarea, input[type='text']").first
                 dest_port_input.click()
                 dest_port_input.fill(dest_port)
-            
+
         # 描述
         if description is not None:
             desc_input = dialog.locator("div").filter(has_text=re.compile(r"^描述")).get_by_role("textbox")
             desc_input.click()
             desc_input.fill(description)
 
-    def acl_rule_create(self, acl_name, direction="入方向", ip_version="IPv4", policy="允许", 
+    @submenu("网络ACL")
+    def acl_rule_create(self, acl_name, direction="入方向", ip_version="IPv4", policy="允许",
                         protocol="全部", source_ip=None, source_port=None,
                         dest_ip=None, dest_port=None, description=None, detail_mode=False):
         """创建网络ACL规则
@@ -302,33 +303,33 @@ class AclPage(BasePage):
             self.goto_acl_detail(acl_name, tab_name=tab_name)
         else:
             self.get_by_role("tab", name=tab_name).click()
-        
+
         self.get_by_text("新建", exact=True).click()
-        
+
         dialog_name = f"新建{tab_name}"
         dialog = self.get_by_label(dialog_name)
-        
+
         self._fill_rule_form(dialog, ip_version, policy, protocol, source_ip, source_port, dest_ip, dest_port, description)
-            
+
         # 确定
         dialog.get_by_text("确定", exact=True).click()
-        
-        
+
+
         self.logger.info(f"网络ACL创建规则完成: {acl_name} -> {tab_name} ({policy} {protocol} {ip_version})")
 
     def click_rule_action(self, option_text: str,
-                          ip_version=None, policy=None, protocol=None, 
-                          source_ip=None, source_port=None, 
+                          ip_version=None, policy=None, protocol=None,
+                          source_ip=None, source_port=None,
                           dest_ip=None, dest_port=None):
         """
         点击规则的操作选项（兼容平铺按钮和“更多”下拉菜单隐藏的按钮）
         """
         target_row = self._get_rule_target_row(
-            ip_version=ip_version, policy=policy, protocol=protocol, 
-            source_ip=source_ip, source_port=source_port, 
+            ip_version=ip_version, policy=policy, protocol=protocol,
+            source_ip=source_ip, source_port=source_port,
             dest_ip=dest_ip, dest_port=dest_port
         )
-        
+
         try:
             # 1. 尝试直接点击行内平铺可见的按钮
             option_btn = target_row.get_by_text(option_text, exact=True)
@@ -349,20 +350,20 @@ class AclPage(BasePage):
                 more_btn.hover()
                 # 悬停后需要等待下拉菜单动画出现
                 self.page.wait_for_timeout(1000)
-                
+
                 dropdown_selectors = [
                     ('[id^="dropdown-menu-"]', 'id'),
                     ('[class^="cloud-table-dropdown"]', 'class'),
                     ('.el-dropdown-menu', 'class')
                 ]
-                
+
                 for selector, selector_type in dropdown_selectors:
                     try:
                         dropdown_menus = self.page.locator(selector)
                         menu_count = dropdown_menus.count()
                         if menu_count == 0:
                             continue
-                        
+
                         # 从后往前遍历找最新弹出的可见菜单
                         for i in range(menu_count - 1, -1, -1):
                             menu = dropdown_menus.nth(i)
@@ -385,33 +386,33 @@ class AclPage(BasePage):
         raise Exception(f"未找到ACL规则的可用操作选项: {option_text}")
 
     def acl_rule_delete(self, acl_name, direction="入方向",
-                        ip_version=None, policy=None, protocol=None, 
-                        source_ip=None, source_port=None, 
+                        ip_version=None, policy=None, protocol=None,
+                        source_ip=None, source_port=None,
                         dest_ip=None, dest_port=None):
         """删除网络ACL规则"""
 
         tab_name = f"{direction}规则"
         self.goto_acl_detail(acl_name, tab_name=tab_name)
-        
+
         self.click_rule_action(
             option_text="删除", ip_version=ip_version, policy=policy,
             protocol=protocol, source_ip=source_ip, source_port=source_port,
             dest_ip=dest_ip, dest_port=dest_port
         )
         self.dialog_confirm.click()
-        
+
         self.logger.info(f"网络ACL删除规则完成: {acl_name} -> {tab_name}")
 
-    def _get_rule_target_row(self, ip_version=None, policy=None, 
-                             protocol=None, source_ip=None, source_port=None, 
+    def _get_rule_target_row(self, ip_version=None, policy=None,
+                             protocol=None, source_ip=None, source_port=None,
                              dest_ip=None, dest_port=None):
         """根据给定的匹配条件或行号获取包含规则操作的整行"""
         # 基础过滤：必须包含“删除”或“修改”文本的行，避免拿到表头或无关行
         rows = self.get_by_role("row").filter(has=self.locator("td").filter(has_text=re.compile(r"修改|删除")))
-        
+
         if protocol == "全部":
             protocol = "all"
-            
+
         # 逐层加过滤条件 (定位 td 中包含指定文本)
         filters = [
             ip_version,
@@ -422,103 +423,103 @@ class AclPage(BasePage):
             dest_ip,
             str(dest_port) if dest_port else None
         ]
-        
+
         for condition in filters:
             if condition:
                 rows = rows.filter(has=self.locator("td").filter(has_text=condition))
-        
+
         # 默认返回筛选后的第一条匹配
         return rows.first
 
     def acl_rule_edit(self, acl_name, direction="入方向",
-                      match_ip_version=None, match_policy=None, match_protocol=None, 
-                      match_source_ip=None, match_source_port=None, 
+                      match_ip_version=None, match_policy=None, match_protocol=None,
+                      match_source_ip=None, match_source_port=None,
                       match_dest_ip=None, match_dest_port=None,
-                      new_ip_version=None, new_policy=None, new_protocol=None, 
-                      new_source_ip=None, new_source_port=None, 
+                      new_ip_version=None, new_policy=None, new_protocol=None,
+                      new_source_ip=None, new_source_port=None,
                       new_dest_ip=None, new_dest_port=None, new_description=None):
         """修改网络ACL规则"""
         tab_name = f"{direction}规则"
         self.goto_acl_detail(acl_name, tab_name=tab_name)
-            
+
         self.click_rule_action(
             option_text="修改", ip_version=match_ip_version, policy=match_policy,
             protocol=match_protocol, source_ip=match_source_ip, source_port=match_source_port,
             dest_ip=match_dest_ip, dest_port=match_dest_port
         )
-        
+
         dialog_name = f"修改{tab_name}"
         dialog = self.get_by_label(dialog_name)
-        
+
         self._fill_rule_form(dialog, new_ip_version, new_policy, new_protocol, new_source_ip, new_source_port, new_dest_ip, new_dest_port, new_description)
-            
+
         # 确定
         dialog.get_by_text("确定", exact=True).click()
-        
+
         self.logger.info(f"网络ACL修改规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_insert_before(self, acl_name, direction="入方向",
-                               ip_version=None, policy=None, protocol=None, 
-                               source_ip=None, source_port=None, 
+                               ip_version=None, policy=None, protocol=None,
+                               source_ip=None, source_port=None,
                                dest_ip=None, dest_port=None, description=None):
         """向前插入网络ACL规则"""
         tab_name = f"{direction}规则"
         self.goto_acl_detail(acl_name, tab_name=tab_name)
-            
+
         self.click_rule_action(
             option_text="向前插入规则", ip_version=ip_version, policy=policy,
             protocol=protocol, source_ip=source_ip, source_port=source_port,
             dest_ip=dest_ip, dest_port=dest_port
         )
-        
+
         dialog = self.get_by_label("向前插入规则")
-        
+
         self._fill_rule_form(dialog, ip_version, policy, protocol, source_ip, source_port, dest_ip, dest_port, description)
-            
+
         # 确定
         dialog.get_by_text("确定", exact=True).click()
-        
+
         self.logger.info(f"网络ACL向前插入规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_disable(self, acl_name, direction="入方向",
-                         ip_version=None, policy=None, protocol=None, 
-                         source_ip=None, source_port=None, 
+                         ip_version=None, policy=None, protocol=None,
+                         source_ip=None, source_port=None,
                          dest_ip=None, dest_port=None):
         """关闭单个网络ACL规则"""
         tab_name = f"{direction}规则"
         self.goto_acl_detail(acl_name, tab_name=tab_name)
-            
+
         self.click_rule_action(
             option_text="关闭", ip_version=ip_version, policy=policy,
             protocol=protocol, source_ip=source_ip, source_port=source_port,
             dest_ip=dest_ip, dest_port=dest_port
         )
-        
+
         confirm_btn = self.page.locator(".el-message-box__btns .el-button--primary, .dialog-box-footer .cloud-button-btn:has-text('确定')").first
         if confirm_btn.is_visible():
             confirm_btn.click()
         else:
             self.dialog_confirm.click()
-            
+
         self.logger.info(f"网络ACL关闭规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_enable(self, acl_name, direction="入方向",
-                        ip_version=None, policy=None, protocol=None, 
-                        source_ip=None, source_port=None, 
+                        ip_version=None, policy=None, protocol=None,
+                        source_ip=None, source_port=None,
                         dest_ip=None, dest_port=None):
         """开启单个网络ACL规则"""
         tab_name = f"{direction}规则"
         self.goto_acl_detail(acl_name, tab_name=tab_name)
-            
+
         self.click_rule_action(
             option_text="开启", ip_version=ip_version, policy=policy,
             protocol=protocol, source_ip=source_ip, source_port=source_port,
             dest_ip=dest_ip, dest_port=dest_port
         )
-        
+
         dialog = self.get_by_label("启用规则")
         dialog.get_by_text("确定", exact=True).click()
-        
+
         self.logger.info(f"网络ACL开启规则完成: {acl_name} -> {tab_name}")
 
     def acl_rule_batch_operation(self, acl_name, direction="入方向", rule_matches=None, rules=None, operation="开启"):
@@ -552,10 +553,10 @@ class AclPage(BasePage):
 
         # 点击批量操作
         self.get_by_role("button", name="批量操作").click()
-        
+
         # 处理操作文本，如果没带“批量”，则补全
         op_text = operation if operation.startswith("批量") else f"批量{operation}"
-        
+
         # 点击具体的批量操作项
         self.get_by_text(op_text, exact=True).click()
 
@@ -565,5 +566,5 @@ class AclPage(BasePage):
         confirm_btn = self.page.locator(".el-message-box__btns .el-button--primary, .dialog-box-footer .cloud-button-btn:has-text('确定')").first
         if confirm_btn.is_visible():
             confirm_btn.click()
-        
+
         self.logger.info(f"网络ACL规则{op_text}完成: {acl_name} -> {len(target_rules)} 条规则")

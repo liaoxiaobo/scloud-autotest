@@ -1,7 +1,5 @@
 import time
 import pytest
-from sugon_web.conftest import _create_logged_in_page
-from sugon_web.pages.compute import EcsPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 
@@ -60,7 +58,8 @@ def image(ssh_host, ecs_page, request):
     if backend.startswith("local"):
         backend = "local-test"
     image_name = params.get("image", "AnolisOS-8.9-x86_64-minimal.iso")
-    ssh_host.glance_image_create(name, image=image_name, backend=backend)
+    with allure_step_log(f"创建镜像 {name}"):
+        ssh_host.glance_image_create(name, image=image_name, backend=backend)
     yield {"name": name}
     ssh_host.glance_image_delete(name)
 
@@ -99,56 +98,3 @@ def pool(ops_page, vm, request):
         ops_page.disable_disk(_disk_name)
     except Exception as e:
         logger.warning(f"禁用裸磁盘{_disk_name}时出错: {e}")
-
-
-@pytest.fixture(scope="class")
-def labels(browser_context, config, request):
-    """创建并返回指定数量的标签，测试结束后自动清理。"""
-    page = _create_logged_in_page(browser_context, config)
-    ecs_page = EcsPage(page)
-    ecs_page.goto_service("弹性云服务器")
-    params = getattr(request, "param", {})
-    count = params.get("count", 1)
-
-    label_names = []
-    prefix = params.get("prefix", "label")
-    with allure_step_log("创建指定数量的标签"):
-        for _ in range(count):
-            name = f"{prefix}-{random_data()}"
-            label_name = ecs_page.create_label(name)
-            ecs_page.assert_popup_success("新建标签成功")
-            label_names.append(label_name)
-            logger.info(f"已创建标签: {label_name}")
-
-    yield label_names
-
-    with allure_step_log("清理测试标签"):
-        logger.info(f"开始清理标签: {label_names}")
-        try:
-            ecs_page.goto_service("弹性云服务器")
-            ecs_page.goto_submenu("标签")
-            ecs_page.batch_delete_label(label_names)
-            logger.info(f"标签清理完成: {label_names}")
-        except Exception as e:
-            logger.warning(f"清理标签时出错: {e}")
-        finally:
-            page.close()
-
-
-@pytest.fixture()
-def affinity(ecs_page, request):
-    """创建并返回指定数量的亲和组标签名。"""
-    params = getattr(request, "param", {})
-    count = params.get("count", 1)
-
-    label_names = []
-    prefix = params.get("prefix", "label")
-
-    for _ in range(count):
-        name = f"{prefix}_{random_data()}"
-        label_name = ecs_page.create_label(name)
-        ecs_page.assert_popup_success("新建标签成功")
-        label_names.append(label_name)
-        logger.info(f"已创建标签: {label_name}")
-
-    yield label_names

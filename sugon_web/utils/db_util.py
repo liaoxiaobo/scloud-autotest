@@ -321,7 +321,7 @@ def get_service_status(self, ssh_host, service_name: str) -> str:
         command = f"systemctl status {service_name}"
         result = ssh_host.run(command)
         self.logger.info(f"systemctl status {service_name} 输出:\n{result}")
-        
+
         # 解析状态（Active: active (running) 或 Active: inactive (dead) 等）
         if 'active (running)' in result.lower():
             status = 'running'
@@ -337,10 +337,10 @@ def get_service_status(self, ssh_host, service_name: str) -> str:
                     break
             else:
                 status = 'unknown'
-        
+
         self.logger.info(f"服务 '{service_name}' 的状态为: {status}")
         return status
-        
+
     except Exception as e:
         raise RuntimeError(f"获取服务状态失败 (服务: {service_name}): {e}")
 

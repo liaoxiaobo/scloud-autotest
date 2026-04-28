@@ -1,3 +1,4 @@
+import re
 import threading
 import time
 import shlex
@@ -146,35 +147,105 @@ class SSH:
         logger.info(f"Connected successfully to server {host}")
 
     def run(self, cmd, return_stdout=True, return_stderr=False, return_rc=False, check_rc=False, timeout=None,
-            get_pty=False):
+            get_pty=False, wait_for_exit=True):
         """
-        在远程服务器上执行命令，并根据参数返回命令的标准输出、标准错误输出和返回码。
+        在远程主机上执行命令并返回执行结果。
 
-        :param cmd: 要执行的命令（字符串）
-        :param return_stdout: 是否返回标准输出（默认True）
-        :param return_stderr: 是否返回标准错误输出（默认False）
-        :param return_rc: 是否返回命令的返回码（默认False）
-        :param check_rc: 是否检查返回码
-        :param timeout: 命令执行的超时时间（秒），默认为None表示不设超时
-        :param get_pty: 是否分配伪终端
-        :return: 一个包含标准输出、标准错误和返回码的字典，或在命令失败时返回错误信息
+        该方法基于 Paramiko 的 ``exec_command`` 实现。默认会等待远程命令退出，
+        并在等待期间持续读取标准输出和标准错误，以降低大输出场景下因 channel 缓冲区未及时消费而导致阻塞的风险。
+
+        Args:
+            cmd (str): 待执行的远程命令。
+            return_stdout (bool): 是否返回标准输出，默认为 ``True``。
+            return_stderr (bool): 是否返回标准错误，默认为 ``False``。
+            return_rc (bool): 是否返回退出码，默认为 ``False``。
+            check_rc (bool): 是否在命令退出码非 0 时抛出异常。仅当
+                ``wait_for_exit=True`` 时允许设置为 ``True``。
+            timeout (int | float | None): 命令总超时时间，单位为秒。为 ``None``
+                时表示不设置总超时。
+            get_pty (bool): 是否为命令分配伪终端。
+            wait_for_exit (bool): 是否等待命令执行完成。默认为 ``True``。
+                对于后台启动类命令，应显式设置为 ``False``。
+        Returns:
+            str | dict: 当仅请求一个返回项时，直接返回该项内容；当请求多个返回
+            项时，返回包含 ``stdout``、``stderr``、``rc`` 的字典。
+
+        Raises:
+            ValueError: 当 ``check_rc=True`` 且 ``wait_for_exit=False`` 时抛出。
+            TimeoutError: 当命令执行时间超过 ``timeout`` 时抛出。
+            RuntimeError: 当 ``check_rc=True`` 且命令退出码非 0 时抛出。
+
+        Notes:
+            - 后台模式仅表示“命令已提交”，并不表示后台进程已经稳定运行。
+            - 若需要可靠启动后台进程，命令本身仍应配合 ``nohup``、输出重定向、
+              ``disown`` 或其他脱离会话的方式使用。
+            - 交互式命令不适合通过该方法直接执行。
         """
         if not self.ssh_client:  # 确保在执行命令之前已经成功连接
             logger.error("Connection not established. Call connect() first.")
             return None
+        if check_rc and not wait_for_exit:
+            raise ValueError("check_rc=True requires wait_for_exit=True")
         logger.info(f"Executing command: {cmd}")
         stdin, stdout, stderr = self.ssh_client.exec_command(cmd, timeout=timeout, get_pty=get_pty)
-        rc = stdout.channel.recv_exit_status()
-        stdout_content = stdout.read().decode()
-        stderr_content = stderr.read().decode()
+        channel = stdout.channel
+        stdout_chunks = []
+        stderr_chunks = []
+        start_time = time.time()
+        rc = 0
+        stdout_content = ""
+        stderr_content = ""
+
+        try:
+            if not wait_for_exit:
+                stdin.close()
+                deadline = time.time() + 1
+
+                while time.time() < deadline:
+                    while channel.recv_ready():
+                        stdout_chunks.append(channel.recv(65535))
+                    while channel.recv_stderr_ready():
+                        stderr_chunks.append(channel.recv_stderr(65535))
+                    if channel.exit_status_ready():
+                        break
+                    time.sleep(1)
+
+                rc = channel.recv_exit_status() if channel.exit_status_ready() else 0
+                stdout_content = b"".join(stdout_chunks).decode(errors="replace")
+                stderr_content = b"".join(stderr_chunks).decode(errors="replace")
+                logger.info("后台命令已提交，不等待执行完成")
+            else:
+                while True:
+                    while channel.recv_ready():
+                        stdout_chunks.append(channel.recv(65535))
+
+                    while channel.recv_stderr_ready():
+                        stderr_chunks.append(channel.recv_stderr(65535))
+
+                    if channel.exit_status_ready():
+                        while channel.recv_ready():
+                            stdout_chunks.append(channel.recv(65535))
+                        while channel.recv_stderr_ready():
+                            stderr_chunks.append(channel.recv_stderr(65535))
+                        rc = channel.recv_exit_status()
+                        break
+
+                    if timeout is not None and time.time() - start_time > timeout:
+                        channel.close()
+                        raise TimeoutError(f"Command timed out after {timeout} seconds: {cmd}")
+
+                    time.sleep(0.1)
+
+                stdout_content = b"".join(stdout_chunks).decode(errors="replace")
+                stderr_content = b"".join(stderr_chunks).decode(errors="replace")
+        finally:
+            stdin.close()
+            stdout.close()
+            stderr.close()
         logger.info(f"Command exited with return code {rc}")
         logger.info("Command output: \n%s", stdout_content)
         if stderr_content:
             logger.warning(f"Command error output: \n%s", stderr_content)
-
-        stdin.close()
-        stdout.close()
-        stderr.close()
 
         if check_rc and rc != 0:
             error_message = f"Command failed with return code {rc}: {stderr_content}"
@@ -197,7 +268,7 @@ class SSH:
         轮询等待资源从后端彻底删除，支持单个或多个资源名称。
 
         :param names: 资源名称（字符串）或资源名称列表（列表）
-        :param check_command: 查询资源的命令，如 "cinder list"、"gova list"
+        :param check_command: 查询资源的命令，如 "scli volume list"、"scli guest list"
         :param timeout: 每个资源的超时时间（秒）
         :param interval: 轮询间隔时间（秒）
         """
@@ -228,16 +299,120 @@ class SSH:
                     )
 
     def wait_volume_deleted(self, names, timeout=600, interval=5):
-        """轮询等待云硬盘从 Cinder 后端彻底删除。"""
-        self.wait_resource_deleted(names, check_command="cinder list", timeout=timeout, interval=interval)
+        """轮询等待云硬盘从 SCLI 后端彻底删除。"""
+        self.wait_resource_deleted(names, check_command="scli volume list", timeout=timeout, interval=interval)
 
     def wait_vm_deleted(self, names, timeout=600, interval=5):
         """轮询等待虚机从 Gova 后端彻底删除。"""
-        self.wait_resource_deleted(names, check_command="gova list", timeout=timeout, interval=interval)
+        self.wait_resource_deleted(names, check_command="scli guest list", timeout=timeout, interval=interval)
 
     def wait_image_deleted(self, names, timeout=600, interval=5):
         """轮询等待镜像从 Glance 后端彻底删除。"""
-        self.wait_resource_deleted(names, check_command="glance image-list", timeout=timeout, interval=interval)
+        self.wait_resource_deleted(names, check_command="scli image list", timeout=timeout, interval=interval)
+
+    @staticmethod
+    def parse_table_output(output):
+        """将 CLI 表格输出解析为字典，兼容 ASCII 和 Unicode 边框表格。"""
+        result = {}
+        if not output:
+            return result
+
+        current_key = None
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parts = [part.strip() for part in re.split(r"[|│┃¦]+", line)]
+            if parts and parts[0] == "":
+                parts = parts[1:]
+            if parts and parts[-1] == "":
+                parts = parts[:-1]
+            if not parts or not any(parts):
+                continue
+
+            joined = "".join(parts)
+            if not re.search(r"[A-Za-z0-9_]", joined):
+                continue
+            if len(parts) >= 2 and parts[0].upper() == "FIELD" and parts[1].upper() == "VALUE":
+                continue
+            if re.fullmatch(r"[-─━]+", parts[0]):
+                continue
+
+            if len(parts) >= 2:
+                key = parts[0]
+                value = parts[1]
+                if key:
+                    current_key = key
+                    result[current_key] = value
+                elif current_key and value:
+                    result[current_key] = f"{result[current_key]} {value}".strip()
+                continue
+
+            if current_key and parts[0]:
+                result[current_key] = f"{result[current_key]} {parts[0]}".strip()
+
+        return result
+
+    def guest_show(self, ecs_id):
+        """执行 scli guest show 并返回解析后的字典。"""
+        return self.parse_table_output(self.run(f"scli guest show {ecs_id}"))
+
+    def assert_guest_fields(self, ecs_id, expected_fields, error_prefix):
+        """校验 scli guest show 中的字段值。"""
+        stdout = self.guest_show(ecs_id)
+        for field, expected in expected_fields.items():
+            actual = stdout.get(field)
+            assert actual == expected, f"{error_prefix}，期望 {field}:{expected}，实际 {field}:{actual}"
+        return stdout
+
+    def assert_guest_node(self, ecs_id, expected_node, error_prefix):
+        """校验虚机后端节点。"""
+        self.assert_guest_fields(ecs_id, {"node": expected_node}, error_prefix)
+
+    @staticmethod
+    def _extract_uuid(text):
+        match = re.search(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", text or "")
+        return match.group(0) if match else ""
+
+    def get_volume_id(self, volume_name):
+        output = self.run(f"scli volume list | grep -F -- {shlex.quote(volume_name)}")
+        for line in output.splitlines():
+            if volume_name in line:
+                volume_id = self._extract_uuid(line)
+                if volume_id:
+                    return volume_id
+        raise RuntimeError(f"未找到云硬盘 ID: {volume_name}")
+
+    def volume_show(self, volume_ref):
+        volume_id = volume_ref if self._extract_uuid(volume_ref) else self.get_volume_id(volume_ref)
+        return self.parse_table_output(self.run(f"scli volume show {volume_id}"))
+
+    def get_volume_size(self, volume_ref):
+        """
+        获取云硬盘容量。
+
+        :param volume_ref: 云硬盘标识，可传云硬盘名称或云硬盘 UUID。
+        :return: 云硬盘容量，单位为 GB。
+        """
+        volume_info = self.volume_show(volume_ref)
+        for key in ("size", "Size", "volume_size", "Volume Size"):
+            value = volume_info.get(key)
+            if value:
+                match = re.search(r"\d+", str(value))
+                if match:
+                    return int(match.group(0))
+        raise RuntimeError(f"无法从 scli volume show 结果中解析云硬盘容量: {volume_ref} -> {volume_info}")
+
+    def set_volume_state(self, volume_ref, state):
+        """
+        重置云硬盘状态。
+
+        :param volume_ref: 云硬盘标识，可传云硬盘名称或云硬盘 UUID。
+        :param state: 目标状态，对应 ``scli volume reset-state --state`` 支持的状态值。
+        """
+        volume_id = volume_ref if self._extract_uuid(volume_ref) else self.get_volume_id(volume_ref)
+        self.run(f"cinder reset-state --state {state} {volume_id}", check_rc=True)
 
     def get_file(self, remotepath, localpath):
         """
@@ -442,27 +617,32 @@ class SSH:
         # 下载镜像
         self.image_download(image_name)
 
-        # 构建glance上传命令
         disk_format = image_name.rsplit('.', 1)[-1]
-        cmd = f'glance image-create --name {name} \
-            --visibility public \
-            --min-disk {size} \
-            --container-format bare \
-            --disk-format {disk_format} \
-            --property hypervisor_type=kvm \
-            --property purpose={purpose} \
-            --property os_version="{os_version}" \
-            --property os_bits=64 \
-            --property os_type=linux \
-            --property architecture={arch} \
-            --property hw_firmware_type={hw_firmware_type} \
-            --file {image_name} \
-            --backend {backend} \
-            --progress '
+        image_file = image_name if "/" in image_name else f"./{image_name}"
+        cmd_parts = [
+            "scli image create",
+            f"--name {name}",
+            f"--file {image_file}",
+            f"--backend {backend}",
+            f"--disk-format {disk_format}",
+            "--visibility public",
+            f"--min-disk {size}",
+            "--container-format bare",
+            "--property hypervisor_type=kvm",
+            f"--property purpose={purpose}",
+            f"--property os_version={os_version}",
+            "--property os_bits=64",
+            "--property os_type=linux",
+            f"--property architecture={arch}",
+            f"--property hw_firmware_type={hw_firmware_type}",
+            # "--progress",
+        ]
 
         # 添加额外属性
         for k, v in kwargs.items():
-            cmd = cmd + f"--property {k}={v} "
+            prop = f"{str(k).strip()}={str(v).strip()}"
+            cmd_parts.append(f"--property {prop}")
+        cmd = " ".join(cmd_parts)
         return self.run(cmd, return_stderr=True, check_rc=True)
 
     def image_download(self, image, img_path="/liaoxb/test_image_dontdel"):
@@ -476,9 +656,9 @@ class SSH:
 
     def glance_image_delete(self, name):
         """删除镜像"""
-        image_id = self.run(f"glance image-list |grep {name} |awk '{{print $2}}'")
+        image_id = self.run(f"scli image list |grep {name} |awk '{{print $2}}'")
         if image_id:
-            self.run(f"glance image-delete {image_id}", check_rc=True)
+            self.run(f"scli image delete {image_id}", check_rc=True)
             logger.info(f"镜像 {name} 已删除")
         else:
             logger.info(f"镜像 {name} 不存在，无需删除")

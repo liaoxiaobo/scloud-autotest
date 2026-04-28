@@ -29,7 +29,7 @@ class TestECSRecycle:
             ecs_page.assert_deleted(name)
 
         with allure_step_log("步骤4: 验证恢复结果"):
-            ecs_page.goto_service('弹性云服务器')
+            ecs_page.goto_submenu('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm, timeout=90)
@@ -60,14 +60,14 @@ class TestECSRecycle:
             ecs_page.ecs_recover(name)
             ecs_page.assert_popup_success(f"移出回收站成功")
             ecs_page.assert_deleted(name)
-            ecs_page.goto_service('弹性云服务器')
+            ecs_page.goto_submenu('弹性云服务器')
             ecs_page.assert_status(name, refresh=True)
 
     @allure.title("弹性云服务器-回收站删除")
     def test_ecs_recycle_remove(self, ecs_page, ssh_host):
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
-            ecs_page.ecs_create(name=name)
+            ecs_page.ecs_create(basic={"name": name})
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
 
@@ -90,14 +90,11 @@ class TestECSRecycle:
         ids = []
         with allure_step_log("步骤1: 批量创建弹性云服务器"):
             base_name = random_data()
-            ecs_page.ecs_create(
-                base_name,
-                count=3
-            )
+            ecs_page.ecs_create(basic={"name": base_name, "count": 3})
             ecs_page.assert_popup_success("创建实例命令下发成功")
 
             # 生成批量创建的云硬盘名称列表
-            for i in range(3):
+            for i in range(1, 4):
                 name = f"{base_name}-{i}"
                 ecs_names.append(name)
                 ids.append(ecs_page.get_row_data(name).get("名称/ID").split(':')[1])
@@ -105,8 +102,7 @@ class TestECSRecycle:
             # 验证所有弹性云服务器创建成功
             for name, ecs_id in zip(ecs_names, ids):
                 ecs_page.assert_status(name)
-                stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
-                assert stdout.get("vm_state") == "active", f"{name}后台状态不是active，状态为:{stdout.get('vm_state')}"
+                ssh_host.assert_guest_fields(ecs_id, {"vm_state": "active"}, f"{name}后台状态不是active")
 
         # 批量回收弹性云服务器
         with allure_step_log("步骤2: 批量回收弹性云服务器"):
@@ -128,7 +124,7 @@ class TestECSRecycle:
 
         name = random_data()
         with allure_step_log("步骤1: 创建云服务器并验证创建结果"):
-            ecs_page.ecs_create(name=name)
+            ecs_page.ecs_create(basic={"name": name})
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status(name)
 

@@ -2,24 +2,24 @@ ecs_create:
   test_ecs_create_and_backup:
   - basic:
     storage:
-      "系统盘": 100
-      "数据盘":
+      system_disk: 100
+      data_disks:
         -
-          "vol_type": "zbs-type"
-          "size": "50"
-          "count": "2"
+          vol_type: "zbs-type"
+          size: "50"
+          count: "2"
     network:
     manage:
     advanced:
-  test_ecs_create_from_volume:
-    - basic:
-      storage:
-        镜像:
-          来源: "云硬盘"
-          镜像名称: "{{ volume_name }}"
-      network:
-      manage:
-      advanced:
+#  test_ecs_create_from_volume:
+#    - basic:
+#      storage:
+#        image:
+#          source: "云硬盘"
+#          name: "{{ volume_name }}"
+#      network:
+#      manage:
+#      advanced:
 
 #  - basic:
 #    storage:

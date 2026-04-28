@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 from sugon_web.utils.logger import logger
 
@@ -61,6 +62,27 @@ class Config:
         base_url = f"https://{host}:30000"
         cls._config["base_url"] = base_url
         logger.info(f"生成 base_url: {base_url}")
+
+    @classmethod
+    def load_deploy_mode(cls, ssh_host=None):
+        """读取当前环境部署模式并写入配置缓存。"""
+        deploy_mode = None
+        env_file = "/opt/extra/init-base/env/env.yaml"
+        read_deploy_mode_cmd = f"cat {env_file} | grep deploy_mode"
+
+        try:
+            current_node = ssh_host.run("hostname", check_rc=True).strip()
+            if current_node == "master01":
+                output = ssh_host.run(read_deploy_mode_cmd, check_rc=True)
+            else:
+                output = ssh_host.run(f"ssh -o StrictHostKeyChecking=no master01 \"{read_deploy_mode_cmd}\"", check_rc=True)
+            match = re.search(r"^\s*deploy_mode\s*:\s*(\S+)", output, re.MULTILINE)
+            deploy_mode = match.group(1).strip() if match else None
+        except Exception as exc:
+            logger.warning(f"读取 deploy_mode 失败: {exc}")
+
+        cls._config["deploy_mode"] = deploy_mode
+        return deploy_mode
 
     @classmethod
     def override(cls, browser=None, headless=None, stor=None, username=None, password=None):

@@ -1,10 +1,10 @@
 import re
 
-from sugon_web.common.base import BasePage, submenu
+from sugon_web.common.base import submenu, BasePage
 from sugon_web.common.playwright import expect
 
 
-class IpGroupPage(BasePage):
+class IpGroupMixin(BasePage):
     """负载均衡 IP地址组页面对象。"""
 
     def _get_dialog(self, *titles):

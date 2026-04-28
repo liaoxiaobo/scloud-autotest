@@ -1,12 +1,12 @@
 import datetime
+import re
 
 import allure
 import pytest
-import re
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from sugon_web.utils.logger import logger
+from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
 from sugon_web.common.ssh import SSH
 from sugon_web.common.base import BasePage
@@ -136,10 +136,12 @@ def _create_logged_in_page(browser_context, config):
     logger.info("页面创建成功")
 
     logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url)
+    page.goto(base_url, wait_until="domcontentloaded")
+    logger.info(f"页面导航完成，当前URL: {page.url}")
+
     try:
         # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=5000)
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
     except Exception:
         logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
     logger.info(f"页面导航完成，当前URL: {page.url}")
@@ -237,6 +239,12 @@ def ssh_host(config):
     ssh.close()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def load_deploy_mode(ssh_host, config):
+    """会话初始化时读取部署模式并写入 Config。"""
+    Config.load_deploy_mode(ssh_host)
+
+
 @pytest.fixture(scope="session")
 def jump_host(config):
     """创建并配置跳板机连接"""
@@ -261,7 +269,7 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return "login" not in current_url
+    return ("/#/index" in current_url or "/#" in current_url) and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -285,36 +293,36 @@ def _login(page, config, max_retries=3):
     if not username or not password:
         raise ValueError("环境配置中缺少用户名或密码")
 
-    for attempt in range(1, max_retries + 1):
-        if attempt > 1:
-            logger.info(f"\n{'=' * 40}")
-            logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
-            logger.info(f"{'=' * 40}")
+    with allure_step_log("尝试登录"):
+        for attempt in range(1, max_retries + 1):
+            if attempt > 1:
+                logger.info(f"\n{'=' * 40}")
+                logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
+                logger.info(f"{'=' * 40}")
 
-        try:
-            # 填写登录信息
-            page.get_by_placeholder("请输入登录账号").fill(username)
-            page.get_by_placeholder("请输入登录密码").fill(password)
-            page.get_by_text("登 录").click()
+            try:
+                # 填写登录信息
+                page.get_by_placeholder("请输入登录账号").fill(username)
+                page.get_by_placeholder("请输入登录密码").fill(password)
+                page.get_by_text("登 录").click()
 
-            # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
-            page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
-            page.wait_for_load_state("domcontentloaded")
-            page.wait_for_load_state("load")
+                # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
+                page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+                page.wait_for_load_state("domcontentloaded")
+                page.wait_for_load_state("load")
 
-            if _is_logged_in(page):
-                return True
+                if _is_logged_in(page):
+                    return True
 
-            raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
+                raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
 
-        except Exception as e:
-            logger.info(f"第{attempt}次登录未成功: {e}")
-            if attempt == max_retries:
-                raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
-            continue
+            except Exception as e:
+                logger.info(f"第{attempt}次登录未成功: {e}")
+                if attempt == max_retries:
+                    raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
+                continue
 
-    return False
-
+        return False
 
 @pytest.fixture(scope="session", autouse=True)
 def check_compute_nodes(ssh_host, config):
@@ -334,13 +342,11 @@ def check_compute_nodes(ssh_host, config):
     try:
         logger.info("开始获取物理机节点信息...")
         # 获取集群的节点
-        _output = ssh_host.run("gova aggregate list | grep Autotest | awk '{print $6}'")
+        _output = ssh_host.run("scli aggregate list | grep Autotest | awk '{print $6}'")
         _node_count = _output.split('(')[1].split(')')[0]
 
         # 将节点信息更新到 config 中
         Config._config['_node_count'] = _node_count
-
-        logger.info(f"节点列表已更新到config: {Config._config['_node_count']}")
 
         # 返回节点信息
         return {

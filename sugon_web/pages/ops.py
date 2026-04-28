@@ -1,42 +1,93 @@
 import re
 import time
 import pytest
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
 
 class OpsPage(BasePage):
 
-    @submenu("MFIP")
-    def mfip_create(self, project: str, network: str, ip: str, exact=True):
-        """创建 MFIP"""
-        self.btn_create.click()
-        self.get_by_placeholder("请选择项目").click()
-        self.get_by_title(project).click()
-        # 选择项目后会触发接口请求重绘网络列表，此处等待接口请求完成
-        self.page.wait_for_load_state("networkidle")
+    def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
+        """绑定 MFIP 并返回管理 IP。"""
+        self.goto_service("网络设施")
+        self.mfip_create(project, network, ip)
+        self.assert_popup_success("执行成功")
+        self.mfip_search(ip)
+        return self.get_row_data(ip).get("管理IP地址")
 
-        # 等待接口返回并渲染网络下拉列表
-        self.get_by_placeholder("请选择网络").click()
-        # 使用正则表达式精确匹配网络名称，并限制在当前可见的下拉框中，避免全局冲突
+    def _select_dropdown_and_wait_api(
+        self,
+        placeholder: str,
+        value: str,
+        locator_type: str = "listitem",
+        api_url_pattern: str | None = None,
+        timeout: int = 5000,
+    ):
+        """点击下拉框选择选项，并等待指定 API 接口返回。
+
+        Args:
+            placeholder: 下拉框的 placeholder 文本
+            value: 需要选中的精确文本
+            locator_type: 选项定位器类型，"title" 使用 get_by_title，"listitem" 使用下拉框内 listitem
+            api_url_pattern: 需要等待响应的 API URL 包含的模式，None 表示不等待
+            timeout: 接口等待超时时间（毫秒）
+        """
+        self.get_by_placeholder(placeholder).click()
         dropdown = self.page.locator(".el-select-dropdown:visible")
-        target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network)}$"))
-        # 接口返回后页面重绘可能存在延迟，导致短暂出现两个同名项，等待直到只有一个匹配项
-        expect(target_item).to_have_count(1)
-        target_item.click()
+
+        if locator_type == "title":
+            target_item = self.get_by_title(value)
+        else:
+            target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(value)}$"))
+            expect(target_item).to_have_count(1, timeout=timeout)
+        if api_url_pattern:
+            try:
+                with self.page.expect_response(
+                    lambda response: (
+                        response.request.method == "GET"
+                        and api_url_pattern in response.url
+                        and response.status == 200
+                    ),
+                    timeout=timeout
+                ):
+                    self.page.wait_for_timeout(1000)
+                    target_item.click()
+                logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
+            except PlaywrightTimeoutError:
+                logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
+                target_item.click()
+        else:
+            self.page.wait_for_timeout(2000)
+            target_item.click()
+
+    @submenu("平台网络")
+    def mfip_create(self, project: str, network: str, ip: str, exact: bool = True):
+        """创建 MFIP
+
+        Args:
+            project: 项目名称
+            network: 网络名称
+            ip: 管理IP地址
+            exact: 是否精确匹配IP文本
+        """
+        self.btn_create.click()
+        self._select_dropdown_and_wait_api("请选择项目", project, "title", api_url_pattern="/api/ops/vpc/networks")
+        self._select_dropdown_and_wait_api("请选择网络", network, api_url_pattern="/ports")
+
+        # 选择端口
         self.get_by_placeholder("请选择端口").click()
         self.get_by_text(ip, exact=exact).click()
-        self.get_by_text("确定").click()
+        self.get_by_label("新建管理IP").get_by_text("确定").click()
 
-    @submenu("MFIP")
+    @submenu("平台网络")
     def mfip_delete(self, ip: str):
         """删除 MFIP"""
         self.click_action(ip, "删除")
         self.dialog_confirm.click()
 
 
-    @submenu("MFIP")
+    @submenu("平台网络")
     def mfip_search(self, ip: str):
         """查询 MFIP"""
         self.get_by_role("textbox", name="请选择").nth(1).click()
