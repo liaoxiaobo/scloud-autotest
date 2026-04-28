@@ -63,9 +63,8 @@ class RedisPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        db_util.disk_type_dropdown(self).click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 数据盘大小
         self.locator("div").filter(has_text=re.compile(r"^数据盘大小\(GiB\)$")).get_by_role("spinbutton").fill(str(disk_size))
@@ -181,7 +180,7 @@ class RedisPage(BasePage):
     def add_shard(self, name: str):
         """为Redis实例添加分片"""
         self.ensure_instance_tab(name)
-        self.get_by_label("详情").get_by_text("添加分片").click()
+        self.get_by_text("添加分片").first.click()
         self.get_by_label("添加分片").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -238,16 +237,17 @@ class RedisPage(BasePage):
         :param selection_type: 选择类型 ("快速选择" 或 "手动输入")
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("切换网络").click()
+        self.get_by_text("切换网络").first.click()
 
         dialog = self.get_by_label("切换网络")
+        switch_network_form = dialog.locator(".el-form-item").filter(has_text=re.compile(r"切换网络"))
 
         # 选择网络
-        dialog.get_by_placeholder("请选择").nth(2).click()
+        switch_network_form.get_by_placeholder("请选择").first.click()
         self.page.locator("li").filter(has_text=re.compile(rf"^{network}$")).nth(1).click()
 
         # 选择子网
-        dialog.get_by_placeholder("请选择").nth(3).click()
+        switch_network_form.get_by_placeholder("请选择").nth(1).click()
         self.page.get_by_text(subnet).nth(1).click()
 
         # 获取当前可用的IP列表
@@ -367,10 +367,13 @@ class RedisPage(BasePage):
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):

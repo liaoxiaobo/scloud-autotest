@@ -420,11 +420,11 @@ class TestRedisBasic:
 
         with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
             redis_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
             redis_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.",
                                       selection_type="手动输入")
-            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            redis_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             redis_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)

@@ -49,11 +49,8 @@ class MongoDBPage(BasePage):
         db_util.select_network(self, "请选择子网", subnet)
 
         # --- 存储设置 ---
-        # 磁盘类型 (假设只要选一次，如果分片集群每个节点都要选，需要调整)
-        # 根据录制脚本，似乎只有一个数据盘类型选择
-        db_util.disk_type_dropdown(self).click()
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type)
 
         # 磁盘大小 
         # 不同的集群类型和录制场景下定位可能不同
@@ -112,6 +109,7 @@ class MongoDBPage(BasePage):
         :param old_name: 旧实例名称
         :param new_name: 新实例名称
         """
+        sleep(5)
         self.click_action(old_name, "修改实例名称")
         dialog = self.get_by_label("修改实例名称").get_by_role("textbox")
         dialog.click()
@@ -125,6 +123,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         :param new_password: 新密码
         """
+        sleep(5)
         self.click_action(name, "修改root密码")
         dialog = self.get_by_role("dialog")
         pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^新密码$")).get_by_role("textbox")
@@ -209,7 +208,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建备节点").click()
+        self.get_by_text("新建备节点").first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -219,7 +218,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("新建只读节点").click()
+        self.get_by_text("新建只读节点").first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -229,7 +228,7 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("添加Mongos节点").click()
+        self.get_by_text("添加Mongos节点").first.click()
         self.get_by_label("添加Mongos节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -240,7 +239,7 @@ class MongoDBPage(BasePage):
         :param shard_count: 分片数量
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_label("详情").get_by_text("调整分片").click()
+        self.get_by_text("调整分片").first.click()
         dialog = self.get_by_label("调整分片")
         # 假设是一个 spinbutton 或带有特定 label 的单选/输入
         dialog.get_by_role("spinbutton").fill(str(shard_count))
@@ -282,10 +281,13 @@ class MongoDBPage(BasePage):
         self.get_by_role("tab", name="白名单").click()
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
