@@ -228,18 +228,9 @@ class RedisPage(BasePage):
         return checked_host
 
     @submenu("实例管理")
-    def close_service_for_switch_network(self, name: str):
-        """切换网络前先关闭Redis服务"""
-        self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_text("切换网络").first.click()
-
-        close_service_dialog = self.page.locator("div.el-dialog:visible").filter(has_text=re.compile(r"关闭服务"))
-        close_service_dialog.first.get_by_text("确定", exact=True).click()
-
-    @submenu("实例管理")
     def switch_network(self, name: str, network: str = "Autotest", subnet: str = "subnet:10.", selection_type: str = "快速选择"):
         """
-        Redis服务停止后执行切换网络
+        切换Redis实例网络
         :param name: 实例名称
         :param network: 网络名称
         :param subnet: 子网名称
@@ -249,13 +240,14 @@ class RedisPage(BasePage):
         self.get_by_text("切换网络").first.click()
 
         dialog = self.get_by_label("切换网络")
+        switch_network_form = dialog.locator(".el-form-item").filter(has_text=re.compile(r"切换网络"))
 
         # 选择网络
-        dialog.get_by_placeholder("请选择").nth(2).click()
+        switch_network_form.get_by_placeholder("请选择").first.click()
         self.page.locator("li").filter(has_text=re.compile(rf"^{network}$")).nth(1).click()
 
         # 选择子网
-        dialog.get_by_placeholder("请选择").nth(3).click()
+        switch_network_form.get_by_placeholder("请选择").nth(1).click()
         self.page.get_by_text(subnet).nth(1).click()
 
         # 获取当前可用的IP列表

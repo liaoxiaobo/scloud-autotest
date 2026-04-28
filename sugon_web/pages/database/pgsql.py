@@ -143,7 +143,7 @@ class PgSQLPage(BasePage):
         confirm_pwd_input = dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox")
         confirm_pwd_input.wait_for(state="visible", timeout=5000)
         confirm_pwd_input.fill(new_password)
-        self.dialog_confirm.click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def change_disk_size(self, name: str, new_size: int):
@@ -332,7 +332,7 @@ class PgSQLPage(BasePage):
         dialog.locator("form div").filter(has_text="用户名").get_by_role("textbox").fill(user_name)
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(password)
-        self.dialog_confirm.click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def change_user_privileges(self, name: str, user_name: str, new_password: str):
@@ -348,7 +348,7 @@ class PgSQLPage(BasePage):
         dialog = self.get_by_label("修改用户")
         dialog.locator("input[type=\"password\"]").fill(new_password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(new_password)
-        self.dialog_confirm.click()
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def authorize_user(self, name: str, user_name: str, db_name: str, privileges: str = "读写"):
@@ -397,7 +397,11 @@ class PgSQLPage(BasePage):
             self.get_by_role("row", name=re.compile(user_name)).locator("span").nth(1).click()
 
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.dialog_confirm.click()
+        confirm_btn = self.page.locator(
+            ".sugon-dialog-box .sugon-dialog-footer .cloud-button-btn.cl-btn-primary"
+        ).first
+        confirm_btn.wait_for(state="visible", timeout=5000)
+        confirm_btn.click(force=True)
 
     @submenu("实例管理")
     def deauthorize_user(self, name: str, user_name: str, db_name: str):
