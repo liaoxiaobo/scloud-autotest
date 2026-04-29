@@ -104,6 +104,7 @@ class BasePage(Playwright):
         locators = [
             self.get_by_role("textbox", name="搜索（规格名称）"),
             self.get_by_role("textbox", name="搜索（名称）"),
+            self.get_by_role("textbox", name="搜索(名称)"), # slb 列表页搜索定位器
             self.get_by_role("textbox", name="搜索（固定IP）"),
             self.get_by_role("textbox", name="搜索（公网IP）"),
             self.get_by_role("textbox", name="搜索（参数名称）"),
@@ -368,37 +369,66 @@ class BasePage(Playwright):
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
 
-    def _dismiss_hover_tips(self, timeout: float = 1.5, poll_interval: float = 0.3) -> None:
-        """清理进入页面后残留的悬浮提示，避免遮挡后续按钮。"""
-        # 主动将鼠标移出 hover 区域，触发 tooltip 消失
-        self.page.mouse.move(0, 0)
-        # 按 Escape 键尝试关闭 popper
-        self.page.keyboard.press("Escape")
+    def _dismiss_hover_tips(
+        self,
+        timeout: float = 2.0,
+        poll_interval: float = 0.4,
+        stable_rounds: int = 3,
+    ) -> None:
+        """清理进入页面后残留的悬浮提示，等待 tooltip/popover 稳定消失。
 
-        tip_locators = [
-            self.page.locator(".el-tooltip__popper:visible"),
-            self.page.locator(".el-popper:visible"),
-        ]
+        Args:
+            timeout: 等待悬浮提示消失的总超时时间，单位为秒
+            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
+            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
+        """
+        visible_tips = self.page.locator(
+            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
+        )
         end_time = time.time() + timeout
+        stable_hits = 0
 
         while time.time() < end_time:
-            if all(locator.count() == 0 for locator in tip_locators):
-                return
+            self.page.evaluate("""
+                () => {
+                    const hovered = Array.from(document.querySelectorAll(':hover'));
+                    hovered.reverse().forEach((el) => {
+                        el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+                        el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+                    });
+                    const active = document.activeElement;
+                    if (active && typeof active.blur === 'function') {
+                        active.blur();
+                    }
+                }
+                """)
+            self.page.keyboard.press("Escape")
+
+            if visible_tips.count() == 0:
+                stable_hits += 1
+                if stable_hits >= stable_rounds:
+                    return
+            else:
+                stable_hits = 0
             self.page.wait_for_timeout(int(poll_interval * 1000))
 
+        remaining = visible_tips.count()
+        if remaining:
+            self.logger.warning(f"等待悬浮提示消失超时，当前仍有 {remaining} 个 tooltip/popper 可见")
+
     def _first_visible_locator(self, locators, element_name: str) -> Locator:
-        """返回多个定位器中第一个可见元素。"""
+        """返回多个定位器中第一个可见元素。
+
+        Args:
+            locators: 按优先级排列的定位器集合
+            element_name: 元素名称，用于异常提示信息
+        """
         for locator in locators:
             for i in range(locator.count()):
                 candidate = locator.nth(i)
                 if candidate.is_visible():
                     return candidate
         raise AssertionError(f"未找到可见的{element_name}")
-
-    @staticmethod
-    def _is_tab_active(tab: Locator) -> bool:
-        """判断页签是否已处于激活状态。"""
-        return tab.get_attribute("aria-selected") == "true" or "is-active" in (tab.get_attribute("class") or "")
 
     def goto_detail_page(
         self,
@@ -411,11 +441,11 @@ class BasePage(Playwright):
         """进入实例详情页，可选切换页签并等待目标行可见。
 
         Args:
-            instance_name: 实例名称
+            instance_name: 需要进入详情页的实例名称
             row_name: 详情页中期望出现的资源行名称；不传时仅进入详情页
-            tab_name: 进入详情页后需要切换的页签名称
-            timeout: 超时时间（秒）
-            poll_interval: 轮询间隔（秒）
+            tab_name: 进入详情页后需要切换的页签名称；不传时不切换页签
+            timeout: 等待详情页目标行出现的超时时间，单位为秒
+            poll_interval: 轮询检查详情页目标行的间隔时间，单位为秒
         """
         instance_links = self.locator("#cloud-container-content").get_by_text(instance_name, exact=True)
         clicked = False
@@ -445,16 +475,13 @@ class BasePage(Playwright):
             )
             tab.scroll_into_view_if_needed()
             self._dismiss_hover_tips()
-            if not self._is_tab_active(tab):
-                for attempt in range(3):
-                    try:
-                        tab.click(timeout=3000)
-                        break
-                    except Exception as exc:
-                        self.logger.warning(f"详情页签 {tab_name} 第{attempt + 1}次普通点击失败: {exc}")
-                else:
-                    self.logger.warning(f"详情页签 {tab_name} 普通点击仍失败，尝试强制点击")
-                    tab.click(force=True)
+            try:
+                tab.click(trial=True, timeout=3000)
+                tab.click(timeout=3000)
+            except Exception as exc:
+                self.logger.warning(f"详情页签 {tab_name} 试点击或普通点击失败，尝试强制点击: {exc}")
+                self._dismiss_hover_tips()
+                tab.click(force=True)
 
             if tab.get_attribute("aria-selected") is not None:
                 expect(tab).to_have_attribute("aria-selected", "true", timeout=10000)
