@@ -1431,9 +1431,10 @@ class BackUpPage(BasePage):
             or kwargs.get("project")
             or project
         )
-        self._config_resume_project(resume_project)
 
         if resume_type == "新建资源":
+            self._config_resume_project(resume_project)
+
             # (3) 配置基本设置（实例名称、集群）
             self._config_basic_settings(re_vm, basic_settings)
 
