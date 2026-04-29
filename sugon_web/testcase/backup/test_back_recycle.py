@@ -43,6 +43,7 @@ class TestBackupTaskRecycle:
 
         with allure_step_log("步骤1: 删除备份任务"):
             # 重置搜索条件
+            backup_page.goto_submenu("回收")
             backup_page.btn_reset.click()
             backup_page.backup_delete(task_name)
             backup_page.assert_deleted(task_name)

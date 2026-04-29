@@ -710,24 +710,50 @@ class TestECSBasic:
     def test_ecs_batch_migration(self, ecs_page, vm, ssh_host):
         """
         测试弹性云服务器的批量热迁移和冷迁移功能
+        场景1: 环境节点充足时，批量迁移准确下发，虚机状态变为迁移中，迁移完成后节点变更
+        场景2: 环境节点不足时，批量迁移命令准确下发，页面虚机状态不会变更，节点也不会变更
         """
         names = [vm[i].get("name") for i in range(len(vm))]
         ecs_ids = [vm[i].get("id") for i in range(len(vm))]
+        pre_nodes = [vm[i].get("host") for i in range(len(vm))]
         ecs_page.goto_service('弹性云服务器')
 
         with allure_step_log("步骤1: 批量迁移"):
             ecs_page.ecs_batch_migration(names)
             ecs_page.assert_popup_success(f"批量热迁移命令下发成功")
 
-        with allure_step_log("步骤2: 验证迁移结果"):
-            for name in names:
-                ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=2)
+        with allure_step_log("步骤2: 检查迁移是否开始执行"):
+            migration_started = False
+            try:
+                for name in names:
+                    ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1, timeout=15)
+                migration_started = True
+                ecs_page.logger.info("迁移已开始执行，虚机状态已变为迁移中")
+            except Exception as e:
+                ecs_page.logger.info(f"迁移未开始执行（可能节点不足）: {str(e)}")
 
-            for name,ecs_id in zip(names,ecs_ids):
-                ecs_page.assert_status(name)
-                # 验证迁移后页面展示的物理机节点 和 通过 scli guest show 获取的物理机节点是否一致
-                expect_node = ecs_page.get_row_data(name).get("物理机")
-                ssh_host.assert_guest_node(ecs_id, expect_node, "批量迁移失败")
+        if migration_started:
+            with allure_step_log("步骤3: 验证迁移结果（节点充足场景）"):
+                for name in names:
+                    ecs_page.wait_for_source_complete(name, timeout=90)
+                    ecs_page.assert_status(name)
+
+                for name, ecs_id in zip(names, ecs_ids):
+                    # ecs_page.assert_status(name)
+                    expect_node = ecs_page.get_row_data(name).get("物理机")
+                    ssh_host.assert_guest_node(ecs_id, expect_node, "批量迁移失败")
+        else:
+            with allure_step_log("步骤3: 验证迁移结果（节点不足场景）"):
+                first_event = ecs_page.get_first_event_data(names[0])
+                event_name = first_event.get("事件名称", "")
+                event_info = first_event.get("事件消息", "")
+                assert "热迁移" in event_name, f"事件名称应包含'热迁移', 实际: {event_name}"
+                assert "资源不足" in event_info or "没有可用节点" in event_info, f"事件信息应包含'资源不足'或'没有可用节点', 实际: {event_info}"
+                ecs_page.logger.info(f"事件列表验证通过: 事件名称={event_name}, 事件消息={event_info}")
+                for name, ecs_id, pre_node in zip(names, ecs_ids, pre_nodes):
+                    current_node = ecs_page.get_row_data(name).get("物理机")
+                    assert current_node == pre_node, f"节点不足时迁移不应执行，但节点已变更: {pre_node} -> {current_node}"
+                    ssh_host.assert_guest_node(ecs_id, pre_node, "节点不足时迁移不应执行")
 
     @allure.title("弹性云服务器-批量设置启动和关机顺序")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)

@@ -437,8 +437,8 @@ class TestSGScenario:
                 vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
             with allure_step_log(f"步骤2: VNC登录vm1虚机，对vm2发起ping请求，预期结果：可以ping通"):
-                vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
-                ssh_vm.connect(vm1_mfip)
+                # vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤3: 进入sg1详情页，确认列表可以正常显示所有规则"):
@@ -463,7 +463,7 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤6: vm1再次ping vm2, 预期无法ping通"):
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤7: 登录vm2, ping vm1, 预期结果：可以ping通"):
@@ -539,8 +539,8 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤5: VNC登录vm1虚机，对vm2虚机发起ping请求，预期结果：无法ping通"):
-                vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
-                ssh_vm.connect(vm1_mfip)
+                # vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤6: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程选择安全组sg2"):
@@ -558,7 +558,7 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤7: VNC登录vm1虚机，对vm2虚机发起ping请求，预期结果：可以ping通"):
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤8: 进入sg1详情页，删除原有出方向规则，新增一条出方向规则，远程字段修改为CIDR，网段保持为空"):
@@ -576,7 +576,7 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤9: VNC登录vm1虚机，对vm2虚机发起ping请求，预期结果：可以ping通"):
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=True)
         finally:
             if vm2_name or sg2_created:
@@ -627,15 +627,15 @@ class TestSGScenario:
                 vm2_ip = ecs_page.get_row_data(vm2_name)["IP地址"].split("固定: ")[1].strip()
 
             with allure_step_log(f"步骤2: vm1 ping vm2, 预期可以ping通"):
-                vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
-                ssh_vm.connect(vm1_mfip)
+                # vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤3: 删除掉{sg1}安全下出方向规则"):
                 vpc_page.sg_rule_delete_all_by_direction(sg1, "出口")
 
             with allure_step_log(f"步骤4: vm1 ping vm2, 预期无法ping通"):
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=False)
         finally:
             if vm2_name:
@@ -691,8 +691,8 @@ class TestSGScenario:
                 expect(ecs_page.get_by_text(sg2, exact=True)).to_be_visible()
 
             with allure_step_log(f"步骤4: vm1 ping vm2,预期无法ping通"):
-                vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
-                ssh_vm.connect(vm1_mfip)
+                # vm1_mfip = ops_page.bind_mfip(vm1["ip"], network=network_name)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤5: 在vm2的安全组页签下，创建入方向规则，放行ipv4所有流量"):
@@ -707,7 +707,7 @@ class TestSGScenario:
                 )
 
             with allure_step_log(f"步骤6: 再次从vm1对vm2发起ping请求，预期：可以ping通"):
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=True)
 
             with allure_step_log(f"步骤7: 删除刚才创建的入方向规则，验证不通"):
@@ -715,7 +715,7 @@ class TestSGScenario:
 
                 ecs_page.page.wait_for_timeout(2000)
 
-                ssh_vm.connect(vm1_mfip)
+                ssh_vm.connect(vm1.get("mfip"))
                 ssh_vm.ping(vm2_ip, connected=False)
         finally:
             if vm2_name:
