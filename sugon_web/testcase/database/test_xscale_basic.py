@@ -642,6 +642,7 @@ class TestXScaleBasic:
             xscale_page.assert_popup_success()
             xscale_page.assert_status(new_node_name, status="创建中", timeout=600)
             xscale_page.assert_status(new_node_name, status="运行中", timeout=600)
+            xscale_page.assert_status(new_node_name, status="就绪", timeout=600)
             db_util.assert_backend_created(
                 xscale_page,
                 ssh_host,
@@ -683,7 +684,8 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证存储节点扩容成功"):
             xscale_page.assert_popup_success()
             xscale_page.assert_status(new_node_names, status="创建中")
-            xscale_page.assert_status(new_node_names, status="运行中", timeout=1200)
+            xscale_page.assert_status(new_node_names, status="运行中", timeout=600)
+            xscale_page.assert_status(new_node_names, status="就绪", timeout=600)
             backend_node_names = []
             for new_node_name in new_node_names:
                 backend_node_name = _build_xscale_gova_name(new_node_name)
