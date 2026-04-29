@@ -4,6 +4,7 @@ from sugon_web.pages.database import DorisPage, MongoDBPage, MySQLPage, PgSQLPag
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
+from sugon_web.utils import db_util
 
 
 @pytest.fixture(scope="function")
@@ -194,7 +195,7 @@ def mongodb(browser_context, config):
 
 
 @pytest.fixture(scope="class")
-def xscale(browser_context, config):
+def xscale(browser_context, config, ssh_host):
     """创建一个供整个测试类使用的XScale实例对象"""
     page = _create_logged_in_page(browser_context, config)
     xscale_page = XScalePage(page)
@@ -214,5 +215,7 @@ def xscale(browser_context, config):
     with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
         logger.info(f"清理共享XScale实例: {data['name']}")
         xscale_page.delete_instance(data["name"])
+        xscale_page.assert_deleted(name)
+        db_util.assert_backend_deleted(xscale_page, ssh_host, name)
 
     page.close()

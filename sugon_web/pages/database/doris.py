@@ -75,7 +75,7 @@ class DorisPage(BasePage):
         # 大小写策略已改为单选项；新版页面上第 3 项默认就是选中态
         case_section = self.locator("form").filter(has_text=re.compile(r"大小写策略"))
         if "将所有表名转换为小写存储" not in case_sensitivity:
-            case_section.get_by_text(case_sensitivity).click()
+            case_section.get_by_role("radio", name=case_sensitivity, exact=True).click()
 
         # 密码
         self.get_by_placeholder("请输入admin管理员用户密码").fill(password)

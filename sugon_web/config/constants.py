@@ -19,7 +19,7 @@ SERVICE_PATH_MAP = {
     '专有网络VPN': '/vpn',
     '备份': '/backup',
     'AnhanDB(for MySQL)': '/mysql',
-    'AnhanDB(for PostgreSQL)': '/pgsql',
+    'AnhanDB(for PostgreSQL)': '/pg',
     'AnhanDB(for MongoDB)': '/mongodb',
     '数据仓库 Doris': '/doris',
     'xscale': '/xscale',
