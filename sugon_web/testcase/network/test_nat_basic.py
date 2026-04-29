@@ -1,5 +1,3 @@
-from time import sleep
-
 import pytest
 import allure
 from sugon_web.utils.util import random_data, load_data
@@ -594,33 +592,49 @@ class TestNAT:
             vpc_page.assert_popup_success("新建路由表规则成功")
 
         with allure_step_log("步骤3: 通过mfip登录虚机并启动UDP监听服务"):
+            import shlex
+            from pathlib import Path
+
             ssh_vm.connect(host=vm_mfip)
-            ssh_vm.run("rm -f /tmp/udp_receive.log")
-            ssh_vm.run(
-                f"nohup sh -c \"nc -uvl {int_port} > /tmp/udp_receive.log 2>&1\" > /dev/null 2>&1 &"
+            ssh_vm.run("rm -f /tmp/udp_receive.log /tmp/udp_server.out")
+            udp_server_remote = "/tmp/udp_probe_server.py"
+            udp_server_local = Path(__file__).with_name("udp_probe_server.py")
+            ssh_vm.put_file(str(udp_server_local), udp_server_remote)
+            server_args = f"{shlex.quote(udp_server_remote)} --port {int_port} --log /tmp/udp_receive.log"
+            server_cmd = (
+                f"nohup sh -c {shlex.quote(f'python3 {server_args} || python {server_args}')}"
+                " > /tmp/udp_server.out 2>&1 &"
             )
-            logger.info(f"在虚机 {vm['name']} 启动了 nc UDP {int_port} 端口监听...")
+            ssh_vm.run(server_cmd)
+            logger.info(f"在虚机 {vm['name']} 启动了 Python UDP {int_port} 端口监听...")
             import time
             listen_ready = False
             listen_output = ""
             for _ in range(20):
                 time.sleep(5)
                 listen_output = ssh_vm.run("cat /tmp/udp_receive.log")
-                if str(int_port) in listen_output:
+                if f"LISTENING {int_port}" in listen_output:
                     listen_ready = True
                     break
             logger.info(f"虚机UDP监听启动日志: {listen_output}")
-            assert listen_ready, f"虚机nc未成功监听UDP {int_port} 端口，日志输出: {listen_output}"
+            server_error = ssh_vm.run("cat /tmp/udp_server.out")
+            assert listen_ready, f"虚机UDP监听服务未成功监听 {int_port} 端口，日志输出: {listen_output}, 错误输出: {server_error}"
 
         with allure_step_log("步骤4: 后台向公网IP:UDP公网端口发送探测报文"):
             msg = "dnat_udp_probe_test_message"
-            udp_send_code = (
-                "import socket; "
-                "sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); "
-                f"sock.sendto({msg!r}.encode('utf-8'), ({eip!r}, {udp_ext_port})); "
-                "sock.close()"
-            )
-            ssh_host.run(f"python3 -c {udp_send_code!r} || python -c {udp_send_code!r}")
+            udp_send_code = "\n".join([
+                "import socket",
+                "import time",
+                f"msg = {msg!r}.encode('utf-8')",
+                f"addr = ({eip!r}, {udp_ext_port})",
+                "sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)",
+                "for _ in range(5):",
+                "    sock.sendto(msg, addr)",
+                "    time.sleep(0.2)",
+                "sock.close()",
+            ])
+            quoted_send = shlex.quote(udp_send_code)
+            ssh_host.run(f"python3 -c {quoted_send} || python -c {quoted_send}")
             logger.info(f"向 {eip}:{udp_ext_port} 发送了UDP消息: {msg}")
 
         with allure_step_log("步骤5: 验证虚机是否收到UDP请求，以证明DNAT生效"):
@@ -634,7 +648,6 @@ class TestNAT:
             assert msg in output, "虚机未能接收到UDP探测报文，DNAT规则（UDP）可能未生效"
 
         with allure_step_log("步骤6: 清理UDP监听进程和测试配置"):
-            ssh_vm.run(f"pkill -f \"nc -uvl {int_port}\"")
             vpc_page.goto_submenu("NAT网关")
             vpc_page.get_by_role("cell", name=nat_name).locator("a").click()
             vpc_page.get_by_role("tab", name="DNAT规则").click()
