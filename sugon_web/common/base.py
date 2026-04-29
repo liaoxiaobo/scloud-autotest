@@ -385,6 +385,16 @@ class BasePage(Playwright):
         visible_tips = self.page.locator(
             ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
         )
+        Args:
+            timeout: 等待悬浮提示消失的总超时时间，单位为秒
+            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
+            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
+        """
+        self.page.mouse.move(1, 1)
+
+        visible_tips = self.page.locator(
+            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
+        )
         end_time = time.time() + timeout
         stable_hits = 0
 
