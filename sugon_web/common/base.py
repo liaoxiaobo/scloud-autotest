@@ -370,6 +370,11 @@ class BasePage(Playwright):
 
     def _dismiss_hover_tips(self, timeout: float = 1.5, poll_interval: float = 0.3) -> None:
         """清理进入页面后残留的悬浮提示，避免遮挡后续按钮。"""
+        # 主动将鼠标移出 hover 区域，触发 tooltip 消失
+        self.page.mouse.move(0, 0)
+        # 按 Escape 键尝试关闭 popper
+        self.page.keyboard.press("Escape")
+
         tip_locators = [
             self.page.locator(".el-tooltip__popper:visible"),
             self.page.locator(".el-popper:visible"),

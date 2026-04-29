@@ -24,7 +24,7 @@ class VpcMixin(BasePage):
     def _select_cluster(self, cluster_name="Autotest"):
         """选择VPC所属集群。"""
         self.get_by_role("textbox", name="请选择集群").click()
-        self.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(cluster_name)}$")).click()
+        self.get_by_text(cluster_name, exact=True).click()
 
     @property
     def _input_subnet_name(self):

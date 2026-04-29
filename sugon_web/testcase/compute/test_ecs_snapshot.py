@@ -59,7 +59,7 @@ class TestECSS:
                     snapshot_name=snapshot_name,
                 )
                 ecs_page.assert_popup_success("创建实例快照成功")
-                # ecs_page.wait_for_source_complete(vm['name'])
+                ecs_page.wait_for_source_complete(vm['name'])
                 ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证所有快照创建成功"):
