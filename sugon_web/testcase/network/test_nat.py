@@ -431,7 +431,6 @@ class TestNAT:
                     desc=f"批量删除测试端口 {port}"
                 )
                 vpc_page.assert_popup_success("新建DNAT规则成功")
-                # 创建完后会留在详情页，不需要每次 goto_service
 
         with allure_step_log("步骤2: 批量删除DNAT规则"):
             vpc_page.dnat_rule_delete(ports)
@@ -519,7 +518,6 @@ class TestNAT:
             vpc_page.assert_popup_success("新建DNAT规则成功")
 
         with allure_step_log("步骤3: 添加VPC路由表规则(下一跳NAT网关)"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.route_rule_create(
                 vpc_name=vpc_name,
                 dest_cidr="0.0.0.0/0",
@@ -548,7 +546,7 @@ class TestNAT:
                 vpc_page.assert_deleted(str(ext_port))
 
                 # 清理路由表规则
-                vpc_page.goto_service("虚拟私有云")
+                vpc_page.goto_submenu("虚拟私有云")
                 # 路由表规则删除
                 vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
                 vpc_page.get_by_role("tab", name="路由表").click()
@@ -586,7 +584,6 @@ class TestNAT:
             vpc_page.assert_popup_success("新建DNAT规则成功")
 
         with allure_step_log("步骤2.5: 添加VPC路由表规则(下一跳NAT网关)"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.route_rule_create(
                 vpc_name=vpc_name,
                 dest_cidr="0.0.0.0/0",
@@ -644,7 +641,7 @@ class TestNAT:
             vpc_page.dnat_rule_delete(str(udp_ext_port))
             vpc_page.assert_deleted(str(udp_ext_port))
 
-            vpc_page.goto_service("虚拟私有云")
+            vpc_page.goto_submenu("虚拟私有云")
             vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
             vpc_page.get_by_role("tab", name="路由表").click()
             vpc_page.route_rule_delete("0.0.0.0/0")
