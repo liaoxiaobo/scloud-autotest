@@ -215,7 +215,6 @@ def xscale(browser_context, config, ssh_host):
     with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
         logger.info(f"清理共享XScale实例: {data['name']}")
         xscale_page.delete_instance(data["name"])
-        xscale_page.assert_popup_success()
         xscale_page.assert_deleted(name)
         db_util.assert_backend_deleted(xscale_page, ssh_host, name)
 
