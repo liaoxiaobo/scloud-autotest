@@ -780,6 +780,7 @@ def slb(browser_context, config, vpc, request):
             spec=spec
         )
         # 等待创建成功并验证状态入运行中
+        vpc_page.search(slb_name)
         vpc_page.assert_status(slb_name, status="运行中")
 
     yield slb_name

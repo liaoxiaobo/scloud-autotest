@@ -1,3 +1,5 @@
+import ipaddress
+
 from sugon_web.utils.logger import allure_step_log
 
 
@@ -44,13 +46,44 @@ def _get_acl_subnet_pair(vpc_data):
     return vpc_data["subnet_name"], extra_subnets[0]
 
 
-def _tag_acl_vms(vm_list, sub1_name, sub2_name):
-    """按子网为虚机打上 ACL 场景角色标签。"""
+def _tag_acl_vms(vm_list, sub1_name, sub2_name, cidr1=None, cidr2=None):
+    """按子网为虚机打上 ACL 场景角色标签。
+
+    优先使用 VM 元数据的 subnet 字段进行匹配；当字段不匹配时，
+    若提供了 CIDR 则回退到基于 IP 地址的 CIDR 匹配；
+    若仍不匹配则按顺序分配（第一个给 A，第二个给 B）。
+    """
     sub1_vms = [item for item in vm_list if item["subnet"] == sub1_name]
     sub2_vms = [item for item in vm_list if item["subnet"] == sub2_name]
+
     if len(sub1_vms) + len(sub2_vms) != len(vm_list):
-        unknown_vms = [item["name"] for item in vm_list if item["subnet"] not in {sub1_name, sub2_name}]
-        raise ValueError(f"ACL 场景发现未知子网虚机: {unknown_vms}")
+        if cidr1 and cidr2:
+            sub1_network = ipaddress.ip_network(cidr1, strict=False)
+            sub2_network = ipaddress.ip_network(cidr2, strict=False)
+
+            for item in vm_list:
+                if item["subnet"] not in {sub1_name, sub2_name}:
+                    vm_ip = ipaddress.ip_address(item["ip"])
+                    if vm_ip in sub1_network:
+                        sub1_vms.append(item)
+                    elif vm_ip in sub2_network:
+                        sub2_vms.append(item)
+                    else:
+                        # VM 被复用，IP 不属于当前 VPC 的任何子网
+                        # 回退到根据原始 subnet 字段推断
+                        if item.get("subnet") == sub1_name:
+                            sub1_vms.append(item)
+                        elif item.get("subnet") == sub2_name:
+                            sub2_vms.append(item)
+                        else:
+                            # 都不匹配时，按顺序分配（第一个给 A，第二个给 B）
+                            if len(sub1_vms) <= len(sub2_vms):
+                                sub1_vms.append(item)
+                            else:
+                                sub2_vms.append(item)
+        else:
+            unknown_vms = [item["name"] for item in vm_list if item["subnet"] not in {sub1_name, sub2_name}]
+            raise ValueError(f"ACL 场景发现未知子网虚机: {unknown_vms}")
 
     tagged_vms = []
     for index, item in enumerate(sub1_vms):
@@ -74,7 +107,8 @@ def build_acl_env(acl_name, vpc_data, vm_data):
         "sub2_name": sub2_data["name"],
         "cidr1": vpc_data["cidr"],
         "cidr2": sub2_data["cidr"],
-        "vms": _tag_acl_vms(vm_list, sub1_name, sub2_data["name"]),
+        "vms": _tag_acl_vms(vm_list, sub1_name, sub2_data["name"],
+                           vpc_data["cidr"], sub2_data["cidr"]),
     }
 
 

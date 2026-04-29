@@ -1828,6 +1828,37 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
         logger.info(f"成功进入云服务器{name}详情页")
 
     @submenu("弹性云服务器")
+    def get_first_event_data(self, name: str) -> dict:
+        """获取云服务器事件列表第一条事件数据
+
+        Args:
+            name: 云服务器名称
+
+        Returns:
+            dict: 事件数据字典，包含事件名称、事件信息等
+        """
+        self.goto_detail_page(instance_name=name, tab_name="事件列表")
+
+        first_row = self.locator(".el-table__body-wrapper .el-table__body tr").first
+        expect(first_row).to_be_visible(timeout=5000)
+
+        headers = self.locator(".el-table__header-wrapper th").all_text_contents()
+        headers = [h.strip() for h in headers]
+
+        cells = first_row.locator("td").all()
+        cell_contents = []
+        for cell in cells:
+            text = cell.inner_text()
+            text = re.sub(r'\s+', ' ', text).strip()
+            cell_contents.append(text)
+
+        result = dict(zip(headers, cell_contents))
+
+        logger.info(f"第一条事件数据: {result}")
+        self.goto_submenu("弹性云服务器")
+        return result
+
+    @submenu("弹性云服务器")
     def ecs_mount_cdrom(self, name: str, iso_name: str = None):
         """
         为指定弹性云服务器挂载CD-ROM

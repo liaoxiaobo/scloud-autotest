@@ -119,6 +119,7 @@ class TestECSScenario:
             ecs_page.goto_service('弹性云服务器')
             ecs_page.ecss_create(name=vm_name, snapshot_name=snapshot_name, desc="系统盘快照测试", data_disk=True)
             ecs_page.assert_popup_success("创建实例快照成功")
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.assert_status(vm['name'])
 
         with allure_step_log(f"步骤4: 基于快照{snapshot_name}创建云服务器{new_vm}"):
@@ -209,7 +210,8 @@ class TestECSScenario:
         with allure_step_log(f"步骤6: 验证批量迁移结果"):
             nodes = []
             for name in m_names:
-                ecs_page.assert_status(name, status="迁移中", timeout=60, refresh=True, refresh_interval=1)
+                ecs_page.wait_for_source_complete(name)
+                ecs_page.assert_status(name)
             for name in m_names:
                 ecs_page.assert_status(name)
                 nodes.append(ecs_page.get_row_data(name).get("物理机"))

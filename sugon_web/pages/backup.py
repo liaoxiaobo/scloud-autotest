@@ -1431,9 +1431,10 @@ class BackUpPage(BasePage):
             or kwargs.get("project")
             or project
         )
-        self._config_resume_project(resume_project)
 
         if resume_type == "新建资源":
+            self._config_resume_project(resume_project)
+
             # (3) 配置基本设置（实例名称、集群）
             self._config_basic_settings(re_vm, basic_settings)
 
@@ -1498,10 +1499,6 @@ class BackUpPage(BasePage):
         """
         cluster = config.get("集群", "Autotest")
 
-        # 填写实例名称
-        self.get_by_placeholder("请输入名称").fill(re_vm)
-        logger.info(f"设置实例名称: {re_vm}")
-
         # 选择集群
         self.get_by_placeholder("请选择集群").click()
         locs = [
@@ -1510,6 +1507,10 @@ class BackUpPage(BasePage):
         ]
         self._find_element(locs, "集群").click()
         logger.info(f"选择集群: {cluster}")
+
+        # 填写实例名称
+        self.get_by_placeholder("请输入名称").fill(re_vm)
+        logger.info(f"设置实例名称: {re_vm}")
 
     def _config_network_settings(self, config: dict):
         """配置网络设置
