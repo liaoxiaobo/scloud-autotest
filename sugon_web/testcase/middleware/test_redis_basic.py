@@ -10,6 +10,26 @@ from sugon_web.utils.util import random_data, random_string
 @allure.feature('AnhanDB(for Redis)')
 class TestRedisBasic:
 
+    @allure.title("Redis-节点绑定和解绑公网IP")
+    def test_node_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
+        """测试节点绑定和解绑Redis实例的公网IP"""
+        instance_name = redis["name"]
+        network = "public_net(基础版)"  # 请根据实际环境修改
+
+        with allure_step_log("步骤一：绑定公网IP"):
+            ip = redis_page.node_ip_binding(instance_name, network=network)
+
+        with allure_step_log("步骤二：验证绑定结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip)
+
+        with allure_step_log("步骤三：解绑公网IP"):
+            redis_page.node_ip_unbinding(instance_name)
+
+        with allure_step_log("步骤四：验证解绑结果"):
+            redis_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip, connected=False)
+
     @allure.title("Redis-升级测试")
     def test_upgrade_instance(self, redis_page, redis, ssh_host):
         """测试Redis实例从单机升级到高可用"""
@@ -392,26 +412,6 @@ class TestRedisBasic:
             result = ssh_vm.run(cmd_no_auth)
             assert "PONG" in result or "OK" in result, f"开启免密登录后，无需密码连接失败: {result}"
             ssh_vm.close()
-
-    @allure.title("Redis-节点绑定和解绑公网IP")
-    def test_node_bind_and_unbind_ip(self, redis_page, redis, ssh_host):
-        """测试节点绑定和解绑Redis实例的公网IP"""
-        instance_name = redis["name"]
-        network = "public_net(基础版)"  # 请根据实际环境修改
-
-        with allure_step_log("步骤一：绑定公网IP"):
-            ip = redis_page.node_ip_binding(instance_name, network=network)
-
-        with allure_step_log("步骤二：验证绑定结果"):
-            redis_page.assert_popup_success("执行成功")
-            ssh_host.ping(ip)
-
-        with allure_step_log("步骤三：解绑公网IP"):
-            redis_page.node_ip_unbinding(instance_name)
-
-        with allure_step_log("步骤四：验证解绑结果"):
-            redis_page.assert_popup_success("执行成功")
-            ssh_host.ping(ip, connected=False)
 
     @allure.title("Redis-切换网络")
     def test_switch_network(self, redis_page, redis):

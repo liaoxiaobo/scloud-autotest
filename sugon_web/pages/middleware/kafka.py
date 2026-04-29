@@ -100,7 +100,7 @@ class KafkaPage(BasePage):
         for name in names:
             self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
         sleep(3)
-        self.locator(".cloud-table-header").get_by_text("删除", exact=True).click()
+        self.locator(".cloud-table-header .cloud-button-btn").filter(has_text="删除").first.click()
         self.dialog_confirm.click()
 
     @submenu("实例管理")
@@ -198,10 +198,13 @@ class KafkaPage(BasePage):
         self.ensure_instance_tab(name, "白名单")
         sleep(2)
         self.locator("div.cloud-button-btn").filter(has_text="批量删除").click()
-        self.get_by_placeholder("请选择要删除的白名单").click()
+        dialog = self.get_by_label("删除白名单")
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip in ip_addresses:
             self.page.locator("li", has_text=ip).click()
-        self.get_by_label("删除白名单").get_by_text("确定", exact=True).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown.label-select:visible").wait_for(state="hidden", timeout=5000)
+        dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
