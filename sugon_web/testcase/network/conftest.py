@@ -496,7 +496,6 @@ def nat(vpc_page, vpc, request):
     nat_name = random_data()
 
     with allure_step_log(f"Setup: 创建NAT网关 {nat_name}"):
-        vpc_page.goto_service("NAT网关")
         vpc_page.nat_create(
             name=nat_name,
             vpc_name=vpc_name,
@@ -515,7 +514,6 @@ def nat(vpc_page, vpc, request):
     current_name = nat_info['name']
     with allure_step_log(f"Teardown: 删除NAT网关 {current_name}"):
         try:
-            vpc_page.goto_service("NAT网关")
             vpc_page.nat_delete(current_name)
             logger.info(f"NAT网关 {current_name} 删除成功")
         except Exception as e:

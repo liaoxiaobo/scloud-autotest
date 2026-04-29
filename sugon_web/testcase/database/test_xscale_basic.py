@@ -10,20 +10,34 @@ from sugon_web.utils import db_util
 NODE_TYPES = ["元数据节点", "日志节点", "计算节点", "存储节点"]
 
 
-def _assert_any_node_restarted(xscale_page, node_names: list[str], node_type_name: str) -> str:
-    """断言随机串行重启场景中，至少一个节点经历重启中并恢复就绪。"""
+def _assert_any_node_restarted(xscale_page, node_names: list[str], node_type_name: str) -> list[str]:
+    """断言随机串行重启场景中，所有节点都经历重启中并恢复就绪。"""
     pending_nodes = list(node_names)
+    restarted_nodes = []
     deadline = time() + 900
 
     while pending_nodes and time() < deadline:
         for node_name in list(pending_nodes):
-            if "节点重启中" in xscale_page.get_row_by_name(node_name).inner_text():
+            try:
+                row_text = xscale_page.get_row_by_name(node_name).inner_text()
+            except Exception:
+                continue
+
+            if "节点重启中" in row_text:
                 xscale_page.assert_status(node_name, status="就绪", timeout=600)
-                return node_name
+                pending_nodes.remove(node_name)
+                restarted_nodes.append(node_name)
+                break
 
         sleep(5)
 
-    raise AssertionError(f"未观察到任何{node_type_name}进入节点重启中状态，节点列表: {node_names}")
+    if pending_nodes:
+        raise AssertionError(
+            f"未观察到所有{node_type_name}完成节点重启中到就绪，"
+            f"已观察节点: {restarted_nodes}，未观察节点: {pending_nodes}"
+        )
+
+    return restarted_nodes
 
 
 def _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm):
@@ -642,6 +656,7 @@ class TestXScaleBasic:
             xscale_page.assert_popup_success()
             xscale_page.assert_status(new_node_name, status="创建中", timeout=600)
             xscale_page.assert_status(new_node_name, status="运行中", timeout=600)
+            xscale_page.assert_status(new_node_name, status="就绪", timeout=600)
             db_util.assert_backend_created(
                 xscale_page,
                 ssh_host,
@@ -660,7 +675,7 @@ class TestXScaleBasic:
                 _build_xscale_gova_name(new_node_name),
             )
 
-    @allure.title("XScale-重启计算节点")
+    @allure.title("XScale-批量重启计算节点")
     def test_restart_compute_nodes(self, xscale_page, xscale):
         """测试 XScale 实例详情页重启计算节点功能。"""
         instance_name = xscale["name"]
@@ -671,6 +686,12 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证计算节点重启结果"):
             xscale_page.assert_popup_success()
             _assert_any_node_restarted(xscale_page, compute_nodes, "计算节点")
+
+        with allure_step_log("步骤三：验证实例状态"):
+            xscale_page.goto_submenu("实例管理")
+            xscale_page.assert_status(instance_name, status="就绪", refresh=True)
+            xscale_page.assert_status(instance_name, status="正常", refresh=True)
+
 
     @allure.title("XScale-存储节点扩容和缩容")
     def test_scale_out_storage_node(self, xscale_page, xscale, ssh_host):
@@ -683,7 +704,8 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证存储节点扩容成功"):
             xscale_page.assert_popup_success()
             xscale_page.assert_status(new_node_names, status="创建中")
-            xscale_page.assert_status(new_node_names, status="运行中", timeout=1200)
+            xscale_page.assert_status(new_node_names, status="运行中", timeout=600)
+            xscale_page.assert_status(new_node_names, status="就绪", timeout=600)
             backend_node_names = []
             for new_node_name in new_node_names:
                 backend_node_name = _build_xscale_gova_name(new_node_name)
@@ -718,3 +740,8 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证存储节点批量重启结果"):
             xscale_page.assert_popup_success()
             _assert_any_node_restarted(xscale_page, storage_nodes, "存储节点")
+
+        with allure_step_log("步骤三：验证实例状态"):
+            xscale_page.goto_submenu("实例管理")
+            xscale_page.assert_status(instance_name, status="就绪", refresh=True)
+            xscale_page.assert_status(instance_name, status="正常", refresh=True)
