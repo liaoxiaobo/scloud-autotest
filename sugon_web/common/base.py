@@ -382,14 +382,6 @@ class BasePage(Playwright):
             poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
             stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
         """
-        visible_tips = self.page.locator(
-            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
-        )
-        Args:
-            timeout: 等待悬浮提示消失的总超时时间，单位为秒
-            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
-            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
-        """
         self.page.mouse.move(1, 1)
 
         visible_tips = self.page.locator(
@@ -425,6 +417,30 @@ class BasePage(Playwright):
         remaining = visible_tips.count()
         if remaining:
             self.logger.warning(f"等待悬浮提示消失超时，当前仍有 {remaining} 个 tooltip/popper 可见")
+            self.page.evaluate("""
+                () => {
+                    const tips = Array.from(document.querySelectorAll(
+                        '.el-tooltip__popper, .el-popper, [role="tooltip"]'
+                    ));
+                    tips.forEach((el) => {
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        const visible = el.getAttribute('aria-hidden') !== 'true'
+                            && style.display !== 'none'
+                            && style.visibility !== 'hidden'
+                            && style.opacity !== '0'
+                            && rect.width > 0
+                            && rect.height > 0;
+                        if (visible) {
+                            el.style.pointerEvents = 'none';
+                            el.style.display = 'none';
+                            el.style.visibility = 'hidden';
+                            el.setAttribute('aria-hidden', 'true');
+                        }
+                    });
+                }
+                """)
+            self.page.wait_for_timeout(500)
 
     def _first_visible_locator(self, locators, element_name: str) -> Locator:
         """返回多个定位器中第一个可见元素。
