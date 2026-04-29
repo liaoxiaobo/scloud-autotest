@@ -143,6 +143,7 @@ class MongoDBPage(BasePage):
         """
         node_name = f"{name}-0"
         self.goto_detail_page(name, node_name)
+        sleep(5)
         self.click_action(node_name, "修改云硬盘大小")
 
         dialog = self.get_by_role("dialog")
@@ -160,6 +161,7 @@ class MongoDBPage(BasePage):
         """
         node_name = f"{name}-0"
         self.goto_detail_page(name, node_name)
+        sleep(5)
         self.click_action(node_name, "修改规格")
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
@@ -174,6 +176,7 @@ class MongoDBPage(BasePage):
         :return: 绑定的IP地址
         """
         self.goto_detail_page(instance_name, node_name)
+        sleep(5)
         self.click_action(node_name, "绑定公网IP")
 
         # 使用更精确的dialog定位
@@ -198,6 +201,7 @@ class MongoDBPage(BasePage):
         :param node_name: 节点名称
         """
         self.goto_detail_page(instance_name, node_name)
+        sleep(5)
         self.click_action(node_name, "解绑公网IP")
         self.get_by_role("dialog").get_by_text("确定", exact=True).click()
 
@@ -396,6 +400,7 @@ class MongoDBPage(BasePage):
         :param cpu_auto: 是否开启CPU自动收敛
         """
         self.goto_detail_page(name, node_name)
+        sleep(5)
         self.click_action(node_name, "热迁移")
         sleep(2)
 
