@@ -515,6 +515,11 @@ class TestVPCNetwork:
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vip, connected=False)
 
+    @pytest.mark.parametrize("vm", [{
+        "network": {
+            "networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]
+        }
+    }], indirect=True)
     @allure.title("虚拟IP-绑定公网IP及云外连通性验证")
     def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, vip, vm, ssh_vm, ssh_host):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""
