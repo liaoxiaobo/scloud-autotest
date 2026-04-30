@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+from sugon_web.common.playwright import expect
 from sugon_web.common.base import BasePage, submenu
 
 
@@ -262,18 +263,21 @@ class VpcMixin(BasePage):
     def subnet_edit(self, subnet_name, new_name=None, new_desc=None, new_available_ip=None, new_dns=None):
         """在VPC详情页的子网tab页中修改子网"""
         self.click_action(subnet_name, "修改")
+        dialog = self.get_by_role("dialog", name="修改子网")
+        name_input = dialog.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox")
+        expect(name_input).to_have_value(subnet_name, timeout=10000)
 
         if new_name is not None:
-            self.locator("div").filter(has_text=re.compile(r"^子网名称$")).get_by_role("textbox").fill(new_name)
+            name_input.fill(new_name)
 
         if new_desc is not None:
-            self.locator("div").filter(has_text=re.compile(r"^描述")).get_by_role("textbox").fill(new_desc)
+            dialog.locator("div").filter(has_text=re.compile(r"^描述")).get_by_role("textbox").fill(new_desc)
 
         if new_available_ip is not None:
-            self.get_by_role("textbox", name="选填（默认子网内全部IP可用）").fill(new_available_ip)
+            dialog.get_by_role("textbox", name="选填（默认子网内全部IP可用）").fill(new_available_ip)
 
         if new_dns is not None:
-            self.get_by_role("textbox", name="选填(默认:114.114.114.114)").fill(new_dns)
+            dialog.get_by_role("textbox", name="选填(默认:114.114.114.114)").fill(new_dns)
 
         self.dialog_confirm.click()
 
