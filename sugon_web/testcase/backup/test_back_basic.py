@@ -112,7 +112,7 @@ class TestBackupBasic:
             backup_page.goto_service('备份')
             backup_page.backup_edit_vm(task_name, vm_names[-1])
             backup_page.assert_popup_success("管理云服务器执行成功")
-            backup_page.wait_for_source_complete(task_name)
+            backup_page.wait_for_source_complete(task_name, loading_timeout=15)
             assert backup_page.get_row_data(task_name).get("保护实例数") == "2"
 
         with allure_step_log("步骤2: 任务移除云服务器"):
@@ -311,7 +311,7 @@ class TestResumeCreate:
         with allure_step_log("步骤6: 重置搜索条件"):
             backup_page.btn_reset.click()
             assert backup_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
-            backup_page.assert_list_contain(re_task, column_name="任务名", exact_match=False)
+            backup_page.assert_backup_task_exists(re_task)
 
     @allure.title("恢复任务-恢复场景")
     @pytest.mark.parametrize("data", load_data('test_resume_scenarios', 'test_backup.yaml'))

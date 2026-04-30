@@ -1526,6 +1526,7 @@ class BackUpPage(BasePage):
         allocation_mode = config.get("分配模式", {"方式": "自动分配"})
         # 选择网络
         self.get_by_placeholder("请选择网络").click()
+        self.page.wait_for_timeout(1000) # 等待网络列表加载完成, 渲染稳定
         locs = [
             self.get_by_text("Autotest", exact=True).nth(1),
             self.locator("li").filter(has_text=re.compile(rf"^{network}$")).nth(1)

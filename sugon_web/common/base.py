@@ -953,30 +953,27 @@ class BasePage(Playwright):
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
 
-    def wait_for_source_complete(self, name, timeout=180):
+    def wait_for_source_complete(self, name, loading_timeout=10, complete_timeout=180):
         """等待资源状态加载完成
 
         Args:
             name: 资源名称
-            timeout: 超时时间（秒）
+            loading_timeout: 等待loading_selector出现的超时时间（秒），默认10秒
+            complete_timeout: 等待loading_selector消失的超时时间（秒），默认180秒
         """
-        timeout_ms = timeout * 1000
+        loading_timeout_ms = loading_timeout * 1000
+        complete_timeout_ms = complete_timeout * 1000
         target_row = self.get_row_by_name(name)
-        # 在该行内定位 .cloud-icon-content 元素
         loading_icon = target_row.locator(".icon-dengdaizhong")
         try:
-            # 等待 loading_icon 可见（10秒超时）
-            loading_icon.wait_for(state="visible", timeout=10000)
+            loading_icon.wait_for(state="visible", timeout=loading_timeout_ms)
             text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
-            # 如果到达这里，说明 loading_icon 出现了，等待其消失
-            expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
+            expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
             self.logger.info(f"{name}资源中间态 {text} 出现并消失")
         except:
-            # loading_icon 未出现或消失超时，静默处理（这是正常情况）
             self.logger.info(f"{name}资源中间态完成，当前无任务状态")
 
-        # 等待该元素不可见
-        expect(loading_icon).not_to_be_visible(timeout=timeout_ms)
+        expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
 
     def wait_for_operation_complete(self, timeout=60):
         """等待操作完成

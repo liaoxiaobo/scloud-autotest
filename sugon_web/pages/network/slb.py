@@ -882,10 +882,6 @@ class SlbMixin(BasePage):
             slb_name: 负载均衡名称
             lb_name: 待删除的监听器名称
         """
-        # 进入SLB详情页并切换到监听器Tab
-        # self.get_by_role("row", name=slb_name).locator("a").click()
-        # self.get_by_role("tab", name="监听器").evaluate("node => node.click()")
-
         # 找到目标监听器项并点击删除图标
         target_item = self.locator("div.listener-left-list-item").filter(has_text=lb_name)
         target_item.locator(".el-icon-delete").click()
