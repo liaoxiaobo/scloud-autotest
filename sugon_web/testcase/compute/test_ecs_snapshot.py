@@ -110,6 +110,7 @@ class TestECSS:
         with allure_step_log("步骤2: 虚机还原快照"):
 
             # 还原快照
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.ecss_restore(ecss["name"])
             ecs_page.assert_popup_success(f"{vm['name']}实例还原快照成功")
 

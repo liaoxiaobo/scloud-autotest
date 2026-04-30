@@ -621,9 +621,9 @@ class TestAclBatchScenario:
             # 规则1: TCP
             vpc_page.acl_rule_create(acl_name, direction="入方向", protocol="TCP", source_ip=cidr_a, source_port="8081", dest_ip=cidr_b, dest_port="8080-8090")
             # 规则2: UDP
-            vpc_page.acl_rule_create(acl_name, direction="入方向", protocol="UDP", source_ip=cidr_a, source_port="8082", dest_ip=cidr_b, dest_port="1-65535", detail_mode=True)
+            vpc_page.acl_rule_create(acl_name, direction="入方向", protocol="UDP", source_ip=cidr_a, source_port="8082", dest_ip=cidr_b, dest_port="1-65535")
             # 规则3: ICMP
-            vpc_page.acl_rule_create(acl_name, direction="入方向", protocol="ICMP", source_ip=cidr_a, dest_ip=cidr_b, detail_mode=True)
+            vpc_page.acl_rule_create(acl_name, direction="入方向", protocol="ICMP", source_ip=cidr_a, dest_ip=cidr_b)
 
         with allure_step_log("步骤2: vm2启动 TCP (8080) 和 UDP (8888) 服务"):
             ssh_vm.connect(vm2_mfip)

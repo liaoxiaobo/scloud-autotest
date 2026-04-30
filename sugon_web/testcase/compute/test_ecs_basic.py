@@ -428,7 +428,7 @@ class TestECSBasic:
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
             # ecs_page.assert_status(name, "创建镜像中")
-            ecs_page.assert_status(name, timeout=600, refresh=True)
+            ecs_page.wait_for_source_complete(name)
             ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", timeout=600, refresh=True)
 
@@ -700,6 +700,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤2: 验证{operation}结果"):
             for name, ecs_id in zip(names, ecs_ids):
+                ecs_page.wait_for_source_complete(name, loading_timeout=15)
                 ecs_page.assert_status(name, status=status)
                 stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
                 ssh_host.assert_guest_fields(ecs_id, {"vm_state": vm_state}, f"批量操作{operation}失败")
@@ -735,7 +736,7 @@ class TestECSBasic:
         if migration_started:
             with allure_step_log("步骤3: 验证迁移结果（节点充足场景）"):
                 for name in names:
-                    ecs_page.wait_for_source_complete(name, timeout=90)
+                    ecs_page.wait_for_source_complete(name, complete_timeout=90)
                     ecs_page.assert_status(name)
 
                 for name, ecs_id in zip(names, ecs_ids):
