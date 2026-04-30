@@ -8,7 +8,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.epic('网络服务')
 @allure.feature('负载均衡')
 @allure.story('基本功能验证')
-class TestSlbCreate:
+class TestSlbBasic:
 
     @allure.title("SLB创建: {params[case_desc]}")
     @pytest.mark.parametrize("params", load_data("test_slb_create_orthogonal", "test_slb.yaml"))
@@ -195,6 +195,10 @@ class TestSlbCreate:
         with allure_step_log("步骤4: 校验访问控制关闭结果"):
             vpc_page.assert_lb_basic_info("允许所有IP访问")
 
+@allure.epic('网络服务')
+@allure.feature('负载均衡')
+@allure.story('基本功能验证')
+class TestSlbDelete:
     @allure.title("SLB删除前存在监听器时删除失败，删除监听器后可删除SLB")
     def test_slb_delete_with_lb(self, vpc_page, slb):
         lb_name = f"lb-tcp-{random_data()}"

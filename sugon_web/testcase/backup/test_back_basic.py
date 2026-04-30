@@ -311,7 +311,7 @@ class TestResumeCreate:
         with allure_step_log("步骤6: 重置搜索条件"):
             backup_page.btn_reset.click()
             assert backup_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
-            backup_page.assert_list_contain(re_task, column_name="任务名", exact_match=False)
+            backup_page.assert_backup_task_exists(re_task)
 
     @allure.title("恢复任务-恢复场景")
     @pytest.mark.parametrize("data", load_data('test_resume_scenarios', 'test_backup.yaml'))

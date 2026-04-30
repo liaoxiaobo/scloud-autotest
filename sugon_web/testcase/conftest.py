@@ -667,10 +667,11 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
     """清理 vm fixture 创建的虚机。"""
     if not vm_names:
         return
-    ecs_page.goto_service("弹性云服务器")
-    ecs_page.ecs_remove(vm_names)
-    ecs_page.ecs_delete(vm_names)
-    ecs_page.assert_deleted(vm_names)
+    with allure_step_log(f"清理虚机资源"):
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.ecs_remove(vm_names)
+        ecs_page.ecs_delete(vm_names)
+        ecs_page.assert_deleted(vm_names)
 
 
 @pytest.fixture(scope="class")

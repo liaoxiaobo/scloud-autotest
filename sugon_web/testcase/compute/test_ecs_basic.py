@@ -428,7 +428,7 @@ class TestECSBasic:
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
             # ecs_page.assert_status(name, "创建镜像中")
-            ecs_page.assert_status(name, timeout=600, refresh=True)
+            ecs_page.wait_for_source_complete(name)
             ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", timeout=600, refresh=True)
 
