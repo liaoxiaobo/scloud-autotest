@@ -437,11 +437,11 @@ class TestVPCNetwork:
         with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
 
             # 绑定第一台虚机的Mfip
-            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip)
+            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip, exact=False)
             ops_page.assert_popup_success()
 
             # 绑定第二台虚机的Mfip
-            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip)
+            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip, exact=False)
             ops_page.assert_popup_success()
 
             # 搜索并获取两台虚机的Mfip地址
