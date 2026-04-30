@@ -956,6 +956,7 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
         """
         if isinstance(names, list):
             # 批量操作模式
+            self.search(names[0][:-2])
             self.select_rows_by_names(names)
 
             # 点击更多操作按钮
@@ -965,6 +966,7 @@ class EcsMixin(DrawerSelectMixin, OpsPage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
+            self.search(names)
             self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
