@@ -11,7 +11,7 @@ class OpsPage(BasePage):
 
     def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
         """绑定 MFIP 并返回管理 IP。"""
-        self.goto_service("网络设施")
+        self.goto_service("基础设施")
         self.mfip_create(project, network, ip)
         self.assert_popup_success("执行成功")
         self.mfip_search(ip)

@@ -804,8 +804,8 @@ class BasePage(Playwright):
                 f"以下资源删除验证失败（可能仍然存在于列表中）: {', '.join(failed_resources)}"
             )
 
-    def _get_interactive_row(self, row: Locator) -> Locator:
-        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
+    def _get_interactive_row(self, row: Locator, prefer: str = "right") -> Locator:
+        """获取可交互的行，优先返回 fixed 列层，避免点击到被隐藏的主表格单元格"""
         try:
             # 1. 获取当前行在所属 tbody 中的物理索引
             row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
@@ -820,13 +820,101 @@ class BasePage(Playwright):
             """)
 
             if table_index != -1:
-                # 3. 在对应的表格内根据索引定位固定列中心对应的行
-                fixed_right = self.locator(".el-table").nth(table_index).locator(".el-table__fixed-right .el-table__row").nth(row_index)
-                if fixed_right.count() > 0 and fixed_right.is_visible():
-                    return fixed_right
+                table = self.locator(".el-table").nth(table_index)
+                layer_selectors = {
+                    "left": [".el-table__fixed .el-table__row"],
+                    "right": [".el-table__fixed-right .el-table__row"],
+                    "auto": [".el-table__fixed-right .el-table__row", ".el-table__fixed .el-table__row"],
+                }
+
+                for selector in layer_selectors.get(prefer, layer_selectors["right"]):
+                    fixed_row = table.locator(selector).nth(row_index)
+                    if fixed_row.count() > 0 and fixed_row.is_visible():
+                        return fixed_row
         except Exception as e:
             self.logger.debug(f"通过索引获取可交互行时出错: {e}")
         return row
+
+    def _set_row_checkbox_state(self, row: Locator, checked: bool = True) -> dict:
+        """基于当前命中的行原子地定位并勾选复选框，避免刷新时 locator 重新绑定到其他行。"""
+        return row.evaluate(
+            """
+            (el, targetChecked) => {
+                const table = el.closest('.el-table');
+                const rowIndex = el.parentNode ? Array.from(el.parentNode.children).indexOf(el) : -1;
+
+                let checkboxRow = el;
+                if (table && rowIndex !== -1) {
+                    const fixedRows = table.querySelectorAll('.el-table__fixed .el-table__body-wrapper tbody .el-table__row');
+                    if (fixedRows.length > rowIndex) {
+                        checkboxRow = fixedRows[rowIndex];
+                    }
+                }
+
+                const input = checkboxRow.querySelector("input[type='checkbox']");
+                const inputWrapper = checkboxRow.querySelector('.el-checkbox__input');
+                const clickTarget =
+                    checkboxRow.querySelector('.el-checkbox__inner') ||
+                    checkboxRow.querySelector('.el-checkbox') ||
+                    input;
+
+                if (!clickTarget) {
+                    return {
+                        found: false,
+                        checked: false,
+                        rowText: (el.innerText || '').trim(),
+                        checkboxRowText: (checkboxRow.innerText || '').trim(),
+                    };
+                }
+
+                const isChecked = () => {
+                    if (input) {
+                        return !!input.checked;
+                    }
+                    return !!(inputWrapper && inputWrapper.classList.contains('is-checked'));
+                };
+
+                if (isChecked() !== targetChecked) {
+                    clickTarget.click();
+                }
+
+                return {
+                    found: true,
+                    checked: isChecked(),
+                    rowText: (el.innerText || '').trim(),
+                    checkboxRowText: (checkboxRow.innerText || '').trim(),
+                };
+            }
+            """,
+            checked,
+        )
+
+    def _is_row_checked(self, row: Locator) -> bool:
+        """读取当前命中的行是否已勾选。"""
+        return bool(row.evaluate(
+            """
+            (el) => {
+                const table = el.closest('.el-table');
+                const rowIndex = el.parentNode ? Array.from(el.parentNode.children).indexOf(el) : -1;
+
+                let checkboxRow = el;
+                if (table && rowIndex !== -1) {
+                    const fixedRows = table.querySelectorAll('.el-table__fixed .el-table__body-wrapper tbody .el-table__row');
+                    if (fixedRows.length > rowIndex) {
+                        checkboxRow = fixedRows[rowIndex];
+                    }
+                }
+
+                const input = checkboxRow.querySelector("input[type='checkbox']");
+                if (input) {
+                    return !!input.checked;
+                }
+
+                const inputWrapper = checkboxRow.querySelector('.el-checkbox__input');
+                return !!(inputWrapper && inputWrapper.classList.contains('is-checked'));
+            }
+            """
+        ))
 
     def _btn_operation(self, name):
         """公共元素: 资源操作按钮"""
@@ -1297,12 +1385,33 @@ class BasePage(Playwright):
             names: 资源名称列表
         """
 
-        # 选择指定的行
+        if isinstance(names, str):
+            names = [names]
+
+        # 列表会自动刷新，勾选时需要每次重新定位目标行和 fixed-left 复选框。
         for name in names:
-            loc = self.get_by_role("row", name=name).locator("label span").last # 存在挂载云盘的虚机nth(1)方法不能勾选
-            if not loc.is_checked():
-                loc.click()
-                self.logger.info(f"勾选资源 '{name}'")
+            last_error = None
+            for attempt in range(3):
+                try:
+                    row = self.get_row_by_name(name)
+                    result = self._set_row_checkbox_state(row, checked=True)
+                    if not result.get("found"):
+                        raise AssertionError(f"资源 '{name}' 未找到可用的复选框")
+
+                    # 再次按名称回读，确保被勾选的仍是目标资源，而不是刷新后重排的其它行。
+                    verified_row = self.get_row_by_name(name)
+                    if not self._is_row_checked(verified_row):
+                        raise AssertionError(f"资源 '{name}' 勾选后状态未生效")
+
+                    self.logger.info(f"勾选资源 '{name}'")
+                    break
+                except Exception as e:
+                    last_error = e
+                    self.logger.warning(f"勾选资源 '{name}' 第 {attempt + 1} 次尝试失败，可能列表正在刷新: {e}")
+                    self.wait_for_page_ready()
+                    self.page.wait_for_timeout(300)
+            else:
+                raise AssertionError(f"勾选资源 '{name}' 失败") from last_error
 
     def get_row_data_by_locator(self, loc):
         """获取指定行数据"""

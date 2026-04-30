@@ -308,7 +308,7 @@ def ecs_page(page):
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    ops_page.goto_service('网络设施')
+    # ops_page.goto_service('网络设施')
     return ops_page
 
 def _get_vm_fixture_params(request: pytest.FixtureRequest) -> VmFixtureParams:
@@ -655,7 +655,7 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            ops_page.goto_service("网络设施")
+            # ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
