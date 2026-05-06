@@ -28,6 +28,7 @@ class TestEVSS:
         with allure_step_log("步骤3: 删除云硬盘快照"):
             evs_page.evss_delete(snapshot_name)
             evs_page.assert_deleted(snapshot_name)
+            evs_page.page.wait_for_timeout(3000)  # 硬等待云盘解除其快照关联，解决删除云盘报错问题
 
     @allure.title("云硬盘快照-批量删除")
     def test_snapshot_batch_delete(self, evs_page, volume):
