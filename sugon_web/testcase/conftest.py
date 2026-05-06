@@ -785,10 +785,8 @@ def vm(
                 instance_config = _build_vm_instance_params(shared_params, instance_params)
                 base_name = random_data()
                 create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
-                if count != 1:
-                    raise ValueError("'vm.instances' items do not support basic.count > 1")
 
-                current_vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+                current_vm_names = _build_vm_fixture_names(base_name, count)
                 _create_vm_resources(
                     ecs_page=ecs_page,
                     create_request=create_request,

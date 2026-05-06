@@ -123,6 +123,7 @@ class VpcMixin(BasePage):
             self._input_dns.fill(dns)
 
         self.btn_submit.click()
+        self.logger.info(f"创建虚拟私有云成功, VPC: {name}, 子网: {subnet_name}, acl: {acl_policy}")
 
     @submenu("虚拟私有云")
     def vpc_delete(self, names):
@@ -213,6 +214,7 @@ class VpcMixin(BasePage):
             self._input_dns.fill(dns)
 
         self.dialog_confirm.click()
+        self.logger.info(f"vpc {vpc_name}新建子网: {subnet_name}, acl: {acl_policy}")
 
     @submenu("虚拟私有云")
     def subnet_create_in_detail(self, vpc_name, subnet_name, cidr, desc="",

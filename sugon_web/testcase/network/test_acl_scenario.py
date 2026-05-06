@@ -1,3 +1,4 @@
+import random
 import time
 
 import allure
@@ -22,10 +23,8 @@ ACL_VM_PAIR_PARAMS = {
 ACL_VM_4_INSTANCE_PARAMS = {
     "inject_dependencies": False,
     "instances": [
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+        {"basic": {"count": 2}, "network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"basic": {"count": 2}, "network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
     ],
 }
 @allure.epic('网络服务')
@@ -35,7 +34,7 @@ class TestAclAssociateSubnetAcl:
     @allure.title("网络ACL关联子网: 网络ACL列表关联子网")
     @pytest.mark.parametrize(
         "vpc",
-        [{"cidr": "10.242.1.0/24", "extra_subnets": [{"cidr": "10.242.2.0/24"}]}],
+        [{"cidr": f"10.{random.randint(10, 100)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(10, 100)}.2.0/24"}]}],
         indirect=True,
     )
     @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -74,7 +73,7 @@ class TestAclAssociateVpcAcl:
     @allure.title("网络ACL关联子网: VPC页面关联ACL策略")
     @pytest.mark.parametrize(
         "vpc",
-        [{"cidr": "10.243.1.0/24", "acl_policy": "@acl", "extra_subnets": [{"cidr": "10.243.2.0/24"}]}],
+        [{"cidr": f"10.{random.randint(101, 150)}.1.0/24", "acl_policy": "@acl", "extra_subnets": [{"cidr": f"10.{random.randint(101, 150)}.2.0/24"}]}],
         indirect=True,
     )
     @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -108,7 +107,7 @@ class TestAclAssociateVpcAcl:
 @allure.story('基本功能验证')
 @pytest.mark.parametrize(
     "vpc",
-    [{"cidr": "10.244.1.0/24", "extra_subnets": [{"cidr": "10.244.2.0/24", "acl_policy": "@acl"}]}],
+    [{"cidr": f"10.{random.randint(151, 200)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(151, 200)}.2.0/24", "acl_policy": "@acl"}]}],
     indirect=True,
 )
 @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -171,7 +170,7 @@ class TestAclSubnetAclReuse:
 @allure.story('基本功能验证')
 @pytest.mark.parametrize(
     "vpc",
-    [{"cidr": "10.246.1.0/24", "extra_subnets": [{"cidr": "10.246.2.0/24", "acl_policy": "@acl"}]}],
+    [{"cidr": f"10.{random.randint(201, 254)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(201, 254)}.2.0/24", "acl_policy": "@acl"}]}],
     indirect=True,
 )
 @pytest.mark.parametrize("vm", [ACL_VM_4_INSTANCE_PARAMS], indirect=True)
@@ -465,15 +464,15 @@ class TestAclRuleReuse:
 @allure.epic('网络服务')
 @allure.feature('网络安全-网络ACL')
 @allure.story('基本功能验证')
+@pytest.mark.parametrize(
+    "vpc",
+    [{"cidr": f"10.247.{random.randint(10, 100)}.0/24", "extra_subnets": [{"cidr": f"10.247.{random.randint(101, 150)}.0/24", "acl_policy": "@acl"}]}],
+    indirect=True,
+)
+@pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
 class TestAclBatchScenario:
 
     @allure.title("验证ACL出方向规则: 批量关闭和开启规则")
-    @pytest.mark.parametrize(
-        "vpc",
-        [{"cidr": "10.247.1.0/24", "extra_subnets": [{"cidr": "10.247.2.0/24", "acl_policy": "@acl"}]}],
-        indirect=True,
-    )
-    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
     def test_acl_outbound_rules_scenario(self, acl, vpc, vm, vpc_page, ssh_vm):
         """
         场景：
@@ -582,13 +581,7 @@ class TestAclBatchScenario:
             assert curl_success in res_8082, f"重新开启规则后，curl {vm1_ip}:8080 --local-port 8082 失败"
 
     @allure.title("验证ACL入方向规则: 批量开启和关闭规则")
-    @pytest.mark.parametrize(
-        "vpc",
-        [{"cidr": "10.248.1.0/24", "extra_subnets": [{"cidr": "10.248.2.0/24", "acl_policy": "@acl"}]}],
-        indirect=True,
-    )
-    @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
-    def test_acl_inbound_batch_op_scenario(self, acl, vpc, vm, vpc_page, ssh_vm, clean_acl_inbound_rules):
+    def test_acl_inbound_batch_op_scenario(self, acl, vpc, vm, vpc_page, ssh_vm):
         """
         场景：
         1. 存在ACL关联子网B，子网A无ACL。
