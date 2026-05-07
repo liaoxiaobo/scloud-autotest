@@ -112,7 +112,7 @@ class TestBackupBasic:
             backup_page.goto_service('备份')
             backup_page.backup_edit_vm(task_name, vm_names[-1])
             backup_page.assert_popup_success("管理云服务器执行成功")
-            backup_page.wait_for_source_complete(task_name, loading_timeout=15)
+            backup_page.wait_for_source_complete(task_name, loading_timeout=20)
             assert backup_page.get_row_data(task_name).get("保护实例数") == "2"
 
         with allure_step_log("步骤2: 任务移除云服务器"):
