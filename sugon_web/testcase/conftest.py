@@ -294,8 +294,9 @@ def volume(evs_page, request):
 
     yield volume
 
-    evs_page.evs_remove([volume["name"]])
-    evs_page.evs_delete([volume["name"]])
+    evs_page.evs_remove(volume["name"])
+    evs_page.assert_deleted(volume["name"])
+    evs_page.evs_delete(volume["name"])
     evs_page.assert_deleted(volume["name"])
 
 
