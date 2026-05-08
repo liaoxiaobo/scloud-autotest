@@ -284,11 +284,12 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤二：验证热迁移任务下发成功"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_status(node_name, status="迁移中")
-            xscale_page.assert_status(node_name, status="就绪")
+            xscale_page.assert_status(node_name, status="迁移中", refresh=True)
+            xscale_page.assert_status(node_name, status="就绪", refresh=True)
 
         with allure_step_log("步骤三：验证节点实际迁移到了新的物理机"):
-            new_host = db_util.get_backend_host(xscale_page, ssh_host, node_name)
+            backend_node_name = _build_xscale_gova_name(node_name)
+            new_host = db_util.get_backend_host(xscale_page, ssh_host, backend_node_name)
             assert new_host != old_host, f"热迁移前后物理机未变化，迁移前后均为: {old_host}"
             assert selected_host in new_host, f"期望迁移到 {selected_host}，实际迁移到 {new_host}"
 

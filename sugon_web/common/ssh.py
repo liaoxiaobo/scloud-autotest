@@ -284,6 +284,7 @@ class SSH:
     def find_mfip(self, fixed_ip: str, host: str = None) -> str:
         """
         通过 SDN mfip 接口查询 fixed_ip 对应的 mfip_address。
+        优先使用配置的 host 访问，若失败则回退到固定 VIP (100.126.255.250)。
 
         :param fixed_ip: 节点 fixed_ip 地址
         :param host: 控制台/SDN VIP，默认使用框架配置中的 host
@@ -293,6 +294,7 @@ class SSH:
         if not vip:
             raise ValueError("未传入 host，且配置中未找到 host，无法查询 mfip_address")
 
+        # 获取 token（使用集群内部服务地址，与外部 VIP 无关）
         token_command = (
             "curl -s -X POST "
             "-H 'Content-Type: application/json' "
@@ -309,24 +311,44 @@ class SSH:
         if not token:
             raise RuntimeError(f"获取 token 失败，响应内容: {token_response}")
 
-        mfip_command = (
-            f"curl -s 'http://{vip}:14830/sdn/v2.0/mfip/?per_page=10&fixed_ip={fixed_ip}&page=1' "
-            "-H 'accept: application/json' "
-            f"-H {shlex.quote(f'X-Auth-Token: {token}')} "
-            "--compressed --insecure"
-        )
-        mfip_response = self.run(mfip_command, check_rc=True)
-        try:
-            mfip_data = json.loads(mfip_response)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"查询 mfip 返回非 JSON 内容: {mfip_response}") from exc
+        # 构建 VIP 尝试列表：优先用配置的 VIP，失败后回退到固定 VIP
+        MFIP_FIXED_VIP = "100.126.255.250"
+        vips_to_try = [vip]
+        if vip != MFIP_FIXED_VIP:
+            vips_to_try.append(MFIP_FIXED_VIP)
 
-        mfip_address = self._find_json_value(mfip_data, "mfip_address")
-        if not mfip_address:
-            raise RuntimeError(f"未查询到 fixed_ip={fixed_ip} 对应的 mfip_address，响应内容: {mfip_response}")
+        last_error = None
+        for current_vip in vips_to_try:
+            try:
+                mfip_command = (
+                    f"curl -s 'http://{current_vip}:14830/sdn/v2.0/mfip/?per_page=10&fixed_ip={fixed_ip}&page=1' "
+                    "-H 'accept: application/json' "
+                    f"-H {shlex.quote(f'X-Auth-Token: {token}')} "
+                    "--compressed --insecure"
+                )
+                mfip_response = self.run(mfip_command, check_rc=True)
+                mfip_data = json.loads(mfip_response)
 
-        logger.info(f"查询到 fixed_ip '{fixed_ip}' 对应的 mfip_address: {mfip_address}")
-        return mfip_address
+                mfip_address = self._find_json_value(mfip_data, "mfip_address")
+                if not mfip_address:
+                    last_error = RuntimeError(
+                        f"使用 VIP {current_vip} 未查询到 fixed_ip={fixed_ip} 对应的 mfip_address，响应内容: {mfip_response}"
+                    )
+                    logger.warning(f"使用 VIP {current_vip} 未查询到 mfip_address，尝试下一个 VIP")
+                    continue
+
+                logger.info(
+                    f"查询到 fixed_ip '{fixed_ip}' 对应的 mfip_address: {mfip_address} (使用 VIP: {current_vip})")
+                return mfip_address
+
+            except Exception as exc:
+                last_error = exc
+                logger.warning(f"使用 VIP {current_vip} 查询 mfip 失败: {exc}，尝试下一个 VIP")
+                continue
+
+        raise RuntimeError(
+            f"所有 VIP {vips_to_try} 均无法查询到 fixed_ip={fixed_ip} 对应的 mfip_address"
+        ) from last_error
 
     def wait_resource_deleted(self, names, check_command, timeout=600, interval=5):
         """
