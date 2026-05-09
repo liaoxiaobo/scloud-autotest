@@ -19,7 +19,6 @@ def _do_clean_acl_rules(vpc_page, acl_name, direction):
     tab_name = f"{direction}规则"
     with allure_step_log(f"Fixture清理: acl规则{direction} {acl_name}"):
         try:
-            vpc_page.goto_service("网络ACL")
             vpc_page.goto_acl_detail(acl_name, tab_name=tab_name)
             while vpc_page.get_by_role("row").filter(has=vpc_page.get_by_text("删除", exact=True)).count() > 0:
                 vpc_page.acl_rule_delete(acl_name, direction=direction)

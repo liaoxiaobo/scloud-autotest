@@ -533,7 +533,6 @@ class TestVPCBasic:
         subnet_name = vpc['subnet_name']
 
         with allure_step_log("步骤1: 创建端口（自动分配）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name
@@ -569,7 +568,6 @@ class TestVPCBasic:
         logger.info(f"计划手动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤1: 创建端口（手动分配）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name,
@@ -600,7 +598,6 @@ class TestVPCBasic:
         logger.info(f"计划手动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤1: 创建端口（快速选择IP）"):
-            vpc_page.goto_service("虚拟私有云")
             vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name,
@@ -856,7 +853,6 @@ class TestVPCBasic:
         with allure_step_log("步骤4: 清理，删除该路由表规则"):
             vpc_page.route_rule_delete(dest_cidrs=new_dest_cidr)
             vpc_page.assert_deleted(new_dest_cidr)
-
 
 
 

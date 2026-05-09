@@ -328,7 +328,7 @@ class BasePage(Playwright):
             raise AssertionError(f"导航到服务 {service} 失败: {e}") from e
 
     def goto_submenu(self, submenu):
-        """公共方法: 切换当前服务页面的子菜单
+        """公共方法: 切换当前服务页面的子菜单。
 
         Args:
             submenu: 子菜单名称，如下：
@@ -339,6 +339,11 @@ class BasePage(Playwright):
                 - "弹性云服务器"
                 - "虚拟私有云"
         """
+        service_name = getattr(self, "service_name", None)
+        service_path = SERVICE_PATH_MAP.get(service_name) if service_name else None
+        if service_name and service_path and not self._is_current_service_path(service_path):
+            self.goto_service(service_name)
+
         # # 检查是否已经在目标子菜单页面上
         # try:
         #     # 查找当前激活的菜单项

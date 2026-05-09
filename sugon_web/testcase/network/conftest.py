@@ -11,28 +11,25 @@ from sugon_web.conftest import _create_logged_in_page
 
 @pytest.fixture(scope="function")
 def vpc_page(page):
-    """初始化虚拟私有云页面对象并导航至服务页面。
+    """初始化虚拟私有云页面对象。
 
-    本 fixture 用于创建 VpcPage 实例并自动导航到虚拟私有云服务页面，
-    为后续的 VPC 相关测试操作提供页面对象基础。
+    本 fixture 用于创建 VpcPage 实例，为后续的 VPC 相关测试操作提供页面对象基础。
 
     Args:
         page: Playwright 页面对象，由 pytest fixture 提供。
 
     Returns:
-        VpcPage: 已导航至虚拟私有云服务的页面对象实例。
+        VpcPage: 网络服务页面对象实例。
 
     Note:
         - scope 为 function 级别，每个测试函数创建独立的页面对象
-        - 页面导航在 fixture 内部完成，测试可直接使用返回的对象
+        - 页面导航按需由页面方法自身完成
 
     Example:
         def test_vpc_create(vpc_page):
             vpc_page.vpc_create(name="test-vpc", cidr="10.0.0.0/24")
     """
-    vpc_page = VpcPage(page)
-    vpc_page.goto_service('虚拟私有云')
-    return vpc_page
+    return VpcPage(page)
 
 
 def _build_vpc_create_kwargs(params=None):
@@ -98,7 +95,6 @@ def _create_vpc_resource(vpc_page, params=None):
     """创建VPC并返回资源信息。"""
     create_kwargs = _build_vpc_create_kwargs(params)
 
-    vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_create(**create_kwargs)
     vpc_page.assert_popup_success("创建虚拟私有云成功")
     vpc_page.assert_status(create_kwargs["name"])
@@ -166,7 +162,6 @@ def _build_vpc_batch_params(params, count):
 
 def _cleanup_vpc_resource(vpc_page, name):
     """清理VPC资源。"""
-    vpc_page.goto_service('虚拟私有云')
     vpc_page.vpc_delete(name)
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)
@@ -223,7 +218,6 @@ def vpc(browser_context, config, request):
     """
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
-    vpc_page.goto_service('虚拟私有云')
 
     params = _resolve_param_refs(getattr(request, 'param', {}) or {}, request)
     count = params.get("count", 1)
@@ -283,7 +277,6 @@ def eip(vpc_page, request):
     ip = params.get('ip')
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
-        vpc_page.goto_service("虚拟私有云")
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
 
     yield created_ips[0] if count == 1 else created_ips
@@ -292,7 +285,6 @@ def eip(vpc_page, request):
         if not created_ips:
             return
         try:
-            vpc_page.goto_service("虚拟私有云")
             current_ips = created_ips if isinstance(created_ips, list) else [created_ips]
             for current_ip in current_ips:
                 vpc_page.switch_eip_pool(pool)
@@ -413,7 +405,6 @@ def port(vpc_page, vpc, request):
     with allure_step_log(f"Setup: 创建 {count} 个端口"):
         for i, ip_obj in enumerate(selected_ips):
             port_ip = str(ip_obj)
-            vpc_page.goto_service("虚拟私有云")
 
             # 使用手动分配-快速选择模式创建端口
             vpc_page.port_create(
@@ -441,10 +432,7 @@ def port(vpc_page, vpc, request):
         with allure_step_log(f"Teardown: 清理端口 {created_ports}"):
             try:
                 # 确保在正确的页面（VPC详情 -> 端口Tab）
-                vpc_page.goto_service("虚拟私有云")
-                vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-
-                vpc_page.get_by_role("tab", name="端口").click()
+                vpc_page.goto_detail_page(vpc_name, tab_name="端口")
 
                 # 批量删除端口
                 vpc_page.port_delete(created_ports)
@@ -623,7 +611,6 @@ def _bind_security_groups_to_vms(ecs_page, vm_data, sg_names):
         return
 
     with allure_step_log(f"绑定安全组 {current_sgs} 到虚机 {[item['name'] for item in vm_items]}"):
-        ecs_page.goto_service("弹性云服务器")
         for item in vm_items:
             ecs_page.ecs_to_sg_tab(item["name"])
             bound_sgs = ecs_page.ecs_get_bound_security_groups()
@@ -641,7 +628,6 @@ def _unbind_security_groups_from_vms(ecs_page, vm_data, sg_names):
         return
 
     with allure_step_log(f"从虚机 {[item['name'] for item in vm_items]} 解绑安全组 {current_sgs}"):
-        ecs_page.goto_service("弹性云服务器")
         for item in vm_items:
             ecs_page.ecs_to_sg_tab(item["name"])
             bound_sgs = ecs_page.ecs_get_bound_security_groups()

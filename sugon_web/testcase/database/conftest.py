@@ -211,8 +211,6 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         xscale_page.assert_status(name, status="就绪", timeout=1500)
 
     with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
-        xscale_page.goto_service('xscale')
-        xscale_page.goto_submenu('实例管理')
         node_name = f"{name}-cn-0"
         xscale_page.goto_detail_page(name)
         row_data = xscale_page.get_row_data(node_name)
