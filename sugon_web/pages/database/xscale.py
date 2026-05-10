@@ -559,6 +559,7 @@ class XScalePage(BasePage):
         """
         self.goto_detail_page(instance_name)
         self.get_by_text("计算节点缩容", exact=True).click()
+        self._get_dialog("节点缩容").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def restart_compute_nodes(self, instance_name: str) -> list[str]:
@@ -612,6 +613,7 @@ class XScalePage(BasePage):
         """
         self.goto_detail_page(instance_name)
         self.get_by_text("存储节点缩容", exact=True).click()
+        self._get_dialog("节点缩容").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def restart_storage_nodes(self, instance_name: str) -> list[str]:

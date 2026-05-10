@@ -195,8 +195,8 @@ def mongodb(browser_context, config):
 
 
 @pytest.fixture(scope="class")
-def xscale(browser_context, config, ssh_host):
-    """创建一个供整个测试类使用的XScale实例对象"""
+def xscale(browser_context, config, ssh_host, ssh_vm):
+    """创建一个供整个测试类使用的XScale实例对象，并预连接后端计算节点。"""
     page = _create_logged_in_page(browser_context, config)
     xscale_page = XScalePage(page)
     name = f"xscale-{random_data()}"
@@ -209,6 +209,16 @@ def xscale(browser_context, config, ssh_host):
         xscale_page.assert_popup_success()
         xscale_page.assert_list_contain(name)
         xscale_page.assert_status(name, status="就绪", timeout=1500)
+
+    with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
+        node_name = f"{name}-cn-0"
+        xscale_page.goto_detail_page(name)
+        row_data = xscale_page.get_row_data(node_name)
+        fixed_ip = row_data.get("内网IP")
+        assert fixed_ip, f"未在节点 {node_name} 详情行中获取到内网IP，行数据: {row_data}"
+        mfip = ssh_host.find_mfip(fixed_ip)
+        ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
+        logger.info(f"后端连接成功: {name} -> {mfip}")
 
     yield data
 

@@ -386,7 +386,6 @@ class SgMixin(BasePage):
 
     def sg_rule_restore_defaults(self, sg_name):
         """恢复安全组规则到默认状态 (出口 IPv4 所有, 出口 IPv6 所有)"""
-        # self.goto_service("安全组")
         self.goto_sg_detail(sg_name)
 
         # 批量删除所有现有规则(当前实现只删除第一页的规则)
@@ -395,7 +394,7 @@ class SgMixin(BasePage):
             self.btn_batch_delete.click()
             self.dialog_confirm.click()
             self.logger.info(f"已批量清理 {sg_name} 的所有现有规则")
-            rules = self.sg_get_all_rules(sg_name)
+            rules = self.sg_get_all_rules()
             assert len(rules) == 0, "安全组规则列表未全部删除"
         else:
             self.logger.info(f"安全组 {sg_name} 当前无规则，无需清理")
@@ -422,10 +421,7 @@ class SgMixin(BasePage):
 
     def _get_rules_data(self, sg_name):
         """获取指定安全组的所有规则"""
-        # self.goto_service("安全组")
-        self.goto_sg_detail(sg_name)
-        return self.sg_get_all_rules()
-
+        return self.sg_get_all_rules(sg_name)
 
     def sg_get_all_rules(self, sg_name=None):
         """获取安全组规则详情
@@ -439,7 +435,6 @@ class SgMixin(BasePage):
         """
         # 如果指定了安全组名称，先导航到详情页
         if sg_name:
-            # self.goto_service("安全组")
             self.goto_sg_detail(sg_name)
 
         rules = []

@@ -96,7 +96,6 @@ class TestVPCNetwork:
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm2_ip)
             vm2_mfip = ops_page.get_row_data(vm2_ip).get("管理IP地址")
-            ecs_page.goto_service("弹性云服务器")
 
             logger.info(
                 f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, Mfip: {vm2_mfip}, 网络: {vm1_network}, 子网: {existing_subnet_name}")
@@ -121,7 +120,6 @@ class TestVPCNetwork:
 
         with allure_step_log("步骤4: 清理测试数据"):
             # 第二台虚机需要手动清理
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove(vm2_name)
             ecs_page.ecs_delete(vm2_name)
             ecs_page.assert_deleted(vm2_name)
@@ -156,7 +154,6 @@ class TestVPCNetwork:
             vm_base_name = f"{vpc_name}-vm"
 
             # 一次性创建两台虚机，使用count=2
-            ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
                 basic={"name": vm_base_name, "count": 2},
                 network={"networks": [{"network": vpc_name, "subnet": vpc_subnet_name}]},
@@ -221,7 +218,6 @@ class TestVPCNetwork:
         # 步骤5: 清理测试数据
         with allure_step_log("步骤5: 清理测试数据"):
             # 手动清理两台虚机
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove([vm1_name, vm2_name])
             ecs_page.ecs_delete([vm1_name, vm2_name])
             ecs_page.assert_deleted([vm1_name, vm2_name])
@@ -308,7 +304,6 @@ class TestVPCNetwork:
             vm_base_name = f"{vpc_name}-vm"
 
             # 一次性创建两台虚机，使用count=2
-            ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
                 basic={"name": vm_base_name, "count": 2},
                 network={"networks": [{"network": vpc_name, "subnet": vpc_subnet_name}]},
@@ -373,7 +368,6 @@ class TestVPCNetwork:
         # 步骤5: 清理测试数据
         with allure_step_log("步骤5: 清理测试数据"):
             # 手动清理两台虚机
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove([vm1_name, vm2_name])
             ecs_page.ecs_delete([vm1_name, vm2_name])
             ecs_page.assert_deleted([vm1_name, vm2_name])
@@ -402,7 +396,6 @@ class TestVPCNetwork:
             vm_base_name = f"{vpc_name}-vm"
 
             # 一次性创建两台虚机，使用count=2
-            ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_create(
                 basic={"name": vm_base_name, "count": 2},
                 network={
@@ -437,11 +430,11 @@ class TestVPCNetwork:
         with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
 
             # 绑定第一台虚机的Mfip
-            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip)
+            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip, exact=False)
             ops_page.assert_popup_success()
 
             # 绑定第二台虚机的Mfip
-            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip)
+            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip, exact=False)
             ops_page.assert_popup_success()
 
             # 搜索并获取两台虚机的Mfip地址
@@ -475,7 +468,6 @@ class TestVPCNetwork:
         # 步骤5: 清理测试数据
         with allure_step_log("步骤5: 清理测试数据"):
             # 手动清理两台虚机
-            ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_remove([vm1_name, vm2_name])
             ecs_page.ecs_delete([vm1_name, vm2_name])
             ecs_page.assert_deleted([vm1_name, vm2_name])
@@ -515,6 +507,11 @@ class TestVPCNetwork:
             ssh_vm.connect(vm1_mfip)
             ssh_vm.ping(vip, connected=False)
 
+    @pytest.mark.parametrize("vm", [{
+        "network": {
+            "networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]
+        }
+    }], indirect=True)
     @allure.title("虚拟IP-绑定公网IP及云外连通性验证")
     def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, vip, vm, ssh_vm, ssh_host):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""

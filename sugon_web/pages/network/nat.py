@@ -13,7 +13,7 @@ class NatMixin(BasePage):
     @submenu("NAT网关")
     def nat_create(self, name, vpc_name, public_ip_pool="public_net(基础版)", eip=None, desc=""):
         """创建NAT网关"""
-        self.get_by_text("新建").click()
+        self.btn_create.click()
 
         self.locator("form div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(name)
 

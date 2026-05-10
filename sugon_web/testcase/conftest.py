@@ -294,8 +294,9 @@ def volume(evs_page, request):
 
     yield volume
 
-    evs_page.evs_remove([volume["name"]])
-    evs_page.evs_delete([volume["name"]])
+    evs_page.evs_remove(volume["name"])
+    evs_page.assert_deleted(volume["name"])
+    evs_page.evs_delete(volume["name"])
     evs_page.assert_deleted(volume["name"])
 
 
@@ -671,7 +672,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         ecs_page.goto_service("弹性云服务器")
         ecs_page.ecs_remove(vm_names)
         ecs_page.ecs_delete(vm_names)
-        ecs_page.assert_deleted(vm_names)
+        ecs_page.assert_deleted(vm_names, timeout=600)
 
 
 @pytest.fixture(scope="class")

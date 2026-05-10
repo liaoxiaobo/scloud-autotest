@@ -124,6 +124,7 @@ class TestECSS:
             else:
                 ecs_page.assert_row_contains(vm['name'], ecss["name"])
             # ecs_page.assert_row_contains(vm['name'], "当前无任务")
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.assert_status(vm['name'])
             # ecs_page.wait_for_source_complete(vm['name'])
             # assert data["镜像名称"] == ecss["name"]

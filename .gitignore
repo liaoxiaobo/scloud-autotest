@@ -143,3 +143,6 @@ screenshots
 .DS_Store
 environment.properties
 .vscode/
+
+# Claude Code local settings
+.claude/settings.local.json

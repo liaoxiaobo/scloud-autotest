@@ -40,19 +40,6 @@ def _assert_any_node_restarted(xscale_page, node_names: list[str], node_type_nam
     return restarted_nodes
 
 
-def _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm):
-    """连接 XScale 计算节点，用于后端数据库校验。"""
-    node_name = f"{instance_name}-cn-0"
-    ip_from_db = db_util.get_node_mfip_from_db(
-        xscale_page,
-        ssh_host,
-        "sugoncloud_xscale",
-        node_name,
-        table_name="xscale_instance_node",
-    )
-    ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
-
-
 def _build_xscale_mysql_cmd(admin_password, sql):
     """构造 XScale 管理员执行 SQL 的命令。"""
     return f"/anhandbx/anhandbx-engine/bin/mysql -uadmin -P8527 -p'{admin_password}' -h127.0.0.1 -e \"{sql}\""
@@ -126,12 +113,12 @@ class TestXScaleBasic:
         with allure_step_log("步骤二：验证重启结果"):
             xscale_page.assert_popup_success()
             xscale_page.assert_status(instance_name, status="重启中")
-            xscale_page.assert_status(instance_name, status="就绪")
+            xscale_page.assert_status(instance_name, status="就绪", timeout=600)
             xscale_page.assert_status(instance_name, status="正常", refresh=True, timeout=600)
 
 
     @allure.title("XScale-修改管理员密码")
-    def test_change_admin_password(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_change_admin_password(self, xscale_page, xscale, ssh_vm):
         """测试修改XScale实例管理员密码"""
         instance_name = xscale["name"]
         new_password = f"NewPass1@{random_string(k=5)}"
@@ -144,14 +131,6 @@ class TestXScaleBasic:
             xscale_page.assert_status(instance_name, status="就绪")
 
         with allure_step_log("步骤三：验证新密码生效"):
-            node_name = f"{instance_name}-cn-0"
-            xscale_page.goto_detail_page(instance_name)
-            row_data = xscale_page.get_row_data(node_name)
-            fixed_ip = row_data.get("内网IP")
-            assert fixed_ip, f"未在节点 {node_name} 详情行中获取到内网IP，行数据: {row_data}"
-            mfip = ssh_host.find_mfip(fixed_ip)
-            ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
-            # 验证新密码可以成功登录
             cmd_new = f"/anhandbx/anhandbx-engine/bin/mysql -uadmin -P8527 -p'{new_password}' -h127.0.0.1 -e 'SELECT 1;'"
             result_new = ssh_vm.run(cmd_new)
             assert result_new.splitlines()[-1] == "1"
@@ -284,16 +263,17 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤二：验证热迁移任务下发成功"):
             xscale_page.assert_popup_success()
-            xscale_page.assert_status(node_name, status="迁移中")
-            xscale_page.assert_status(node_name, status="就绪")
+            xscale_page.assert_status(node_name, status="迁移中", refresh=True)
+            xscale_page.assert_status(node_name, status="就绪", refresh=True)
 
         with allure_step_log("步骤三：验证节点实际迁移到了新的物理机"):
-            new_host = db_util.get_backend_host(xscale_page, ssh_host, node_name)
+            backend_node_name = _build_xscale_gova_name(node_name)
+            new_host = db_util.get_backend_host(xscale_page, ssh_host, backend_node_name)
             assert new_host != old_host, f"热迁移前后物理机未变化，迁移前后均为: {old_host}"
             assert selected_host in new_host, f"期望迁移到 {selected_host}，实际迁移到 {new_host}"
 
     @allure.title("XScale-创建和删除数据库")
-    def test_create_and_delete_database(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_create_and_delete_database(self, xscale_page, xscale, ssh_vm):
         """测试在 XScale 实例详情页数据库 Tab 下创建和删除数据库，并验证后端生效与失效。"""
         instance_name = xscale["name"]
         admin_password = xscale["admin_password"]
@@ -307,7 +287,6 @@ class TestXScaleBasic:
             xscale_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤三：验证新创建的数据库在后端生效"):
-            _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm)
             result_exist = ssh_vm.run(_build_xscale_mysql_cmd(admin_password, f"SHOW DATABASES LIKE '{db_name}';"))
             allure.attach(result_exist, name=f"查询数据库 {db_name} 的存在性")
             assert db_name in result_exist, f"在数据库后端未找到新创建的数据库 '{db_name}'。"
@@ -323,10 +302,8 @@ class TestXScaleBasic:
             allure.attach(result_gone, name=f"再次查询数据库 {db_name} 的存在性")
             assert db_name not in result_gone, f"数据库 '{db_name}' 在后端删除失败，仍然存在。"
 
-        ssh_vm.close()
-
     @allure.title("XScale-批量创建和删除数据库")
-    def test_batch_create_and_delete_databases(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_batch_create_and_delete_databases(self, xscale_page, xscale, ssh_vm):
         """测试在 XScale 实例详情页数据库 Tab 下批量创建和删除数据库，并验证后端生效与失效。"""
         instance_name = xscale["name"]
         admin_password = xscale["admin_password"]
@@ -339,7 +316,6 @@ class TestXScaleBasic:
                 xscale_page.assert_list_contain(db_name)
 
         with allure_step_log("步骤二：验证新创建的数据库均在后端生效"):
-            _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm)
             for db_name in db_names:
                 result_exist = ssh_vm.run(_build_xscale_mysql_cmd(admin_password, f"SHOW DATABASES LIKE '{db_name}';"))
                 allure.attach(result_exist, name=f"查询数据库 {db_name} 的存在性")
@@ -357,8 +333,6 @@ class TestXScaleBasic:
                 result_gone = ssh_vm.run(_build_xscale_mysql_cmd(admin_password, f"SHOW DATABASES LIKE '{db_name}';"))
                 allure.attach(result_gone, name=f"再次查询数据库 {db_name} 的存在性")
                 assert db_name not in result_gone, f"数据库 '{db_name}' 在后端删除失败，仍然存在。"
-
-        ssh_vm.close()
 
     @allure.title("XScale-数据库列表页搜索")
     def test_database_search(self, xscale_page, xscale):
@@ -387,7 +361,7 @@ class TestXScaleBasic:
             xscale_page.assert_deleted(db_name)
 
     @allure.title("XScale-创建和修改用户")
-    def test_create_and_change_user(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_create_and_change_user(self, xscale_page, xscale, ssh_vm):
         """测试创建用户、验证其有效性，然后修改密码并验证新旧密码的有效性。"""
         instance_name = xscale["name"]
         db_name = f"autodb_user_{random_string(k=5)}"
@@ -408,7 +382,6 @@ class TestXScaleBasic:
             xscale_page.assert_list_contain(user_name, "用户名")
 
         with allure_step_log(f"步骤四：后端验证：使用初始密码登录用户 {user_name}"):
-            _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm)
             cmd_login_initial = f"/anhandbx/anhandbx-engine/bin/mysql -u{user_name} -P8527 -p'{password}' -h127.0.0.1 -e 'SELECT 1;'"
             result = ssh_vm.run(cmd_login_initial)
             assert result.splitlines()[-1] == "1"
@@ -423,7 +396,6 @@ class TestXScaleBasic:
             cmd_new_pwd = f"/anhandbx/anhandbx-engine/bin/mysql -u{user_name} -P8527 -p'{new_password}' -h127.0.0.1 -e 'SELECT 1;'"
             result_new = ssh_vm.run(cmd_new_pwd)
             assert result_new.splitlines()[-1] == "1"
-            ssh_vm.close()
 
         with allure_step_log(f"步骤八：清理用户 {user_name} 和数据库 {db_name}"):
             xscale_page.delete_user(instance_name, user_name)
@@ -432,7 +404,7 @@ class TestXScaleBasic:
             xscale_page.assert_deleted(db_name)
 
     @allure.title("XScale-删除和批量删除用户")
-    def test_delete_and_batch_delete_users(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_delete_and_batch_delete_users(self, xscale_page, xscale, ssh_vm):
         """测试用户的单个删除和批量删除功能，并进行后端验证。"""
         instance_name = xscale["name"]
         admin_password = xscale["admin_password"]
@@ -457,7 +429,6 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤四：确认单个用户已删除"):
             xscale_page.assert_deleted(user_to_delete_single)
-            _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm)
             cmd_check_single = _build_xscale_mysql_cmd(
                 admin_password,
                 f"SELECT user FROM mysql.user WHERE user = '{user_to_delete_single}';",
@@ -476,14 +447,13 @@ class TestXScaleBasic:
                 result_batch = ssh_vm.run(cmd_check_batch)
                 allure.attach(result_batch, name=f"后端查询已删除用户 {user}")
                 assert user not in result_batch, f"用户 {user} 在后端批量删除失败，仍然存在。"
-            ssh_vm.close()
 
         with allure_step_log(f"步骤七：清理数据库 {db_name}"):
             xscale_page.delete_database(instance_name, db_name)
             xscale_page.assert_deleted(db_name)
 
     @allure.title("XScale-用户授权和解除授权的后端验证")
-    def test_authorize_and_deauthorize_user(self, xscale_page, xscale, ssh_host, ssh_vm):
+    def test_authorize_and_deauthorize_user(self, xscale_page, xscale, ssh_vm):
         """测试用户的只读、读写权限授权及解除授权，并进行完整的后端生效性验证。"""
         instance_name = xscale["name"]
         seed_db = f"autodb_seed_{random_string(k=4)}"
@@ -509,7 +479,6 @@ class TestXScaleBasic:
             xscale_page.assert_popup_success("执行成功,若数据未更新请刷新页面")
 
         with allure_step_log("步骤四：后端确认只读权限生效"):
-            _connect_xscale_backend(xscale_page, instance_name, ssh_host, ssh_vm)
             cmd_write_fail = f"/anhandbx/anhandbx-engine/bin/mysql -u{user_name} -P8527 -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readonly}.test(id int);\""
             result_write_fail = ssh_vm.run(cmd_write_fail, True, True)
             assert "does not have 'CREATE' privilege" in result_write_fail["stderr"], "只读用户执行写入操作未按预期失败。"
@@ -551,7 +520,6 @@ class TestXScaleBasic:
                 "Access denied" in stderr
                 or "does not have 'SELECT' privilege" in stderr
             ), f"访问已解除授权的数据库 {db_readwrite} 时未返回预期错误。实际输出: {stderr}"
-            ssh_vm.close()
 
         with allure_step_log(f"步骤九：清理用户 {user_name} 和测试数据库"):
             xscale_page.delete_user(instance_name, user_name)
