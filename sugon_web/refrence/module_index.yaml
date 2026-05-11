@@ -1,0 +1,92 @@
+# 前端工程模块映射表
+# 格式：前端工程目录名 -> [对应的功能模块列表]
+# 前端工程根目录：sugon_web/refrence/ 下的唯一版本目录（如 sugoncloud-all-web-release-20260430）, 由 AI 运行时动态获取
+# 搜索规则：AI 根据测试模块名，在 value 列表中进行模糊匹配（不区分大小写），命中则定位到对应的 key 目录
+# 为保证匹配精准，每个 value 列表的首项为 key 的标准缩写/英文名，后续为各子模块缩写和中文描述
+
+modules:
+  # 计算
+  ecs: [ECS, 弹性云服务器]
+  bms: [BMS, 裸金属]
+  vnc: [VNC, 云服务器示例的VNC控制台界面]
+  webShell: [WebShell, 云服务器示例的SSH登录界面]
+
+  # 网络
+  vpc: [VPC, EIP, SG, SLB, ACL, PC, DNS, NAT, SCI, QoS, DC, ER, TM, 虚拟私有云 VPC, 弹性公网IP EIP, 安全组 SG, 负载均衡 SLB, 网络 ACL, 对等连接 PC, 内网解析 DNS, NAT网关 NAT, 机密互联 SCI, 网络 QoS, NAT网关（性能版） NAT, 云专线 DC, 云专线（性能版） DC, 企业路由器 ER, 流量镜像 TM]
+  vpn: [VPN, 虚拟专用网络 VPN]
+  cfw: [CFW, 云防火墙 CFW]
+  sfw: [SFW, 云防火墙 SFW]
+
+  # 存储
+  evs: [EVS, EVSS, 云硬盘 EVS, 云硬盘快照 EVSS]
+  obs: [OBS, 对象存储(专业版) OBS]
+  sfs: [SFS, 文件存储 SFS]
+  oss: [OSS, 对象存储 OSS]
+
+  # 数据库
+  mysql: [MySQL, mysql, AnhanDB(for MySQL)]
+  pgsql: [PostgreSQL, pgsql, AnhanDB(for PostgreSQL)]
+  mongodb: [MongoDB, mongodb, AnhanDB(for MongoDB)]
+  xscale: [XScale, xscale, AnhanDB-XScale]
+  kingbase: [Kingbase, kingbase, 人大金仓 KingbaseES]
+  doris: [Doris, doris, 数据仓库 Doris]
+  dm: [DM, dm, 达梦数据库]
+
+  # 中间件
+  redis: [Redis, redis, AnhanDB(for Redis)]
+  kafka: [Kafka, kafka, 分布式消息服务 Kafka]
+  prom: [Prometheus, prom, 监控服务 Prometheus]
+  es: [ES, CSS, 云搜索服务 CSS]
+  rbs: [RabbitMQ, rbs, 分布式消息服务 RabbitMQ]
+
+  # 大数据计算
+  emr: [EMR, E-MapReduce]
+
+  # 容器服务
+  cce: [CCE, 云容器引擎CCE]
+  scr: [SCR, 容器镜像服务 SCR]
+  ssm: [SSM, 服务治理 SSM]
+
+  # 安全合规
+  hss: [HSS, MIS, VKS, 主机安全 HSS, 微隔离 MIS, 病毒查杀 VKS]
+  soc: [SOC, 态势感知 SOC]
+  das: [DAS, USM, VER, 云堡垒机高级版 USM, 日志审计 VER]
+
+  # 运维与管理
+  backup: [CBR, 云备份 CBR]
+  ops: [OPS, 基础设施]
+  workorder: [Workorder, 工单]
+  docManage: [DocManage, 文档管理]
+
+  # 管理与监控
+  cms: [CMS, 云监控 CMS]
+
+  # 开发与运维
+  devops: [DevOps, 开发与运维]
+
+  # 租户, 配额
+  iam: [IAM, 统一身份认证 IAM]
+
+  # 其他模块
+  sms: [SMS, 短信服务 SMS]
+  console: [Console, 页面顶部的控制台]
+  doc: [Doc, 文档, 页面顶部的文档]
+  monitor-screen: [MonitorScreen, 监控大屏, 页面顶部的监控大屏]
+  operations: [Operations, 自服务]
+  vod: [VOD, 视频点播 VOD]
+  gateway: [APIGateway, 服务网关 API Gateway]
+  xiaolian: [Xiaolian, 赤霄]
+  firewallWeb: [FirewallWeb, 第三方的防火墙页面]
+  sdf: [SDF, 可信密码, 可信密码模块]
+
+  # 全局公共组件（不对应具体服务模块，包含公共工具、组件等）
+  global: [Global, 全局公共组件, 公共工具, 公共UI组件, 公共页面]
+
+  # 废弃模块
+  ctid: [CTID, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  cci: [CCI, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  cmn: [CMN, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  retrieval: [Retrieval, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  swr: [SWR, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  security: [Security, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+  vmware: [VMware, 云平台纳管第三方vmware的功能, 但没研发完成，目前未启用，禁止参考和复用其中的代码]
