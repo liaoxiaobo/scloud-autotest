@@ -12,69 +12,69 @@ modules:
   webShell: [WebShell, 云服务器示例的SSH登录界面]
 
   # 网络
-  vpc: [VPC, EIP, SG, SLB, ACL, PC, DNS, NAT, SCI, QoS, DC, ER, TM, 虚拟私有云 VPC, 弹性公网IP EIP, 安全组 SG, 负载均衡 SLB, 网络 ACL, 对等连接 PC, 内网解析 DNS, NAT网关 NAT, 机密互联 SCI, 网络 QoS, NAT网关（性能版） NAT, 云专线 DC, 云专线（性能版） DC, 企业路由器 ER, 流量镜像 TM]
-  vpn: [VPN, 虚拟专用网络 VPN]
-  cfw: [CFW, 云防火墙 CFW]
-  sfw: [SFW, 云防火墙 SFW]
+  vpc: [VPC, EIP, SG, SLB, ACL, PC, DNS, NAT, SCI, QoS, DC, ER, TM, 虚拟私有云, 虚拟私有云 VPC, 弹性公网IP, 弹性公网IP EIP, 安全组, 安全组 SG, 负载均衡, 负载均衡 SLB, 网络ACL, 网络 ACL, 对等连接, 对等连接 PC, 内网解析, 内网解析 DNS, NAT网关, NAT网关 NAT, 机密互联, 机密互联 SCI, 网络QoS, 网络 QoS, NAT网关（性能版）, NAT网关（性能版） NAT, 云专线, 云专线 DC, 云专线（性能版）, 云专线（性能版） DC, 企业路由器, 企业路由器 ER, 流量镜像, 流量镜像 TM]
+  vpn: [VPN, 虚拟专用网络, 虚拟专用网络 VPN]
+  cfw: [CFW, 云防火墙, 云防火墙 CFW]
+  sfw: [SFW, 云防火墙, 云防火墙 SFW]
 
   # 存储
-  evs: [EVS, EVSS, 云硬盘 EVS, 云硬盘快照 EVSS]
-  obs: [OBS, 对象存储(专业版) OBS]
-  sfs: [SFS, 文件存储 SFS]
-  oss: [OSS, 对象存储 OSS]
+  evs: [EVS, EVSS, 云硬盘, 云硬盘 EVS, 云硬盘快照, 云硬盘快照 EVSS]
+  obs: [OBS, 对象存储(专业版), 对象存储(专业版) OBS]
+  sfs: [SFS, 文件存储, 文件存储 SFS]
+  oss: [OSS, 对象存储, 对象存储 OSS]
 
   # 数据库
   mysql: [MySQL, mysql, AnhanDB(for MySQL)]
   pgsql: [PostgreSQL, pgsql, AnhanDB(for PostgreSQL)]
   mongodb: [MongoDB, mongodb, AnhanDB(for MongoDB)]
   xscale: [XScale, xscale, AnhanDB-XScale]
-  kingbase: [Kingbase, kingbase, 人大金仓 KingbaseES]
-  doris: [Doris, doris, 数据仓库 Doris]
+  kingbase: [Kingbase, kingbase, 人大金仓, 人大金仓 KingbaseES]
+  doris: [Doris, doris, 数据仓库, 数据仓库 Doris]
   dm: [DM, dm, 达梦数据库]
 
   # 中间件
   redis: [Redis, redis, AnhanDB(for Redis)]
-  kafka: [Kafka, kafka, 分布式消息服务 Kafka]
-  prom: [Prometheus, prom, 监控服务 Prometheus]
-  es: [ES, CSS, 云搜索服务 CSS]
-  rbs: [RabbitMQ, rbs, 分布式消息服务 RabbitMQ]
+  kafka: [Kafka, kafka, 分布式消息服务, 分布式消息服务 Kafka]
+  prom: [Prometheus, prom, 监控服务, 监控服务 Prometheus]
+  es: [ES, CSS, 云搜索服务, 云搜索服务 CSS]
+  rbs: [RabbitMQ, rbs, 分布式消息服务, 分布式消息服务 RabbitMQ]
 
   # 大数据计算
   emr: [EMR, E-MapReduce]
 
   # 容器服务
-  cce: [CCE, 云容器引擎CCE]
-  scr: [SCR, 容器镜像服务 SCR]
-  ssm: [SSM, 服务治理 SSM]
+  cce: [CCE, 云容器引擎, 云容器引擎 CCE]
+  scr: [SCR, 容器镜像服务, 容器镜像服务 SCR]
+  ssm: [SSM, 服务治理, 服务治理 SSM]
 
   # 安全合规
-  hss: [HSS, MIS, VKS, 主机安全 HSS, 微隔离 MIS, 病毒查杀 VKS]
-  soc: [SOC, 态势感知 SOC]
-  das: [DAS, USM, VER, 云堡垒机高级版 USM, 日志审计 VER]
+  hss: [HSS, MIS, VKS, 主机安全, 主机安全 HSS, 微隔离, 微隔离 MIS, 病毒查杀, 病毒查杀 VKS]
+  soc: [SOC, 态势感知, 态势感知 SOC]
+  das: [DAS, USM, VER, 云堡垒机高级版, 云堡垒机高级版 USM, 日志审计, 日志审计 VER]
 
   # 运维与管理
-  backup: [CBR, 云备份 CBR]
+  backup: [CBR, 云备份, 云备份 CBR]
   ops: [OPS, 基础设施]
   workorder: [Workorder, 工单]
   docManage: [DocManage, 文档管理]
 
   # 管理与监控
-  cms: [CMS, 云监控 CMS]
+  cms: [CMS, 云监控, 云监控 CMS]
 
   # 开发与运维
   devops: [DevOps, 开发与运维]
 
   # 租户, 配额
-  iam: [IAM, 统一身份认证 IAM]
+  iam: [IAM, 统一身份认证, 统一身份认证 IAM]
 
   # 其他模块
-  sms: [SMS, 短信服务 SMS]
+  sms: [SMS, 短信服务, 短信服务 SMS]
   console: [Console, 页面顶部的控制台]
   doc: [Doc, 文档, 页面顶部的文档]
   monitor-screen: [MonitorScreen, 监控大屏, 页面顶部的监控大屏]
   operations: [Operations, 自服务]
-  vod: [VOD, 视频点播 VOD]
-  gateway: [APIGateway, 服务网关 API Gateway]
+  vod: [VOD, 视频点播, 视频点播 VOD]
+  gateway: [APIGateway, 服务网关, 服务网关 API Gateway]
   xiaolian: [Xiaolian, 赤霄]
   firewallWeb: [FirewallWeb, 第三方的防火墙页面]
   sdf: [SDF, 可信密码, 可信密码模块]
