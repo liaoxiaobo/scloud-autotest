@@ -27,14 +27,14 @@
 1. **步骤完整性**：脚本覆盖了需求 MD 中的所有测试步骤，无遗漏、无多余，步骤顺序与需求一致
 2. **边界条件覆盖**：脚本实现了需求 MD 中定义的所有边界条件测试代码
 3. **断言完整性**：脚本实现了需求 MD 中定义的所有断言点，断言内容与需求一致，SSH 后端验证和列表字段回读无遗漏
-4. **测试数据对齐**：资源名称使用 `random_data()`，批量创建使用 fixture 的 `count` 参数，测试数据准备与前置条件一致；vm 批量创建必须使用 `{"basic": {"count": N}}` 格式（count 必须在 basic 子字典中），不要写成 `{"count": N}` 或手动循环创建。这两种方式无法利用 fixture 的批量创建和自动清理能力，会增加代码冗余。快速自检：执行 `Grep` 搜索 `@pytest.mark.parametrize("vm"`，确认未出现 `{"count":` 且前面没有 `"basic":` 的情况。
+4. **测试数据对齐**：资源名称使用 `random_data()`，批量创建使用 fixture 的 `count` 参数（如 `{"count": N}`），测试数据准备与前置条件一致；禁止手动循环创建，手动循环无法利用 fixture 的自动清理能力，会增加代码冗余。快速自检：执行 `Grep` 搜索 `@pytest.mark.parametrize("vm"`，确认未出现手动循环创建（如 `for i in range`）的情况。
 5. **清理策略对齐**：脚本实现了需求 MD 中定义的所有清理步骤，清理顺序与需求一致，所有创建的资源均已覆盖；清理核心原则为"清理 fixture 负责回收，测试方法只负责测试"，若资源已由现有 fixture teardown 完整覆盖则直接复用，若现有 teardown 无法覆盖则参照 yield-based cleanup fixture 模式补充。若 MD 中标注了"共享同一套测试数据"，必须将这些场景置于同一测试类中通过 class-scoped fixture 共享资源，待该批次所有用例执行完成后统一清理
 
 **二、编码规范检查**
 
 1. **fixture 复用**：优先复用现有 fixture，未自行封装功能重复的 fixture，已阅读 `fixtures_index.md` 确认参数支持情况；实现测试步骤或前置条件时已参考该文件
-2. **页面对象规范**：页面对象只封装交互逻辑不组织测试步骤，新增方法有 docstring，未新增与现有公共能力同义的方法。测试 class 体内不应存在 Helper 方法（纯函数应放在模块级或 `_xxx_helpers.py` 中）。快速自检：执行 `Grep` 搜索 class 体内是否有 `_` 前缀的辅助函数。
-3. **定位规范**：优先使用 `get_by_role()` / `get_by_text(exact=True)` / `get_by_placeholder()`，限定在 dialog / tab / 表格 / 行范围内定位，不要使用 XPath。XPath 脆弱且难以维护，页面结构微调就会导致定位失败；`first()` / `nth()` 不作为首选，应先缩小范围后再作为兜底。测试层严禁直接使用 `locator()`、`expect()` 等 Playwright 底层 API，所有页面交互必须通过 Page Object 封装的方法调用。快速自检：执行 `Grep` 搜索 `\.locator\(` 或 `from.*playwright import expect`，确认测试层未出现底层 API 调用。
+2. **页面对象规范**：页面对象只封装页面交互与业务动作，不负责组织测试步骤。新增业务方法必须有 docstring，至少说明用途、参数含义、可选值或默认值。若已有公共能力能覆盖，不要新增同义方法，因为同义方法会增加维护成本且可能导致用法混乱。测试 class 体内不应存在 Helper 方法（纯函数应放在模块级或 `_xxx_helpers.py` 中）。快速自检：执行 `Grep` 搜索 class 体内是否有 `_` 前缀的辅助函数。
+3. **定位规范**：优先使用 `get_by_role()` / `get_by_text(exact=True)` / `get_by_placeholder()`，限定在 dialog / tab / 表格 / 行范围内定位，不要使用 XPath。XPath 脆弱且难以维护，页面结构微调就会导致定位失败；`first()` / `nth()` 不作为首选，应先缩小范围后再作为兜底。测试层严禁直接使用 `locator()`、`expect()` 等 Playwright 底层 API，因为这会破坏测试层的抽象边界，导致测试与页面实现紧耦合。所有页面交互必须通过 Page Object 封装的方法调用。快速自检：执行 `Grep` 搜索 `\.locator\(` 或 `from.*playwright import expect`，确认测试层未出现底层 API 调用。
 4. **等待规范**：进入页面或表单提交后先执行 `wait_for_page_ready()` 或 `wait_for_load_state('networkidle')`，优先使用 `wait_for_operation_complete()` / `wait_for_source_complete()`，不要使用固定等待。固定等待会增加执行时间且不保证页面加载完成
 5. **断言规范**：状态变更类断言顺序为：成功弹窗 → 资源状态 → 列表字段/详情字段；SSH 命令执行后必须断言返回值（`rc`、`stdout`），不要使用 `` `|| true` `` 掩盖命令错误，因为这会静默吞掉 SSH 命令失败，导致测试通过但实际环境未就绪；每步操作后必须紧跟断言（`assert` 或框架断言方法），不要仅记录日志（`logger.info`）而不做断言，因为日志不能替代验证；列表断言优先使用 `assert_list_contain()` / `assert_status()` / `assert_deleted()`
 6. **用例结构规范**：用例结构为准备数据 → 执行操作 → 校验结果，步骤使用 `with allure_step_log()`，测试主流程未使用 `try/finally` 或 `try/except` 包裹核心步骤。快速自检：执行 `Grep` 搜索 `try:` + `finally:`，确认测试方法体内未出现 `try/finally`。
