@@ -185,7 +185,7 @@ modules:
     aliases: [Console, 页面顶部的控制台]
     repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-console-web
   doc:
-    aliases: [Doc, 文档, 页面顶部的文档]
+    aliases: [Doc, 文档, DocManage, 文档管理, 页面顶部的文档]
     repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-doc-web
   monitor-screen:
     aliases: [MonitorScreen, 监控大屏, 页面顶部的监控大屏]
@@ -208,7 +208,7 @@ modules:
 
   # 全局公共组件（不对应具体服务模块，包含公共工具、组件等）
   main-web-cli:
-    aliases: [Global, 全局公共组件, 公共工具, 公共UI组件, 公共页面]
+    aliases: [Global, 工单, 全局公共组件, 公共工具, 公共UI组件, 公共页面]
     repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-main-web-cli
 
   # 废弃模块
