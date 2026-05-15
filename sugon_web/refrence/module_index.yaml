@@ -1,8 +1,9 @@
 # 前端工程模块映射表
-# 格式：前端工程目录名 -> [对应的功能模块列表]
-# 前端工程根目录：sugon_web/refrence/ 下的唯一版本目录（如 sugoncloud-all-web-release-20260430）, 由 AI 运行时动态获取
-# 搜索规则：AI 根据测试模块名，在 value 列表中进行模糊匹配（不区分大小写），命中则定位到对应的 key 目录
-# 为保证匹配精准，每个 value 列表的首项为 key 的标准缩写/英文名，后续为各子模块缩写和中文描述
+# 格式：前端工程目录名 -> {aliases: [对应的功能模块列表], repo_url: 该模块前端工程的代码仓库地址}
+# repo_url 说明：对应模块前端源码的 Git 仓库链接，AI 可通过该地址读取前端工程代码以辅助定位页面元素
+# 前端工程根目录：sugon_web/refrence/ 下的唯一版本目录（如 full-stack-cloud）, 由 AI 运行时动态获取
+# 搜索规则：AI 根据测试模块名，在 aliases 列表中进行模糊匹配（不区分大小写），命中则定位到对应的 key 目录
+# 为保证匹配精准，每个 aliases 列表的首项为 key 的标准缩写/英文名，后续为各子模块缩写和中文描述
 #
 # === 模块匹配策略（4级递进策略，搜索均不区分大小写） ===
 # 执行步骤：
@@ -10,15 +11,15 @@
 #    若存在多个版本目录，执行 `ls -td sugon_web/refrence/*/` 按修改时间倒序，取第一个。
 # 2）确定测试模块名：从阶段一产出的 MD 文件存放路径推断（如 case_specs/network/ 对应"网络"模块），
 #    或从 CSV 文件名、用户在对话中提到的模块名推断。
-# 3）读取本文件（module_index.yaml），先过滤掉 value 列表中包含"废弃"或"禁止参考"字样的 key
+# 3）读取本文件（module_index.yaml），先过滤掉 aliases 列表中包含"废弃"或"禁止参考"字样的 key
 #    （这些为废弃或未启用模块，不参与匹配），然后对剩余模块按以下4级策略定位前端工程目录：
 #    第1级（精确匹配 key）：模块名与某个 key 完全一致 -> 直接使用该 key。
-#    第2级（精确匹配缩写）：模块名与某个 value 列表中的任何一项完全一致 -> 使用该 key。
+#    第2级（精确匹配缩写）：模块名与某个 aliases 列表中的任何一项完全一致 -> 使用该 key。
 #      例如 VPC、SLB、ER、TM 命中 vpc；EVS 命中 evs。此级避免短缩落入子串匹配产生误匹配。
-#    第3级（模糊匹配 value 列表）：在所有 value 列表中模糊搜索模块名。
+#    第3级（模糊匹配 aliases 列表）：在所有 aliases 列表中模糊搜索模块名。
 #      - 若只命中一个 key -> 直接使用。
 #      - 若命中多个 key -> 结合阶段一产出的 MD 文件内容二次筛选：在 MD 中搜索各候选 key 的标识
-#        （key 本身、value 列表中的各子模块缩写），统计出现频次，取最高者。
+#        （key 本身、aliases 列表中的各子模块缩写），统计出现频次，取最高者。
 #      - 二次筛选后仍无法区分 -> 进入第4级。
 #    第4级（无法定位）：第1~3级均未命中唯一 key -> 视为匹配失败。
 # 4）若匹配成功，拼接 `根路径/匹配的目录名` 得到完整路径，读取该路径下的前端工程代码。
@@ -39,87 +40,196 @@
 
 modules:
   # 计算
-  ecs: [ECS, 弹性云服务器]
-  bms: [BMS, 裸金属]
-  vnc: [VNC, 云服务器示例的VNC控制台界面]
-  webShell: [WebShell, 云服务器示例的SSH登录界面]
+  ecs:
+    aliases: [ECS, 弹性云服务器, 计算]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-ecs-web
+  bms:
+    aliases: [BMS, 裸金属, 计算, 裸金属服务器]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-bms-web
+  vnc:
+    aliases: [VNC, 云服务器示例的VNC控制台界面]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugon-vnc-web
+  webShell:
+    aliases: [WebShell, 云服务器示例的SSH登录界面]
+    repo_url: https://172.22.5.3/full-stack-cloud/web-ssh-pro
 
   # 网络
-  vpc: [VPC, EIP, SG, SLB, ACL, PC, DNS, NAT, SCI, QoS, DC, ER, TM, 虚拟私有云, 虚拟私有云 VPC, 弹性公网IP, 弹性公网IP EIP, 安全组, 安全组 SG, 负载均衡, 负载均衡 SLB, 网络ACL, 网络 ACL, 对等连接, 对等连接 PC, 内网解析, 内网解析 DNS, NAT网关, NAT网关 NAT, 机密互联, 机密互联 SCI, 网络QoS, 网络 QoS, NAT网关（性能版）, NAT网关（性能版） NAT, 云专线, 云专线 DC, 云专线（性能版）, 云专线（性能版） DC, 企业路由器, 企业路由器 ER, 流量镜像, 流量镜像 TM]
-  vpn: [VPN, 虚拟专用网络, 虚拟专用网络 VPN]
-  cfw: [CFW, 云防火墙, 云防火墙 CFW]
-  sfw: [SFW, 云防火墙, 云防火墙 SFW]
+  vpc:
+    aliases: [VPC, EIP, SG, SLB, ACL, PC, DNS, NAT, SCI, QoS, DC, ER, TM, 网络, 虚拟私有云, 虚拟私有云 VPC, 弹性公网IP, 弹性公网IP EIP, 安全组, 安全组 SG, 负载均衡, 负载均衡 SLB, 网络ACL, 网络 ACL, 对等连接, 对等连接 PC, 内网解析, 内网解析 DNS, NAT网关, NAT网关 NAT, 机密互联, 机密互联 SCI, 网络QoS, 网络 QoS, NAT网关（性能版）, NAT网关（性能版） NAT, 云专线, 云专线 DC, 云专线（性能版）, 云专线（性能版） DC, 企业路由器, 企业路由器 ER, 流量镜像, 流量镜像 TM]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-vpc-web
+  vpn:
+    aliases: [VPN, 虚拟专用网络, 虚拟专用网络 VPN]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-vpc-web
+  cfw:
+    aliases: [CFW, 云防火墙, 云防火墙 CFW]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-cfw-web
+  sfw:
+    aliases: [SFW, 云防火墙, 云防火墙 SFW]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-sfw-web
 
   # 存储
-  evs: [EVS, EVSS, 云硬盘, 云硬盘 EVS, 云硬盘快照, 云硬盘快照 EVSS]
-  obs: [OBS, 对象存储(专业版), 对象存储(专业版) OBS]
-  sfs: [SFS, 文件存储, 文件存储 SFS]
-  oss: [OSS, 对象存储, 对象存储 OSS]
+  evs:
+    aliases: [EVS, EVSS, 云硬盘, 云硬盘 EVS, 云硬盘快照, 云硬盘快照 EVSS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-evs-web
+  obs:
+    aliases: [OBS, 对象存储(专业版), 对象存储(专业版) OBS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-obs-web
+  sfs:
+    aliases: [SFS, 文件存储, 文件存储 SFS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-sfs-web
+  oss:
+    aliases: [OSS, 对象存储, 对象存储 OSS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-oss-new-web
 
   # 数据库
-  mysql: [MySQL, mysql, AnhanDB(for MySQL)]
-  pgsql: [PostgreSQL, pgsql, AnhanDB(for PostgreSQL)]
-  mongodb: [MongoDB, mongodb, AnhanDB(for MongoDB)]
-  xscale: [XScale, xscale, AnhanDB-XScale]
-  kingbase: [Kingbase, kingbase, 人大金仓, 人大金仓 KingbaseES]
-  doris: [Doris, doris, 数据仓库, 数据仓库 Doris]
-  dm: [DM, dm, 达梦数据库]
+  mysql:
+    aliases: [MySQL, mysql, 数据库, AnhanDB(for MySQL)]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-mysql-web
+  pgsql:
+    aliases: [PostgreSQL, pgsql, 数据库, AnhanDB(for PostgreSQL)]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-pgsql-web
+  mongodb:
+    aliases: [MongoDB, mongodb, 数据库, AnhanDB(for MongoDB)]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-mongodb-web
+  xscale:
+    aliases: [XScale, xscale, 数据库, AnhanDB-XScale]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-xscale-web
+  kingbase:
+    aliases: [Kingbase, kingbase, 数据库, 人大金仓, 人大金仓 KingbaseES]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-kingbase-web
+  doris:
+    aliases: [Doris, doris, 数据库, 数据仓库, 数据仓库 Doris]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-doris-web
+  dm:
+    aliases: [DM, dm, 数据库, 达梦数据库]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-dm-web
 
   # 中间件
-  redis: [Redis, redis, AnhanDB(for Redis)]
-  kafka: [Kafka, kafka, 分布式消息服务, 分布式消息服务 Kafka]
-  prom: [Prometheus, prom, 监控服务, 监控服务 Prometheus]
-  es: [ES, CSS, 云搜索服务, 云搜索服务 CSS]
-  rbs: [RabbitMQ, rbs, 分布式消息服务, 分布式消息服务 RabbitMQ]
+  redis:
+    aliases: [Redis, redis, AnhanDB(for Redis)]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-redis-web
+  kafka:
+    aliases: [Kafka, kafka, 分布式消息服务, 分布式消息服务 Kafka]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-kafka-web
+  prom:
+    aliases: [Prometheus, prom, 监控服务, 监控服务 Prometheus]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-prom-web
+  es:
+    aliases: [ES, CSS, 云搜索服务, 云搜索服务 CSS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-es-web
+  rbs:
+    aliases: [RabbitMQ, rbs, 分布式消息服务, 分布式消息服务 RabbitMQ]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-rabbitmq-web
 
   # 大数据计算
-  emr: [EMR, E-MapReduce]
+  emr:
+    aliases: [EMR, E-MapReduce]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-emr-web
 
   # 容器服务
-  cce: [CCE, 云容器引擎, 云容器引擎 CCE]
-  scr: [SCR, 容器镜像服务, 容器镜像服务 SCR]
-  ssm: [SSM, 服务治理, 服务治理 SSM]
+  cce:
+    aliases: [CCE, 云容器引擎, 云容器引擎 CCE]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-cce-web
+  scr:
+    aliases: [SCR, 容器镜像服务, 容器镜像服务 SCR]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-scr-web
+  ssm:
+    aliases: [SSM, 服务治理, 服务治理 SSM]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-ssm-web
 
   # 安全合规
-  hss: [HSS, MIS, VKS, 主机安全, 主机安全 HSS, 微隔离, 微隔离 MIS, 病毒查杀, 病毒查杀 VKS]
-  soc: [SOC, 态势感知, 态势感知 SOC]
-  das: [DAS, USM, VER, 云堡垒机高级版, 云堡垒机高级版 USM, 日志审计, 日志审计 VER]
+  hss:
+    aliases: [HSS, MIS, VKS, 安全合规, 主机安全, 主机安全 HSS, 微隔离, 微隔离 MIS, 病毒查杀, 病毒查杀 VKS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-hss-web
+  soc:
+    aliases: [SOC, 安全合规, 态势感知, 态势感知 SOC]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-soc-web
+  das:
+    aliases: [DAS, USM, VER, 安全合规, 云堡垒机高级版, 云堡垒机高级版 USM, 日志审计, 日志审计 VER]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-das-web
 
   # 运维与管理
-  backup: [CBR, 云备份, 云备份 CBR]
-  ops: [OPS, 基础设施, 区域资源, 区域, 扩展IP, 交换机组, 机房机柜, 计算设施, 集群, 物理机, 规格, 物理机设备, 存储设施, 集中式存储, 本地存储, 共享文件存储, 存储池, 云硬盘类型, 网络设施, 逻辑网卡, 二层网络, 共有网络, 平台网络, 高性能网络, 备份设施, 备份节点]
-  workorder: [Workorder, 工单]
-  docManage: [DocManage, 文档管理]
+  backup:
+    aliases: [CBR, 云备份, 云备份 CBR]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-backup-web
+  ops:
+    aliases: [OPS, 基础设施, 区域资源, 区域, 扩展IP, 交换机组, 机房机柜, 计算设施, 集群, 物理机, 规格, 物理机设备, 存储设施, 集中式存储, 本地存储, 共享文件存储, 存储池, 云硬盘类型, 网络设施, 逻辑网卡, 二层网络, 共有网络, 平台网络, 高性能网络, 备份设施, 备份节点]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-ops-web
+  workorder:
+    aliases: [Workorder, 工单]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-workorder-web
+  doc-manage-web:
+    aliases: [DocManage, 文档管理]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-doc-manage-web
 
   # 管理与监控
-  cms: [CMS, 云监控, 云监控 CMS]
+  cms:
+    aliases: [CMS, 云监控, 云监控 CMS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-monitor-web
 
   # 开发与运维
-  devops: [DevOps, 开发与运维]
+  devops:
+    aliases: [DevOps, 开发与运维]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-devops-web
 
   # 租户, 配额
-  iam: [IAM, 统一身份认证, 统一身份认证 IAM]
+  iam:
+    aliases: [IAM, 统一身份认证, 统一身份认证 IAM]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-usermanage-web-main-cli
 
   # 其他模块
-  sms: [SMS, 短信服务, 短信服务 SMS]
-  console: [Console, 页面顶部的控制台]
-  doc: [Doc, 文档, 页面顶部的文档]
-  monitor-screen: [MonitorScreen, 监控大屏, 页面顶部的监控大屏]
-  operations: [Operations, 自服务]
-  vod: [VOD, 视频点播, 视频点播 VOD]
-  gateway: [APIGateway, 服务网关, 服务网关 API Gateway]
-  xiaolian: [Xiaolian, 赤霄]
-  firewallWeb: [FirewallWeb, 第三方的防火墙页面]
-  sdf: [SDF, 可信密码, 可信密码模块]
+  sms:
+    aliases: [SMS, 短信服务, 短信服务 SMS]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-sms-web
+  console:
+    aliases: [Console, 页面顶部的控制台]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-console-web
+  doc:
+    aliases: [Doc, 文档, DocManage, 文档管理, 页面顶部的文档]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-doc-web
+  monitor-screen:
+    aliases: [MonitorScreen, 监控大屏, 页面顶部的监控大屏]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-monitor-screen-web
+  operations:
+    aliases: [Operations, 自服务]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-operations-web
+  vod:
+    aliases: [VOD, 视频点播, 视频点播 VOD]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-vod-web
+  xiaolian:
+    aliases: [Xiaolian, 赤霄]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-xiaolian-web
+  firewallWeb:
+    aliases: [FirewallWeb, 第三方的防火墙页面]
+    repo_url: ''
+  sdf:
+    aliases: [SDF, 可信密码, 可信密码模块]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-sdf-web
 
   # 全局公共组件（不对应具体服务模块，包含公共工具、组件等）
-  global: [Global, 全局公共组件, 公共工具, 公共UI组件, 公共页面]
+  main-web-cli:
+    aliases: [Global, 工单, 全局公共组件, 公共工具, 公共UI组件, 公共页面]
+    repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-main-web-cli
 
   # 废弃模块
-  ctid: [CTID, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  cci: [CCI, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  cmn: [CMN, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  retrieval: [Retrieval, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  swr: [SWR, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  security: [Security, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
-  vmware: [VMware, 云平台纳管第三方vmware的功能, 但没研发完成，目前未启用，禁止参考和复用其中的代码]
+  ctid:
+    aliases: [CTID, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  cci:
+    aliases: [CCI, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  cmn:
+    aliases: [CMN, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  retrieval:
+    aliases: [Retrieval, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  swr:
+    aliases: [SWR, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  security:
+    aliases: [Security, 废弃, 不再维护的旧版本前端工程, 包含一些过时模块的代码, 禁止参考和复用其中的代码]
+    repo_url: ''
+  vmware:
+    aliases: [VMware, 云平台纳管第三方vmware的功能, 但没研发完成，目前未启用，禁止参考和复用其中的代码]
+    repo_url: ''
