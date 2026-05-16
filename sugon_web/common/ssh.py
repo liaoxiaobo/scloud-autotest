@@ -499,7 +499,7 @@ class SSH:
         :param state: 目标状态，对应 ``scli volume reset-state --state`` 支持的状态值。
         """
         volume_id = volume_ref if self._extract_uuid(volume_ref) else self.get_volume_id(volume_ref)
-        self.run(f"cinder reset-state --state {state} {volume_id}", check_rc=True)
+        self.run(f"scli volume reset-state --status {state} {volume_id}", check_rc=True)
 
     def get_file(self, remotepath, localpath):
         """
