@@ -44,7 +44,7 @@ modules:
     aliases: [ECS, 弹性云服务器, 计算]
     repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-ecs-web
   bms:
-    aliases: [BMS, 裸金属, 计算, 裸金属服务器]
+    aliases: [计算, BMS, 裸金属, 裸金属 BMS, 软装版, 裸金属 BMS → 软装版 → 裸金属实例, 裸金属 BMS → 软装版 → 网络, 裸金属 BMS → 软装版 → 代理, 裸金属 BMS → 软装版 → 发现, 裸金属 BMS → 软装版 → 注册]
     repo_url: https://172.22.5.3/full-stack-cloud/sugoncloud-bms-web
   vnc:
     aliases: [VNC, 云服务器示例的VNC控制台界面]
