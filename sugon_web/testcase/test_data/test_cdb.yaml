@@ -70,6 +70,26 @@ pgsql:
         - instance_type: "集群"
           version: "12"
           disk_size: 60
+kingbase:
+    test_create_and_delete_kingbase:
+        - instance_type: "单机"
+          db_mode: "pg"
+          disk_size: 20
+        - instance_type: "单机"
+          db_mode: "oracle"
+          disk_size: 20
+        - instance_type: "单机"
+          db_mode: "mysql"
+          disk_size: 20
+        - instance_type: "集群"
+          db_mode: "pg"
+          disk_size: 30
+        - instance_type: "集群"
+          db_mode: "oracle"
+          disk_size: 30
+        - instance_type: "集群"
+          db_mode: "mysql"
+          disk_size: 30
 mongodb:
     test_create_and_delete_mongodb:
         - instance_type: "单机"
