@@ -227,8 +227,6 @@ class KingbasePage(PgSQLPage):
         dialog.locator("div").filter(has_text=re.compile(r"^用户名$")).get_by_role("textbox").fill(user_name)
         dialog.locator("div").filter(has_text=re.compile(r"^密码$")).get_by_role("textbox").fill(password)
         dialog.locator("div").filter(has_text=re.compile(r"^确认密码$")).get_by_role("textbox").fill(password)
-        if host:
-            dialog.locator("div").filter(has_text=re.compile(r"^主机$")).get_by_role("textbox").fill(host)
         dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")

@@ -27,7 +27,7 @@ class TestKingbaseCreate:
             )
 
         with allure_step_log("步骤二：验证实例创建成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("创建实例")
             kingbase_page.assert_list_contain(instance_name)
             kingbase_page.assert_status(instance_name, status="运行中", timeout=1800, refresh=True)
 

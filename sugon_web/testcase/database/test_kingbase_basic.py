@@ -38,7 +38,7 @@ class TestKingbaseBasic:
             kingbase_page.restart_instance(instance_name)
 
         with allure_step_log("步骤二：验证重启任务执行成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("重启实例成功")
             kingbase_page.assert_status(instance_name, status="重启中", timeout=300, refresh=True)
             kingbase_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
@@ -51,7 +51,7 @@ class TestKingbaseBasic:
             kingbase_page.change_root_password(instance_name, new_password)
 
         with allure_step_log("步骤二：验证密码重置成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
             kingbase_page.assert_status(instance_name, status="运行中", timeout=600, refresh=True)
             kingbase["admin_password"] = new_password
 
@@ -63,14 +63,14 @@ class TestKingbaseBasic:
             ip = kingbase_page.instance_ip_binding(instance_name)
 
         with allure_step_log("步骤二：验证实例公网IP绑定成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
             ssh_host.ping(ip)
 
         with allure_step_log("步骤三：为实例解绑公网IP"):
             kingbase_page.instance_ip_unbinding(instance_name)
 
         with allure_step_log("步骤四：验证实例公网IP解绑成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
 
     @allure.title("KingbaseES-节点绑定和解绑公网IP")
@@ -82,14 +82,14 @@ class TestKingbaseBasic:
             ip = kingbase_page.node_ip_binding(instance_name, node_name=node_name)
 
         with allure_step_log("步骤二：验证节点公网IP绑定成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
             ssh_host.ping(ip)
 
         with allure_step_log("步骤三：为节点解绑公网IP"):
             kingbase_page.node_ip_unbinding(instance_name, node_name=node_name)
 
         with allure_step_log("步骤四：验证节点公网IP解绑成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
             ssh_host.ping(ip, connected=False)
 
     @allure.title("KingbaseES-节点热迁移")
@@ -102,7 +102,7 @@ class TestKingbaseBasic:
             selected_host = kingbase_page.kingbase_hot_migration(instance_name, node_name)
 
         with allure_step_log("步骤二：验证热迁移任务执行成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("热迁移命令下发成功")
             kingbase_page.assert_status(node_name, status="迁移中", timeout=300, refresh=True)
             kingbase_page.assert_status(node_name, status="运行中", timeout=1800, refresh=True)
 
@@ -121,7 +121,7 @@ class TestKingbaseBasic:
             kingbase_page.add_backup_node(instance_name)
 
         with allure_step_log("步骤二：验证备节点创建成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("添加从节点")
             new_nodes = set(kingbase_page._get_detail_node_names(instance_name))
             added_nodes = list(new_nodes - old_nodes)
             assert added_nodes, f"未检测到新建备节点，创建前节点: {old_nodes}，创建后节点: {new_nodes}"
@@ -139,7 +139,7 @@ class TestKingbaseBasic:
             kingbase_page.create_database(instance_name, db_name)
 
         with allure_step_log("步骤二：验证数据库创建成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
             kingbase_page.assert_list_contain(db_name)
 
     @allure.title("KingbaseES-新建用户")
@@ -152,7 +152,7 @@ class TestKingbaseBasic:
             kingbase_page.create_user(instance_name, user_name, password)
 
         with allure_step_log("步骤二：验证用户创建成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("创建用户成功")
             kingbase_page.assert_list_contain(user_name, "用户名")
 
     @allure.title("KingbaseES-修改用户")
@@ -165,7 +165,7 @@ class TestKingbaseBasic:
             kingbase_page.change_user_privileges(instance_name, user_name, new_password)
 
         with allure_step_log("步骤二：验证用户修改成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("更新用户成功")
             kingbase["user_password"] = new_password
 
     @allure.title("KingbaseES-授权和解除授权")
@@ -176,20 +176,20 @@ class TestKingbaseBasic:
 
         with allure_step_log(f"步骤一：创建待授权数据库 {db_name}"):
             kingbase_page.create_database(instance_name, db_name)
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
 
         with allure_step_log("步骤二：为用户授权数据库"):
             kingbase_page.authorize_user(instance_name, user_name, db_name)
 
         with allure_step_log("步骤三：验证授权成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功,若数据未更新请刷新页面")
             kingbase_page.assert_list_contain(db_name, "数据库", exact_match=False)
 
         with allure_step_log("步骤四：解除用户数据库授权"):
             kingbase_page.deauthorize_user(instance_name, user_name, db_name)
 
         with allure_step_log("步骤五：验证解除授权成功"):
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("执行成功")
 
     @allure.title("KingbaseES-白名单管理")
     def test_whitelist_management(self, kingbase_page, kingbase):
@@ -198,27 +198,27 @@ class TestKingbaseBasic:
 
         with allure_step_log("步骤一：重置白名单，确保环境干净"):
             kingbase_page.reset_whitelist(instance_name)
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("重置白名单成功")
 
         with allure_step_log("步骤二：添加单个白名单并验证"):
             kingbase_page.add_whitelist(instance_name, whitelist_ips[0])
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("添加白名单成功")
             kingbase_page.assert_whitelist_contains(whitelist_ips[0])
 
         with allure_step_log("步骤三：删除单个白名单并验证"):
             kingbase_page.delete_whitelist(instance_name, whitelist_ips[0])
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("删除白名单成功")
             kingbase_page.assert_whitelist_not_contains(whitelist_ips[0])
 
         with allure_step_log("步骤四：批量添加白名单并验证"):
             for ip_address in whitelist_ips[1:]:
                 kingbase_page.add_whitelist(instance_name, ip_address)
-                kingbase_page.assert_popup_success()
+                kingbase_page.assert_popup_success("添加白名单成功")
                 kingbase_page.assert_whitelist_contains(ip_address)
 
         with allure_step_log("步骤五：批量删除白名单并验证"):
             kingbase_page.batch_delete_whitelist(instance_name, whitelist_ips[1:])
-            kingbase_page.assert_popup_success()
+            kingbase_page.assert_popup_success("删除白名单成功")
             for ip_address in whitelist_ips[1:]:
                 kingbase_page.assert_whitelist_not_contains(ip_address)
 
