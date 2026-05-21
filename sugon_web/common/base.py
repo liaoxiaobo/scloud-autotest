@@ -149,6 +149,7 @@ class BasePage(Playwright):
         locators = [
             self.locator("#serverRefresh"),
             self.locator("#SpecificationRefresh").nth(1),  # 详情页面的刷新按钮
+            self.locator(".cloud-table-header .el-icon-refresh"),
             self.locator(".el-icon-refresh")
         ]
 

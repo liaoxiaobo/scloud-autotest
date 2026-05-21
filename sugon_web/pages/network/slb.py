@@ -1,5 +1,6 @@
 import random
 import re
+import time
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.config.config import Config
@@ -81,12 +82,12 @@ class SlbMixin(BasePage):
             if not ip_address:
                 raise ValueError("在IPv4分配方式为手动分配且选择快速选择或手动输入时，IP是必填项")
 
-            # 先点击“手动分配”
+            # 先点击"手动分配"
             self.locator("label").filter(has_text="手动分配").click()
             # 在 IPv4 分配方式为手动分配的时候，选择具体的子选项并填入 IP
             self.locator("label").filter(has_text=ip_type).click()
 
-            # 锚定包含 “快速选择/手动输入” 单选按钮的表单项容器
+            # 锚定包含 "快速选择/手动输入" 单选按钮的表单项容器
             container = self.locator("div.el-form-item__content").filter(has=self.get_by_role("radio", name="快速选择"))
 
             if ip_type == "快速选择":
@@ -206,7 +207,8 @@ class SlbMixin(BasePage):
                                     session_persistence=False, session_type=None,
                                     health_type=None, health_max_retries=None,
                                     health_timeout=None, health_interval=None,
-                                    http_method=None, url_path=None):
+                                    http_method=None, url_path=None,
+                                    health_request=None, health_expected_response=None):
         """步骤2: 监听器配置 (资源池)"""
         form_items = self.locator("div.el-form-item")
 
@@ -264,6 +266,14 @@ class SlbMixin(BasePage):
                 url_input = form_item_by_text("URL地址").get_by_role("textbox")
                 url_input.click()
                 url_input.fill(url_path)
+
+            if health_type == "UDP":
+                if health_request is not None:
+                    request_item = form_items.filter(has_text="健康检查请求").first
+                    request_item.get_by_role("textbox").fill(health_request)
+                if health_expected_response is not None:
+                    response_item = form_items.filter(has_text="健康检查返回结果").first
+                    response_item.get_by_role("textbox").fill(health_expected_response)
 
         self.get_by_text("下一步").click()
 
@@ -327,7 +337,9 @@ class SlbMixin(BasePage):
             health_timeout=kwargs.get("health_timeout"),
             health_interval=kwargs.get("health_interval"),
             http_method=kwargs.get("http_method"),
-            url_path=kwargs.get("url_path")
+            url_path=kwargs.get("url_path"),
+            health_request=kwargs.get("health_request"),
+            health_expected_response=kwargs.get("health_expected_response"),
         )
 
         # 3. 确认信息
@@ -352,48 +364,51 @@ class SlbMixin(BasePage):
             slb_name: 负载均衡名称
             tab_name: 详情页中的Tab名称，如："详情"、"监听器"、"后端服务器组" 等
         """
-        visible_name_links = self.locator("a:visible").filter(
-            has_text=re.compile(rf"^\s*{re.escape(slb_name)}\s*$")
-        )
-        if visible_name_links.count() > 0:
-            visible_name_links.first.click()
-            self.wait_for_page_ready()
-            self.get_by_role("tab", name=tab_name).evaluate("node => node.click()")
-            self.logger.info(f"进入负载均衡 {slb_name} 的 {tab_name}")
-            return
+        # @submenu 装饰器已确保在负载均衡服务下，若从子页面（如resource-pool-detail）进入，
+        # 子菜单点击会导航回SLB列表页
 
+        # 先搜索目标SLB，避免分页导致定位失败
+        try:
+            self.search(slb_name)
+        except Exception:
+            self.logger.debug(f"搜索SLB {slb_name} 失败，尝试直接定位")
+
+        # 点击SLB名称链接进入详情页
+        # 搜索后列表通常只有一条，名称列在第二列（第一列为复选框）
         target_row = self.get_row_by_name(slb_name)
-        clickable = None
+        name_cell = target_row.locator("td").nth(1)
+        name_link = name_cell.locator("a").first
+        if name_link.count() > 0 and name_link.is_visible():
+            name_link.click(force=True)
+        else:
+            name_cell.click(force=True)
 
-        exact_links = target_row.locator("a").filter(has_text=re.compile(rf"^{re.escape(slb_name)}$"))
-        for i in range(exact_links.count()):
-            candidate = exact_links.nth(i)
-            if candidate.is_visible():
-                clickable = candidate
-                break
+        # 等待页面加载，增加容错避免 loading spinner 等待卡住
+        try:
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+            self.page.wait_for_load_state("load", timeout=15000)
+        except Exception:
+            pass
+        try:
+            self.wait_for_page_ready()
+        except Exception as e:
+            self.logger.warning(f"wait_for_page_ready 警告（继续执行）: {e}")
+            self.page.wait_for_timeout(2000)
 
-        if clickable is None:
-            all_links = target_row.locator("a")
-            for i in range(all_links.count()):
-                candidate = all_links.nth(i)
-                if candidate.is_visible():
-                    clickable = candidate
-                    break
-
-        if clickable is None:
-            exact_texts = target_row.get_by_text(slb_name, exact=True)
-            for i in range(exact_texts.count()):
-                candidate = exact_texts.nth(i)
-                if candidate.is_visible():
-                    clickable = candidate
-                    break
-
-        if clickable is None:
-            raise AssertionError(f"负载均衡 {slb_name} 的详情入口不可见")
-
-        clickable.click()
-        self.wait_for_page_ready()
-        self.get_by_role("tab", name=tab_name).evaluate("node => node.click()")
+        # 兼容 tab 文本可能带计数后缀（如"监听器(1)"）
+        tab = self.locator("[role='tab']").filter(has_text=re.compile(rf"^{re.escape(tab_name)}"))
+        try:
+            expect(tab.first).to_be_visible(timeout=15000)
+        except Exception as e:
+            self.logger.warning(f"Tab '{tab_name}' 未在15秒内可见（继续执行）: {e}")
+        tab.first.evaluate("node => node.click()")
+        # 点击tab后等待内容加载（监听器列表异步渲染）
+        if tab_name == "监听器":
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(3000)
 
         self.logger.info(f"进入负载均衡 {slb_name} 的 {tab_name}")
 
@@ -404,7 +419,7 @@ class SlbMixin(BasePage):
         Args:
             slb_name: 负载均衡名称，用于精确定位所在行
             lb_name: 监听器名称，用于在目标列中精确定位对应入口
-            column_name: 监听器所在列名，默认“配置监听器(前端协议/端口)”
+            column_name: 监听器所在列名，默认"配置监听器(前端协议/端口)"
         """
         target_row = self.get_row_by_name(slb_name)
 
@@ -475,9 +490,34 @@ class SlbMixin(BasePage):
 
     def select_lb_in_left_list(self, lb_name):
         """在监听器详情嵌套页左侧列表中选中指定监听器"""
+        # 先等待页面加载完成（监听器列表可能异步加载）
+        loader = self.locator(".cloud-loader, .el-loading-mask").first
+        try:
+            expect(loader).not_to_be_visible(timeout=30000)
+        except AssertionError:
+            self.logger.warning("加载动画未消失，继续尝试定位监听器")
         # 放宽正则表达式对前后空白符的限制，兼顾精确匹配(防止如 lb1 误匹配到 lb11 等情况)
         lb_pattern = re.compile(rf"^\s*{re.escape(lb_name)}(?:\s*\([^)]+\))?\s*$")
-        self.locator("div.listener-left-list-item").filter(has_text=lb_pattern).first.click()
+        target = self.locator("div.listener-left-list-item").filter(has_text=lb_pattern).first
+        # 轮询等待目标监听器出现（左侧列表可能异步加载）
+        try:
+            expect(target).to_be_visible(timeout=30000)
+        except AssertionError:
+            import tempfile, os
+            debug_dir = tempfile.gettempdir()
+            safe_name = lb_name.replace(" ", "_").replace("/", "_")
+            html_path = os.path.join(debug_dir, f"select_lb_debug_{safe_name}.html")
+            png_path = os.path.join(debug_dir, f"select_lb_debug_{safe_name}.png")
+            try:
+                html = self.page.content()
+                with open(html_path, "w", encoding="utf-8") as f:
+                    f.write(html)
+                self.page.screenshot(path=png_path)
+                self.logger.info(f"调试文件已保存: {html_path}, {png_path}")
+            except Exception as e:
+                self.logger.warning(f"保存调试文件失败: {e}")
+            raise
+        target.click()
         self.logger.info(f"左侧监听器列表选中成功: {lb_name}")
 
     def _get_lb_nested_tabs(self):
@@ -499,8 +539,14 @@ class SlbMixin(BasePage):
         self.goto_lb_detail(lb_name, tab_name="资源池")
         self.logger.info(f"进入监听器 {lb_name} 的资源池页签成功")
 
-    def goto_lb_pool_detail(self, lb_name, pool_name):
+    def goto_lb_pool_detail(self, lb_name, pool_name, force=False):
         """进入指定监听器下资源池详情页"""
+        # 若当前已在目标资源池详情页，避免重复导航导致 select_lb_in_left_list 在错误页面上执行
+        current_url = self.page.url
+        if not force and "resource-pool-detail" in current_url and pool_name in current_url:
+            self.logger.info(f"当前已在资源池详情页，跳过重复导航: {pool_name}")
+            return
+
         self.goto_lb_pool_tab(lb_name)
         active_pane = self._get_lb_nested_tabs().locator(".el-tab-pane:not([aria-hidden='true'])").last
         pool_row = active_pane.locator(".el-table__body-wrapper tr").filter(has_text=pool_name).first
@@ -519,7 +565,7 @@ class SlbMixin(BasePage):
             vm_names: 虚机名称，支持单个字符串或名称列表
             lb_name: 监听器名称，传入时会先自动进入该监听器
             pool_name: 资源池名称，和 lb_name 一起传入时会自动进入资源池详情
-            resource_type: 资源类型，默认“弹性云服务器 ECS”
+            resource_type: 资源类型，默认"弹性云服务器 ECS"
             ports: 资源端口配置，支持单个端口值、与 vm_names 顺序对应的列表，或 {vm_name: port} 字典
         """
         if isinstance(vm_names, str):
@@ -628,6 +674,82 @@ class SlbMixin(BasePage):
             f"session_persistence={session_persistence}, health_check={health_check}"
         )
 
+    def lb_pool_config_health_check(self, lb_name, pool_name, enable=True,
+                                    health_type=None, health_request=None,
+                                    health_expected_response=None):
+        """在资源池详情页配置健康检查。
+
+        弹窗内健康检查主控为 ``el-switch``（label="是否开启"），
+        V1/V2 的 UDP 请求/返回结果字段在配置弹窗中均为 **disabled 只读**，
+        因此本方法不尝试填写这两项。
+
+        Args:
+            lb_name: 监听器名称。
+            pool_name: 资源池名称。
+            enable: 是否开启健康检查，默认 True。
+            health_type: 健康检查类型，如 ``TCP``、``HTTP``、``UDP``。
+                开启健康检查时必须提供。
+            health_request: UDP 健康检查请求内容（仅创建监听器时有效，
+                配置弹窗中该字段 disabled，此处忽略）。
+            health_expected_response: UDP 健康检查返回结果（仅创建监听器时有效，
+                配置弹窗中该字段 disabled，此处忽略）。
+        """
+        self.goto_lb_pool_detail(lb_name, pool_name)
+        page_root = self.locator("#cloud-container-content")
+
+        # 点击健康检查区域的"配置"按钮
+        # 页面上可能有多个"配置"链接（负载调度算法、会话保持等），
+        # 通过 XPath 精确定位：位于包含"健康检查"文本的容器内的"配置"链接。
+        config_btn = page_root.locator(
+            "xpath=.//*[contains(., '健康检查')]//a[contains(., '配置')]"
+        ).first
+        expect(config_btn).to_be_visible(timeout=5000)
+        config_btn.click()
+
+        # 等待"配置健康检查"弹窗出现
+        # Element UI 的 el-dialog 结构为 .el-dialog__wrapper > .el-dialog[role=dialog]
+        # 直接定位可见的 .el-dialog 并校验内容
+        dialog = self.locator(".el-dialog:visible")
+        expect(dialog).to_be_visible(timeout=5000)
+        expect(dialog).to_contain_text("是否开启", timeout=3000)
+
+        form_items = dialog.locator("div.el-form-item")
+
+        # 切换健康检查开关（label="是否开启"，控件为 el-switch）
+        switch_item = form_items.filter(has_text="是否开启")
+        switch_ctrl = switch_item.locator(".el-switch").first
+        expect(switch_ctrl).to_be_visible(timeout=5000)
+
+        is_checked = switch_ctrl.evaluate("el => el.classList.contains('is-checked')")
+        if enable != is_checked:
+            switch_ctrl.click()
+
+        if enable:
+            if not health_type:
+                raise ValueError("开启健康检查时，必须提供 health_type (例如: 'TCP', 'HTTP', 'UDP')")
+
+            # 类型选择：V1 的 select 为 disabled（不可改），V2 可编辑
+            type_select = form_items.filter(has_text="类型").get_by_placeholder("请选择")
+            if type_select.is_visible() and not type_select.evaluate(
+                "el => el.disabled"
+            ):
+                type_select.click()
+                self.locator("div.el-select-dropdown:visible li").filter(
+                    has_text=re.compile(rf"^{re.escape(health_type)}$")
+                ).click()
+
+            # UDP 的 hc_request / hc_response 在配置弹窗中为 disabled，不填写
+            # 若未来平台放开编辑，可在此处补充 fill 逻辑
+
+        dialog.get_by_text("确定", exact=True).click()
+        # 健康检查配置的成功提示文案不固定（"关闭健康检查成功" / "配置健康检查成功" 等），
+        # 因此仅断言弹窗类型为 success，不校验具体文本。
+        self.assert_popup_success()
+        self.logger.info(
+            f"健康检查配置完成: lb={lb_name}, pool={pool_name}, "
+            f"enable={enable}, health_type={health_type}"
+        )
+
     def assert_lb_pool_member_info(self, vm_name, ip_address=None, port=None,
                                    switch_status=None, resource_status=None):
         """校验资源池成员列表中的关键信息。
@@ -669,6 +791,136 @@ class SlbMixin(BasePage):
 
         self.logger.info(f"资源池成员信息校验成功: {vm_name}, row_data={row_data}")
         return row_data
+
+    def wait_lb_pool_member_status(self, lb_name, pool_name, vm_name,
+                                   expected_status="运行中", timeout=120,
+                                   interval=10, refresh=True):
+        """轮询等待资源池成员状态变为期望值。
+
+        Args:
+            lb_name: 监听器名称。
+            pool_name: 资源池名称。
+            vm_name: 目标虚机名称（资源池成员）。
+            expected_status: 期望状态，默认"运行中"。
+            timeout: 最大等待时间（秒），默认120。
+            interval: 轮询间隔（秒），默认10。
+            refresh: 是否主动点击刷新按钮，默认True。（暂仅支持True）
+
+        Raises:
+            AssertionError: 超时后状态仍未匹配。
+        """
+        deadline = time.time() + timeout
+        navigated = False
+        actual_status = ""
+
+        while time.time() < deadline:
+            if not navigated:
+                self.goto_lb_pool_detail(lb_name, pool_name)
+                navigated = True
+            else:
+                try:
+                    self.btn_refresh.click()
+                    self.wait_for_page_ready()
+                except Exception as e:
+                    self.logger.warning(f"刷新页面失败: {e}")
+
+            try:
+                row = self.get_row_by_name(vm_name)
+            except AssertionError:
+                self.logger.info(f"轮询成员状态: 页面暂未找到 {vm_name}，继续等待")
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                time.sleep(min(interval, remaining))
+                continue
+
+            # 行已存在，精确读取状态
+            row_data = self.get_row_data_by_locator(row)
+            actual_status = (row_data.get("资源状态") or "").strip()
+            self.logger.info(f"轮询成员状态: {vm_name} = {actual_status}, 期望 = {expected_status}")
+            if actual_status == expected_status:
+                self.logger.info(f"成员状态达到期望值: {vm_name} -> {expected_status}")
+                return
+
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            time.sleep(min(interval, remaining))
+
+        raise AssertionError(
+            f"成员 {vm_name} 状态在 {timeout} 秒内未达到 {expected_status}, "
+            f"最后状态: {actual_status}"
+        )
+
+    def get_lb_pool_candidate_vm_names(self, lb_name=None, pool_name=None,
+                                       resource_type="弹性云服务器 ECS"):
+        """打开资源池"新建资源"弹窗，返回当前可选虚机名称列表后关闭弹窗。
+
+        用于校验"对等连接前后跨 VPC 虚机是否出现在可选资源中"的场景。
+
+        Args:
+            lb_name: 监听器名称；与 ``pool_name`` 同时传入时先进入资源池详情。
+            pool_name: 资源池名称；与 ``lb_name`` 同时传入时先进入资源池详情。
+            resource_type: 资源类型，默认"弹性云服务器 ECS"。
+
+        Returns:
+            list[str]: 当前可选资源列表中显示的虚机名称（去重，按行顺序）。
+        """
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        table_container = self.locator(".cloud-table-container.table-fixed").first
+        expect(table_container).to_be_visible(timeout=5000)
+        table_container.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+
+        create_btn = table_container.locator(
+            ".cloud-table-header .cloud-button-btn"
+        ).filter(has_text=re.compile(r"^\s*新建\s*$")).first
+        expect(create_btn).to_be_visible(timeout=5000)
+        expect(create_btn).not_to_have_class(re.compile(r"cl-btn-disabled"), timeout=15000)
+        create_btn.click()
+
+        dialog = self.locator(".el-dialog__wrapper:visible").get_by_role("dialog", name="新建资源")
+        expect(dialog).to_be_visible(timeout=5000)
+
+        resource_type_input = dialog.get_by_placeholder("请选择").first
+        resource_type_input.click()
+        self.locator("div.el-select-dropdown:visible li").filter(
+            has_text=re.compile(rf"^{re.escape(resource_type)}$")
+        ).first.click()
+
+        dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+
+        try:
+            pagination_trigger = dialog.locator(".el-pagination__sizes .el-input__inner").first
+            if pagination_trigger.count() > 0 and pagination_trigger.is_visible():
+                pagination_trigger.click()
+                self.locator("div.el-select-dropdown:visible li").filter(
+                    has_text=re.compile(r"^100条/页$")
+                ).first.click()
+                dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+        except Exception as exc:
+            self.logger.warning(f"尝试设置资源选择分页为100失败: {exc}")
+
+        rows = dialog.locator(".el-table__body-wrapper tr")
+        row_count = rows.count()
+        candidate_names: list[str] = []
+        for index in range(row_count):
+            row_text = rows.nth(index).inner_text().strip()
+            if row_text:
+                candidate_names.append(row_text)
+
+        try:
+            self.dialog_cancel.click()
+        except Exception:
+            self.close_dialog_if_exists()
+
+        self.logger.info(
+            f"资源池可选资源读取完成: lb={lb_name}, pool={pool_name}, count={len(candidate_names)}"
+        )
+        return candidate_names
 
     def lb_pool_remove_vm(self, vm_names, lb_name=None, pool_name=None):
         """从监听器资源池详情页删除已添加的虚机资源。
@@ -727,6 +979,47 @@ class SlbMixin(BasePage):
         return active_pane
 
     @submenu("负载均衡（基础版）")
+    def get_available_eips(self, slb_name, network_type="public_net(基础版)", ip_version="IPv4"):
+        """获取负载均衡可绑定的可用公网IP列表（不执行绑定）
+
+        Args:
+            slb_name: 负载均衡名称
+            network_type: IP池名称，默认"public_net(基础版)"
+            ip_version: IP版本，默认"IPv4"
+
+        Returns:
+            list[str]: 可用EIP地址列表（状态为'关闭'的IP）
+        """
+        action_name = f"绑定公网{ip_version}"
+        self.click_action(slb_name, action_name)
+        dialog = self._find_element([
+            self.get_by_role("dialog", name=action_name),
+            self.get_by_label(action_name),
+        ], f"{action_name}对话框", timeout=5000)
+        dialog.get_by_placeholder("请选择").click()
+        self.get_by_text(network_type).click()
+
+        rows_locator = dialog.get_by_role("row").filter(has_text="关闭")
+        try:
+            expect(rows_locator.first).to_be_visible(timeout=10000)
+            available_rows = rows_locator.all()
+        except AssertionError:
+            available_rows = []
+
+        eips = [row.get_by_role("cell").nth(1).text_content().strip() for row in available_rows]
+
+        # 关闭对话框，不执行绑定
+        try:
+            dialog.get_by_text("取消").click()
+        except Exception:
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+        self.logger.info(f"负载均衡 {slb_name} 可用公网IP: {eips}")
+        return eips
+
+    @submenu("负载均衡（基础版）")
     def slb_bind_eip(self, slb_name, network_type="public_net(基础版)", ip_version="IPv4"):
         """为负载均衡绑定公网IP，并返回绑定的EIP地址"""
         action_name = f"绑定公网{ip_version}"
@@ -749,6 +1042,49 @@ class SlbMixin(BasePage):
         selected_row.get_by_role("radio").click()
         dialog.get_by_text("确定").click()
         self.logger.info(f"负载均衡 {slb_name} {action_name}成功: {eip}")
+        return eip
+
+    @submenu("负载均衡（基础版）")
+    def slb_bind_eip_by_ip(self, slb_name, eip, network_type="public_net(基础版)", ip_version="IPv4"):
+        """为负载均衡绑定指定公网IP
+
+        Args:
+            slb_name: 负载均衡名称
+            eip: 要绑定的公网IP地址
+            network_type: IP池名称，默认"public_net(基础版)"
+            ip_version: IP版本，默认"IPv4"
+
+        Returns:
+            str: 绑定的EIP地址
+        """
+        action_name = f"绑定公网{ip_version}"
+        self.click_action(slb_name, action_name)
+        dialog = self._find_element([
+            self.get_by_role("dialog", name=action_name),
+            self.get_by_label(action_name),
+        ], f"{action_name}对话框", timeout=5000)
+        dialog.get_by_placeholder("请选择").click()
+        self.get_by_text(network_type).click()
+
+        rows_locator = dialog.get_by_role("row").filter(has_text="关闭")
+        expect(rows_locator.first).to_be_visible(timeout=10000)
+
+        available_rows = rows_locator.all()
+        target_row = None
+        for row in available_rows:
+            cell_text = row.get_by_role("cell").nth(1).text_content().strip()
+            if eip in cell_text:
+                target_row = row
+                break
+
+        if target_row is None:
+            raise AssertionError(
+                f"在绑定公网IP对话框中未找到IP {eip}，"
+                f"可用IP: {[r.get_by_role('cell').nth(1).text_content().strip() for r in available_rows]}"
+            )
+        target_row.get_by_role("radio").click()
+        dialog.get_by_text("确定").click()
+        self.logger.info(f"负载均衡 {slb_name} 绑定公网IP {eip} 成功")
         return eip
 
     @submenu("负载均衡（基础版）")
@@ -941,6 +1277,95 @@ class SlbMixin(BasePage):
         return vip.strip()
 
     @submenu("负载均衡（基础版）")
+    def get_slb_uuid(self, slb_name):
+        """获取负载均衡的uuid。
+
+        通过JavaScript从el-table行元素的Vue内部状态中读取uuid。
+
+        Args:
+            slb_name: 负载均衡名称
+
+        Returns:
+            str: 负载均衡uuid
+        """
+        row = self.get_row_by_name(slb_name)
+        uuid = row.evaluate("""
+            el => {
+                let current = el;
+                while (current) {
+                    if (current.__vue__ && current.__vue__.row && current.__vue__.row.uuid) {
+                        return current.__vue__.row.uuid;
+                    }
+                    current = current.parentElement;
+                }
+                const tr = el.closest('tr');
+                if (tr && tr.dataset && tr.dataset.uuid) return tr.dataset.uuid;
+                const tableRow = el.closest('.el-table__row');
+                if (tableRow && tableRow.__vue__ && tableRow.__vue__.row && tableRow.__vue__.row.uuid) {
+                    return tableRow.__vue__.row.uuid;
+                }
+                return null;
+            }
+        """)
+        if not uuid:
+            raise AssertionError(f"未能从SLB '{slb_name}' 获取uuid")
+        self.logger.info(f"获取SLB '{slb_name}' uuid: {uuid}")
+        return uuid
+
+    @submenu("负载均衡（基础版）")
+    def get_slb_project_id(self, slb_name):
+        """获取负载均衡的project_id。
+
+        通过JavaScript从el-table行元素的Vue内部状态中读取project_id。
+
+        Args:
+            slb_name: 负载均衡名称
+
+        Returns:
+            str: project_id
+        """
+        row = self.get_row_by_name(slb_name)
+        project_id = row.evaluate("""
+            el => {
+                let current = el;
+                while (current) {
+                    if (current.__vue__ && current.__vue__.row && current.__vue__.row.project_id) {
+                        return current.__vue__.row.project_id;
+                    }
+                    current = current.parentElement;
+                }
+                const tr = el.closest('tr');
+                if (tr && tr.dataset && tr.dataset.projectId) return tr.dataset.projectId;
+                const tableRow = el.closest('.el-table__row');
+                if (tableRow && tableRow.__vue__ && tableRow.__vue__.row && tableRow.__vue__.row.project_id) {
+                    return tableRow.__vue__.row.project_id;
+                }
+                return null;
+            }
+        """)
+        if not project_id:
+            raise AssertionError(f"未能从SLB '{slb_name}' 获取project_id")
+        self.logger.info(f"获取SLB '{slb_name}' project_id: {project_id}")
+        return project_id
+
+    @submenu("负载均衡（基础版）")
+    def goto_slb_monitor(self, slb_name):
+        """在SLB列表页点击"查看监控"进入监控详情页。
+
+        Args:
+            slb_name: 负载均衡名称
+
+        Returns:
+            str: 监控页面URL
+        """
+        self.search(slb_name)
+        self.click_action(slb_name, "查看监控")
+        self.logger.info(f"点击SLB '{slb_name}' 查看监控")
+        # 等待页面导航完成
+        self.page.wait_for_timeout(3000)
+        return self.page.url
+
+    @submenu("负载均衡（基础版）")
     def get_slb_eip(self, slb_name):
         """
         获取负载均衡绑定的公网IP地址。
@@ -953,7 +1378,7 @@ class SlbMixin(BasePage):
         """
         row_data = self.get_row_data(slb_name)
         eip = row_data.get("公网IPv4") or row_data.get("公网IP") or row_data.get("弹性公网IP")
-        if eip and eip.strip() and eip.strip() not in ["-", "无", ""]:
+        if eip and eip.strip() and eip.strip() not in ["-", "--", "无", ""]:
             self.logger.info(f"获取SLB '{slb_name}' 公网IP地址: {eip.strip()}")
             return eip.strip()
         self.logger.info(f"SLB '{slb_name}' 未绑定公网IP")

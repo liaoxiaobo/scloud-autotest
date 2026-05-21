@@ -854,6 +854,9 @@ def ip_group(browser_context, config, request):
         "enable_ipv6": False,
     }
     group_info.update(params)
+    # 空 IP 列表可能导致表单验证失败，回退为默认 IP
+    if not group_info.get("ip_addresses"):
+        group_info["ip_addresses"] = ["10.10.10.10"]
 
     with allure_step_log(f"Setup: 创建 IP 地址组 {group_info['name']}"):
         vpc_page.ip_group_create(
