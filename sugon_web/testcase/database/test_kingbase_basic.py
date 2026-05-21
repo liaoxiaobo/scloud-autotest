@@ -1,4 +1,6 @@
 import allure
+import pytest
+from time import sleep
 
 from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
@@ -99,7 +101,10 @@ class TestKingbaseBasic:
         old_host = db_util.get_backend_host(kingbase_page, ssh_host, node_name)
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
-            selected_host = kingbase_page.kingbase_hot_migration(instance_name, node_name)
+            try:
+                selected_host = kingbase_page.kingbase_hot_migration(instance_name, node_name)
+            except pytest.skip.Exception:
+                raise
 
         with allure_step_log("步骤二：验证热迁移任务执行成功"):
             kingbase_page.assert_popup_success("热迁移命令下发成功")
@@ -115,17 +120,13 @@ class TestKingbaseBasic:
     @allure.title("KingbaseES-新建备节点")
     def test_add_backup_node(self, kingbase_page, kingbase, ssh_host):
         instance_name = kingbase["name"]
-        old_nodes = set(kingbase_page._get_detail_node_names(instance_name))
+        new_node_name = f"{instance_name}-3"
 
         with allure_step_log("步骤一：为实例新建备节点"):
             kingbase_page.add_backup_node(instance_name)
 
         with allure_step_log("步骤二：验证备节点创建成功"):
             kingbase_page.assert_popup_success("添加从节点")
-            new_nodes = set(kingbase_page._get_detail_node_names(instance_name))
-            added_nodes = list(new_nodes - old_nodes)
-            assert added_nodes, f"未检测到新建备节点，创建前节点: {old_nodes}，创建后节点: {new_nodes}"
-            new_node_name = added_nodes[0]
             kingbase_page.assert_status(new_node_name, status="创建中", timeout=600, refresh=True)
             kingbase_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
             db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800)
@@ -235,22 +236,39 @@ class TestKingbaseBasic:
 
     @allure.title("KingbaseES-数据库搜索")
     def test_database_search(self, kingbase_page, kingbase):
+        """测试数据库列表页的搜索功能"""
+        instance_name = kingbase["name"]
         keyword = kingbase["db_name"][:-2]
 
-        with allure_step_log(f"步骤一：按关键字 {keyword} 搜索数据库"):
-            kingbase_page.goto_detail_page(kingbase["name"], tab_name="数据库")
+        with allure_step_log("步骤一：输入数据库名称进行搜索"):
+            kingbase_page.goto_submenu("实例管理")
+            kingbase_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+            kingbase_page.get_by_role("tab", name="数据库", exact=True).click()
             kingbase_page.search(keyword)
+            sleep(2)
 
         with allure_step_log("步骤二：验证数据库搜索结果正确"):
             kingbase_page.assert_list_contain(keyword, exact_match=False)
 
+        with allure_step_log("步骤三：重置搜索条件"):
+            kingbase_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            assert kingbase_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
+
     @allure.title("KingbaseES-用户搜索")
     def test_user_search(self, kingbase_page, kingbase):
+        """测试用户列表页的搜索功能"""
+        instance_name = kingbase["name"]
         keyword = kingbase["user_name"][:-2]
 
-        with allure_step_log(f"步骤一：按关键字 {keyword} 搜索用户"):
-            kingbase_page.goto_detail_page(kingbase["name"], tab_name="用户")
+        with allure_step_log("步骤一：输入用户名称进行搜索"):
+            kingbase_page.goto_submenu("实例管理")
+            kingbase_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
+            kingbase_page.get_by_role("tab", name="用户").click()
             kingbase_page.search(keyword)
 
         with allure_step_log("步骤二：验证用户搜索结果正确"):
             kingbase_page.assert_list_contain(keyword, "用户名", exact_match=False)
+
+        with allure_step_log("步骤三：重置搜索条件"):
+            kingbase_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            assert kingbase_page._input_search.input_value() == "", "重置后搜索输入框未被清空"

@@ -1,6 +1,8 @@
 import re
 from time import sleep, time
 
+import pytest
+
 from sugon_web.common.base import submenu
 from sugon_web.pages.database.pgsql import PgSQLPage
 from sugon_web.utils import db_util
@@ -179,7 +181,8 @@ class KingbasePage(PgSQLPage):
     @submenu("实例管理")
     def add_backup_node(self, name: str):
         """为集群新增备节点。"""
-        self.goto_detail_page(name, tab_name="详情")
+        self.locator("#cloud-container-content").get_by_text(name).first.click()
+        sleep(5)
         self.get_by_text("新建备节点", exact=True).first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
@@ -294,7 +297,7 @@ class KingbasePage(PgSQLPage):
     def reset_whitelist(self, name: str):
         """重置白名单。"""
         self._open_instance_detail_tab(name, "白名单")
-        self.get_by_text("重置白名单", exact=True).click()
+        self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -302,15 +305,25 @@ class KingbasePage(PgSQLPage):
         """节点热迁移。"""
         self.goto_detail_page(name, node_name)
         self.click_action(node_name, "热迁移")
+        sleep(2)
 
         dialog = self.get_by_label("热迁移")
         dialog.locator("div").filter(has_text=re.compile(r"^目标物理机")).locator(".el-select").click()
         host_dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
-        host_options = host_dropdown.locator("li.el-select-dropdown__item:not(.is-disabled)")
-        if host_options.count() == 0:
-            raise AssertionError("没有可用的热迁移目标物理机")
-        selected_host = host_options.first.inner_text().split()[0].strip()
-        host_options.first.click()
+        options = host_dropdown.locator("li.el-select-dropdown__item")
+        selected_host = None
+        for i in range(options.count()):
+            option = options.nth(i)
+            class_name = option.get_attribute("class") or ""
+            if "is-disabled" in class_name:
+                continue
+            selected_host = option.inner_text().strip().split()[0]
+            option.click()
+            break
+
+        if not selected_host:
+            dialog.get_by_text("取消", exact=True).click()
+            pytest.skip("没有可用的物理机可供迁移")
 
         if bandwidth:
             dialog.locator("div").filter(has_text=re.compile(r"^迁移速率")).locator(".el-select").click()
