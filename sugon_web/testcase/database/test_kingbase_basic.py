@@ -129,7 +129,7 @@ class TestKingbaseBasic:
             kingbase_page.assert_popup_success("添加从节点")
             kingbase_page.assert_status(new_node_name, status="创建中", timeout=600, refresh=True)
             kingbase_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
-            db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800)
+            db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800, refresh=True)
 
     @allure.title("KingbaseES-新建数据库")
     def test_create_database(self, kingbase_page, kingbase):

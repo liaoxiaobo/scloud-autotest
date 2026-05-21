@@ -246,8 +246,10 @@ class KingbasePage(PgSQLPage):
     def authorize_user(self, name: str, user_name: str, db_name: str):
         """为用户授权数据库。"""
         self._open_instance_detail_tab(name, "用户")
+        sleep(2)
         self.click_action(user_name, "授权")
         dialog = self.get_by_label("授权", exact=True)
+        sleep(2)
         dialog.get_by_placeholder("搜索数据库名称").fill(db_name)
         dialog.get_by_text("搜索", exact=True).click()
         dialog.get_by_role("row", name=re.compile(db_name)).locator("span").nth(1).click()
@@ -257,8 +259,10 @@ class KingbasePage(PgSQLPage):
     def deauthorize_user(self, name: str, user_name: str, db_name: str):
         """解除用户数据库授权。"""
         self._open_instance_detail_tab(name, "用户")
+        sleep(2)
         self.click_action(user_name, "解除授权")
         dialog = self.get_by_label("解除授权")
+        sleep(2)
         dialog.locator(".el-select").click()
         self._select_visible_option(db_name)
         dialog.get_by_text("确定", exact=True).click()
