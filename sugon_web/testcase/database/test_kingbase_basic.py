@@ -129,7 +129,7 @@ class TestKingbaseBasic:
             kingbase_page.assert_popup_success("添加从节点")
             kingbase_page.assert_status(new_node_name, status="创建中", timeout=600, refresh=True)
             kingbase_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
-            db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800, refresh=True)
+            db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800)
 
     @allure.title("KingbaseES-新建数据库")
     def test_create_database(self, kingbase_page, kingbase):
@@ -184,7 +184,8 @@ class TestKingbaseBasic:
 
         with allure_step_log("步骤三：验证授权成功"):
             kingbase_page.assert_popup_success("执行成功,若数据未更新请刷新页面")
-            kingbase_page.assert_list_contain(db_name, "数据库", exact_match=False)
+            row_data = kingbase_page.get_row_data(user_name)
+            assert db_name in row_data.get("数据库", ""), f"用户 {user_name} 未授权数据库 {db_name}，当前行数据: {row_data}"
 
         with allure_step_log("步骤四：解除用户数据库授权"):
             kingbase_page.deauthorize_user(instance_name, user_name, db_name)
