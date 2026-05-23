@@ -105,7 +105,7 @@ def browser(config):
 
 
 @pytest.fixture(scope="class")
-def browser_context(browser):
+def browser_context(browser, request):
     """
     浏览器上下文fixture
 
@@ -118,6 +118,7 @@ def browser_context(browser):
     )
 
     logger.info("浏览器上下文创建成功")
+    request.node._browser_context = context
 
     yield context
 
@@ -153,6 +154,23 @@ def _create_logged_in_page(browser_context, config):
         base_page_obj = BasePage(page)
         base_page_obj.close_dialog_if_exists()
 
+    # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
+    _orig_close = page.close
+
+    def _close_with_screenshot():
+        import sys
+        if sys.exc_info()[0] is not None:
+            try:
+                screenshot_bytes = page.screenshot()
+                if not hasattr(browser_context, '_failure_screenshots'):
+                    browser_context._failure_screenshots = []
+                browser_context._failure_screenshots.append(screenshot_bytes)
+                logger.info("fixture page 关闭前自动截图成功")
+            except Exception as e:
+                logger.warning(f"fixture page 关闭前自动截图失败: {e}")
+        _orig_close()
+
+    page.close = _close_with_screenshot
     return page
 
 
@@ -173,6 +191,49 @@ def page(browser_context, config):
     except Exception as e:
         logger.error(f"页面初始化失败: {e}")
         raise
+
+
+def _attach_pre_captured_screenshots(item, stage):
+    """将 fixture 在关闭前预截的图保存到 screenshots 目录并附加到 Allure 报告。"""
+    browser_context = item.funcargs.get("browser_context")
+    if not browser_context:
+        parent = getattr(item, 'parent', None)
+        if parent:
+            browser_context = getattr(parent, '_browser_context', None)
+
+    if not browser_context or not hasattr(browser_context, '_failure_screenshots'):
+        return
+
+    screenshots = browser_context._failure_screenshots
+    if not screenshots:
+        return
+
+    # 统一将运行产物落在仓库根目录，与 capture_failure_screenshot 保持一致
+    project_root = Path(__file__).resolve().parent.parent
+    screenshot_dir = project_root / "screenshots"
+    screenshot_dir.mkdir(exist_ok=True)
+
+    for idx, screenshot_bytes in enumerate(screenshots):
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = screenshot_dir / f"{item.name}_{stage}_{timestamp}_{idx + 1}.png"
+
+            with open(screenshot_path, "wb") as f:
+                f.write(screenshot_bytes)
+            logger.info(f"{stage}截图保存成功: {screenshot_path}")
+
+            with open(screenshot_path, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"失败截图_{stage}_{idx + 1}",
+                    attachment_type=allure.attachment_type.PNG
+                )
+        except Exception as e:
+            logger.warning(f"附加{stage}截图到 Allure 失败: {e}")
+
+    # 清空，避免重复附加
+    browser_context._failure_screenshots.clear()
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
@@ -197,6 +258,9 @@ def pytest_runtest_makereport(item, call):
     """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
+
+    # 先处理 fixture 失败时预截图的数据（fixture 在 makereport 前已关闭 page）
+    _attach_pre_captured_screenshots(item, rep.when)
 
     # 获取page对象
     page = get_page_from_item(item)
