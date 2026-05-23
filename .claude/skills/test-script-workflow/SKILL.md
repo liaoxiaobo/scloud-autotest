@@ -19,14 +19,14 @@ user-invocable: true
 
 ## 五个阶段的执行编排
 
-**本文件（SKILL.md）为总控文件**，只定义工作流编排、阶段顺序、文件读取关系和全局约束。**各阶段的具体执行指令、提示词、检查清单详见 `references/` 目录下的对应文件**，执行各阶段前必须先读取对应 reference 获取完整指令。
+**本文件（SKILL.md）为总控文件**，只定义工作流编排、阶段顺序、文件读取关系和全局约束。**各阶段的具体执行指令、提示词、要读取的关联文件、检查清单详见 `references/` 目录下的对应文件及其引用的关联文件**，执行各阶段前必须先读取对应 reference 获取完整指令。
 
-执行各阶段前，**必须使用 Read 工具读取**对应 reference 文件获取完整指令。严禁在未读取 reference 文件的情况下执行该阶段，因为每个阶段的完整指令都在 reference 文件中，跳过阅读会导致执行偏差。
+执行以下各个阶段任务的过程中，必须先使用 Read 工具完整读取下文提到的该阶段"读取文件"字段中 `references/` 目录下的 phase 文件，以获取该阶段的完整执行指令。应严格按照顺序读取 phase 文件及其列出的关联文件。严禁在未读取 phase 文件及其列出的关联文件的情况下开始执行阶段任务，因为各阶段指令分散在 phase 文件及其引用的关联文件中，跳过阅读会导致执行偏差。
 
 ### 阶段一：需求转换与校验
 将 CSV 测试需求文件转换为结构化 MD 需求文档，并进行质量校验。
 
-**读取文件：** `references/phase_01_requirements.md`（第一部分+第二部分）
+**读取文件：** `references/phase_01_requirements.md`（第一部分+第二部分），以及其引用的 `sugon_web/case_specs/templates/base_case.md`、`sugon_web/case_specs/fixtures_index.md`、用户提供的 CSV 文件
 **文件内容：** CSV→MD 转换规范与 MD 质量校验
 **前置条件：** 用户提供 CSV 测试需求文件
 **执行顺序：** 先执行第一部分（CSV→MD），在同一文件中继续执行第二部分（MD 校验）
@@ -37,7 +37,7 @@ user-invocable: true
 ### 阶段二：脚本编写与对齐
 基于 MD 需求编写 Playwright + Pytest 自动化测试脚本，并与需求进行对齐检查。
 
-**读取文件：** `references/phase_02_coding.md`（第一部分+第二部分）
+**读取文件：** `references/phase_02_coding.md`（第一部分+第二部分），以及其引用的 `sugon_web/case_specs/prompts/test_case_codegen_prompt.md`、`sugon_web/case_specs/fixtures_index.md`、阶段一产出的测试需求 MD 文件、`sugon_web/refrence/module_index.yaml`、被测模块对应的前端工程代码
 **文件内容：** 编码规范、用例骨架、需求对齐与编码规范检查
 **前置条件：** 阶段一完成
 **执行顺序：** 先执行第一部分（编写脚本），在同一文件中继续执行第二部分（对齐检查）
@@ -48,7 +48,7 @@ user-invocable: true
 ### 阶段三：执行用例与修复
 执行测试用例，修复错误直至所有用例达到可接受状态。
 
-**读取文件：** `references/phase_03_execution.md`
+**读取文件：** `references/phase_03_execution.md`，以及其引用的 `references/phase_02_coding.md`、阶段一产出的测试需求 MD 文件、`sugon_web/refrence/` 下被测模块的前端工程代码
 **文件内容：** pytest 执行与四步法修复：日志规范、Reproduce→Isolate→Diagnose→Fix、检查清单
 **前置条件：** 阶段二完成（或用户提供现有脚本及对应 MD 文档）
 **完成标志：** 所有用例达到可接受状态（用例问题已修复、产品缺陷已标记、环境问题已跳过）
@@ -58,7 +58,7 @@ user-invocable: true
 ### 阶段四：日志分析与核查
 分析执行日志，核查测试需求覆盖度。
 
-**读取文件：** `references/phase_04_log_analysis.md`
+**读取文件：** `references/phase_04_log_analysis.md`，以及其引用的阶段一产出的测试需求 MD 文件
 **文件内容：** 日志分析与需求覆盖度核查：重要/非重要问题分级、完成标志
 **前置条件：** 阶段三完成
 **完成标志：** 日志分析完成，每个步骤与需求一致
