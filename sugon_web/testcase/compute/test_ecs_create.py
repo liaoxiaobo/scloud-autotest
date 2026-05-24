@@ -82,7 +82,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 空启动来源")
-    def test_ecs_create_with_empty(self, ecs_page, image, ssh_vm):
+    def test_ecs_create_with_empty(self, ecs_page, evs_page, image, ssh_vm):
         name = random_data()
         iso_name = image.get("name")
         with allure_step_log("步骤1: 创建启动方式为 空启动 的云服务器"):
@@ -108,9 +108,9 @@ class TestECSCreate:
             cdrom_name = ecs_page.get_row_data(name).get("挂载云硬盘")
             assert cdrom_name.startswith("cdrom-")
             # 验证云硬盘状态
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(cdrom_name, status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(cdrom_name, status="正在使用", refresh=True)
 
         with allure_step_log("步骤5: 登录vnc验证"):
             ecs_page.goto_service('弹性云服务器')
