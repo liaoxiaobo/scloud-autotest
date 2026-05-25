@@ -819,6 +819,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤1: 为云服务器{name}安装工具-页面ISO安装"):
             # 调用安装工具方法
+            ecs_page.search(name)
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()

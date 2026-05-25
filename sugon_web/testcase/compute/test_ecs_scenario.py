@@ -83,7 +83,7 @@ class TestECSScenario:
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, ops_page, vm, volume, ssh_vm):
+    def test_ecs_snapshot_vm(self, ecs_page, ops_page, evs_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -235,7 +235,7 @@ class TestECSScenario:
             for name, ecs_id in zip(all_vms, ecs_ids):
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
             for name, ecs_id in zip(all_vms, ecs_ids):
-                ecs_page.assert_status(name)
+                ecs_page.wait_for_source_complete(name)
                 nodes.append(ssh_host.guest_show(ecs_id).get("node"))
             assert len(set(nodes)) >= 1
 
