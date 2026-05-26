@@ -1,7 +1,7 @@
 import allure
 import pytest
 from sugon_web.conftest import _create_logged_in_page
-from sugon_web.pages.middleware import KafkaPage, RedisPage
+from sugon_web.pages.middleware import KafkaPage, RedisPage, ESPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 
@@ -20,6 +20,14 @@ def kafka_page(page):
     kafka_page = KafkaPage(page)
     kafka_page.goto_service('分布式消息服务 Kafka')
     return kafka_page
+
+
+@pytest.fixture(scope="function")
+def es_page(page):
+    """初始化云搜索服务 CSS 实例管理页面"""
+    es_page = ESPage(page)
+    es_page.goto_service('云搜索服务')
+    return es_page
 
 
 @pytest.fixture(scope="class")
@@ -73,5 +81,29 @@ def kafka(browser_context, config):
     with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享Kafka实例: {name}")
         kafka_page.delete_instance(name)
+
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def css(browser_context, config):
+    """创建一个供整个测试类使用的云搜索服务 CSS 集群实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    es_page = ESPage(page)
+    es_page.goto_service('云搜索服务')
+    name = f"css-{random_data()}"
+    data = {"name": name, "password": "Aa123456"}
+    logger.info(f"为测试类创建共享云搜索服务 CSS 实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        es_page.create_instance(name=name)
+        es_page.assert_popup_success("创建ElasticSearch资源成功")
+        es_page.assert_status(name, status="运行中", timeout=2400, refresh=True)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享云搜索服务 CSS 实例: {name}")
+        es_page.delete_instance(name)
 
     page.close()

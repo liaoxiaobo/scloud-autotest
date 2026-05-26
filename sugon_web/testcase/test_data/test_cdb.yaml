@@ -137,3 +137,29 @@ kafka:
           security_mode: true
         - version: "2.4.0"
           security_mode: true
+es:
+    test_create_and_delete_es:
+        - version: "7.10.2"
+          disk_size: 10
+          security_mode: false
+        - version: "7.10.2"
+          disk_size: 20
+          security_mode: false
+        - version: "7.10.2"
+          disk_size: 10
+          security_mode: true
+        - version: "7.10.2"
+          disk_size: 20
+          security_mode: true
+        - version: "6.8.23"
+          disk_size: 10
+          security_mode: false
+        - version: "6.8.23"
+          disk_size: 20
+          security_mode: false
+        - version: "6.8.23"
+          disk_size: 10
+          security_mode: true
+        - version: "6.8.23"
+          disk_size: 20
+          security_mode: true
