@@ -96,7 +96,7 @@ def css(browser_context, config):
     logger.info(f"为测试类创建共享云搜索服务 CSS 实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        es_page.create_instance(name=name)
+        es_page.create_instance(name=name, security_mode=True)
         es_page.assert_popup_success("创建ElasticSearch资源成功")
         es_page.assert_status(name, status="运行中", timeout=2400, refresh=True)
 

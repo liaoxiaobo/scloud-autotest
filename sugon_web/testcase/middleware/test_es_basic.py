@@ -94,20 +94,20 @@ class TestESBasic:
     @allure.title("CSS-重启节点")
     def test_restart_node(self, es_page, css):
         instance_name = css["name"]
-        node_name = f"{instance_name}-0"
+        node_name = f"{instance_name}-data-0"
 
         with allure_step_log("步骤一：重启节点"):
             es_page.restart_node(instance_name, node_name)
 
         with allure_step_log("步骤二：验证节点重启结果"):
             es_page.assert_popup_success("重启节点成功")
-            es_page.assert_status(instance_name, status="节点重启中", timeout=600, refresh=True)
-            es_page.assert_status(instance_name, status="运行中", timeout=2400, refresh=True)
+            es_page.assert_status(node_name, status="节点重启中", timeout=600, refresh=True)
+            es_page.assert_status(node_name, status="运行中", timeout=2400, refresh=True)
 
     @allure.title("CSS-修改规格")
     def test_change_specification(self, es_page, css):
         instance_name = css["name"]
-        node_name = f"{instance_name}-0"
+        node_name = f"{instance_name}-data-0"
 
         with allure_step_log("步骤一：修改规格"):
             es_page.change_specification(instance_name, node_name)
@@ -120,7 +120,7 @@ class TestESBasic:
     @allure.title("CSS-修改云硬盘大小")
     def test_change_disk_size(self, es_page, css, ssh_host):
         instance_name = css["name"]
-        node_name = f"{instance_name}-0"
+        node_name = f"{instance_name}-data-0"
         current_size = db_util.get_disk_size(es_page, node_name, ssh_host)
         new_size = current_size + 10
 
@@ -136,7 +136,7 @@ class TestESBasic:
     @allure.title("CSS-节点热迁移")
     def test_es_node_hot_migration(self, es_page, css, ssh_host):
         instance_name = css["name"]
-        node_name = f"{instance_name}-0"
+        node_name = f"{instance_name}-data-0"
         old_host = db_util.get_backend_host(es_page, ssh_host, node_name)
         allure.attach(f"迁移前物理机: {old_host}", name="迁移前状态")
 
@@ -172,7 +172,7 @@ class TestESBasic:
     @allure.title("CSS-新建数据节点")
     def test_add_data_node(self, es_page, css, ssh_host):
         instance_name = css["name"]
-        new_node_name = f"{instance_name}-6"
+        new_node_name = f"{instance_name}-data-3"
 
         with allure_step_log("步骤一：新建数据节点"):
             es_page.add_data_node(instance_name)
@@ -196,7 +196,7 @@ class TestESBasic:
 
         with allure_step_log("步骤二：测试单个白名单添加与删除"):
             es_page.add_whitelist(instance_name, ip_single)
-            es_page.assert_popup_success("创建白名单成功")
+            es_page.assert_popup_success("添加白名单成功")
             es_page.assert_list_contain(ip_single, "白名单", exact_match=False)
             es_page.delete_whitelist(instance_name, ip_single)
             es_page.assert_popup_success("删除白名单成功")
@@ -204,7 +204,7 @@ class TestESBasic:
         with allure_step_log("步骤三：测试批量白名单添加与删除"):
             for ip in ip_batch:
                 es_page.add_whitelist(instance_name, ip)
-                es_page.assert_popup_success("创建白名单成功")
+                es_page.assert_popup_success("添加白名单成功")
                 es_page.assert_list_contain(ip, "白名单", exact_match=False)
             es_page.batch_delete_whitelist(instance_name, ip_batch)
             es_page.assert_popup_success("删除白名单成功")

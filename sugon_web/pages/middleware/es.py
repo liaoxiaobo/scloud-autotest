@@ -308,7 +308,7 @@ class ESPage(BasePage):
 
     @submenu("实例管理")
     def node_ip_binding(self, name: str, network: str):
-        node_name = f"{name}-0"
+        node_name = f"{name}-data-0"
         self.ensure_instance_tab(name, "详情")
         self.click_action(node_name, "绑定公网IP")
         dialog = self._visible_dialog()
@@ -322,7 +322,7 @@ class ESPage(BasePage):
 
     @submenu("实例管理")
     def node_ip_unbinding(self, name: str):
-        node_name = f"{name}-0"
+        node_name = f"{name}-data-0"
         self.ensure_instance_tab(name, "详情")
         self.click_action(node_name, "解绑公网IP")
         self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
@@ -441,7 +441,7 @@ class ESPage(BasePage):
     def add_whitelist(self, name: str, ip_address: str):
         self.ensure_instance_tab(name, "白名单")
         self.get_by_text("添加", exact=True).click()
-        self.get_by_label("添加白名单").get_by_placeholder("例：10.0.13.6,10.0.12.0/24").fill(ip_address)
+        self.get_by_placeholder("例：10.0.12.0/").fill(ip_address)
         self.get_by_label("添加白名单").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
