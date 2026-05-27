@@ -345,13 +345,8 @@ class ESPage(BasePage):
     def change_specification(self, name: str, node_name: str, specification_name: str = None):
         self.ensure_instance_tab(name, "详情")
         self.click_action(node_name, "修改规格")
-        dialog = self._visible_dialog()
-        if specification_name:
-            row = dialog.locator("tr").filter(has_text=re.compile(re.escape(specification_name))).first
-        else:
-            row = dialog.locator("tr.el-table__row").first
-        row.locator(".el-radio, label[role='radio']").first.click()
-        dialog.get_by_text("确定", exact=True).click()
+        self.get_by_role("row", name=specification_name).get_by_role("radio").click()
+        self.dialog_confirm.click()
 
     @submenu("实例管理")
     def es_hot_migration(self, name: str, node_name: str):
@@ -433,8 +428,8 @@ class ESPage(BasePage):
 
     @submenu("实例管理")
     def add_data_node(self, name: str):
-        self.ensure_instance_tab(name, "详情")
-        self.get_by_text("新建数据节点", exact=True).click()
+        self.ensure_instance_tab(name)
+        self.get_by_label("详情").get_by_text("新建数据节点", exact=True).click()
         self.get_by_label("新建数据节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")

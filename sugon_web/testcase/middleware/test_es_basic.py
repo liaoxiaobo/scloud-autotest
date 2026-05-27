@@ -101,21 +101,24 @@ class TestESBasic:
 
         with allure_step_log("步骤二：验证节点重启结果"):
             es_page.assert_popup_success("重启节点成功")
-            es_page.assert_status(node_name, status="节点重启中", timeout=600, refresh=True)
+            es_page.assert_status(node_name, status="重启中", timeout=600, refresh=True)
             es_page.assert_status(node_name, status="运行中", timeout=2400, refresh=True)
 
     @allure.title("CSS-修改规格")
-    def test_change_specification(self, es_page, css):
+    def test_change_specification(self, es_page, css, ssh_host):
         instance_name = css["name"]
         node_name = f"{instance_name}-data-0"
+        specification_name = "应用中间件标准型 es.d6.xlarge 4核 8GiB"
+        real_specification = "es.d6.xlarge"
 
         with allure_step_log("步骤一：修改规格"):
-            es_page.change_specification(instance_name, node_name)
+            es_page.change_specification(instance_name, node_name, specification_name)
 
         with allure_step_log("步骤二：验证规格修改结果"):
             es_page.assert_popup_success("修改规格中，请耐心等待")
             es_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
             es_page.assert_status(node_name, status="运行中", timeout=3000, refresh=True)
+            assert db_util.get_specification(es_page, node_name, ssh_host) == real_specification
 
     @allure.title("CSS-修改云硬盘大小")
     def test_change_disk_size(self, es_page, css, ssh_host):
@@ -214,15 +217,17 @@ class TestESBasic:
         instance_name = css["name"]
         keyword = instance_name[:-2]
 
-        with allure_step_log(f"步骤一：搜索实例关键词 {keyword}"):
+        with allure_step_log("步骤一：输入实例全名进行精确搜索"):
             es_page.goto_submenu("实例管理")
-            es_page.search(keyword)
+            es_page.search(instance_name)
+            es_page.assert_list_contain(instance_name)
 
-        with allure_step_log("步骤二：验证搜索结果"):
+        with allure_step_log("步骤二：输入实例名称片段进行模糊搜索"):
+            es_page.search(keyword)
             es_page.assert_list_contain(keyword, exact_match=False)
 
         with allure_step_log("步骤三：重置搜索条件"):
-            es_page.locator("div.cloud-button-btn").get_by_text("重置").click()
+            es_page.btn_reset.click()
             assert es_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("CSS-参数配置")
