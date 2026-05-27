@@ -1,12 +1,12 @@
 from playwright.sync_api import Page
 
 from sugon_web.common.playwright import Playwright
-from sugon_web.common._navigation import NavigationMixin, submenu
-from sugon_web.common._elements import ElementsMixin
-from sugon_web.common._tables import TablesMixin
-from sugon_web.common._actions import ActionsMixin
-from sugon_web.common._assertions import AssertionsMixin
-from sugon_web.common._waits import WaitsMixin
+from sugon_web.common.navigation import NavigationMixin, submenu
+from sugon_web.common.elements import ElementsMixin
+from sugon_web.common.tables import TablesMixin
+from sugon_web.common.actions import ActionsMixin
+from sugon_web.common.assertions import AssertionsMixin
+from sugon_web.common.waits import WaitsMixin
 from sugon_web.config.config import Config
 
 
