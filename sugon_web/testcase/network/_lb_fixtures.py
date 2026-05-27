@@ -32,6 +32,9 @@ class LbCleanupRegistry:
         Args:
             listener_info: 监听器信息字典，至少包含 `slb_name` 与 `lb_name`。
                 若同时提供 `pool_name`，清理阶段会先尝试删除资源池成员。
+                可选字段:
+                - `extra_pools`: 非默认资源池名称列表，清理时会先删除这些资源池。
+                - `forward_rules`: 转发规则名称列表，清理时会先删除这些规则。
 
         Returns:
             None.
@@ -166,7 +169,13 @@ def _safe_remove_pool_members(page, vpc_page, listener_info):
 
 
 def _safe_delete_listener(page, vpc_page, listener_info):
-    """尝试删除监听器及其资源池成员，失败仅记录日志。
+    """尝试删除监听器及其关联资源，失败仅记录日志。
+
+    清理顺序（与资源依赖关系相反）：
+    1. 转发规则（引用资源池）
+    2. 非默认资源池
+    3. 默认资源池成员
+    4. 监听器本身
 
     Args:
         page: 当前测试用例使用的 Playwright page 对象。
@@ -178,15 +187,49 @@ def _safe_delete_listener(page, vpc_page, listener_info):
     """
     with allure_step_log(f"Fixture清理: 删除监听器 {listener_info['lb_name']}"):
         try:
-            vpc_page.goto_slb_detail(listener_info["slb_name"], "监听器")
+            slb_name = listener_info["slb_name"]
+            lb_name = listener_info["lb_name"]
+
+            # 1. 先删除转发规则（转发规则引用资源池，需先删）
+            for rule_name in listener_info.get("forward_rules", []):
+                try:
+                    vpc_page.lb_forward_rule_delete(slb_name, lb_name, rule_name)
+                    page.wait_for_timeout(2000)
+                except Exception as exc:
+                    logger.warning(f"清理转发规则失败: {rule_name}, error={exc}")
+
+            # 2. 删除非默认资源池：先删成员，再删资源池
+            for pool_name in listener_info.get("extra_pools", []):
+                try:
+                    vpc_page.goto_lb_pool_detail(lb_name, pool_name)
+                    member_names = _wait_pool_member_names(page, vpc_page)
+                    if member_names:
+                        vpc_page.lb_pool_remove_vm(member_names)
+                        page.wait_for_timeout(2000)
+                    vpc_page.goto_slb_detail(slb_name, "监听器")
+                    vpc_page.lb_pool_delete(slb_name, lb_name, pool_name)
+                    page.wait_for_timeout(2000)
+                except Exception as exc:
+                    logger.warning(f"清理非默认资源池失败: {pool_name}, error={exc}")
+
+            # 3. 删除默认资源池成员
+            vpc_page.goto_slb_detail(slb_name, "监听器")
             _safe_remove_pool_members(page, vpc_page, listener_info)
-            vpc_page.goto_slb_detail(listener_info["slb_name"], "监听器")
+
+            # 4. 删除监听器本身
+            vpc_page.goto_slb_detail(slb_name, "监听器")
             page.wait_for_load_state("networkidle")
-            vpc_page.slb_lb_delete(listener_info["slb_name"], listener_info["lb_name"])
+            vpc_page.slb_lb_delete(slb_name, lb_name)
             vpc_page.assert_popup_success()
             time.sleep(3)
         except Exception as exc:
             logger.warning(f"清理监听器失败: {listener_info}, error={exc}")
+        finally:
+            # 确保清理过程中打开的弹窗被关闭，避免影响后续清理
+            try:
+                vpc_page.close_dialog_if_exists()
+            except Exception:
+                pass
 
 
 def _safe_stop_backend_server(ssh_vm, backend_server_info):

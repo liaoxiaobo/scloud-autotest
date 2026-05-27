@@ -37,7 +37,7 @@ def _send_udp_batch(ssh_client, target_ip, target_port, prefix, count=3):
 @pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
 @allure.epic("网络服务")
 @allure.feature("负载均衡")
-@allure.story("UDP 监听器场景验证")
+@allure.story("监听器场景验证")
 class _BaseTestLbUdpScenario:
     """负载均衡 UDP 监听器场景验证基类。
 

@@ -7,7 +7,7 @@ from sugon_web.utils.logger import logger
 
 
 class OpsPage(BasePage):
-    service_name = "网络设施"
+    service_name = "基础设施"
 
     def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
         """绑定 MFIP 并返回管理 IP。"""

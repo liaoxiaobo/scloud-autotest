@@ -176,11 +176,13 @@ class SlbMixin(BasePage):
                     # 重定向端口通常是第二个 spinbutton，在表单项内定位更准确
                     self.locator("div.el-form-item").filter(has_text="HTTP端口重定向").get_by_role("spinbutton").fill(str(redirect_port))
 
-        # 访问控制
-        acl_switch = self.locator("div.el-form-item").filter(has_text="启用访问控制").get_by_role("switch")
-        is_checked = acl_switch.get_attribute("aria-checked") == "true"
-        if is_checked != acl_enable:
-            acl_switch.locator("span").click()
+        # 访问控制（V1 的 HTTP/HTTPS 协议下不展示该选项）
+        acl_form_item = self.locator("div.el-form-item").filter(has_text="启用访问控制")
+        if acl_form_item.count() > 0 and acl_form_item.get_by_role("switch").count() > 0:
+            acl_switch = acl_form_item.get_by_role("switch").first
+            is_checked = acl_switch.get_attribute("aria-checked") == "true"
+            if is_checked != acl_enable:
+                acl_switch.locator("span").click()
 
         if acl_enable:
             acl_dialog = self._find_element([
@@ -558,7 +560,7 @@ class SlbMixin(BasePage):
         clickable.click()
         self.logger.info(f"进入监听器 {lb_name} 下资源池详情成功: {pool_name}")
 
-    def lb_pool_add_vm(self, vm_names, lb_name=None, pool_name=None, resource_type="弹性云服务器 ECS", ports=None):
+    def lb_pool_add_vm(self, vm_names, lb_name=None, pool_name=None, resource_type="弹性云服务器 ECS", ports=None, weights=None):
         """在监听器资源池详情页中新增虚机资源
 
         Args:
@@ -567,6 +569,8 @@ class SlbMixin(BasePage):
             pool_name: 资源池名称，和 lb_name 一起传入时会自动进入资源池详情
             resource_type: 资源类型，默认"弹性云服务器 ECS"
             ports: 资源端口配置，支持单个端口值、与 vm_names 顺序对应的列表，或 {vm_name: port} 字典
+            weights: 成员权重配置，支持单个权重值、与 vm_names 顺序对应的列表，或 {vm_name: weight} 字典。
+                仅在负载调度算法为"加权轮询"时生效，权重范围1~100。
         """
         if isinstance(vm_names, str):
             vm_names = [vm_names]
@@ -579,6 +583,15 @@ class SlbMixin(BasePage):
             if isinstance(ports, (list, tuple)):
                 return ports[index]
             return ports
+
+        def resolve_weight(vm_name, index):
+            if weights is None:
+                return None
+            if isinstance(weights, dict):
+                return weights.get(vm_name)
+            if isinstance(weights, (list, tuple)):
+                return weights[index]
+            return weights
 
         if lb_name and pool_name:
             self.goto_lb_pool_detail(lb_name, pool_name)
@@ -641,6 +654,14 @@ class SlbMixin(BasePage):
                 port_input.fill(str(target_port))
                 self.logger.info(f"资源池新增虚机时已设置端口: {vm_name} -> {target_port}")
 
+            target_weight = resolve_weight(vm_name, index)
+            if target_weight is not None:
+                spinbuttons = row.get_by_role("spinbutton").all()
+                if len(spinbuttons) >= 2:
+                    weight_input = spinbuttons[1]
+                    weight_input.fill(str(target_weight))
+                    self.logger.info(f"资源池新增虚机时已设置权重: {vm_name} -> {target_weight}")
+
         if missing_vms:
             raise AssertionError(f"新建资源弹窗当前可选列表中未找到虚机: {missing_vms}")
 
@@ -676,7 +697,8 @@ class SlbMixin(BasePage):
 
     def lb_pool_config_health_check(self, lb_name, pool_name, enable=True,
                                     health_type=None, health_request=None,
-                                    health_expected_response=None):
+                                    health_expected_response=None,
+                                    http_method=None, url_path=None):
         """在资源池详情页配置健康检查。
 
         弹窗内健康检查主控为 ``el-switch``（label="是否开启"），
@@ -693,16 +715,16 @@ class SlbMixin(BasePage):
                 配置弹窗中该字段 disabled，此处忽略）。
             health_expected_response: UDP 健康检查返回结果（仅创建监听器时有效，
                 配置弹窗中该字段 disabled，此处忽略）。
+            http_method: HTTP/HTTPS 类型时的 HTTP 方法，如 ``GET``、``HEAD``。
+            url_path: HTTP/HTTPS 类型时的 URL 地址，如 ``/index.html``。
         """
         self.goto_lb_pool_detail(lb_name, pool_name)
         page_root = self.locator("#cloud-container-content")
 
         # 点击健康检查区域的"配置"按钮
-        # 页面上可能有多个"配置"链接（负载调度算法、会话保持等），
-        # 通过 XPath 精确定位：位于包含"健康检查"文本的容器内的"配置"链接。
-        config_btn = page_root.locator(
-            "xpath=.//*[contains(., '健康检查')]//a[contains(., '配置')]"
-        ).first
+        # 页面上有两个"配置"链接（会话保持、健康检查），
+        # 健康检查的在 DOM 顺序中排在第二个，使用 nth(1) 精确定位。
+        config_btn = page_root.locator("a:has-text('配置')").nth(1)
         expect(config_btn).to_be_visible(timeout=5000)
         config_btn.click()
 
@@ -737,6 +759,20 @@ class SlbMixin(BasePage):
                 self.locator("div.el-select-dropdown:visible li").filter(
                     has_text=re.compile(rf"^{re.escape(health_type)}$")
                 ).click()
+
+            # HTTP/HTTPS 类型时配置 HTTP 方法和 URL 地址
+            if health_type in ("HTTP", "HTTPS"):
+                if http_method:
+                    method_select = form_items.filter(has_text="HTTP(S)方法").get_by_placeholder("请选择")
+                    if method_select.is_visible() and not method_select.evaluate("el => el.disabled"):
+                        method_select.click()
+                        self.locator("div.el-select-dropdown:visible li").filter(
+                            has_text=re.compile(rf"^{re.escape(http_method)}$")
+                        ).click()
+                if url_path:
+                    url_input = form_items.filter(has_text="URL地址").get_by_role("textbox")
+                    if url_input.is_visible() and not url_input.evaluate("el => el.disabled"):
+                        url_input.fill(url_path)
 
             # UDP 的 hc_request / hc_response 在配置弹窗中为 disabled，不填写
             # 若未来平台放开编辑，可在此处补充 fill 逻辑
@@ -1168,7 +1204,17 @@ class SlbMixin(BasePage):
                 port_input.fill(str(port))
 
             dialog.get_by_text("确定", exact=True).click()
-            self.logger.info(f"监听器前端协议/端口修改完成: {lb_name} -> {protocol}/{port}")
+            self.page.wait_for_timeout(800)
+
+            # 检查对话框是否仍然可见（前端校验阻止提交时对话框保持打开）
+            if dialog.count() > 0 and dialog.is_visible():
+                dialog.get_by_text("取消", exact=True).click()
+                self.page.wait_for_timeout(300)
+                self.logger.warning(
+                    f"修改端口被拒绝（对话框未关闭）: {lb_name} -> {protocol}/{port}"
+                )
+            else:
+                self.logger.info(f"监听器前端协议/端口修改完成: {lb_name} -> {protocol}/{port}")
 
         elif field == "access_control":
             enable = kwargs.get("enable", False)
@@ -1383,3 +1429,262 @@ class SlbMixin(BasePage):
             return eip.strip()
         self.logger.info(f"SLB '{slb_name}' 未绑定公网IP")
         return None
+
+    def lb_pool_create(self, slb_name, lb_name, pool_name, balance_method="轮询",
+                       session_persistence=False, health_check=False,
+                       health_type=None, http_method=None, url_path=None):
+        """在监听器详情页的资源池tab中创建新的资源池。
+
+        Args:
+            slb_name: 负载均衡名称
+            lb_name: 监听器名称
+            pool_name: 资源池名称
+            balance_method: 负载调度算法，可选"轮询"、"加权轮询"、"源IP"、"最小连接数"
+            session_persistence: 是否开启会话保持
+            health_check: 是否开启健康检查
+            health_type: 健康检查类型，如"TCP"、"HTTP"
+            http_method: HTTP健康检查方法，如"GET"、"HEAD"
+            url_path: HTTP健康检查URL路径，如"/index.html"
+        """
+        # 先导航到SLB详情页的监听器tab，确保页面状态正确
+        self.goto_slb_detail(slb_name, tab_name="监听器")
+        # 额外等待监听器左侧列表异步加载完成
+        self.page.wait_for_timeout(5000)
+        self.goto_lb_pool_tab(lb_name)
+
+        # 点击"新建"按钮（在资源池列表区域）
+        nested_tabs = self._get_lb_nested_tabs()
+        active_pane = nested_tabs.locator(".el-tab-pane:not([aria-hidden='true'])").last
+        create_btn = None
+
+        # 先尝试在 cloud-table-container 中定位（资源池详情页样式）
+        try:
+            table_container = active_pane.locator(".cloud-table-container").first
+            if table_container.count() > 0 and table_container.is_visible():
+                btn = table_container.locator(
+                    ".cloud-table-header .cloud-button-btn"
+                ).filter(has_text=re.compile(r"^\s*新建\s*$")).first
+                if btn.count() > 0 and btn.is_visible():
+                    create_btn = btn
+        except Exception:
+            pass
+
+        # 降级：在激活的 tab pane 中直接查找
+        if create_btn is None:
+            create_btn = active_pane.locator(".cloud-button-btn").filter(
+                has_text=re.compile(r"^\s*新建\s*$")
+            ).first
+
+        expect(create_btn).to_be_visible(timeout=5000)
+        create_btn.click()
+
+        # 等待"新建资源池"对话框
+        dialog = self.get_by_role("dialog", name="新建资源池")
+        expect(dialog).to_be_visible(timeout=5000)
+
+        try:
+            # 填写资源池名称
+            dialog.locator("div.el-form-item").filter(
+                has_text=re.compile(r"资源池名称")
+            ).get_by_role("textbox").fill(pool_name)
+
+            # 选择负载调度算法
+            algorithm_select = dialog.locator("div.el-form-item").filter(
+                has_text=re.compile(r"负载调度算法")
+            ).get_by_placeholder("请选择")
+            algorithm_select.click()
+            self.locator("div.el-select-dropdown:visible li").filter(
+                has_text=re.compile(rf"^{re.escape(balance_method)}$")
+            ).click()
+
+            # 会话保持（仅非源IP算法时）
+            if balance_method != "源IP":
+                session_radio = dialog.locator("div.el-form-item").filter(
+                    has_text=re.compile(r"会话保持")
+                )
+                if session_persistence:
+                    session_radio.get_by_role("radio", name="激活").click()
+                    # 选择会话保持类型
+                    type_select = dialog.locator("div.el-form-item").filter(
+                        has_text=re.compile(r"类型")
+                    ).get_by_placeholder("请选择")
+                    type_select.click()
+                    self.locator("div.el-select-dropdown:visible li").filter(
+                        has_text="SOURCE IP"
+                    ).click()
+                else:
+                    session_radio.get_by_role("radio", name="禁用").click()
+
+            # 健康检查器
+            health_radio = dialog.locator("div.el-form-item").filter(
+                has_text=re.compile(r"健康检查器")
+            )
+            if health_check:
+                health_radio.get_by_role("radio", name="激活").click()
+                # 选择健康检查类型
+                type_select = dialog.locator("div.el-form-item").filter(
+                    has_text=re.compile(r"类型")
+                ).get_by_placeholder("请选择")
+                type_select.click()
+                self.locator("div.el-select-dropdown:visible li").filter(
+                    has_text=re.compile(rf"^{re.escape(health_type)}$")
+                ).click()
+
+                if health_type in ("HTTP", "HTTPS"):
+                    # HTTP(S)方法
+                    method_select = dialog.locator("div.el-form-item").filter(
+                        has_text=re.compile(r"HTTP\(S\)方法")
+                    ).get_by_placeholder("请选择")
+                    method_select.click()
+                    self.locator("div.el-select-dropdown:visible li").filter(
+                        has_text=re.compile(rf"^{re.escape(http_method)}$")
+                    ).click()
+
+                    # URL地址
+                    dialog.locator("div.el-form-item").filter(
+                        has_text=re.compile(r"URL地址")
+                    ).get_by_role("textbox").fill(url_path)
+            else:
+                health_radio.get_by_role("radio", name="禁用").click()
+
+            # 点击确定
+            dialog.get_by_text("确定", exact=True).click()
+            self.logger.info(
+                f"资源池创建完成: {pool_name}, 算法={balance_method}, "
+                f"健康检查={health_check}"
+            )
+        except Exception:
+            # 失败时关闭对话框，避免遮挡后续teardown操作
+            try:
+                dialog.get_by_text("取消", exact=True).click()
+            except Exception:
+                pass
+            raise
+
+    def lb_forward_rule_create(self, slb_name, lb_name, rule_name, condition_type,
+                               judge_condition, condition_value, forward_pool_name):
+        """在监听器下创建转发规则（L7策略）。
+
+        Args:
+            slb_name: 负载均衡名称
+            lb_name: 监听器名称
+            rule_name: 规则名称
+            condition_type: 条件类型，如"域名"、"URL路径"
+            judge_condition: 判断条件，如"精确匹配相等"
+            condition_value: 条件值，如域名或URL
+            forward_pool_name: 转发目标资源池名称
+        """
+        # 先导航到SLB详情页的监听器tab，确保页面状态正确
+        self.goto_slb_detail(slb_name, tab_name="监听器")
+        self.page.wait_for_timeout(3000)
+        # 进入转发规则tab
+        self.goto_lb_detail(lb_name, tab_name="转发规则")
+        self.page.wait_for_timeout(3000)
+
+        # 点击"插入新规则"按钮
+        insert_btn = self.get_by_text("插入新规则").first
+        expect(insert_btn).to_be_visible(timeout=5000)
+        insert_btn.click()
+
+        # 等待插入表单出现（注意：前端实际类名为 list-group-item-opeartion）
+        form_container = self.locator(".list-group-item-opeartion").first
+        expect(form_container).to_be_visible(timeout=5000)
+
+        # 1. 填写规则名称
+        form_container.get_by_placeholder("请输入规则名称").fill(rule_name)
+
+        # 2. 选择条件类型（"如果"区域）
+        left_section = form_container.locator(".form-left").first
+        condition_input = left_section.locator("input[placeholder='请选择条件类型']").first
+        expect(condition_input).to_be_visible(timeout=10000)
+        condition_input.click()
+        self.locator("div.el-select-dropdown:visible li").filter(
+            has_text=re.compile(rf"{re.escape(condition_type)}")
+        ).first.click()
+        # 等待Vue条件渲染更新，显示判断条件和输入框
+        self.page.wait_for_timeout(1500)
+
+        # 3. 选择判断条件（judge_condition，如"精确匹配相等"）
+        # 条件类型选择后，form-left区域出现 placeholder="请选择动作类型" 的下拉框
+        judge_input = left_section.locator("input[placeholder='请选择动作类型']").first
+        if judge_input.count() > 0 and judge_input.is_visible():
+            judge_input.click()
+            self.locator("div.el-select-dropdown:visible li").filter(
+                has_text=re.compile(rf"{re.escape(judge_condition)}")
+            ).first.click()
+            self.page.wait_for_timeout(500)
+
+        # 4. 填写条件值
+        if condition_type == "域名":
+            form_container.get_by_placeholder("请输入域名").fill(condition_value)
+        elif condition_type == "URL路径":
+            form_container.get_by_placeholder("请输入URL路径").fill(condition_value)
+
+        # 5. 选择动作类型（"那么"区域，先选"转发至"）
+        right_section = form_container.locator(".form-right").first
+        action_input = right_section.locator("input[placeholder='请选择动作类型']").first
+        expect(action_input).to_be_visible(timeout=10000)
+        action_input.click()
+        self.locator("div.el-select-dropdown:visible li").filter(
+            has_text="转发至"
+        ).first.click()
+        # 等待Vue渲染出"转发至"选择框
+        self.page.wait_for_timeout(1500)
+
+        # 6. 选择转发目标资源池
+        forward_input = right_section.locator("input[placeholder='请选择转发至']").first
+        expect(forward_input).to_be_visible(timeout=10000)
+        forward_input.click()
+        self.locator("div.el-select-dropdown:visible li").filter(
+            has_text=re.compile(rf"{re.escape(forward_pool_name)}")
+        ).first.click()
+
+        # 7. 点击保存
+        form_container.locator(".btn-box").get_by_text("保存", exact=True).click()
+        self.logger.info(
+            f"转发规则创建完成: {rule_name}, 条件={condition_type} {judge_condition} {condition_value}, "
+            f"转发至={forward_pool_name}"
+        )
+
+    def lb_forward_rule_delete(self, slb_name, lb_name, rule_name):
+        """删除监听器下的转发规则。
+
+        Args:
+            slb_name: 负载均衡名称
+            lb_name: 监听器名称
+            rule_name: 转发规则名称
+        """
+        self.goto_slb_detail(slb_name, tab_name="监听器")
+        self.page.wait_for_timeout(3000)
+        self.goto_lb_detail(lb_name, tab_name="转发规则")
+        self.page.wait_for_timeout(3000)
+
+        # 转发规则列表使用 draggable list，每个规则卡片有删除图标
+        rule_item = self.locator(".list-group-item-box").filter(
+            has_text=re.compile(rf"{re.escape(rule_name)}")
+        ).first
+        expect(rule_item).to_be_visible(timeout=5000)
+        rule_item.locator(".el-icon-delete").first.click()
+        self.dialog_confirm.click()
+        self.logger.info(f"转发规则删除完成: {rule_name}")
+
+    def lb_pool_delete(self, slb_name, lb_name, pool_name):
+        """删除监听器下的非默认资源池。
+
+        默认资源池无法直接删除，需通过删除监听器级联删除。
+        本方法仅用于删除额外创建的非默认资源池。
+
+        Args:
+            slb_name: 负载均衡名称
+            lb_name: 监听器名称
+            pool_name: 资源池名称
+        """
+        self.goto_slb_detail(slb_name, tab_name="监听器")
+        self.page.wait_for_timeout(3000)
+        self.goto_lb_pool_tab(lb_name)
+        self.page.wait_for_timeout(3000)
+
+        # 资源池列表为表格形式，使用 click_action 删除
+        self.click_action(pool_name, "删除")
+        self.dialog_confirm.click()
+        self.logger.info(f"资源池删除完成: {pool_name}")

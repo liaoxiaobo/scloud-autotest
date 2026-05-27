@@ -140,7 +140,7 @@ class TestSlbMonitor:
             from sugon_web.pages.cms import CmsPage
             cms_page = CmsPage(page)
             cms_page.goto_submenu("负载均衡（基础版）")
-            cms_page.click_slb_in_list(slb)
+            cms_page.click_slb_in_list(slb, slb_uuid=slb_uuid)
             cms_page.wait_for_page_ready()
             cms_page.page.wait_for_timeout(3000)
             cms_page.select_time_range("实时")

@@ -859,7 +859,11 @@ def ip_group(browser_context, config, request):
             desc=group_info["desc"],
             enable_ipv6=group_info["enable_ipv6"],
         )
-        vpc_page.assert_popup_success()
+        # 验证创建成功：在列表中搜索并确认存在
+        vpc_page.ip_group_search(group_info["name"])
+        names = vpc_page.get_column_data("名称")
+        if group_info["name"] not in names:
+            raise AssertionError(f"IP地址组 {group_info['name']} 创建后在列表中未找到")
 
     yield group_info
 

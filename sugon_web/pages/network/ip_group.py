@@ -132,6 +132,7 @@ class IpGroupMixin(BasePage):
 
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
+        self.logger.info(f"成功进入IP地址组{name} {tab_name or '详情'}页")
 
     def assert_detail_basic_info(self, name=None, desc=None):
         """校验详情页基本信息区域。"""

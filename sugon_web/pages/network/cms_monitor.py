@@ -406,3 +406,60 @@ class MonitorMixin(BasePage):
                 f"未能从Vue组件读取监控数据，但存在 {len(chart_containers)} 个图表，"
                 "可能数据尚未加载或页面结构不同"
             )
+
+    def assert_monitor_data_zero(self, wait_sec=15, tolerance=0.01):
+        """断言监控数据已归零。
+
+        通过JavaScript从Vue组件内部状态读取图表数据，验证所有数据值
+        接近零（考虑浮点误差）。适用于流量停止后监控数据回落场景。
+
+        Args:
+            wait_sec: 等待数据加载的秒数，默认15秒
+            tolerance: 允许的最大非零容差，默认0.01
+        """
+        time.sleep(wait_sec)
+
+        data_values = self.page.evaluate("""
+            () => {
+                const values = [];
+                document.querySelectorAll('.box_item').forEach(el => {
+                    const vue = el.__vue__;
+                    if (vue && vue.echartObj && vue.echartObj.dataList) {
+                        vue.echartObj.dataList.forEach(series => {
+                            if (series.data) {
+                                series.data.forEach(point => {
+                                    const val = point[1];
+                                    if (val !== null && val !== undefined && val !== '') {
+                                        values.push(parseFloat(val));
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+                return values;
+            }
+        """)
+
+        if data_values and len(data_values) > 0:
+            non_zero_values = [
+                v for v in data_values
+                if not math.isnan(v) and abs(v) > tolerance
+            ]
+            assert len(non_zero_values) == 0, (
+                f"监控数据未完全归零，存在 {len(non_zero_values)} 个非零点，"
+                f"最大值: {max(non_zero_values) if non_zero_values else 'N/A'}, "
+                f"部分值: {data_values[:20]}"
+            )
+            self.logger.info(
+                f"监控数据归零验证通过，共 {len(data_values)} 个数据点，"
+                f"所有值均在容差 {tolerance} 范围内"
+            )
+        else:
+            chart_containers = self.locator(
+                ".render-parent-box canvas, .render-parent-box .box_item"
+            ).all()
+            assert len(chart_containers) > 0, "未找到任何监控图表"
+            self.logger.warning(
+                "未能从Vue组件读取监控数据，图表存在但数据可能尚未加载"
+            )
