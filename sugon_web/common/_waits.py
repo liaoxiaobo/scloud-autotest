@@ -1,0 +1,136 @@
+import time
+
+from playwright.sync_api import expect
+
+
+class WaitsMixin:
+    """页面与操作等待 Mixin。
+
+    提供页面加载就绪、操作完成、悬浮提示清理等等待策略。
+    设计为与 Playwright 组合使用，依赖 self.page 和 self.logger。
+    """
+
+    def _dismiss_hover_tips(
+        self,
+        timeout: float = 2.0,
+        poll_interval: float = 0.4,
+        stable_rounds: int = 3,
+    ) -> None:
+        """清理进入页面后残留的悬浮提示，等待 tooltip/popover 稳定消失。
+
+        Args:
+            timeout: 等待悬浮提示消失的总超时时间，单位为秒
+            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
+            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
+        """
+        self.page.mouse.move(1, 1)
+
+        visible_tips = self.page.locator(
+            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
+        )
+        end_time = time.time() + timeout
+        stable_hits = 0
+
+        while time.time() < end_time:
+            self.page.evaluate("""
+                () => {
+                    const hovered = Array.from(document.querySelectorAll(':hover'));
+                    hovered.reverse().forEach((el) => {
+                        el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+                        el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+                    });
+                    const active = document.activeElement;
+                    if (active && typeof active.blur === 'function') {
+                        active.blur();
+                    }
+                }
+                """)
+            self.page.keyboard.press("Escape")
+
+            if visible_tips.count() == 0:
+                stable_hits += 1
+                if stable_hits >= stable_rounds:
+                    return
+            else:
+                stable_hits = 0
+            self.page.wait_for_timeout(int(poll_interval * 1000))
+
+        remaining = visible_tips.count()
+        if remaining:
+            self.logger.warning(f"等待悬浮提示消失超时，当前仍有 {remaining} 个 tooltip/popper 可见")
+            self.page.evaluate("""
+                () => {
+                    const tips = Array.from(document.querySelectorAll(
+                        '.el-tooltip__popper, .el-popper, [role="tooltip"]'
+                    ));
+                    tips.forEach((el) => {
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        const visible = el.getAttribute('aria-hidden') !== 'true'
+                            && style.display !== 'none'
+                            && style.visibility !== 'hidden'
+                            && style.opacity !== '0'
+                            && rect.width > 0
+                            && rect.height > 0;
+                        if (visible) {
+                            el.style.pointerEvents = 'none';
+                            el.style.display = 'none';
+                            el.style.visibility = 'hidden';
+                            el.setAttribute('aria-hidden', 'true');
+                        }
+                    });
+                }
+                """)
+            self.page.wait_for_timeout(500)
+
+    def wait_for_page_ready(self):
+        """公共方法: 等待页面完全就绪"""
+        self.page.wait_for_load_state("domcontentloaded")
+        self.page.wait_for_load_state("load")
+        loading_spinners = self.page.locator(".el-loading-spinner")
+        count = loading_spinners.count()
+        if count > 0:
+            for i in range(count):
+                loading_spinners.nth(i).wait_for(state='hidden')
+
+    def wait_for_source_complete(self, name, loading_timeout=10, complete_timeout=180):
+        """等待资源状态加载完成
+
+        Args:
+            name: 资源名称
+            loading_timeout: 等待loading_selector出现的超时时间（秒），默认10秒
+            complete_timeout: 等待loading_selector消失的超时时间（秒），默认180秒
+        """
+        loading_timeout_ms = loading_timeout * 1000
+        complete_timeout_ms = complete_timeout * 1000
+        target_row = self.get_row_by_name(name)
+        loading_icon = target_row.locator(".icon-dengdaizhong")
+        try:
+            loading_icon.wait_for(state="visible", timeout=loading_timeout_ms)
+            text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
+            expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
+            self.logger.info(f"{name}资源中间态 {text} 出现并消失")
+        except:
+            self.logger.info(f"{name}资源中间态完成，当前无任务状态")
+
+        expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
+
+    def wait_for_operation_complete(self, timeout=60):
+        """等待操作完成
+
+        Args:
+            timeout: 超时时间（秒）
+        """
+        start_time = time.time()
+        loading_selector = ".el-icon-loading:visible, .el-button.is-loading:visible"
+
+        while time.time() - start_time < timeout:
+            try:
+                if self.page.locator(loading_selector).count() == 0:
+                    return
+                time.sleep(1)
+            except Exception as e:
+                self.logger.debug(f"等待操作完成时出错: {e}")
+                time.sleep(1)
+
+        raise AssertionError(f"等待操作完成超时，超过 {timeout} 秒")
