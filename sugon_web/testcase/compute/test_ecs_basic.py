@@ -558,7 +558,7 @@ class TestECSBasic:
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
     @allure.title("弹性云服务器-挂载和卸载云硬盘")
-    def test_ecs_mount_unmount_volume(self, ecs_page, vm, volume, ssh_vm):
+    def test_ecs_mount_unmount_volume(self, ecs_page, evs_page, vm, volume, ssh_vm):
         """测试云硬盘的挂载和卸载功能"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -574,12 +574,12 @@ class TestECSBasic:
             assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == volume_name
 
             # 云硬盘页面验证 云硬盘状态=正在使用
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(volume["name"], status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(volume["name"], status="正在使用", refresh=True)
 
             # 验证挂载后页面展示的挂载信息 和 虚机中的挂载信息是否一致
-            disk_name = ecs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"lsblk | grep {disk_name}") != ""
 
@@ -622,7 +622,7 @@ class TestECSBasic:
                 f"扩容系统盘失败，云服务器{name}系统盘大小不一致"
 
     @allure.title("弹性云服务器-挂载CD-ROM")
-    def test_ecs_mount_cdrom(self, ecs_page, image, vm, ssh_vm):
+    def test_ecs_mount_cdrom(self, ecs_page, evs_page, image, vm, ssh_vm):
         """测试弹性云服务器挂载CD-ROM功能"""
         name = vm.get("name")
         iso_name = image.get("name")
@@ -640,9 +640,9 @@ class TestECSBasic:
             assert cdrom_name.startswith("cdrom-")
 
             # 验证云硬盘状态
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(cdrom_name, status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(cdrom_name, status="正在使用", refresh=True)
 
         with allure_step_log(f"步骤3: 后台验证虚机{name}挂载CD-ROM结果"):
             ssh_vm.connect(vm['mfip'])
@@ -819,6 +819,7 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤1: 为云服务器{name}安装工具-页面ISO安装"):
             # 调用安装工具方法
+            ecs_page.search(name)
             ecs_page.ecs_install_tools(name)
             ecs_page.assert_ecs_tools_installed(name)
             ecs_page.close_dialog_if_exists()

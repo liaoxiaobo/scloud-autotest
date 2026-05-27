@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 
 import allure
@@ -21,6 +22,65 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
 
+def _get_run_id_from_args(config):
+    """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
+    candidates = []
+    for arg in list(config.args):
+        if not arg.startswith('-'):
+            candidates.append(arg)
+
+    if not candidates:
+        for arg in list(config.invocation_params.args):
+            if not arg.startswith('-'):
+                candidates.append(arg)
+
+    project_root = Path(__file__).resolve().parent.parent
+
+    for candidate in candidates:
+        parts = candidate.split('::')
+        first_part = parts[0]
+        path = Path(first_part).resolve()
+
+        # 转为相对于项目根目录的路径
+        try:
+            rel_path = path.relative_to(project_root)
+        except ValueError:
+            rel_path = path
+
+        rel_str = rel_path.as_posix()
+
+        # 去掉 sugon_web/ 前缀（包名前缀，不是测试组织层级语义）
+        if rel_str.startswith('sugon_web/'):
+            rel_str = rel_str[len('sugon_web/'):]
+
+        # 去掉 testcase/ 前缀，产物直接落在 logs/network/... 层级
+        if rel_str.startswith('testcase/'):
+            rel_str = rel_str[len('testcase/'):]
+        elif rel_str == 'testcase':
+            rel_str = ''
+
+        if path.suffix == '.py':
+            # 去掉 .py 后缀
+            run_id = rel_str[:-3] if rel_str.endswith('.py') else rel_str
+            # 如果指定了类名，追加为子路径
+            if len(parts) > 1 and parts[1].startswith('Test'):
+                run_id = f"{run_id}/{parts[1]}"
+            return run_id
+
+        if path.is_dir():
+            return rel_str
+
+    testpaths = config.getini('testpaths')
+    if testpaths:
+        rel = Path(testpaths[0]).as_posix()
+        if rel.startswith('sugon_web/'):
+            rel = rel[len('sugon_web/'):]
+        if rel.startswith('testcase/'):
+            rel = rel[len('testcase/'):]
+        return rel
+    return "default"
+
+
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
 
@@ -28,18 +88,25 @@ def pytest_configure(config):
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
 
-    # 创建 logs 目录
-    log_dir = project_root / "logs"
-    log_dir.mkdir(exist_ok=True)
+    # 从命令行参数提取运行标识（测试文件名或类名）
+    run_id = _get_run_id_from_args(config)
+    os.environ['_PYTEST_RUN_ID'] = run_id
+
+    # 创建 logs 子目录（按 run_id 隔离）
+    log_dir = project_root / "logs" / run_id
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     # 设置日志文件路径（添加日期）
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_file_path = log_dir / f"pytest-{today}.log"
     config.option.log_file = str(log_file_path)
 
-    # 创建 allure-result 目录
-    allure_dir = project_root / "allure-result"
-    allure_dir.mkdir(exist_ok=True)
+    # 创建 allure-result 子目录（按 run_id 隔离），仅清理本子目录历史数据
+    allure_dir = project_root / "allure-result" / run_id
+    if allure_dir.exists():
+        import shutil
+        shutil.rmtree(allure_dir)
+    allure_dir.mkdir(parents=True, exist_ok=True)
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
@@ -427,10 +494,11 @@ def _write_allure_environment():
         # 获取项目根目录和 allure-result 目录
         current_dir = Path(__file__).resolve().parent
         project_root = current_dir.parent
-        allure_dir = project_root / "allure-result"
+        run_id = os.environ.get('_PYTEST_RUN_ID', 'default')
+        allure_dir = project_root / "allure-result" / run_id
 
         # 确保 allure-result 目录存在
-        allure_dir.mkdir(exist_ok=True)
+        allure_dir.mkdir(parents=True, exist_ok=True)
 
         # environment.properties 文件路径
         env_file = allure_dir / "environment.properties"
@@ -463,9 +531,17 @@ def _write_allure_environment():
         for key, value in patch.items():
             if key in ["VERSION", "BUILD_TIME", "COMMIT"]:
                 env_content.append(f"{key}={value}")
-        # 写入文件
+        env_text = '\n'.join(env_content)
+
+        # 写入 run_id 子目录（保留按运行隔离的副本）
         with open(env_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(env_content))
+            f.write(env_text)
+
+        # 同时写入 allure-result 根目录，供 allure generate 读取
+        root_env_file = project_root / "allure-result" / "environment.properties"
+        root_env_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(root_env_file, 'w', encoding='utf-8') as f:
+            f.write(env_text)
 
     except Exception as e:
         logger.error(f"写入 Allure 环境信息失败: {e}")
