@@ -3,9 +3,10 @@ from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils import db_util
+from sugon_web.assertions.database.doris import DorisAssertionMixin
 
 
-class DorisPage(BasePage):
+class DorisPage(DorisAssertionMixin, BasePage):
     """Doris实例管理页面对象"""
 
     def _select_node_spec(self, section_name: str, specification_name: str = None):
@@ -704,43 +705,6 @@ class DorisPage(BasePage):
             confirm_btn.click(force=True)
         except:
             pass
-
-    def assert_database_exist(self, db_name: str):
-        """
-        专门用于 Doris 数据库列表的断言方法（前缀匹配）
-        注意：调用此方法前需要已经在数据库 Tab 页面
-        :param db_name: 数据库名前缀
-        """
-        self.logger.info(f"检查是否存在以前缀 '{db_name}' 开头的数据库")
-
-        # 等待页面加载完成
-
-        # 定位所有数据库名称
-        db_elements = self.locator("span.key-name")
-
-        # 等待至少出现一个数据库（避免 count 瞬时为 0）
-        db_elements.first.wait_for(state="visible", timeout=30000)
-
-        # 提取所有数据库名称
-        db_list = []
-        for i in range(db_elements.count()):
-            db_text = db_elements.nth(i).inner_text().strip()
-            db_list.append(db_text)
-            self.logger.debug(f"第{i + 1}个数据库: {db_text}")
-
-        self.logger.info(f"获取到的数据库列表共 {len(db_list)} 个: {db_list}")
-
-        # 前缀匹配
-        matched_dbs = [db for db in db_list if db.startswith(db_name)]
-
-        if matched_dbs:
-            self.logger.info(f"匹配到数据库（前缀匹配）: {matched_dbs}")
-        else:
-            assert False, (
-                f"未找到以前缀 '{db_name}' 开头的数据库，"
-                f"实际数据库列表: {db_list}"
-            )
-
 
     @submenu("实例管理")
     def hot_migration(self, name, node_name, bandwidth="50%", cpu_auto=True):

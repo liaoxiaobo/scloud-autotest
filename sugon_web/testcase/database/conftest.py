@@ -170,7 +170,7 @@ def mongodb(browser_context, config):
     name1 = f"mongo-shard-{random_data()}"
     root_password = "Admin1234#sugon"
     user_name = "root"
-    
+
     data = {"name": name, "name1": name1, "root_password": root_password, "user_name": user_name}
     logger.info(f"为测试类创建共享MongoDB实例: {name}(副本集), {name1}(分片集群)")
 
