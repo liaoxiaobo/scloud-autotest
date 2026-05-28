@@ -1,3 +1,7 @@
+from sugon_web.common.navigation import submenu
+from sugon_web.common.playwright import expect
+
+
 class BackupAssertionMixin:
     """备份服务业务断言 Mixin。
 
@@ -40,7 +44,6 @@ class BackupAssertionMixin:
                 label_loc = self.get_by_text(k, exact=True)
                 if k in ["备份方式", "限速策略"]:
                     loc = label_loc.locator("xpath=../following-sibling::div")
-                    from sugon_web.common.playwright import expect
                     expect(loc).to_contain_text(v)
                     self.logger.info(f"验证成功 {k}: {v}")
                 else:
@@ -48,7 +51,6 @@ class BackupAssertionMixin:
                         loc = label_loc.locator(f"xpath=../following-sibling::div/div/div[{i + 1}]")
                         # if k in ["存储策略", "保留策略", "高级配置"]:
                         #     expect(loc).to_contain_text(policy_text.strip(": ")[-1])
-                        from sugon_web.common.playwright import expect
                         expect(loc).to_contain_text(policy_text)
                         self.logger.info(f"验证成功 {k}[{i}]: {policy_text}")
         else:
@@ -59,7 +61,7 @@ class BackupAssertionMixin:
 
         self.logger.info(f"备份任务{name} 详情信息 验证成功")
 
-    def assert_backup_data(self, server_name: str, status):
+    def assert_backup_data_status(self, server_name: str, status):
         """
         断言备份数据状态
         Args:
@@ -77,8 +79,11 @@ class BackupAssertionMixin:
             status = [status]
 
         for status in status:
-            assert status in actual_status, f"备份数据状态不匹配，预期: {status}, 实际: {actual_status}"
+            assert status in actual_status, \
+                f"[StatusAssertion] 备份数据 '{server_name}' | 状态不匹配 | " \
+                f"期望: 包含 '{status}' | 实际: '{actual_status}'"
 
+    @submenu("恢复任务")
     def assert_resume_task_details(self, name, details: dict, tab="详情"):
         """
         验证恢复任务详情
@@ -101,7 +106,6 @@ class BackupAssertionMixin:
             for k, v in details.items():
                 label_loc = self.get_by_text(k, exact=True)
                 loc = label_loc.locator("xpath=../following-sibling::div/span")
-                from sugon_web.common.playwright import expect
                 expect(loc).to_contain_text(v)
                 self.logger.info(f"验证成功 {k}: {v}")
         else:

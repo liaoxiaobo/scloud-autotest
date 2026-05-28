@@ -9,7 +9,11 @@ class SlbAssertionMixin:
     """
 
     def assert_listener_exists(self, lb_name):
-        """验证左侧列表是否存在指定名称的监听器 (针对详情页监听器Tab)"""
+        """验证左侧列表是否存在指定名称的监听器（针对详情页监听器Tab）。
+
+        Args:
+            lb_name: 监听器名称。
+        """
         # 使用用户提供的 listener-left-list-item 容器进行精确匹配
         locator = self.locator("div.listener-left-list-item").filter(has_text=lb_name)
         # 确保可见
@@ -71,14 +75,17 @@ class SlbAssertionMixin:
             actual_value = (row_data.get(field_name) or "").strip()
             if actual_value != str(expected_value):
                 raise AssertionError(
-                    f"资源池成员 '{vm_name}' 字段 '{field_name}' 校验失败，"
-                    f"期望 '{expected_value}'，实际 '{actual_value}'"
+                    f"[FieldAssertion] 资源池成员 '{vm_name}' | 字段 '{field_name}' 不匹配 | "
+                    f"期望: '{expected_value}' | 实际: '{actual_value}'"
                 )
 
         for field_name in ["开关状态", "资源状态"]:
             actual_value = (row_data.get(field_name) or "").strip()
             if not actual_value:
-                raise AssertionError(f"资源池成员 '{vm_name}' 字段 '{field_name}' 为空")
+                raise AssertionError(
+                f"[FieldAssertion] 资源池成员 '{vm_name}' | 字段 '{field_name}' 为空 | "
+                f"期望: 非空 | 实际: 空"
+            )
 
         self.logger.info(f"资源池成员信息校验成功: {vm_name}, row_data={row_data}")
         return row_data
@@ -101,7 +108,11 @@ class SlbAssertionMixin:
         self.logger.info(f"成功验证并关闭错误弹窗: {expected_texts}")
 
     def assert_lb_basic_info(self, info_text):
-        """验证监听器详情页基本信息区域包含指定监听器名称"""
+        """验证监听器详情页基本信息区域包含指定文本。
+
+        Args:
+            info_text: 期望在基本信息区域出现的文本。
+        """
         nested_tabs = self._get_lb_nested_tabs()
         nested_tabs.get_by_role("tab", name="详情").click()
 

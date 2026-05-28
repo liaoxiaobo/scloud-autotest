@@ -39,8 +39,8 @@ class MonitorAssertionMixin:
             time.sleep(2)
 
         assert len(chart_containers) >= min_charts, (
-            f"监控图表数量不足，期望至少 {min_charts} 个，"
-            f"实际 {len(chart_containers)} 个"
+            f"[FieldAssertion] 监控图表 | 数量不足 | "
+            f"期望: 至少 {min_charts} 个 | 实际: {len(chart_containers)} 个"
         )
         for chart in chart_containers:
             expect(chart).to_be_visible(timeout=5000)
@@ -86,8 +86,9 @@ class MonitorAssertionMixin:
         if data_values and len(data_values) > 0:
             has_non_zero = any(v > 0 for v in data_values if not math.isnan(v))
             assert has_non_zero, (
-                f"监控数据均为零或未加载成功，共 {len(data_values)} 个数据点，"
-                f"部分值: {data_values[:10]}"
+                f"[ScenarioAssertion] 监控数据 | 数据均为零或未加载 | "
+                f"期望: 存在非零值 | 实际: 全部为零 | "
+                f"数据点: {len(data_values)}, 部分值: {data_values[:10]}"
             )
             non_zero_values = [v for v in data_values if v > 0 and not math.isnan(v)]
             self.logger.info(
@@ -100,7 +101,10 @@ class MonitorAssertionMixin:
             chart_containers = self.locator(
                 ".render-parent-box canvas, .render-parent-box .box_item"
             ).all()
-            assert len(chart_containers) > 0, "未找到任何监控图表"
+            assert len(chart_containers) > 0, (
+                f"[FieldAssertion] 监控图表 | 未找到任何图表 | "
+                f"期望: 存在 | 实际: 不存在"
+            )
             self.logger.warning(
                 f"未能从Vue组件读取监控数据，但存在 {len(chart_containers)} 个图表，"
                 "可能数据尚未加载或页面结构不同"
@@ -114,7 +118,7 @@ class MonitorAssertionMixin:
 
         Args:
             wait_sec: 等待数据加载的秒数，默认15秒
-            tolerance: 允许的最大非零容差，默认0.01
+            tolerance: 允许的最大非零容差，默认0.01。
         """
         time.sleep(wait_sec)
 
@@ -146,7 +150,9 @@ class MonitorAssertionMixin:
                 if not math.isnan(v) and abs(v) > tolerance
             ]
             assert len(non_zero_values) == 0, (
-                f"监控数据未完全归零，存在 {len(non_zero_values)} 个非零点，"
+                f"[ScenarioAssertion] 监控数据 | 未完全归零 | "
+                f"期望: 全部在容差 {tolerance} 范围内 | "
+                f"实际: 存在 {len(non_zero_values)} 个非零点，"
                 f"最大值: {max(non_zero_values) if non_zero_values else 'N/A'}, "
                 f"部分值: {data_values[:20]}"
             )
@@ -158,7 +164,10 @@ class MonitorAssertionMixin:
             chart_containers = self.locator(
                 ".render-parent-box canvas, .render-parent-box .box_item"
             ).all()
-            assert len(chart_containers) > 0, "未找到任何监控图表"
+            assert len(chart_containers) > 0, (
+                f"[FieldAssertion] 监控图表 | 未找到任何图表 | "
+                f"期望: 存在 | 实际: 不存在"
+            )
             self.logger.warning(
                 "未能从Vue组件读取监控数据，图表存在但数据可能尚未加载"
             )

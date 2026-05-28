@@ -1,3 +1,5 @@
+import time
+
 from sugon_web.common.playwright import expect
 
 
@@ -25,7 +27,10 @@ class ListAssertionMixin:
 
         if not column_data:
             self.logger.warning(f"列 '{column_name}' 没有数据或不存在")
-            assert False, f"列 '{column_name}' 没有数据或不存在"
+            assert False, (
+                f"[ListAssertion] 列表 | 列 '{column_name}' 不存在或无数据 | "
+                f"期望: 有数据 | 实际: 不存在或无数据"
+            )
 
         if exact_match:
             matched = any(keyword == item for item in column_data)

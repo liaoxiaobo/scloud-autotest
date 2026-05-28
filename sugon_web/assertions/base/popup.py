@@ -26,7 +26,10 @@ class PopupAssertionMixin:
             "element => element.parentElement.classList.contains('el-message--success')"
         )
         if not is_success:
-            raise AssertionError(f"预期操作成功，但实际失败。弹窗文本: {popup_text}")
+            raise AssertionError(
+                f"[PopupAssertion] 弹窗 | 操作状态不匹配 | "
+                f"期望: 成功 | 实际: 失败 | 弹窗文本: {popup_text}"
+            )
 
         if text:
             expect(popup).to_contain_text(text)
@@ -50,7 +53,10 @@ class PopupAssertionMixin:
             "element => element.parentElement.classList.contains('el-message--error')"
         )
         if not is_error:
-            raise AssertionError(f"预期操作失败，但实际成功或其他状态。弹窗文本: {popup_text}")
+            raise AssertionError(
+                f"[PopupAssertion] 弹窗 | 操作状态不匹配 | "
+                f"期望: 失败 | 实际: 成功或其他状态 | 弹窗文本: {popup_text}"
+            )
 
         if text:
             expect(popup).to_contain_text(text)

@@ -6,10 +6,12 @@ class DorisAssertionMixin:
     """
 
     def assert_database_exist(self, db_name: str):
-        """
-        专门用于 Doris 数据库列表的断言方法（前缀匹配）
-        注意：调用此方法前需要已经在数据库 Tab 页面
-        :param db_name: 数据库名前缀
+        """验证 Doris 数据库列表中存在指定前缀的数据库。
+
+        注意：调用此方法前需要已经在数据库 Tab 页面。
+
+        Args:
+            db_name: 数据库名前缀。
         """
         self.logger.info(f"检查是否存在以前缀 '{db_name}' 开头的数据库")
 
@@ -37,6 +39,7 @@ class DorisAssertionMixin:
             self.logger.info(f"匹配到数据库（前缀匹配）: {matched_dbs}")
         else:
             assert False, (
-                f"未找到以 '{db_name}' 开头的数据库，"
-                f"实际数据库列表: {db_list}"
+                f"[ListAssertion] Doris 数据库列表 | 不存在性校验失败 | "
+                f"期望: 存在以 '{db_name}' 开头的数据库 | "
+                f"实际: 未找到 | 数据库列表: {db_list}"
             )
