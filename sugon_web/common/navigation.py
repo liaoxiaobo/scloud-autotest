@@ -124,17 +124,17 @@ class NavigationMixin:
             self.logger.error(f"导航到服务 {service} 失败: {e}")
             raise AssertionError(f"导航到服务 {service} 失败: {e}") from e
 
-    def goto_submenu(self, submenu):
-        """公共方法: 切换当前服务页面的子菜单。
+    def goto_submenu(self, submenu: str) -> None:
+        """切换当前服务页面的子菜单。
+
+        若当前不在对应服务下（通过 service_name 和 SERVICE_PATH_MAP 判断），
+        会自动调用 goto_service() 先回到服务根页面，再切换子菜单。
+
+        注意：子菜单未找到时，Playwright 底层会抛出 TimeoutError。
 
         Args:
-            submenu: 子菜单名称，如下：
-                - "概览"
-                - "云硬盘"
-                - "回收站"
-                - "快照"
-                - "弹性云服务器"
-                - "虚拟私有云"
+            submenu: 子菜单名称，如 "概览"、"云硬盘"、"回收站"、
+                     "快照"、"弹性云服务器"、"虚拟私有云"
         """
         service_name = getattr(self, "service_name", None)
         service_path = SERVICE_PATH_MAP.get(service_name) if service_name else None

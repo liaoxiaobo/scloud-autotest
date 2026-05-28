@@ -16,8 +16,14 @@ class ElementsMixin:
     设计为与 Playwright 组合使用，依赖 self.locator / self.get_by_text 等定位方法。
     """
 
-    def _find_element(self, locators, element_name: str = "元素", timeout: int = 1000,
-                      check_visible: bool = True, check_enabled: bool = False) -> "CustomLocator":
+    def _find_element(
+        self,
+        locators: list[Locator],
+        element_name: str = "元素",
+        timeout: int = 1000,
+        check_visible: bool = True,
+        check_enabled: bool = False,
+    ) -> "CustomLocator":
         """通用方法：从多个定位器中查找满足条件的元素。
 
         Args:
@@ -159,8 +165,12 @@ class ElementsMixin:
         """公共元素: 对话框关闭按钮"""
         return self.get_by_role("button", name="Close")
 
-    def close_dialog_if_exists(self):
-        """公共方法: 关闭可能存在的对话框"""
+    def close_dialog_if_exists(self) -> None:
+        """关闭可能存在的对话框。
+
+        通过点击对话框右上角的 Close 按钮关闭。
+        若当前没有对话框，静默通过不抛异常。
+        """
         if self.dialog_close.is_visible():
             self.logger.info("发现未关闭的对话框，正在关闭...")
             self.dialog_close.click()

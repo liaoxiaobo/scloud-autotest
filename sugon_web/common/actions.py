@@ -15,8 +15,18 @@ class ActionsMixin:
     设计为与 ElementsMixin、TablesMixin、WaitsMixin 组合使用。
     """
 
-    def search(self, keyword: str):
-        """公共方法: 搜索操作"""
+    def search(self, keyword: str) -> None:
+        """搜索并等待结果加载。
+
+        执行流程：填充搜索框 -> 点击搜索按钮 -> wait_for_page_ready()
+        -> 额外等待 1 秒确保结果渲染稳定。
+
+        Args:
+            keyword: 搜索关键词
+
+        Raises:
+            Exception: 搜索框或搜索按钮定位失败时抛出
+        """
         try:
             self.logger.info(f"开始搜索: {keyword}")
             self._input_search.fill(keyword)
@@ -28,7 +38,7 @@ class ActionsMixin:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
             raise
 
-    def _first_visible_locator(self, locators, element_name: str) -> Locator:
+    def _first_visible_locator(self, locators: list[Locator], element_name: str) -> Locator:
         """返回多个定位器中第一个可见元素。
 
         Args:
@@ -45,7 +55,7 @@ class ActionsMixin:
     def goto_detail_page(
         self,
         instance_name: str,
-        row_name: str = None,
+        row_name: str | None = None,
         tab_name: str = "详情",
         timeout: int = 10,
         poll_interval: float = 0.2,
@@ -143,7 +153,7 @@ class ActionsMixin:
             self.logger.debug(f"通过索引获取可交互行时出错: {e}")
         return row
 
-    def _btn_operation(self, name):
+    def _btn_operation(self, name: str) -> Locator:
         """公共元素: 资源操作按钮"""
         row = self.get_row_by_name(name)
         interactive_row = self._get_interactive_row(row)
@@ -167,7 +177,7 @@ class ActionsMixin:
 
         raise Exception(f"定位失败：资源操作按钮未找到。尝试的定位器: {[str(loc) for loc in locators]}")
 
-    def click_action(self, resource_name: str, option_text: str):
+    def click_action(self, resource_name: str, option_text: str) -> None:
         """
         公共方法：点击指定资源行的操作选项（兼容平铺按钮和下拉菜单模式）
 

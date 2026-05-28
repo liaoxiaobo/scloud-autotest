@@ -83,8 +83,18 @@ class WaitsMixin:
                 """)
             self.page.wait_for_timeout(500)
 
-    def wait_for_page_ready(self):
-        """公共方法: 等待页面完全就绪"""
+    def wait_for_page_ready(self) -> None:
+        """等待页面完全就绪。
+
+        依次等待：
+        1. DOM 加载完成（domcontentloaded）
+        2. 页面资源加载完成（load）
+        3. 所有 Element UI loading 遮罩（.el-loading-spinner）消失
+
+        注意：本方法在 BasePage 中优先级低于 Playwright.wait_for_page_ready()，
+        实际调用的是 Playwright 中的实现（顺序略有不同）。
+        保留本实现是为了在单独使用 WaitsMixin 时仍可正常工作。
+        """
         self.page.wait_for_load_state("domcontentloaded")
         self.page.wait_for_load_state("load")
         loading_spinners = self.page.locator(".el-loading-spinner")
@@ -93,7 +103,7 @@ class WaitsMixin:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
 
-    def wait_for_source_complete(self, name, loading_timeout=10, complete_timeout=180):
+    def wait_for_source_complete(self, name: str, loading_timeout: int = 10, complete_timeout: int = 180) -> None:
         """等待资源状态加载完成
 
         Args:
@@ -115,8 +125,15 @@ class WaitsMixin:
 
         expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
 
-    def wait_for_operation_complete(self, timeout=60):
-        """等待操作完成
+    def wait_for_operation_complete(self, timeout: int = 60) -> None:
+        """等待页面操作完成。
+
+        轮询检测以下加载标识是否全部消失：
+        - .el-icon-loading:visible（Element UI 加载图标）
+        - .el-button.is-loading:visible（加载中按钮）
+
+        注意：本方法在 BasePage 中优先级低于 Playwright.wait_for_operation_complete()，
+        实际调用的是 Playwright 中的实现。保留本实现是为了在单独使用 WaitsMixin 时仍可正常工作。
 
         Args:
             timeout: 超时时间（秒）

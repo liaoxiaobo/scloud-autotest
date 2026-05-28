@@ -1,6 +1,10 @@
 import time
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
+
+if TYPE_CHECKING:
+    from sugon_web.common.types import ResourceNames
 
 
 class AssertionsMixin:
@@ -10,12 +14,15 @@ class AssertionsMixin:
     设计为与 ElementsMixin、TablesMixin、WaitsMixin 组合使用。
     """
 
-    def assert_popup_success(self, text=None, timeout=10):
-        """公共方法: 根据弹窗文本和类型，断言操作成功
+    def assert_popup_success(self, text: str | None = None, timeout: int = 10) -> None:
+        """断言顶部成功弹窗出现并消失。
+
+        通过检查弹窗 CSS 类名（el-message--success）判断类型。
+        text 参数使用包含匹配（to_contain_text），不需要与弹窗文本完全一致。
 
         Args:
-            text: 期望的弹窗文本内容（可选）
-            timeout: 超时时间（秒）
+            text: 期望弹窗中包含的文本片段（可选，包含匹配）
+            timeout: 等待弹窗出现的超时时间（秒）
         """
         timeout_ms = timeout * 1000
         popup = self.popup
@@ -34,12 +41,15 @@ class AssertionsMixin:
 
         expect(popup).not_to_be_visible(timeout=timeout_ms)
 
-    def assert_popup_error(self, text=None, timeout=5):
-        """公共方法: 根据弹窗文本和类型，断言操作失败
+    def assert_popup_error(self, text: str | None = None, timeout: int = 5) -> None:
+        """断言顶部错误弹窗出现并消失。
+
+        通过检查弹窗 CSS 类名（el-message--error）判断类型。
+        text 参数使用包含匹配（to_contain_text），不需要与弹窗文本完全一致。
 
         Args:
-            text: 期望的弹窗文本内容（可选）
-            timeout: 超时时间（秒）
+            text: 期望弹窗中包含的文本片段（可选，包含匹配）
+            timeout: 等待弹窗出现的超时时间（秒）
         """
         timeout_ms = timeout * 1000
         popup = self.popup
@@ -58,7 +68,7 @@ class AssertionsMixin:
 
         expect(popup).not_to_be_visible(timeout=timeout_ms)
 
-    def assert_list_contain(self, keyword, column_name="名称", exact_match=True):
+    def assert_list_contain(self, keyword: str, column_name: str = "名称", exact_match: bool = True) -> None:
         """
         公共方法: 验证指定列中是否包含特定关键字
 
@@ -87,7 +97,7 @@ class AssertionsMixin:
 
         assert matched, f"验证失败：{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
-    def assert_list_not_contain(self, keyword, column_name="名称", exact_match=True):
+    def assert_list_not_contain(self, keyword: str, column_name: str = "名称", exact_match: bool = True) -> None:
         """
         公共方法: 验证指定列中不包含特定关键字
 
@@ -120,7 +130,7 @@ class AssertionsMixin:
 
         assert not matched, f"验证失败：预期不{match_description}。关键词: '{keyword}'，实际列数据: {column_data}"
 
-    def assert_status(self, names, status='运行', timeout=300, refresh=False, refresh_interval=5):
+    def assert_status(self, names: "ResourceNames", status: str = '运行', timeout: int = 300, refresh: bool = False, refresh_interval: int = 5) -> None:
         """
         公共方法：验证页面表格中指定资源的状态是否符合预期，支持单个和批量资源
 
@@ -183,7 +193,7 @@ class AssertionsMixin:
         if failed_resources:
             raise AssertionError(f"以下资源状态验证失败: {'; '.join(failed_resources)}")
 
-    def assert_deleted(self, resource_names, timeout=300, refresh=False, refresh_interval=5):
+    def assert_deleted(self, resource_names: "ResourceNames", timeout: int = 300, refresh: bool = False, refresh_interval: int = 5) -> None:
         """
         公共方法：断言资源已从列表中删除（通过表格行不可见来判断），支持单个和批量资源
 

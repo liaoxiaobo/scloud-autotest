@@ -3,10 +3,18 @@ import re
 import threading
 import time
 import shlex
+from typing import TypedDict
 from paramiko import SSHClient, AutoAddPolicy, RSAKey, SSHException, AuthenticationException, ChannelException, Ed25519Key
 from sugon_web.config.config import Config
 from sugon_web.utils.util import get_file_abspath
 from sugon_web.utils.logger import logger
+
+
+class SSHResult(TypedDict, total=False):
+    """SSH 命令执行结果。"""
+    stdout: str
+    stderr: str
+    rc: int
 
 
 def _create_ssh_client(host, port, username, pwd, pkey, transport=None, timeout=300, interval=5):
@@ -147,8 +155,17 @@ class SSH:
         # self.sftp_client = self.ssh_client.open_sftp()  # 初始化共享 SFTP 会话
         logger.info(f"Connected successfully to server {host}")
 
-    def run(self, cmd, return_stdout=True, return_stderr=False, return_rc=False, check_rc=False, timeout=None,
-            get_pty=False, wait_for_exit=True):
+    def run(
+        self,
+        cmd: str,
+        return_stdout: bool = True,
+        return_stderr: bool = False,
+        return_rc: bool = False,
+        check_rc: bool = False,
+        timeout: int | None = None,
+        get_pty: bool = False,
+        wait_for_exit: bool = True,
+    ) -> str | SSHResult:
         """
         在远程主机上执行命令并返回执行结果。
 

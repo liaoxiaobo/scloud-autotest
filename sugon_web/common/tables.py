@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator, expect
 
+from sugon_web.common.types import ColumnData, TableRowData
+
 if TYPE_CHECKING:
     from sugon_web.common.playwright import CustomLocator
 
@@ -15,8 +17,14 @@ class TablesMixin:
     """
 
     @property
-    def table_headers(self):
-        """获取表头信息，返回表头列表"""
+    def table_headers(self) -> list[str]:
+        """获取主内容区第一个可见表格的表头文本列表。
+
+        注意：
+        - 优先取 #cloud-container-content 下第一个可见的 .el-table__header-wrapper
+        - 多表格场景下只取第一个表格的表头
+        - 未找到时返回空列表，不会抛异常
+        """
         headers = []
         header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible").first
 
@@ -34,8 +42,14 @@ class TablesMixin:
         return headers
 
     @property
-    def table_rows(self) -> Locator:
-        """获取表格中的数据行，返回行定位器列表"""
+    def table_rows(self) -> list[Locator]:
+        """获取主内容区第一个可见表格的数据行列表。
+
+        注意：
+        - 优先取 #cloud-container-content 下第一个可见的 .el-table__body-wrapper 中的 tr
+        - 多表格场景下只取第一个表格的行
+        - 未找到时返回空列表，不会抛异常
+        """
         locator = self.locator("#cloud-container-content .el-table__body-wrapper:visible tr")
         if locator.count() > 0:
             rows = locator.all()
@@ -123,7 +137,7 @@ class TablesMixin:
         self.logger.info(f"页面数据行信息: {cell_contents}, 共{len(cell_contents)}个")
         return cell_contents
 
-    def get_row_data(self, name: str) -> dict:
+    def get_row_data(self, name: str) -> TableRowData:
         """
         根据名称获取目标行数据，返回表头与单元格内容的键值对字典
 
@@ -170,7 +184,7 @@ class TablesMixin:
         self.logger.info(f"处理后的数据: {result}")
         return result
 
-    def get_column_data(self, header_name: str, deduplicate: bool = True, context: str = "auto"):
+    def get_column_data(self, header_name: str, deduplicate: bool = True, context: str = "auto") -> ColumnData:
         """根据表头名称获取该列的所有数据
             Args:
                 header_name: 表头名称
@@ -266,7 +280,7 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
-    def select_rows_by_names(self, names):
+    def select_rows_by_names(self, names: list[str]) -> None:
         """公共方法: 根据名称列表勾选表格行
 
         Args:
@@ -278,7 +292,7 @@ class TablesMixin:
                 loc.click()
                 self.logger.info(f"勾选资源 '{name}'")
 
-    def get_row_data_by_locator(self, loc):
+    def get_row_data_by_locator(self, loc: Locator) -> TableRowData:
         """获取指定行数据"""
         headers = self.table_headers
         cell_contents = self._get_cell_contents(loc)
@@ -291,27 +305,30 @@ class TablesMixin:
                 del result[key]
         return result
 
-    def assert_row_contains(self, name: str, expected_data: str, timeout=300):
-        """
-        断言指定行数据包含期望数据
+    def assert_row_contains(self, name: str, expected_data: str, timeout: int = 300) -> None:
+        """断言指定行包含期望文本（包含匹配）。
+
+        注意：expected_data 使用包含匹配（to_contain_text），
+        只要行文本中出现该片段即通过，不需要完全一致。
 
         Args:
             name: 行名称，用于定位特定行
-            expected_data: 期望数据
+            expected_data: 期望出现的文本片段
+            timeout: 等待行出现的超时时间（秒）
 
         Raises:
-            AssertionError: 当行数据不包含期望数据时
+            AssertionError: 当行数据不包含期望文本时
         """
         target_row = self.get_row_by_name(name)
         timeout = timeout * 1000
         expect(target_row).to_contain_text(expected_data, timeout=timeout)
         self.logger.info(f"行 '{name}' 包含期望数据 '{expected_data}'")
 
-    def set_table_header(self, names, enable=True):
+    def set_table_header(self, names: str | list[str], enable: bool = True) -> None:
         """设置表头列
 
         Args:
-            names: 列名称
+            names: 列名称（单个或列表）
             enable: 是否展示，默认为True
         """
         if isinstance(names, str):
@@ -337,12 +354,17 @@ class TablesMixin:
         self.wait_for_page_ready()
         self.logger.info(f"表头设置完成 {'显示' if enable else '隐藏'}{names}")
 
-    def sort_by_header(self, header_name: str, order: str = "desc"):
-        """点击表头进行排序
+    def sort_by_header(self, header_name: str, order: str = "desc") -> None:
+        """点击表头进行排序。
+
+        注意：若表头不存在，本方法静默返回，不会抛异常。
 
         Args:
             header_name: 表头名称，如"创建时间"
             order: 排序方式，"asc"升序或"desc"降序，默认降序
+
+        Raises:
+            AssertionError: 当排序箭头定位失败时（表头存在但无法点击排序箭头）
         """
         header_cell = self.get_by_role("cell", name=header_name)
         if header_cell.count() == 0:
