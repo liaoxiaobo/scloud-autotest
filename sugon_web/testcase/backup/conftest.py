@@ -524,7 +524,7 @@ def vm_backup(
             request=request,
             params=params,
         )
-        enabled_nodes = _get_enabled_backup_nodes(ecs_page)
+        enabled_nodes = _get_enabled_backup_nodes(OpsPage(page))
         vm_list = _enrich_vm_backup_metadata(ecs_page, ssh_vm, base_vm_list, enabled_nodes)
         logger.info(f"vm_list: {vm_list}")
 

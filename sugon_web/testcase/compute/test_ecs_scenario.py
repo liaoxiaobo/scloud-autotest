@@ -27,12 +27,12 @@ class TestECSScenario:
             assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == volume_name
 
             # 云硬盘页面验证 云硬盘状态=正在使用
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(volume["name"], status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(volume["name"], status="正在使用", refresh=True)
 
             # 验证挂载后页面展示的挂载信息 和 虚机中的挂载信息是否一致
-            disk_name = ecs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
             ssh_vm.connect(vm['mfip'])
             assert ssh_vm.run(f"lsblk | grep {disk_name}") != ""
 
@@ -83,7 +83,7 @@ class TestECSScenario:
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, ops_page, vm, volume, ssh_vm):
+    def test_ecs_snapshot_vm(self, ecs_page, ops_page, evs_page, vm, volume, ssh_vm):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -100,12 +100,12 @@ class TestECSScenario:
             assert ecs_page.get_row_data(vm_name).get("挂载云硬盘") == volume_name
 
             # 云硬盘页面验证 云硬盘状态=正在使用
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(volume["name"], status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(volume["name"], status="正在使用", refresh=True)
 
             # 验证挂载后页面展示的挂载信息 和 虚机中的挂载信息是否一致
-            disk_name = ecs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
+            disk_name = evs_page.get_row_data(volume["name"]).get("挂载信息").split("上的")[-1]
             ssh_vm.connect(vm['mfip'])
             # assert ssh_vm.run(f"lsblk | grep {disk_name}") != ""
 
@@ -235,7 +235,7 @@ class TestECSScenario:
             for name, ecs_id in zip(all_vms, ecs_ids):
                 ecs_page.assert_status(name, status="迁移中", refresh=True, refresh_interval=1)
             for name, ecs_id in zip(all_vms, ecs_ids):
-                ecs_page.assert_status(name)
+                ecs_page.wait_for_source_complete(name)
                 nodes.append(ssh_host.guest_show(ecs_id).get("node"))
             assert len(set(nodes)) >= 1
 

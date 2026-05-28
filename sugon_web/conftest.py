@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 
 import allure
@@ -21,6 +22,65 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
 
+def _get_run_id_from_args(config):
+    """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
+    candidates = []
+    for arg in list(config.args):
+        if not arg.startswith('-'):
+            candidates.append(arg)
+
+    if not candidates:
+        for arg in list(config.invocation_params.args):
+            if not arg.startswith('-'):
+                candidates.append(arg)
+
+    project_root = Path(__file__).resolve().parent.parent
+
+    for candidate in candidates:
+        parts = candidate.split('::')
+        first_part = parts[0]
+        path = Path(first_part).resolve()
+
+        # 转为相对于项目根目录的路径
+        try:
+            rel_path = path.relative_to(project_root)
+        except ValueError:
+            rel_path = path
+
+        rel_str = rel_path.as_posix()
+
+        # 去掉 sugon_web/ 前缀（包名前缀，不是测试组织层级语义）
+        if rel_str.startswith('sugon_web/'):
+            rel_str = rel_str[len('sugon_web/'):]
+
+        # 去掉 testcase/ 前缀，产物直接落在 logs/network/... 层级
+        if rel_str.startswith('testcase/'):
+            rel_str = rel_str[len('testcase/'):]
+        elif rel_str == 'testcase':
+            rel_str = ''
+
+        if path.suffix == '.py':
+            # 去掉 .py 后缀
+            run_id = rel_str[:-3] if rel_str.endswith('.py') else rel_str
+            # 如果指定了类名，追加为子路径
+            if len(parts) > 1 and parts[1].startswith('Test'):
+                run_id = f"{run_id}/{parts[1]}"
+            return run_id
+
+        if path.is_dir():
+            return rel_str
+
+    testpaths = config.getini('testpaths')
+    if testpaths:
+        rel = Path(testpaths[0]).as_posix()
+        if rel.startswith('sugon_web/'):
+            rel = rel[len('sugon_web/'):]
+        if rel.startswith('testcase/'):
+            rel = rel[len('testcase/'):]
+        return rel
+    return "default"
+
+
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
 
@@ -28,18 +88,25 @@ def pytest_configure(config):
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
 
-    # 创建 logs 目录
-    log_dir = project_root / "logs"
-    log_dir.mkdir(exist_ok=True)
+    # 从命令行参数提取运行标识（测试文件名或类名）
+    run_id = _get_run_id_from_args(config)
+    os.environ['_PYTEST_RUN_ID'] = run_id
+
+    # 创建 logs 子目录（按 run_id 隔离）
+    log_dir = project_root / "logs" / run_id
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     # 设置日志文件路径（添加日期）
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_file_path = log_dir / f"pytest-{today}.log"
     config.option.log_file = str(log_file_path)
 
-    # 创建 allure-result 目录
-    allure_dir = project_root / "allure-result"
-    allure_dir.mkdir(exist_ok=True)
+    # 创建 allure-result 子目录（按 run_id 隔离），仅清理本子目录历史数据
+    allure_dir = project_root / "allure-result" / run_id
+    if allure_dir.exists():
+        import shutil
+        shutil.rmtree(allure_dir)
+    allure_dir.mkdir(parents=True, exist_ok=True)
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
@@ -105,7 +172,7 @@ def browser(config):
 
 
 @pytest.fixture(scope="class")
-def browser_context(browser):
+def browser_context(browser, request):
     """
     浏览器上下文fixture
 
@@ -118,6 +185,7 @@ def browser_context(browser):
     )
 
     logger.info("浏览器上下文创建成功")
+    request.node._browser_context = context
 
     yield context
 
@@ -153,6 +221,23 @@ def _create_logged_in_page(browser_context, config):
         base_page_obj = BasePage(page)
         base_page_obj.close_dialog_if_exists()
 
+    # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
+    _orig_close = page.close
+
+    def _close_with_screenshot():
+        import sys
+        if sys.exc_info()[0] is not None:
+            try:
+                screenshot_bytes = page.screenshot()
+                if not hasattr(browser_context, '_failure_screenshots'):
+                    browser_context._failure_screenshots = []
+                browser_context._failure_screenshots.append(screenshot_bytes)
+                logger.info("fixture page 关闭前自动截图成功")
+            except Exception as e:
+                logger.warning(f"fixture page 关闭前自动截图失败: {e}")
+        _orig_close()
+
+    page.close = _close_with_screenshot
     return page
 
 
@@ -173,6 +258,49 @@ def page(browser_context, config):
     except Exception as e:
         logger.error(f"页面初始化失败: {e}")
         raise
+
+
+def _attach_pre_captured_screenshots(item, stage):
+    """将 fixture 在关闭前预截的图保存到 screenshots 目录并附加到 Allure 报告。"""
+    browser_context = item.funcargs.get("browser_context")
+    if not browser_context:
+        parent = getattr(item, 'parent', None)
+        if parent:
+            browser_context = getattr(parent, '_browser_context', None)
+
+    if not browser_context or not hasattr(browser_context, '_failure_screenshots'):
+        return
+
+    screenshots = browser_context._failure_screenshots
+    if not screenshots:
+        return
+
+    # 统一将运行产物落在仓库根目录，与 capture_failure_screenshot 保持一致
+    project_root = Path(__file__).resolve().parent.parent
+    screenshot_dir = project_root / "screenshots"
+    screenshot_dir.mkdir(exist_ok=True)
+
+    for idx, screenshot_bytes in enumerate(screenshots):
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = screenshot_dir / f"{item.name}_{stage}_{timestamp}_{idx + 1}.png"
+
+            with open(screenshot_path, "wb") as f:
+                f.write(screenshot_bytes)
+            logger.info(f"{stage}截图保存成功: {screenshot_path}")
+
+            with open(screenshot_path, "rb") as f:
+                allure.attach(
+                    body=f.read(),
+                    name=f"失败截图_{stage}_{idx + 1}",
+                    attachment_type=allure.attachment_type.PNG
+                )
+        except Exception as e:
+            logger.warning(f"附加{stage}截图到 Allure 失败: {e}")
+
+    # 清空，避免重复附加
+    browser_context._failure_screenshots.clear()
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
@@ -197,6 +325,9 @@ def pytest_runtest_makereport(item, call):
     """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
+
+    # 先处理 fixture 失败时预截图的数据（fixture 在 makereport 前已关闭 page）
+    _attach_pre_captured_screenshots(item, rep.when)
 
     # 获取page对象
     page = get_page_from_item(item)
@@ -363,10 +494,11 @@ def _write_allure_environment():
         # 获取项目根目录和 allure-result 目录
         current_dir = Path(__file__).resolve().parent
         project_root = current_dir.parent
-        allure_dir = project_root / "allure-result"
+        run_id = os.environ.get('_PYTEST_RUN_ID', 'default')
+        allure_dir = project_root / "allure-result" / run_id
 
         # 确保 allure-result 目录存在
-        allure_dir.mkdir(exist_ok=True)
+        allure_dir.mkdir(parents=True, exist_ok=True)
 
         # environment.properties 文件路径
         env_file = allure_dir / "environment.properties"
@@ -399,9 +531,17 @@ def _write_allure_environment():
         for key, value in patch.items():
             if key in ["VERSION", "BUILD_TIME", "COMMIT"]:
                 env_content.append(f"{key}={value}")
-        # 写入文件
+        env_text = '\n'.join(env_content)
+
+        # 写入 run_id 子目录（保留按运行隔离的副本）
         with open(env_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(env_content))
+            f.write(env_text)
+
+        # 同时写入 allure-result 根目录，供 allure generate 读取
+        root_env_file = project_root / "allure-result" / "environment.properties"
+        root_env_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(root_env_file, 'w', encoding='utf-8') as f:
+            f.write(env_text)
 
     except Exception as e:
         logger.error(f"写入 Allure 环境信息失败: {e}")
