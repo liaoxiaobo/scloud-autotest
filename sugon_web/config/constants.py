@@ -20,6 +20,7 @@ SERVICE_PATH_MAP = {
     '备份': '/backup',
     'AnhanDB(for MySQL)': '/mysql',
     'AnhanDB(for PostgreSQL)': '/pg',
+    '人大金仓 KingbaseES': '/kingbase',
     'AnhanDB(for MongoDB)': '/mongodb',
     '数据仓库 Doris': '/doris',
     'xscale': '/xscale',
@@ -66,6 +67,7 @@ SERVICE_MAP = {
     # 数据库服务
     'AnhanDB(for MySQL)': ('资源中心', '数据库'),
     'AnhanDB(for PostgreSQL)': ('资源中心', '数据库'),
+    '人大金仓 KingbaseES': ('资源中心', '数据库'),
     'AnhanDB(for MongoDB)': ('资源中心', '数据库'),
     '数据仓库 Doris': ('资源中心', '数据库'),
 
