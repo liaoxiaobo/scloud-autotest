@@ -241,6 +241,78 @@ class CloudOpsMixin:
         result = self.run(command, return_stderr=True)
         logger.info(f"SQL执行成功: {sql_statement}, 结果: {result}")
 
+    def get_service_status(self, service_name: str) -> str:
+        """
+        获取系统服务状态。
+
+        :param service_name: 服务名称（如 doris-be, doris-fe, mysql 等）。
+        :return: 服务状态（如 running, stopped, failed 等）。
+        :raises RuntimeError: 命令执行或解析失败时。
+        """
+        try:
+            result = self.run(f"systemctl status {service_name}")
+            logger.info(f"systemctl status {service_name} 输出:\n{result}")
+
+            if 'active (running)' in result.lower():
+                status = 'running'
+            elif 'inactive (dead)' in result.lower():
+                status = 'stopped'
+            elif 'failed' in result.lower():
+                status = 'failed'
+            else:
+                for line in result.splitlines():
+                    if 'Active:' in line:
+                        status = line.strip()
+                        break
+                else:
+                    status = 'unknown'
+
+            logger.info(f"服务 '{service_name}' 的状态为: {status}")
+            return status
+        except Exception as e:
+            raise RuntimeError(f"获取服务状态失败 (服务: {service_name}): {e}")
+
+    def get_node_mfip(self, db_name: str, node_name: str, table_name: str = "node") -> str:
+        """
+        通过在 master 节点执行 anhan 命令，从数据库中查询节点的 mfip。
+
+        :param db_name: 数据库名称。
+        :param node_name: 节点名称。
+        :param table_name: 表名，默认为 node。
+        :return: 节点的 mfip 地址。
+        """
+        sql_query = f"use {db_name};select mfip from {table_name} where name='{node_name}'"
+        command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_query}\\\"\""
+        result = self.run(command)
+        ip = result.strip().splitlines()[-1].strip()
+        logger.info(f"从数据库查询到节点 '{node_name}' 的IP地址为: {ip}")
+        return ip
+
+    def get_instance_node_ips(self, db_name: str, instance_name: str) -> list:
+        """
+        通过数据库查询实例下所有节点名称和 mfip。
+
+        :param db_name: 数据库名称。
+        :param instance_name: 实例名称前缀。
+        :return: list[tuple[str, str]] 节点名称和IP列表。
+        """
+        sql_query = (
+            f"use {db_name};"
+            f"select name,mfip from node where name like '{instance_name}-%' order by name;"
+        )
+        command = f"echo 'admin1234@sugon' | su - root -c \"anhan -e \\\"{sql_query}\\\"\""
+        result = self.run(command)
+        node_infos = []
+        for line in result.strip().splitlines():
+            line = line.strip()
+            if not line or line.startswith("name") or line.startswith("-"):
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and parts[0].startswith(f"{instance_name}-"):
+                node_infos.append((parts[0], parts[-1]))
+        logger.info(f"从数据库查询到实例 '{instance_name}' 节点列表: {node_infos}")
+        return node_infos
+
     def _get_release_version(self, host):
         """
         获取版本信息并解析为字典。

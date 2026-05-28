@@ -113,9 +113,24 @@ class ScliMixin:
 
         return result
 
-    def guest_show(self, ecs_id):
-        """执行 scli guest show 并返回解析后的字典。"""
-        return self.parse_table_output(self.run(f"scli guest show {ecs_id}"))
+    def guest_show(self, ref: str):
+        """执行 scli guest show 并返回解析后的字典。
+
+        支持传入 guest UUID 或节点名称。传入名称时会先通过 scli guest list 查找对应 ID。
+        """
+        guest_id = self._extract_uuid(ref)
+        if not guest_id:
+            guest_id = self.run(
+                f"scli guest list --name '{ref}' | grep -F '{ref}' | head -n 1 | cut -d '|' -f 2 | xargs"
+            ).strip()
+            if not guest_id and ref.endswith("-0"):
+                instance_name = ref.rsplit("-0", 1)[0]
+                guest_id = self.run(
+                    f"scli guest list --name '{instance_name}' | grep -F '{instance_name}' | head -n 1 | cut -d '|' -f 2 | xargs"
+                ).strip()
+            if not guest_id:
+                raise RuntimeError(f"未找到节点对应的 guest id: {ref}")
+        return self.parse_table_output(self.run(f"scli guest show {guest_id}"))
 
     def assert_guest_fields(self, ecs_id, expected_fields, error_prefix):
         """校验 scli guest show 中的字段值。"""
@@ -162,6 +177,48 @@ class ScliMixin:
                 if match:
                     return int(match.group(0))
         raise RuntimeError(f"无法从 scli volume show 结果中解析云硬盘容量: {volume_ref} -> {volume_info}")
+
+    def assert_resource_created(self, name: str, command: str = "scli guest list", timeout: int = 600,
+                                interval: int = 10):
+        """
+        断言资源已在后端创建成功，支持轮询检查。
+
+        :param name: 要检查的资源名称。
+        :param command: 用于检查的命令模板，默认为 ``scli guest list``。
+        :param timeout: 超时时间（秒），默认为 600 秒。
+        :param interval: 轮询间隔时间（秒），默认为 10 秒。
+        :raises pytest.skip: 当 SSH 连接未配置时。
+        :raises pytest.fail: 当资源在超时时间内未被创建时。
+        """
+        import pytest
+
+        if not self:
+            pytest.skip("SSH host is not configured, skipping backend assertion.")
+            return
+
+        end_time = time.time() + timeout
+        if command.strip() == "scli guest list":
+            check_command = f"scli guest list --name '{name}' | grep -F '{name}'"
+        else:
+            check_command = f"{command} | grep {name}"
+        logger.info(f"开始轮询检查后端资源 '{name}' 是否已创建...")
+
+        while time.time() < end_time:
+            result = self.run(check_command)
+            if result != "":
+                logger.info(f"后端资源 '{name}' 已成功创建。")
+                logger.debug(f"资源详情: {result}")
+                return
+
+            logger.debug(f"资源 '{name}' 尚未在后端创建，将在 {interval} 秒后重试...")
+            time.sleep(interval)
+
+        final_result = self.run(check_command)
+        if final_result != "":
+            logger.info(f"后端资源 '{name}' 在最后一次检查时已创建。")
+            logger.debug(f"资源详情: {final_result}")
+        else:
+            pytest.fail(f"超时错误：资源 '{name}' 在 {timeout} 秒内未能在后端创建。")
 
     def set_volume_state(self, volume_ref, state):
         """

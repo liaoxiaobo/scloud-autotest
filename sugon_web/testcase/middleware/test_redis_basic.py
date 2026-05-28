@@ -1,7 +1,6 @@
 import allure
 import pytest
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -45,7 +44,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤三：后端生效性验证（检查新节点是否创建）"):
             new_node_name = f"{instance_name}-1"
-            db_util.assert_backend_created(redis_page, ssh_host, new_node_name)
+            ssh_host.assert_resource_created(new_node_name)
 
     @allure.title("Redis-重命名实例")
     def test_rename_instance(self, redis_page, redis):
@@ -86,7 +85,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤三：验证新密码后端生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
 
             # 使用默认管理员用户验证
@@ -133,7 +132,7 @@ class TestRedisBasic:
         with allure_step_log("步骤二：验证实例状态及后端实际大小"):
             redis_page.assert_status(node_name, status="调整云硬盘中", refresh=True, timeout=30)
             redis_page.assert_status(node_name, status="运行中", refresh=True, timeout=1800)
-            assert db_util.get_disk_size(redis_page, node_name, ssh_host) == new_size
+            assert ssh_host.get_volume_size(node_name) == new_size
 
     @allure.title("Redis-修改实例规格")
     def test_scale_instance(self, redis_page, redis, ssh_host):
@@ -154,7 +153,7 @@ class TestRedisBasic:
             redis_page.assert_status(node_name, status="运行中", refresh=True, timeout=1800)
 
             # 后端实际查询 Cinder / Flavor 的规格信息
-            current_spec = db_util.get_specification(redis_page, node_name, ssh_host)
+            current_spec = ssh_host.guest_show(node_name).get("flavor_name")
             assert current_spec == real_specification, f"规格修改失败，期望为 {real_specification}，实际为 {current_spec}"
 
     @allure.title("Redis-添加分片")
@@ -185,7 +184,7 @@ class TestRedisBasic:
             # 新增的第4个分片对应的新增节点后缀为 -6 和 -7
             for i in [6, 7]:
                 new_node_name = f"{instance_name}-{i}"
-                db_util.assert_backend_created(redis_page, ssh_host, new_node_name)
+                ssh_host.assert_resource_created(new_node_name)
 
     @allure.title("Redis-新建并删除用户")
     def test_redis_user_lifecycle(self, redis_page, redis, ssh_host, ssh_vm):
@@ -201,7 +200,7 @@ class TestRedisBasic:
         with allure_step_log("步骤二：后端验证新建用户可以成功连接"):
             node_name = f"{instance_name}-0"
             # 获取后台宿主IP用于登录虚拟机，假设数据库名为 sugoncloud_redis
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
 
             # Redis 6.0+ 支持 ACL，普通用户可能被限制了 PING 权限，改为测 SET 命令或直接判定 NOPERM 为认证成功
@@ -239,7 +238,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤三：后端验证用户已被批量删除失效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
             
             for u_name in user_names:
@@ -267,7 +266,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤三：后端验证新密码生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
 
             # 验证新密码可以登录
@@ -337,7 +336,7 @@ class TestRedisBasic:
         node_name = f"{instance_name}-0"
 
         # 记录迁移前的物理机 (后端校验)
-        old_host = db_util.get_backend_host(redis_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
         allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
@@ -351,7 +350,7 @@ class TestRedisBasic:
 
         with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
             # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
-            new_host = db_util.get_backend_host(redis_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
 
             assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
@@ -361,7 +360,7 @@ class TestRedisBasic:
         with allure_step_log("步骤四：验证迁移后数据库连接"):
             password = redis["password"]
             vm_password = "admin1234@sugon"
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=vm_password)
             # 使用原生的 redis-cli ping 来验证该节点连通性，需要带上密码避免 NOAUTH
             cmd_check = f"redis-cli -h 127.0.0.1 -p 6379 -a '{password}' PING"
@@ -405,7 +404,7 @@ class TestRedisBasic:
             redis_page.assert_status(instance_name, status="运行中", timeout=300)
 
         with allure_step_log("步骤二：后端验证：无需密码连接Redis"):
-            ip_from_db = db_util.get_node_mfip_from_db(redis_page, ssh_host, "sugoncloud_redis", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_redis", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=vm_password)
             # 开启免密后，不带 -a 应该也能 PONG
             cmd_no_auth = f"redis-cli -h 127.0.0.1 -p 6379 PING"
