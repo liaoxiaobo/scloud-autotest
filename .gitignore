@@ -146,3 +146,6 @@ environment.properties
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# 参考代码和用例规格目录（不参与版本控制）
+refrence/
