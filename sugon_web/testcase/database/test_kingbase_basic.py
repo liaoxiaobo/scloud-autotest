@@ -2,7 +2,6 @@ import allure
 import pytest
 from time import sleep
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -47,7 +46,7 @@ class TestKingbaseBasic:
     @allure.title("KingbaseES-重置密码")
     def test_change_root_password(self, kingbase_page, kingbase):
         instance_name = kingbase["name"]
-        new_password = f"NewPwd@1{random_string(k=6)}"
+        new_password = f"NewPwd@1@{random_string(k=6)}"
 
         with allure_step_log("步骤一：重置管理员密码"):
             kingbase_page.change_root_password(instance_name, new_password)
@@ -98,7 +97,7 @@ class TestKingbaseBasic:
     def test_node_hot_migration(self, kingbase_page, kingbase, ssh_host):
         instance_name = kingbase["name"]
         node_name = f"{instance_name}-0"
-        old_host = db_util.get_backend_host(kingbase_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
             try:
@@ -112,7 +111,7 @@ class TestKingbaseBasic:
             kingbase_page.assert_status(node_name, status="运行中", timeout=1800, refresh=True)
 
         with allure_step_log("步骤三：验证迁移后的后端宿主机发生变化"):
-            new_host = db_util.get_backend_host(kingbase_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             assert new_host != old_host, f"热迁移后宿主机未发生变化: {old_host}"
             if selected_host:
                 assert selected_host in new_host, f"目标宿主机不匹配，期望包含 {selected_host}，实际为 {new_host}"
@@ -129,7 +128,7 @@ class TestKingbaseBasic:
             kingbase_page.assert_popup_success("添加从节点")
             kingbase_page.assert_status(new_node_name, status="创建中", timeout=600, refresh=True)
             kingbase_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
-            db_util.assert_backend_created(kingbase_page, ssh_host, new_node_name, timeout=1800)
+            ssh_host.assert_resource_created(new_node_name, timeout=1800)
 
     @allure.title("KingbaseES-新建数据库")
     def test_create_database(self, kingbase_page, kingbase):
@@ -160,7 +159,7 @@ class TestKingbaseBasic:
     def test_change_user_password(self, kingbase_page, kingbase):
         instance_name = kingbase["name"]
         user_name = kingbase["user_name"]
-        new_password = f"NewPwd@1{random_string(k=6)}"
+        new_password = f"NewPwd@1@{random_string(k=6)}"
 
         with allure_step_log(f"步骤一：修改用户 {user_name} 密码"):
             kingbase_page.change_user_privileges(instance_name, user_name, new_password)

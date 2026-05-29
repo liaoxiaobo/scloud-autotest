@@ -9,7 +9,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
-from sugon_web.common.ssh import SSH
+from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
 

@@ -5,7 +5,6 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
-from sugon_web.utils import db_util
 
 NODE_TYPES = ["元数据节点", "日志节点", "计算节点", "存储节点"]
 
@@ -210,7 +209,7 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤三：验证节点云硬盘大小已更新"):
             backend_node_name = _build_xscale_gova_name(node_name)
-            assert db_util.get_disk_size(xscale_page, backend_node_name, ssh_host) == new_size
+            assert ssh_host.get_volume_size(backend_node_name) == new_size
 
     @allure.title("XScale-{node_type}-绑定和解绑公网IP")
     @pytest.mark.parametrize(
@@ -268,7 +267,7 @@ class TestXScaleBasic:
 
         with allure_step_log("步骤三：验证节点实际迁移到了新的物理机"):
             backend_node_name = _build_xscale_gova_name(node_name)
-            new_host = db_util.get_backend_host(xscale_page, ssh_host, backend_node_name)
+            new_host = ssh_host.guest_show(backend_node_name).get("node")
             assert new_host != old_host, f"热迁移前后物理机未变化，迁移前后均为: {old_host}"
             assert selected_host in new_host, f"期望迁移到 {selected_host}，实际迁移到 {new_host}"
 
@@ -625,9 +624,7 @@ class TestXScaleBasic:
             xscale_page.assert_status(new_node_name, status="创建中", timeout=600)
             xscale_page.assert_status(new_node_name, status="运行中", timeout=600)
             xscale_page.assert_status(new_node_name, status="就绪", timeout=600)
-            db_util.assert_backend_created(
-                xscale_page,
-                ssh_host,
+            ssh_host.assert_resource_created(
                 _build_xscale_gova_name(new_node_name)
             )
 
@@ -637,11 +634,8 @@ class TestXScaleBasic:
         with allure_step_log("步骤四：验证计算节点缩容成功"):
             xscale_page.assert_popup_success()
             xscale_page.assert_deleted(new_node_name, refresh=True)
-            db_util.assert_backend_deleted(
-                xscale_page,
-                ssh_host,
-                _build_xscale_gova_name(new_node_name),
-            )
+            ssh_host.wait_vm_deleted(_build_xscale_gova_name(new_node_name))
+            ssh_host.wait_volume_deleted(_build_xscale_gova_name(new_node_name))
 
     @allure.title("XScale-批量重启计算节点")
     def test_restart_compute_nodes(self, xscale_page, xscale):
@@ -678,9 +672,7 @@ class TestXScaleBasic:
             for new_node_name in new_node_names:
                 backend_node_name = _build_xscale_gova_name(new_node_name)
                 backend_node_names.append(backend_node_name)
-                db_util.assert_backend_created(
-                    xscale_page,
-                    ssh_host,
+                ssh_host.assert_resource_created(
                     backend_node_name
                 )
 
@@ -691,11 +683,8 @@ class TestXScaleBasic:
             xscale_page.assert_popup_success()
             xscale_page.assert_deleted(new_node_names, refresh=True)
             for backend_node_name in backend_node_names:
-                db_util.assert_backend_deleted(
-                    xscale_page,
-                    ssh_host,
-                    backend_node_name
-                )
+                ssh_host.wait_vm_deleted(backend_node_name)
+                ssh_host.wait_volume_deleted(backend_node_name)
 
     @allure.title("XScale-批量重启存储节点")
     def test_restart_storage_nodes(self, xscale_page, xscale):

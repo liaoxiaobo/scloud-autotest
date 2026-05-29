@@ -33,9 +33,9 @@ SERVICE_PATH_MAP = {
     '分布式消息服务 RabbitMQ': '/rbs',
     '云搜索服务': '/es',
     '监控服务': '/prom',
-    '基础设施': '/ops',
-    '运维': '/cms',
     '交换机组': '/ops/#/exchange-unit-list',
+    '基础设施': '/ops',
+    '运维': '/cms'
 }
 
 # 服务菜单导航映射表

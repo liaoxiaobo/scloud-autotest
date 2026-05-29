@@ -4,7 +4,6 @@ from time import sleep
 import pytest
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
 
 
@@ -64,7 +63,7 @@ class ESPage(BasePage):
         raise AssertionError(f"未找到包含 {option_parts} 的下拉选项，可选项: {option_texts}")
 
     def _select_form_option(self, label: str, option_text: str, exact: bool = True):
-        dropdown = db_util.select_labeled_dropdown(self, label)
+        dropdown = self.select_labeled_dropdown(label)
         dropdown.scroll_into_view_if_needed()
         current_value = dropdown.input_value().strip()
         if option_text in current_value:
@@ -239,11 +238,11 @@ class ESPage(BasePage):
 
         self._set_security_mode(security_mode, password)
 
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         selected_disk_type = disk_type if disk_type else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["云硬盘类型"])
+        self.select_disk_type_like_doris(selected_disk_type, label_texts=["云硬盘类型"])
         self._form_item("云硬盘大小(GiB)").get_by_role("spinbutton").fill(str(disk_size))
 
         self._select_specification(specification_name)

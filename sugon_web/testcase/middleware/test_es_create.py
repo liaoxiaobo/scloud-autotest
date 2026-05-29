@@ -1,7 +1,6 @@
 import allure
 import pytest
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import load_data, random_data, random_string
 
@@ -36,12 +35,13 @@ class TestESCreate:
 
         with allure_step_log("步骤四：验证删除结果"):
             es_page.assert_deleted(instance_name, timeout=1800, refresh=True)
-            db_util.assert_backend_deleted(es_page, ssh_host, instance_name)
+            ssh_host.wait_vm_deleted(instance_name)
+            ssh_host.wait_volume_deleted(instance_name)
 
     @allure.title("CSS-批量删除集群")
     def test_batch_delete_instances(self, es_page, ssh_host):
         """测试批量创建并删除 CSS 集群"""
-        instance_names = [f"css-batch-{random_string(5)}", f"css-batch-{random_string(5)}"]
+        instance_names = [f"css-batch-{random_data()}", f"css-batch-{random_data()}"]
 
         for instance_name in instance_names:
             with allure_step_log(f"步骤一：创建集群: {instance_name}"):
@@ -56,4 +56,5 @@ class TestESCreate:
         with allure_step_log("步骤三：验证批量删除结果"):
             for instance_name in instance_names:
                 es_page.assert_deleted(instance_name, timeout=1800, refresh=True)
-                db_util.assert_backend_deleted(es_page, ssh_host, instance_name)
+                ssh_host.wait_vm_deleted(instance_name)
+                ssh_host.wait_volume_deleted(instance_name)

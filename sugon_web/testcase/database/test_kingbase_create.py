@@ -1,9 +1,8 @@
 import allure
 import pytest
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import load_data, random_data
+from sugon_web.utils.util import load_data, random_data, random_string
 
 
 @allure.epic("数据库服务")
@@ -36,4 +35,5 @@ class TestKingbaseCreate:
 
         with allure_step_log("步骤四：验证实例删除成功"):
             kingbase_page.assert_deleted(instance_name, timeout=1800, refresh=True)
-            db_util.assert_backend_deleted(kingbase_page, ssh_host, instance_name, timeout=1800)
+            ssh_host.wait_vm_deleted(instance_name, timeout=1800)
+            ssh_host.wait_volume_deleted(instance_name, timeout=1800)
