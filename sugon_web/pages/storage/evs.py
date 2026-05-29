@@ -2,10 +2,9 @@ import re
 import pytest
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.common.mixins import DrawerSelectMixin
 
 
-class EvsPage(DrawerSelectMixin, BasePage):
+class EvsPage(BasePage):
     """云硬盘页面对象。"""
 
     @property

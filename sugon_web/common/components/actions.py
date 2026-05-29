@@ -7,13 +7,85 @@ from playwright.sync_api import Locator, expect
 if TYPE_CHECKING:
     from sugon_web.common.playwright import CustomLocator
 
-
 class ActionsMixin:
     """页面交互操作 Mixin。
 
     提供搜索、详情页跳转、资源行操作等交互能力。
     设计为与 ElementsMixin、TablesMixin、WaitsMixin 组合使用。
     """
+
+    def _dismiss_hover_tips(
+        self,
+        timeout: float = 2.0,
+        poll_interval: float = 0.4,
+        stable_rounds: int = 3,
+    ) -> None:
+        """清理进入页面后残留的悬浮提示，等待 tooltip/popover 稳定消失。
+
+        Args:
+            timeout: 等待悬浮提示消失的总超时时间，单位为秒
+            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
+            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
+        """
+        self.page.mouse.move(1, 1)
+
+        visible_tips = self.page.locator(
+            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
+        )
+        end_time = time.time() + timeout
+        stable_hits = 0
+
+        while time.time() < end_time:
+            self.page.evaluate("""
+                () => {
+                    const hovered = Array.from(document.querySelectorAll(':hover'));
+                    hovered.reverse().forEach((el) => {
+                        el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+                        el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+                    });
+                    const active = document.activeElement;
+                    if (active && typeof active.blur === 'function') {
+                        active.blur();
+                    }
+                }
+                """)
+            self.page.keyboard.press("Escape")
+
+            if visible_tips.count() == 0:
+                stable_hits += 1
+                if stable_hits >= stable_rounds:
+                    return
+            else:
+                stable_hits = 0
+            self.page.wait_for_timeout(int(poll_interval * 1000))
+
+        remaining = visible_tips.count()
+        if remaining:
+            self.logger.warning(f"等待悬浮提示消失超时，当前仍有 {remaining} 个 tooltip/popper 可见")
+            self.page.evaluate("""
+                () => {
+                    const tips = Array.from(document.querySelectorAll(
+                        '.el-tooltip__popper, .el-popper, [role="tooltip"]'
+                    ));
+                    tips.forEach((el) => {
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        const visible = el.getAttribute('aria-hidden') !== 'true'
+                            && style.display !== 'none'
+                            && style.visibility !== 'hidden'
+                            && style.opacity !== '0'
+                            && rect.width > 0
+                            && rect.height > 0;
+                        if (visible) {
+                            el.style.pointerEvents = 'none';
+                            el.style.display = 'none';
+                            el.style.visibility = 'hidden';
+                            el.setAttribute('aria-hidden', 'true');
+                        }
+                    });
+                }
+                """)
+            self.page.wait_for_timeout(500)
 
     def search(self, keyword: str) -> None:
         """搜索并等待结果加载。
@@ -131,27 +203,6 @@ class ActionsMixin:
         raise AssertionError(
             f"等待详情页资源行 '{row_name}' 超时，实例: '{instance_name}'"
         ) from last_error
-
-    def _get_interactive_row(self, row: Locator) -> Locator:
-        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
-        try:
-            row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
-
-            table_index = row.evaluate("""
-                el => {
-                    const table = el.closest('.el-table');
-                    if (!table) return -1;
-                    return Array.from(document.querySelectorAll('.el-table')).indexOf(table);
-                }
-            """)
-
-            if table_index != -1:
-                fixed_right = self.locator(".el-table").nth(table_index).locator(".el-table__fixed-right .el-table__row").nth(row_index)
-                if fixed_right.count() > 0 and fixed_right.is_visible():
-                    return fixed_right
-        except Exception as e:
-            self.logger.debug(f"通过索引获取可交互行时出错: {e}")
-        return row
 
     def _btn_operation(self, name: str) -> Locator:
         """公共元素: 资源操作按钮"""

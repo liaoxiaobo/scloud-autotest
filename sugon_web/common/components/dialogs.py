@@ -1,8 +1,54 @@
+from typing import TYPE_CHECKING
+
+from playwright.sync_api import Locator
+
 from sugon_web.common.playwright import expect
+from sugon_web.common.components.buttons import BaseElementMixin
+
+if TYPE_CHECKING:
+    from sugon_web.common.playwright import CustomLocator
 
 
-class DrawerSelectMixin:
-    """抽屉类资源选择组件的通用交互。"""
+class DialogsMixin(BaseElementMixin):
+    """弹窗/对话框组件 Mixin。"""
+
+    @property
+    def dialog_confirm(self) -> Locator:
+        """公共元素: 对话框确定按钮"""
+        locators = [
+            self.get_by_role("dialog").get_by_text("确定", exact=True),
+            self.get_by_role("dialog").locator("span").filter(has_text="确定"),
+            self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
+            self.locator("section").get_by_text("确定"),
+            self.locator("div:nth-child(2) > div > .cloud-button-btn > span").first,
+            self.locator(".sure-footer > div > .cloud-button-btn").first,
+            self.get_by_label("虚拟IP管理").get_by_text("确定", exact=True)
+        ]
+        return self._find_element(locators, "对话框'确定'按钮")
+
+    @property
+    def dialog_cancel(self) -> Locator:
+        """公共元素: 对话框取消按钮"""
+        locators = [
+            self.get_by_role("dialog").get_by_text("取消"),
+            self.locator("div:nth-child(2) > div:nth-child(2) > .cloud-button-btn")
+        ]
+        return self._find_element(locators, "对话框'取消'按钮")
+
+    @property
+    def dialog_close(self) -> Locator:
+        """公共元素: 对话框关闭按钮"""
+        return self.get_by_role("button", name="Close")
+
+    def close_dialog_if_exists(self) -> None:
+        """关闭可能存在的对话框。
+
+        通过点击对话框右上角的 Close 按钮关闭。
+        若当前没有对话框，静默通过不抛异常。
+        """
+        if self.dialog_close.is_visible():
+            self.logger.info("发现未关闭的对话框，正在关闭...")
+            self.dialog_close.click()
 
     def _select_from_named_drawer(
         self,

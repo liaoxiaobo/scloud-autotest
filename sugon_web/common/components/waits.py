@@ -10,78 +10,15 @@ class WaitsMixin:
     设计为与 Playwright 组合使用，依赖 self.page 和 self.logger。
     """
 
-    def _dismiss_hover_tips(
-        self,
-        timeout: float = 2.0,
-        poll_interval: float = 0.4,
-        stable_rounds: int = 3,
-    ) -> None:
-        """清理进入页面后残留的悬浮提示，等待 tooltip/popover 稳定消失。
+    @property
+    def popup(self):
+        """公共元素: 页面顶部弹窗"""
+        return self.locator(".el-message__content")
 
-        Args:
-            timeout: 等待悬浮提示消失的总超时时间，单位为秒
-            poll_interval: 轮询检测可见悬浮提示的间隔时间，单位为秒
-            stable_rounds: 连续检测到无可见悬浮提示的次数，达到后认为状态稳定
-        """
-        self.page.mouse.move(1, 1)
-
-        visible_tips = self.page.locator(
-            ".el-tooltip__popper:visible, .el-popper:visible, [role='tooltip']:visible"
-        )
-        end_time = time.time() + timeout
-        stable_hits = 0
-
-        while time.time() < end_time:
-            self.page.evaluate("""
-                () => {
-                    const hovered = Array.from(document.querySelectorAll(':hover'));
-                    hovered.reverse().forEach((el) => {
-                        el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
-                        el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
-                    });
-                    const active = document.activeElement;
-                    if (active && typeof active.blur === 'function') {
-                        active.blur();
-                    }
-                }
-                """)
-            self.page.keyboard.press("Escape")
-
-            if visible_tips.count() == 0:
-                stable_hits += 1
-                if stable_hits >= stable_rounds:
-                    return
-            else:
-                stable_hits = 0
-            self.page.wait_for_timeout(int(poll_interval * 1000))
-
-        remaining = visible_tips.count()
-        if remaining:
-            self.logger.warning(f"等待悬浮提示消失超时，当前仍有 {remaining} 个 tooltip/popper 可见")
-            self.page.evaluate("""
-                () => {
-                    const tips = Array.from(document.querySelectorAll(
-                        '.el-tooltip__popper, .el-popper, [role="tooltip"]'
-                    ));
-                    tips.forEach((el) => {
-                        const style = window.getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        const visible = el.getAttribute('aria-hidden') !== 'true'
-                            && style.display !== 'none'
-                            && style.visibility !== 'hidden'
-                            && style.opacity !== '0'
-                            && rect.width > 0
-                            && rect.height > 0;
-                        if (visible) {
-                            el.style.pointerEvents = 'none';
-                            el.style.display = 'none';
-                            el.style.visibility = 'hidden';
-                            el.setAttribute('aria-hidden', 'true');
-                        }
-                    });
-                }
-                """)
-            self.page.wait_for_timeout(500)
+    @property
+    def alert(self):
+        """公共元素: 页面右下角弹窗"""
+        return self.get_by_role("alert")
 
     def wait_for_page_ready(self) -> None:
         """等待页面完全就绪。
