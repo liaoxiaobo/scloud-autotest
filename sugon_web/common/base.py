@@ -344,20 +344,18 @@ class BasePage(Playwright):
         if service_name and service_path and not self._is_current_service_path(service_path):
             self.goto_service(service_name)
 
-        # # 检查是否已经在目标子菜单页面上
-        # try:
-        #     # 查找当前激活的菜单项
-        #     active_menu = self.locator(".one-tree-active")
-        #     if active_menu.count() > 0:
-        #         active_text = active_menu.inner_text().strip()
-        #         if active_text == submenu:
-        #             self.logger.info(f"已经在目标子菜单: {submenu}，无需切换")
-        #             return
-        # except Exception as e:
-        #     self.logger.debug(f"检查当前菜单状态时出错: {e}")
+        # 某些子页面（创建、编辑、ACL 配置等）为独立布局，没有左侧菜单。
+        # 若 #cloud-menu-left 不存在，则强制刷新回服务首页。
+        try:
+            expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=5000)
+        except Exception:
+            if service_name and service_path:
+                base_url = Config.get("base_url").rstrip("/")
+                self.page.goto(f"{base_url}{service_path}")
+                self.wait_for_page_ready()
+            expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)
 
         # 处理默认收起的菜单
-        expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)   # 确保菜单栏完全加载
         menu_left = self.locator("#cloud-menu-left")
         parent_nodes = menu_left.locator(".one-tree-parent-node")
         count = parent_nodes.count()
