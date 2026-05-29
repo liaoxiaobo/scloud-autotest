@@ -1,5 +1,7 @@
 from .acl import AclMixin
+from .dc import DcMixin
 from .eip import EipMixin
+from .er import ErMixin
 from .internal_dns import InternalDnsMixin
 from .ip_group import IpGroupMixin
 from .nat import NatMixin
@@ -7,6 +9,7 @@ from .peer_connect import PeerConnectMixin
 from .qos import QosMixin
 from .sg import SgMixin
 from .slb import SlbMixin
+from .tm import TmMixin
 from .vpc import VpcMixin
 
 
@@ -26,4 +29,23 @@ class VpcPage(
 
     service_name = "虚拟私有云"
 
-__all__ = ["VpcPage"]
+
+class DcPage(DcMixin):
+    """云专线DC页面类。"""
+
+    service_name = "云专线DC"
+
+
+class ErPage(ErMixin):
+    """企业路由器页面类。"""
+
+    service_name = "企业路由器"
+
+
+class TmPage(TmMixin):
+    """流量镜像页面类。"""
+
+    service_name = "流量镜像"
+
+
+__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage"]

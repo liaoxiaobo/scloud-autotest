@@ -368,8 +368,8 @@ class BasePage(Playwright):
             is_expanded = parent.evaluate("el => el.classList.contains('one-tree-expand')")
             if not is_expanded:
                 parent.click()
-        # 根据子菜单参数导航到对应页面
-        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
+        # 根据子菜单参数导航到对应页面（使用 first 处理菜单项重复的情况）
+        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).first.click()
         self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
