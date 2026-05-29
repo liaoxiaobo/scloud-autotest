@@ -37,8 +37,8 @@ user-invocable: true
 ### 阶段二：脚本编写与对齐
 基于 MD 需求编写 Playwright + Pytest 自动化测试脚本，并与需求进行对齐检查。
 
-**读取文件：** `references/phase_02_coding.md`（第一部分+第二部分），以及其引用的 `sugon_web/case_specs/prompts/test_case_codegen_prompt.md`、`sugon_web/case_specs/fixtures_index.md`、阶段一产出的测试需求 MD 文件、`sugon_web/refrence/module_index.yaml`、被测模块对应的前端工程代码
-**文件内容：** 编码规范、用例骨架、需求对齐与编码规范检查
+**读取文件：** `references/phase_02_coding.md`（第一部分+第二部分），以及其引用的 `sugon_web/case_specs/prompts/test_case_codegen_prompt.md`、`sugon_web/case_specs/fixtures_index.md`、`sugon_web/case_specs/prompts/assertion_guidelines.md`、阶段一产出的测试需求 MD 文件、`sugon_web/refrence/module_index.yaml`、被测模块对应的前端工程代码
+**文件内容：** 编码规范、断言规范、用例骨架、需求对齐与编码规范检查
 **前置条件：** 阶段一完成
 **执行顺序：** 先执行第一部分（编写脚本），在同一文件中继续执行第二部分（对齐检查）
 **完成标志：** 脚本与需求完全对齐，各项检查全部通过

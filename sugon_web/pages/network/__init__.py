@@ -1,4 +1,5 @@
 from .acl import AclMixin
+from .cms_monitor import MonitorMixin
 from .dc import DcMixin
 from .eip import EipMixin
 from .er import ErMixin
@@ -24,6 +25,7 @@ class VpcPage(
     EipMixin,
     NatMixin,
     QosMixin,
+    MonitorMixin
 ):
     """网络服务页面聚合类。"""
 

@@ -4,7 +4,6 @@ from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQL
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
-from sugon_web.utils import db_util
 
 
 @pytest.fixture(scope="function")
@@ -66,7 +65,8 @@ def doris(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_name1 = f"user_{random_string(k=5)}"
     user_password = f"Pwd@1{random_string(k=5)}"
-    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1,
+            "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享Doris实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -111,7 +111,7 @@ def mysql(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
     privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "db_name": db_name, "user_name": user_name, "admin_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -126,7 +126,7 @@ def mysql(browser_context, config):
 
     with allure_step_log(f"前置操作：创建新用户 {db_name}"):
         mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功",10)
+        mysql_page.assert_popup_success("创建用户成功", 10)
 
     yield data
 
@@ -225,7 +225,7 @@ def mongodb(browser_context, config):
     name1 = f"mongo-shard-{random_data()}"
     root_password = "Admin1234#sugon"
     user_name = "root"
-    
+
     data = {"name": name, "name1": name1, "root_password": root_password, "user_name": user_name}
     logger.info(f"为测试类创建共享MongoDB实例: {name}(副本集), {name1}(分片集群)")
 
@@ -281,6 +281,7 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         logger.info(f"清理共享XScale实例: {data['name']}")
         xscale_page.delete_instance(data["name"])
         xscale_page.assert_deleted(name)
-        db_util.assert_backend_deleted(xscale_page, ssh_host, name)
+        ssh_host.wait_vm_deleted(name)
+        ssh_host.wait_volume_deleted(name)
 
     page.close()

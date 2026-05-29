@@ -74,7 +74,7 @@ def pool(ops_page, vm, request):
 
     pool_name = f"disk_{random_data()}"
     with allure_step_log("创建指定数量的虚机"):
-        ops_page.goto_service("计算设施")
+        ops_page.goto_service("基础设施")
         _disk_name, _disk_size = ops_page.enable_disk("所在物理机", node)
 
         storage_type = params.get("storage_type", "本地磁盘")

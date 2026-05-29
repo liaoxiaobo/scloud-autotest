@@ -4,7 +4,6 @@ from time import sleep
 import pytest
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
 from sugon_web.config.config import Config
 
@@ -203,10 +202,10 @@ class XScalePage(BasePage):
         self.page.wait_for_timeout(1000)
 
         resource_form.get_by_placeholder("请输入admin管理员用户密码").fill(password)
-        db_util.input_confirm_password(self).fill(password)
+        self.input_confirm_password().fill(password)
 
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         selected_volume_type = volume_type if volume_type else self.stor
         volume_dropdowns = resource_form.locator(".el-select").locator("input")

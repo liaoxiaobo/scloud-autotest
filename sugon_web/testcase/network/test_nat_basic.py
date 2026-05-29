@@ -526,7 +526,7 @@ class TestNAT:
             vpc_page.assert_popup_success("新建路由表规则成功")
 
         with allure_step_log("步骤4: 验证通过公网IP和公网端口SSH登录虚机"):
-            from sugon_web.common.ssh import SSH
+            from sugon_web.common.remote.ssh import SSH
             ssh = SSH()
             try:
                 ssh.connect(host=eip, port=ext_port, username='root', pwd=vm_password, use_jumphost=False)

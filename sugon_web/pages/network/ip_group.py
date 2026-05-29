@@ -2,9 +2,10 @@ import re
 
 from sugon_web.common.base import submenu, BasePage
 from sugon_web.common.playwright import expect
+from sugon_web.assertions.network.ip_group import IpGroupAssertionMixin
 
 
-class IpGroupMixin(BasePage):
+class IpGroupMixin(IpGroupAssertionMixin, BasePage):
     """负载均衡 IP地址组页面对象。"""
 
     def _get_dialog(self, *titles):
@@ -132,15 +133,7 @@ class IpGroupMixin(BasePage):
 
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
-
-    def assert_detail_basic_info(self, name=None, desc=None):
-        """校验详情页基本信息区域。"""
-        detail_root = self.locator("#detail_container, #cloud-container-content").first
-        expect(detail_root).to_be_visible(timeout=5000)
-        if name is not None:
-            expect(detail_root).to_contain_text(name)
-        if desc is not None:
-            expect(detail_root).to_contain_text(desc)
+        self.logger.info(f"成功进入IP地址组{name} {tab_name or '详情'}页")
 
     def get_detail_ip_addresses(self):
         """获取详情页IP地址列表。"""
