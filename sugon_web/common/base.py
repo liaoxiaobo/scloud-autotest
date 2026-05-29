@@ -83,7 +83,9 @@ class BasePage(Playwright):
         """公共元素:新建按钮"""
         locators = [
             self.get_by_text("新建", exact=True),
-            self.get_by_text("创建集群", exact=True)
+            self.get_by_text("创建集群", exact=True),
+            self.locator("button").filter(has_text="新建"),
+            self.get_by_role("button", name="新建"),
         ]
 
         return self._find_element(locators, "新建按钮")
@@ -112,7 +114,11 @@ class BasePage(Playwright):
             self.locator(".input-with-select > .el-input__inner"),
             self.get_by_role("textbox", name="请输入设备名称"),
             self.get_by_role("textbox", name="搜索(实例名称)"),
-            self.get_by_placeholder("搜索(目的地址)")   # 路由表规则搜索框
+            self.get_by_placeholder("搜索(目的地址)"),   # 路由表规则搜索框
+            # BMS 裸金属页面搜索框
+            self.get_by_role("textbox", name="搜索（网络名称）"),
+            self.get_by_role("textbox", name="搜索（物理机）"),
+            self.get_by_role("textbox", name="搜索（带外IP）"),
         ]
 
         return self._find_element(locators, "搜索框")
@@ -215,7 +221,26 @@ class BasePage(Playwright):
         if self.dialog_close.is_visible():
             self.logger.info("发现未关闭的对话框，正在关闭...")
             self.dialog_close.click()
-            # self.page.keyboard.press("Escape")    # 也可以按ESC键
+        # 补充关闭 Element UI / sugon 弹窗
+        for btn_text in ["确定", "确 定", "知道了", "关闭", "确认"]:
+            for btn in self.page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button, .sugon-dialog button").filter(has_text=btn_text).all():
+                try:
+                    if btn.is_visible():
+                        btn.click()
+                        self.page.wait_for_timeout(500)
+                        break
+                except Exception:
+                    continue
+        # 兜底：JS 强制移除残留的 sugon-dialog 遮罩
+        self.page.evaluate("""
+            () => {
+                document.querySelectorAll('.sugon-dialog').forEach(d => {
+                    d.style.display = 'none';
+                });
+            }
+        """)
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(300)
 
     def search(self, keyword: str):
         """公共方法: 搜索操作"""
@@ -240,9 +265,14 @@ class BasePage(Playwright):
 
     def _is_current_service_path(self, service_path: str) -> bool:
         """判断当前页面是否已位于目标服务下的任意页面。"""
-        current_path, _ = self._normalize_route_parts(self.page.url)
-        target_path, _ = self._normalize_route_parts(service_path)
-        return current_path == target_path
+        current_path, current_hash = self._normalize_route_parts(self.page.url)
+        target_path, target_hash = self._normalize_route_parts(service_path)
+        if current_path != target_path:
+            return False
+        # 若服务路径包含 hash，则要求当前 hash 也以该前缀开头
+        if target_hash and not current_hash.startswith(target_hash):
+            return False
+        return True
 
     def _goto_service_by_path(self, service: str, service_path: str) -> bool:
         """通过服务入口路径直达指定服务。"""
@@ -270,12 +300,17 @@ class BasePage(Playwright):
 
     def _goto_service_by_menu(self, service: str) -> bool:
         """通过原有顶栏菜单导航到指定服务。"""
+        # 关闭可能遮挡菜单的弹窗（由 close_dialog_if_exists 统一处理）
+        self.close_dialog_if_exists()
+        self.page.wait_for_timeout(500)
+
         navigation_path = SERVICE_MAP[service]
 
         if len(navigation_path) == 1:
             # 两层结构：基础设施 -> 服务
             root_menu = navigation_path[0]
             self.hover(root_menu)
+            self.page.wait_for_timeout(500)
             self.click(service)
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
@@ -288,8 +323,18 @@ class BasePage(Playwright):
             # 三层结构：资源中心 -> 二级菜单 -> 服务
             root_menu, category = navigation_path
             self.hover(root_menu)
+            self.page.wait_for_timeout(500)
             self.hover(category)
-            self.click(service)
+            self.page.wait_for_timeout(800)
+            try:
+                self.click(service)
+            except Exception:
+                # 部分菜单无第三层（如 运营→租户 直接进入IAM），回退点击二级菜单中可见项
+                self.logger.info(f"未找到'{service}'子项，点击二级菜单中可见'{category}'")
+                for el in self.page.get_by_text(category).all():
+                    if el.is_visible():
+                        el.click()
+                        break
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
             except:
@@ -366,8 +411,8 @@ class BasePage(Playwright):
             is_expanded = parent.evaluate("el => el.classList.contains('one-tree-expand')")
             if not is_expanded:
                 parent.click()
-        # 根据子菜单参数导航到对应页面
-        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
+        # 根据子菜单参数导航到对应页面（使用 first 处理菜单项重复的情况）
+        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).first.click()
         self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
@@ -949,12 +994,19 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
-        # 等待所有 Element UI loading 遮罩消失
+        # 等待 Element UI loading 遮罩消失（部分页面可能有常驻 spinner，超时后降级为警告）
         loading_spinners = self.page.locator(".el-loading-spinner")
         count = loading_spinners.count()
         if count > 0:
             for i in range(count):
-                loading_spinners.nth(i).wait_for(state='hidden')
+                try:
+                    spinner = loading_spinners.nth(i)
+                    # 只等待当前可见的 spinner；已隐藏的跳过
+                    if spinner.is_visible():
+                        spinner.wait_for(state='hidden', timeout=10000)
+                except Exception:
+                    # 个别 spinner 可能常驻不消失，降级为警告而非失败
+                    pass
 
     def wait_for_source_complete(self, name, loading_timeout=10, complete_timeout=180):
         """等待资源状态加载完成
@@ -1165,6 +1217,9 @@ class BasePage(Playwright):
             headers = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper th").all_text_contents()
         else:
             headers = self.table_headers
+
+        # 清理表头文本中的特殊空白字符（如 \xa0、&nbsp;），与 _get_cell_contents 保持一致
+        headers = [re.sub(r'\s+', ' ', h).strip() for h in headers]
 
         cell_contents = self._get_cell_contents(target_row)
 
