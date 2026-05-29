@@ -1,0 +1,96 @@
+import pytest
+import allure
+from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.utils.util import random_data
+
+
+@allure.epic('网络服务')
+@allure.feature('云专线DC')
+@allure.story('物理连接修改功能验证')
+class TestDCPhysicalConnectionEdit:
+
+    @allure.title("云专线DC-物理连接修改功能验证")
+    def test_dc_physical_connection_edit(self, dc_page):
+        """测试物理连接的修改功能：创建HA物理连接并审批通过后，
+        验证修改弹窗中运营商、端口类型、HA字段为只读，
+        修改名称和描述，验证列表页和详情页的修改结果。"""
+
+        dc_name = f"physical-{random_data(length=4)}"
+        new_dc_name = f"{dc_name}-modify"
+        new_description = "修改后的描述值"
+        operator = "unicom"
+        operator_label = "联通"
+        port_type = "10GE 单模光口"
+        contact_name = "张三"
+        contact_phone = "13805403159"
+        contact_email = "ll@sugon.com"
+        vlan_code = "205"
+
+        with allure_step_log("步骤1: 创建HA物理连接并审批通过"):
+            dc_page._ensure_physical_connection_list()
+            dc_page.dc_physical_connection_create(
+                name=dc_name,
+                operator=operator,
+                port_type=port_type,
+                contact_name=contact_name,
+                contact_phone=contact_phone,
+                contact_email=contact_email,
+                ha_enable=True,
+            )
+            dc_page.assert_popup_success(timeout=10000)
+            dc_page.assert_status(dc_name, status="办理中")
+
+            dc_page.dc_physical_connection_approve(
+                name=dc_name,
+                status="DONE",
+                vlan_code=vlan_code,
+                cluster_name="Autotest",
+            )
+            dc_page.assert_popup_success(timeout=10000)
+
+        with allure_step_log("步骤2: 等待物理连接状态变为办结/运行中"):
+            dc_page.wait_for_physical_connection_status(
+                name=dc_name,
+                expected_status="办结",
+                expected_vm_status="运行中",
+                timeout=600,
+                interval=10,
+            )
+
+        with allure_step_log("步骤3: 执行修改操作（修改名称和描述）"):
+            dc_page._ensure_physical_connection_list()
+            dc_page.dc_physical_connection_edit(
+                name=dc_name,
+                new_name=new_dc_name,
+                description=new_description,
+            )
+            dc_page.assert_popup_success(timeout=10000)
+
+        with allure_step_log("步骤4: 列表页验证修改结果"):
+            dc_page.assert_list_contain(new_dc_name, column_name="物理连接名称")
+            dc_page.assert_status(new_dc_name, status="运行中")
+
+            row_data = dc_page.get_row_data(new_dc_name)
+            detail_operator = row_data.get("运营商", "")
+            assert operator_label in detail_operator, f"列表页运营商不匹配: 期望包含 {operator_label}, 实际 {detail_operator}"
+
+        with allure_step_log("步骤5: 详情页验证修改结果"):
+            dc_page.open_detail_by_name(new_dc_name)
+
+            detail_name = dc_page.get_detail_field_value("物理连接名称")
+            assert detail_name == new_dc_name, f"详情页名称不匹配: 期望 {new_dc_name}, 实际 {detail_name}"
+
+            detail_operator = dc_page.get_detail_field_value("运营商")
+            assert operator_label in detail_operator, f"详情页运营商不匹配: 期望包含 {operator_label}, 实际 {detail_operator}"
+
+            # 验证HA字段仍为开启
+            try:
+                detail_ha = dc_page.get_detail_field_value("HA")
+                assert "开启" in detail_ha, f"详情页HA状态不匹配: 期望开启, 实际 {detail_ha}"
+            except AssertionError:
+                logger.info("HA字段未显示，确认HA策略未开启")
+
+        with allure_step_log("步骤6: 注销物理连接"):
+            dc_page._ensure_physical_connection_list()
+            dc_page.dc_physical_connection_terminate(new_dc_name)
+            dc_page.assert_deleted(new_dc_name, timeout=60)

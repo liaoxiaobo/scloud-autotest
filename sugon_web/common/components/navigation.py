@@ -39,9 +39,14 @@ class NavigationMixin:
 
     def _is_current_service_path(self, service_path: str) -> bool:
         """判断当前页面是否已位于目标服务下的任意页面。"""
-        current_path, _ = self._normalize_route_parts(self.page.url)
-        target_path, _ = self._normalize_route_parts(service_path)
-        return current_path == target_path
+        current_path, current_hash = self._normalize_route_parts(self.page.url)
+        target_path, target_hash = self._normalize_route_parts(service_path)
+        if current_path != target_path:
+            return False
+        # 若服务路径包含 hash，则要求当前 hash 也以该前缀开头
+        if target_hash and not current_hash.startswith(target_hash):
+            return False
+        return True
 
     def _goto_service_by_path(self, service: str, service_path: str) -> bool:
         """通过服务入口路径直达指定服务。"""
@@ -86,7 +91,16 @@ class NavigationMixin:
             root_menu, category = navigation_path
             self.hover(root_menu)
             self.hover(category)
-            self.click(service)
+            self.page.wait_for_timeout(800)
+            try:
+                self.click(service)
+            except Exception:
+                # 部分菜单无第三层（如 运营→租户 直接进入IAM），回退点击二级菜单中可见项
+                self.logger.info(f"未找到'{service}'子项，点击二级菜单中可见'{category}'")
+                for el in self.page.get_by_text(category).all():
+                    if el.is_visible():
+                        el.click()
+                        break
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
             except:

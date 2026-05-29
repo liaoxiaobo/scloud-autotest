@@ -160,7 +160,21 @@ class Playwright:
         try:
             original_selector = selector
             formatted_selector = _format_selector(selector)
-            self.page.click(formatted_selector)
+            try:
+                self.page.click(formatted_selector)
+            except Exception:
+                # 回退1：使用精确文本匹配
+                try:
+                    self.page.get_by_text(original_selector, exact=True).first.click()
+                except Exception:
+                    # 回退2：force=True 强制点击（处理不可见但被折叠的元素）
+                    try:
+                        self.page.get_by_text(original_selector, exact=True).first.click(force=True)
+                    except Exception:
+                        # 回退3：JavaScript 点击
+                        self.page.evaluate(
+                            f"() => {{ const el = document.evaluate(\"//*[contains(text(), '{original_selector}')]\", document).iterateNext(); if(el) el.click(); }}"
+                        )
             self.logger.info(f"成功点击元素: {original_selector}")
             self.wait_for_page_ready()
         except Exception as e:

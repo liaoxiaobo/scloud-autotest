@@ -171,6 +171,9 @@ class TablesMixin:
         else:
             headers = self.table_headers
 
+
+        # 清理表头文本中的特殊空白字符（如 \xa0、&nbsp;），与 _get_cell_contents 保持一致
+        headers = [re.sub(r'\s+', ' ', h).strip() for h in headers]
         cell_contents = self._get_cell_contents(target_row)
 
         result = dict(zip(headers, cell_contents))

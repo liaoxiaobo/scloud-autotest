@@ -32,6 +32,10 @@ class InputsMixin:
             self.locator(".input-with-select > .el-input__inner"),
             self.get_by_role("textbox", name="请输入设备名称"),
             self.get_by_role("textbox", name="搜索(实例名称)"),
-            self.get_by_placeholder("搜索(目的地址)")
+            self.get_by_placeholder("搜索(目的地址)"),
+            # BMS 裸金属页面搜索框
+            self.get_by_role("textbox", name="搜索（网络名称）"),
+            self.get_by_role("textbox", name="搜索（物理机）"),
+            self.get_by_role("textbox", name="搜索（带外IP）"),
         ]
         return self._find_element(locators, "搜索框")
