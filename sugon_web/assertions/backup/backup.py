@@ -1,4 +1,4 @@
-from sugon_web.common.navigation import submenu
+from sugon_web.common.components.navigation import submenu
 from sugon_web.common.playwright import expect
 
 

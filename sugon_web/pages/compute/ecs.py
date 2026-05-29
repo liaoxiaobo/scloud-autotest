@@ -13,7 +13,6 @@ from playwright.sync_api import expect
 
 from sugon_web.pages.ops import OpsPage
 from sugon_web.common.base import submenu
-from sugon_web.common.mixins import DrawerSelectMixin
 from sugon_web.utils.logger import logger
 from sugon_web.utils.util import random_data
 from sugon_web.config.config import Config
@@ -186,7 +185,7 @@ def _normalize_ecs_create_request(
     )
 
 
-class EcsMixin(DrawerSelectMixin, EcsAssertionMixin, OpsPage):
+class EcsMixin(EcsAssertionMixin, OpsPage):
     @submenu("弹性云服务器")
     def ecs_create(
         self,
