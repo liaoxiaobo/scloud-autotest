@@ -2,6 +2,7 @@ import allure
 import pytest
 import time
 from sugon_web.utils.logger import allure_step_log
+from sugon_web.utils.util import random_data
 
 
 @allure.epic('容器服务')
@@ -64,3 +65,46 @@ class TestCCEClusterList:
                 time.sleep(10)
             else:
                 assert False, f"时间同步服务器配置未生效: {result.get('stdout', '')}"
+
+    @pytest.mark.slow
+    @allure.title("集群管理-列表页-批量删除")
+    def test_batch_delete_cluster(self, cce_page, ssh_host):
+        """创建两个临时集群后批量删除，验证列表中已不存在"""
+        cluster_names = []
+
+        with allure_step_log("步骤1: 创建两个临时集群"):
+            for i in range(2):
+                cluster_name = f"cce-{random_data(length=3)}"
+                cluster_names.append(cluster_name)
+                cce_page.goto_service(cce_page.service_name)
+                cce_page.cce_create(
+                    name=cluster_name,
+                    node_count=2,
+                    version="1.22.17",
+                    container_runtime="docker",
+                    proxy_mode="ipvs",
+                    desc=f"批量删除测试集群{i}",
+                    network_model="flannel",
+                    volume_size=50,
+                    flavor="4C8G",
+                    vpc_network="Autotest",
+                    vpc_subnet="Autotest"
+                )
+                cce_page.assert_popup_success()
+
+        with allure_step_log("步骤2: 等待集群就绪"):
+            for cluster_name in cluster_names:
+                cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+
+        with allure_step_log("步骤3: 批量删除集群"):
+            cce_page.goto_service(cce_page.service_name)
+            cce_page.goto_submenu("集群管理")
+            cce_page.cce_batch_delete(cluster_names)
+
+        with allure_step_log("步骤4: 验证集群已删除"):
+            cce_page.assert_deleted(cluster_names, timeout=600)
+
+        with allure_step_log("步骤5: 后台验证虚机和云硬盘已删除"):
+            for cluster_name in cluster_names:
+                ssh_host.wait_vm_deleted(cluster_name, timeout=600)
+                ssh_host.wait_volume_deleted(cluster_name, timeout=600)

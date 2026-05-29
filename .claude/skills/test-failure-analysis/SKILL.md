@@ -4,7 +4,6 @@ description: |
   当用户提供 Playwright+Pytest+Allure 测试失败信息（日志、截图、代码片段、allure-result 路径）时，
   执行系统化的根因分析。输出根因分类（环境/用例/产品）、关键证据链、排除项和可执行的修复建议。
   严禁在信息不足时编造结论，必须基于提供的材料进行推理。
-model: opus
 allowed-tools:
   - Read
   - Glob

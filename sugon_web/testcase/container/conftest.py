@@ -31,6 +31,8 @@ def _build_cce_create_kwargs(params=None):
         "network_model": params.get("network_model", "flannel"),
         "volume_size": params.get("volume_size", 50),
         "flavor": params.get("flavor", "4C8G"),
+        "vpc_network": params.get("vpc_network", "Autotest"),
+        "vpc_subnet": params.get("vpc_subnet", "Autotest"),
     }
 
 
@@ -123,3 +125,42 @@ def cce_cluster(browser_context, config, ssh_host, request):
     #         logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
     #     finally:
     #         page.close()
+
+
+@pytest.fixture(scope="class")
+def storage_class(browser_context, config, cce_cluster):
+    """创建云硬盘存储类型并在测试类结束后自动清理。
+
+    Yields:
+        dict: 包含 name (str) 和 cluster_name (str)
+    """
+    from sugon_web.conftest import _create_logged_in_page
+
+    cluster_name = cce_cluster["name"]
+    sc_name = f"evs-sc-{random_data(length=4)}"
+    page = _create_logged_in_page(browser_context, config)
+    cce_page = CcePage(page)
+
+    with allure_step_log(f"前置操作：创建 StorageClass {sc_name}"):
+        cce_page.goto_submenu("集群管理")
+        cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
+        cce_page.storage_class_create(
+            name=sc_name,
+            volume_type="xbd-type",
+            fstype="ext4",
+            encrypt=False,
+            access_mode="ReadWriteOnce"
+        )
+        cce_page.assert_popup_success()
+
+    yield {"name": sc_name, "cluster_name": cluster_name}
+
+    with allure_step_log(f"后置清理：删除 StorageClass {sc_name}"):
+        try:
+            cce_page.goto_submenu("集群管理")
+            cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
+            cce_page.storage_class_delete(sc_name)
+        except Exception as e:
+            logger.warning(f"清理 StorageClass 失败（可能已删除）: {e}")
+        finally:
+            page.close()
