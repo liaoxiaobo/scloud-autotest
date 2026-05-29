@@ -1,9 +1,10 @@
 import re
+import time
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.storage import EvsPage
-from sugon_web.pages.compute import EcsPage
+from sugon_web.pages.compute import EcsPage, BmsPage
 from sugon_web.pages.compute.ecs import (
     EcsCreateRequest,
     EcsBasicConfig,
@@ -312,6 +313,12 @@ def ops_page(page):
     ops_page.goto_service('网络设施')
     return ops_page
 
+
+@pytest.fixture(scope="function")
+def bms_page(page):
+    """初始化裸金属BMS页对象"""
+    return BmsPage(page)
+
 def _get_vm_fixture_params(request: pytest.FixtureRequest) -> VmFixtureParams:
     """返回 vm fixture 的显式参数。
 
@@ -506,7 +513,7 @@ def _build_vm_create_request(
     storage = _merge_vm_section(
         {
             "storage_pool": f"{Config.get('stor')}-test",
-            "image": {"source": "镜像", "name": f"{Config.get('stor')}-test"},
+            "image": {"source": "镜像", "name": Config.get("image", f"{Config.get('stor')}-test")},
             "system_disk": 25,
         },
         dependency_overrides.get("storage"),
@@ -926,3 +933,130 @@ def eip(page: Any, request: pytest.FixtureRequest) -> Iterator[str | list[str]]:
         yield result
     finally:
         _release_eips(vpc_page, created_ips)
+
+
+# ── 飞书测试报告通知 ──────────────────────────────────────────
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """记录测试会话开始时间，用于后续计算总耗时。"""
+    session._feishu_start_time = time.time()  # type: ignore[attr-defined]
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """测试会话结束后，自动发送统计报告到飞书。"""
+    import json
+    import glob
+    import os
+    from sugon_web.utils.feishu_notifier import send_feishu_report
+
+    passed = 0
+    failed = 0
+    skipped = 0
+    error = 0
+    case_results = []
+
+    # 通过 terminal reporter 获取准确的测试结果统计
+    terminalreporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminalreporter and hasattr(terminalreporter, "stats"):
+        passed = len(terminalreporter.stats.get("passed", []))
+        failed = len(terminalreporter.stats.get("failed", []))
+        skipped = len(terminalreporter.stats.get("skipped", []))
+        error = len(terminalreporter.stats.get("error", []))
+
+    # 从 allure-result 读取测试详情（标题、耗时、步骤）
+    allure_details: dict[str, dict] = {}
+    rootdir = str(
+        session.config.rootpath if hasattr(session.config, "rootpath") else session.config.rootdir
+    )
+    allure_dir = getattr(session.config.option, "allure_report_dir", None) or os.path.join(
+        rootdir, "allure-result"
+    )
+    for result_file in glob.glob(os.path.join(allure_dir, "*-result.json")):
+        try:
+            with open(result_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            full_name = data.get("fullName", "")
+            start = data.get("start", 0)
+            stop = data.get("stop", 0)
+            duration_sec = (stop - start) / 1000.0 if stop > start else 0
+            if duration_sec < 60:
+                duration_str = f"{duration_sec:.1f}秒"
+            else:
+                duration_str = f"{int(duration_sec // 60)}分{int(duration_sec % 60)}秒"
+            allure_details[full_name] = {
+                "title": data.get("name", ""),
+                "outcome": data.get("status", "unknown"),
+                "duration": duration_str,
+                "steps": [s.get("name", "") for s in data.get("steps", [])],
+            }
+        except Exception:
+            pass
+
+    # 收集每个用例的结果明细，匹配 allure 详情
+    if terminalreporter and hasattr(terminalreporter, "stats"):
+        for outcome in ["passed", "failed", "skipped", "error"]:
+            for rep in terminalreporter.stats.get(outcome, []):
+                nodeid = getattr(rep, "nodeid", "unknown")
+                case_name = nodeid.split("::")[-1]
+                if "::" not in nodeid:
+                    continue
+                # 转换 nodeid 为 allure fullName 格式
+                parts = nodeid.split("::")
+                file_part = parts[0].replace("/", ".").replace("\\", ".")
+                if file_part.endswith(".py"):
+                    file_part = file_part[:-3]
+                if len(parts) == 3:
+                    full_name = f"{file_part}.{parts[1]}#{parts[2]}"
+                elif len(parts) == 2:
+                    full_name = f"{file_part}#{parts[1]}"
+                else:
+                    full_name = file_part
+
+                detail = allure_details.get(full_name, {})
+                case_results.append(
+                    {
+                        "name": case_name,
+                        "title": detail.get("title", case_name),
+                        "outcome": outcome,
+                        "duration": detail.get("duration", "未知"),
+                        "steps": detail.get("steps", []),
+                    }
+                )
+    else:
+        # fallback：通过 _pytest 内部状态统计
+        for item in session.items:
+            for key in item.stash:
+                rep = item.stash[key]
+                if hasattr(rep, "when") and hasattr(rep, "outcome"):
+                    if rep.when == "call":
+                        if rep.outcome == "passed":
+                            passed += 1
+                        elif rep.outcome == "failed":
+                            failed += 1
+                        elif rep.outcome == "skipped":
+                            skipped += 1
+                    elif rep.when in ("setup", "teardown") and rep.outcome == "failed":
+                        error += 1
+
+    start_time = getattr(session, "_feishu_start_time", None)
+    if start_time:
+        duration = time.time() - start_time
+    else:
+        duration = 0
+
+    if duration < 60:
+        duration_str = f"{duration:.1f}秒"
+    else:
+        duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒"
+
+    stats = {
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "error": error,
+        "duration": duration_str,
+        "case_results": case_results,
+    }
+
+    logger.info(f"测试会话结束，统计: {stats}")
+    send_feishu_report(stats)
