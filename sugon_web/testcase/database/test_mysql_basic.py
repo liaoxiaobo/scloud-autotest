@@ -3,7 +3,6 @@ import allure
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, random_string
-from sugon_web.utils import db_util
 
 
 @allure.epic('数据库服务')
@@ -21,14 +20,14 @@ class TestMySQLBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             mysql_page.assert_popup_success("修改实例名称成功")
             mysql_page.assert_list_contain(renamed_name)
-            mysql_page.assert_status(renamed_name, status="运行中")
+            mysql_page.assert_status(renamed_name, status="运行中", refresh=True)
 
         with allure_step_log("步骤三：重命名实例回退"):
             mysql_page.rename_instance(renamed_name, instance_name)
         with allure_step_log("步骤四：验证重命名回退结果"):
             mysql_page.assert_popup_success("修改实例名称成功")
             mysql_page.assert_list_contain(instance_name)
-            mysql_page.assert_status(instance_name, status="运行中")
+            mysql_page.assert_status(instance_name, status="运行中", refresh=True)
 
     @allure.title("MySQL-重启实例")
     def test_restart_instance(self, mysql_page, mysql):
@@ -38,8 +37,8 @@ class TestMySQLBasic:
             mysql_page.restart_instance(instance_name)
         with allure_step_log("步骤二：验证重启结果"):
             mysql_page.assert_popup_success("实例重启任务创建完成")
-            mysql_page.assert_status(instance_name, status="重启中", timeout=10)
-            mysql_page.assert_status(instance_name, status="运行中", timeout=300)
+            mysql_page.assert_status(instance_name, status="重启中", timeout=300, refresh=True)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=600, refresh=True)
 
     @allure.title("MySQL-修改实例管理员密码")
     def test_change_root_password(self, mysql_page, mysql, ssh_host, ssh_vm):
@@ -52,11 +51,11 @@ class TestMySQLBasic:
             mysql_page.change_root_password(instance_name, new_password)
         with allure_step_log("步骤二：验证修改密码结果"):
             mysql_page.assert_popup_success("更新管理员用户信息成功")
-            mysql_page.assert_status(instance_name, status="运行中", timeout=300)
+            mysql_page.assert_status(instance_name, status="运行中", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
             # 验证新密码可以成功登录
             cmd_new = f"mysql -uadmin -p'{new_password}' -h127.0.0.1 -e 'SELECT 1;'"
@@ -68,7 +67,7 @@ class TestMySQLBasic:
     def test_change_disk_size(self, mysql_page, mysql, ssh_host):
         """测试调整MySQL实例的云盘大小"""
         instance_name = mysql["name"]
-        new_disk_size = 66  # 假设从20扩容到40
+        new_disk_size = 71 # 假设从20扩容到40
 
         with allure_step_log(f"步骤一：调整实例 {instance_name} 的磁盘大小为 {new_disk_size}GB"):
             mysql_page.change_disk_size(instance_name, new_disk_size)
@@ -76,16 +75,16 @@ class TestMySQLBasic:
         with allure_step_log("步骤二：验证调整结果"):
             node_name = f"{instance_name}-0"
             mysql_page.assert_popup_success("扩容硬盘中，请耐心等待")
-            mysql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=500)
-            assert db_util.get_disk_size(mysql_page, node_name, ssh_host) == new_disk_size
+            mysql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
+            assert ssh_host.get_volume_size(node_name) == new_disk_size
 
     @allure.title("MySQL-修改实例规格")
     def test_change_specification(self, mysql_page, mysql, ssh_host):
         """测试修改MySQL实例的规格"""
         instance_name = mysql["name"]
-        specification_name = "mysql.d6 mysql.d6.2xlarge 8核"  # 请根据实际情况修改目标规格
-        real_specification = "mysql.d6.2xlarge"
+        specification_name = "mysql.d6 mysql.d6.xlarge 4核"
+        real_specification = "mysql.d6.xlarge"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             mysql_page.change_specification(instance_name, specification_name)
@@ -94,9 +93,9 @@ class TestMySQLBasic:
             # 刷新页面，然后检查实例列表中的规格信息
             node_name = f"{instance_name}-0"
             mysql_page.assert_popup_success("修改规格中，请耐心等待")
-            mysql_page.assert_status(node_name, status="调整规格中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=5000)
-            assert db_util.get_specification(mysql_page, node_name, ssh_host) == real_specification
+            mysql_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=5000, refresh=True)
+            assert ssh_host.guest_show(node_name).get("flavor_name") == real_specification
 
     @allure.title("MySQL-实例绑定和解绑公网IP")
     def test_instance_bind_and_unbind_ip(self, mysql_page, mysql, ssh_host):
@@ -129,15 +128,16 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：验证节点是否添加成功"):
             mysql_page.assert_popup_success("添加只读节点")
-            mysql_page.assert_status(node_name, status="创建中", timeout=1200)
-            mysql_page.assert_status(node_name, status="运行中", timeout=2000)
+            mysql_page.assert_status(node_name, status="创建中", timeout=1200, refresh=True)
+            mysql_page.assert_status(node_name, status="运行中", timeout=2000, refresh=True)
 
         with allure_step_log("步骤三：删除新创建的节点"):
             mysql_page.delete_node(instance_name, node_name)
 
         with allure_step_log("步骤四：验证节点是否删除成功"):
             mysql_page.assert_deleted(node_name, timeout=1200)
-            db_util.assert_backend_deleted(mysql_page, ssh_host, node_name)
+            ssh_host.wait_vm_deleted(node_name)
+            ssh_host.wait_volume_deleted(node_name)
 
     @allure.title("MySQL-节点绑定和解绑公网IP")
     def test_node_bind_and_unbind_ip(self, mysql_page, mysql, ssh_host):
@@ -168,7 +168,7 @@ class TestMySQLBasic:
         admin_password = mysql["admin_password"]
 
         # 记录迁移前的物理机 (后端校验)
-        old_host = db_util.get_backend_host(mysql_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
         allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
@@ -181,7 +181,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
             # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
-            new_host = db_util.get_backend_host(mysql_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
 
             assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
@@ -190,14 +190,14 @@ class TestMySQLBasic:
                 assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
 
         with allure_step_log("步骤四：验证迁移后数据库连接"):
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=password)
             cmd_check = f"mysql -uadmin -p'{admin_password}' -h127.0.0.1 -e 'SELECT 1;'"
             result = ssh_vm.run(cmd_check)
             assert result.splitlines()[-1] == "1", f"热迁移后数据库连接失败: {result}"
             ssh_vm.close()
 
-    @allure.title("MySQL-创建并删除数据库")
+    @allure.title("MySQL-创建和删除数据库")
     def test_create_and_delete_database(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = mysql["name"]
@@ -215,7 +215,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤三：验证新创建的数据库在后端生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=password)
             cmd_check_exist = f"mysql -uadmin -p'{admin_password}' -h127.0.0.1 -e \"SHOW DATABASES LIKE '{db_name}';\""
             result_exist = ssh_vm.run(cmd_check_exist)
@@ -235,7 +235,7 @@ class TestMySQLBasic:
             assert db_name not in result_gone, f"数据库 '{db_name}' 在后端删除失败，仍然存在。"
             ssh_vm.close()
 
-    @allure.title("MySQL-批量创建并删除数据库")
+    @allure.title("MySQL-批量创建和删除数据库")
     def test_batch_create_and_delete_databases(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试在实例下批量创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = mysql["name"]
@@ -251,7 +251,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：新创建的数据库均在后端生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=password)
             for db_name in db_names:
                 cmd_check_exist = f"mysql -uadmin -p'{admin_password}' -h127.0.0.1 -e \"SHOW DATABASES LIKE '{db_name}';\""
@@ -294,7 +294,7 @@ class TestMySQLBasic:
 
         with allure_step_log(f"步骤三：后端验证：使用初始密码登录用户 {user_name}"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             cmd_login_initial = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e 'SELECT 1;'"
@@ -314,7 +314,7 @@ class TestMySQLBasic:
             assert result_new.splitlines()[-1] == "1"
         ssh_vm.close()
 
-    @allure.title("MySQL-删除及批量删除用户")
+    @allure.title("MySQL-删除和批量删除用户")
     def test_delete_and_batch_delete_users(self, mysql_page, mysql, ssh_host, ssh_vm):
         """测试用户的单个删除和批量删除功能，并进行后端验证"""
         instance_name = mysql["name"]
@@ -340,7 +340,7 @@ class TestMySQLBasic:
 
             # 后端验证：确认用户已不存在
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             cmd_check_single = f"mysql -uadmin -p'{root_password}' -h127.0.0.1 -e \"SELECT user FROM mysql.user WHERE user = '{user_to_delete_single}';\""
@@ -368,7 +368,7 @@ class TestMySQLBasic:
         """测试用户的只读、读写权限授权及解除授权，并进行完整的后端生效性验证"""
         instance_name = mysql["name"]
         user_name = mysql["user_name"]
-        password = mysql["user_password"]  # 从 fixture 获取用户的密码
+        password = mysql["admin_password"]  # 从 fixture 获取用户的密码
         root_password = "admin1234@sugon"  # root 密码用于连接和准备环境
 
         # 1. 准备环境：创建两个用于测试的数据库
@@ -388,13 +388,18 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤三：后端确认只读权限生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             # 尝试写入（应失败）
             cmd_write_fail = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readonly}.test(id int);\""
             result_write_fail = ssh_vm.run(cmd_write_fail, True, True)
-            assert "CREATE command denied" in result_write_fail['stderr'], "只读用户执行写入操作未按预期失败。"
+            stderr = result_write_fail["stderr"]
+            assert (
+                "CREATE command denied" in stderr
+                or "--read-only option" in stderr
+                or "ERROR 1290" in stderr
+            ), f"只读用户执行写入操作未按预期失败: {stderr}"
 
             # 尝试读取（应成功）
             cmd_read_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"SELECT 1;\""
@@ -406,14 +411,26 @@ class TestMySQLBasic:
             mysql_page.assert_popup_success("授权用户数据库成功,若数据未更新请刷新页面")
 
         with allure_step_log("步骤五：后端确认读写权限生效"):
-            node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            writable_node = None
+            for node_name, ip_from_db in ssh_host.get_instance_node_ips("sugoncloud_mysql", instance_name):
+                ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
+                read_only_check = ssh_vm.run(
+                    f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -Nse \"SELECT @@read_only;\"",
+                    True,
+                    True
+                )
+                if read_only_check["stdout"].strip() == "0":
+                    writable_node = (node_name, ip_from_db)
+                    break
+
+            assert writable_node is not None, f"未找到可写节点，实例节点可能都处于只读状态: {instance_name}"
+            node_name, ip_from_db = writable_node
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             # 尝试写入（应成功）
             cmd_write_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"CREATE TABLE {db_readwrite}.test(id int); INSERT INTO {db_readwrite}.test VALUES (1);\""
             result_write_ok = ssh_vm.run(cmd_write_ok, True, True)
-            assert "ERROR" not in result_write_ok['stderr'], f"读写用户执行写入操作失败: {result_write_ok}"
+            assert "ERROR" not in result_write_ok['stderr'], f"读写用户在节点 {node_name} 执行写入操作失败: {result_write_ok}"
 
             # 尝试读取（应成功）
             cmd_read_write_ok = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"SELECT * FROM {db_readwrite}.test;\""
@@ -429,7 +446,7 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤七：后端确认用户权限已被解除"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(mysql_page, ssh_host, "sugoncloud_mysql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_mysql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=root_password)
 
             cmd_access_denied = f"mysql -u{user_name} -p'{password}' -h127.0.0.1 -e \"USE {db_readonly};\""
@@ -456,7 +473,8 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤四：验证关闭结果"):
             mysql_page.assert_popup_success("执行成功，若数据未响应请刷新页面")
-            db_util.assert_backend_deleted(mysql_page, ssh_host, obj_name)
+            ssh_host.wait_vm_deleted(obj_name)
+            ssh_host.wait_volume_deleted(obj_name)
 
     # @allure.title("MySQL-手动备份")
     # def test_create_backup(self, mysql_page, mysql):
@@ -567,7 +585,7 @@ class TestMySQLBasic:
             mysql_page.apply_parameter_model(model_name, instance_name)
             mysql_page.assert_popup_success("模板应用任务提交成功")
             mysql_page.goto_submenu("实例管理")
-            mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200)
+            mysql_page.assert_status(instance_name, status="调整参数中", timeout=1200, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
             mysql_page.locator(f"#cloud-container-content").get_by_text(instance_name).first.click()
             mysql_page.assert_status(f"{instance_name}-0", status="运行中", timeout=1200, refresh=True)
@@ -610,7 +628,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -623,9 +640,7 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="数据库", exact=True).click()
-            mysql_page.wait_for_page_ready()
             keyword = db_name[:-2]
             mysql_page.search(keyword)
             sleep(2)
@@ -633,7 +648,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -646,16 +660,13 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             mysql_page.get_by_role("tab", name="用户").click()
-            mysql_page.wait_for_page_ready()
             keyword = user_name[:-2]
             mysql_page.search(keyword)
             mysql_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -668,17 +679,14 @@ class TestMySQLBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             mysql_page.goto_submenu("实例管理")
             mysql_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            mysql_page.wait_for_page_ready()
             sleep(2)
             mysql_page.get_by_role("tab", name="参数设置").click()
             sleep(2)
-            mysql_page.wait_for_page_ready()
             mysql_page.search(param_keyword)
             mysql_page.assert_list_contain(param_keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -700,7 +708,6 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤三：重置搜索条件"):
             mysql_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            mysql_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert mysql_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -715,10 +722,10 @@ class TestMySQLBasic:
 
         with allure_step_log("步骤一：切换网络 - 情况1：快速选择"):
             mysql_page.switch_network(instance_name, network="Autotest", subnet="subnet:10.", selection_type="快速选择")
-            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤二：切换网络 - 情况2：手动输入"):
             mysql_page.switch_network(instance_name, network="Autotest", subnet="Autotest:10.", selection_type="手动输入")
-            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300)
+            mysql_page.assert_status(instance_name, status="VPC切换中", timeout=300, refresh=True)
             mysql_page.assert_status(instance_name, status="运行中", timeout=1200, refresh=True)

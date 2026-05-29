@@ -6,9 +6,10 @@ from playwright.sync_api import expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger
+from sugon_web.assertions.backup import BackupAssertionMixin
 
 
-class BackUpPage(BasePage):
+class BackUpPage(BackupAssertionMixin, BasePage):
 
     @submenu("任务")
     def create_backup_task(
@@ -16,8 +17,6 @@ class BackUpPage(BasePage):
             task_name: str,
             server_names: list,
             policy: dict = None,
-            cloud_type: str = "曙光云",
-            cloud_list: str = "曙光云",
             **kwargs
     ):
         """创建备份任务
@@ -25,18 +24,12 @@ class BackUpPage(BasePage):
             task_name: 任务名称
             server_names: 云服务器名称列表
             policy: 备份策略配置字典
-            cloud_type: 云环境类型，如"VMware vSphere"、"曙光云"
-            cloud_list: 云环境列表，如"曙光云"
             **kwargs: 其他参数
         """
+        policy = policy or {}
 
         # 点击新建备份任务按钮
         self.get_by_text("新建备份任务").click()
-
-        # 选择云环境类型
-        self._select_cloud_type(cloud_type)
-        # 选择云环境列表
-        self._select_cloud_list(cloud_list)
 
         # 搜索选择添加服务器
         self._add_servers(server_names)
@@ -62,43 +55,6 @@ class BackUpPage(BasePage):
 
         # 设置任务名称，点击立即创建
         self._set_task_name_create(task_name)
-
-    def _select_cloud_type(self, cloud_type: str):
-        """选择云环境类型
-
-        Args:
-            cloud_type: 云环境类型，如"VMware vSphere"、"曙光云"
-        """
-
-        locs = [
-            self.get_by_label("云环境类型").get_by_placeholder("请选择"),
-            self.get_by_text("云环境类型").locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "云环境类型").click()
-        # 选择指定的云环境类型
-        self.locator("li").filter(has_text=cloud_type).click()
-        logger.info(f"选择云环境类型: {cloud_type}")
-
-    def _select_cloud_list(self, cloud_list: str):
-        """选择云环境列表
-
-        Args:
-            cloud_list: 云环境列表，如"曙光云"
-        """
-
-        locs = [
-            self.get_by_label("云环境列表").get_by_placeholder("请选择"),
-            self.get_by_text("云环境列表").locator("xpath=./following-sibling::div//input"),
-            self.locator("#cloud-container-content div").filter(has_text=re.compile(r"^云环境$")).get_by_placeholder("请选择"), # 适配恢复任务
-            self.locator("form").get_by_text("云环境", exact=True).locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "云环境").click()
-
-        # 选择指定的云环境列表
-        self.locator("ul").filter(has_text=re.compile(r"^曙光云$")).get_by_role("listitem").click()
-        logger.info(f"选择云环境列表: {cloud_list}")
-        # 点击下一步
-        self._click_next_step()
 
     def _add_servers(self, server_names):
         """添加云服务器
@@ -246,7 +202,6 @@ class BackUpPage(BasePage):
             cycle_key = "周期" if use_dialog else "备份周期"
             time_key = "时间" if use_dialog else "备份时间"
             frequency_key = "频率" if use_dialog else "备份频率"
-            month_key = "周期" if use_dialog else "备份周期"
             cycle_type = cycle.get(cycle_key)
 
             locs = [
@@ -257,12 +212,11 @@ class BackUpPage(BasePage):
             loc.click()
 
             # 根据周期类型选择具体配置
-            if cycle_type == "每周":
+            if cycle_type == "周":
                 # 选择星期 - 根据场景选择定位方式
                 days_of_week = cycle.get(time_key)
 
                 week_interval = cycle.get(frequency_key, "每周")
-                # if week_interval and week_interval != "每周":
                 self._select_frequency(week_interval, container)
 
                 # 第一步：取消所有已选中的星期
@@ -297,33 +251,39 @@ class BackUpPage(BasePage):
 
                 logger.info(f"时间策略配置完成: 周期= {week_interval}, 循环间隔={days_of_week}")
 
-            elif cycle_type == "每月":
-                month_interval = cycle.get(month_key, "每月")
-                month_days = cycle.get(time_key)
-                if month_interval and month_interval != "每月":
-                    self._select_frequency(month_interval)
+            elif cycle_type == "月":
+                month_interval = cycle.get(frequency_key, "每月")
+                month_days = cycle.get(time_key, [])
+                if isinstance(month_days, (str, int)):
+                    month_days = [str(month_days)]
+                else:
+                    month_days = [str(day) for day in month_days]
 
-                while True:
-                    selected_day = container.locator(".custom-calendar-table .include .day.selected").first
-                    if selected_day.count() == 0:
-                        break
-                    selected_day.click()
+                self._select_frequency(month_interval, container)
 
-                # 第二步：只选中传入的日期
+                date_content = container.locator(".date-content:visible").first
+                if date_content.count() == 0:
+                    date_content = container.locator(".date-content").first
+
+                # 第一步：取消所有不在目标日期内的已选中项
+                day_items = date_content.locator(".date-item")
+                for i in range(day_items.count()):
+                    day_item = day_items.nth(i)
+                    day_text = day_item.inner_text().strip()
+                    day_class = day_item.get_attribute("class") or ""
+                    if "selected" in day_class and day_text not in month_days:
+                        day_item.click()
+
+                # 第二步：选中目标日期
                 for month_day in month_days:
-                    # 定位具体的日期元素
-                    day_loc = container.locator(".custom-calendar-table .include .day")
-                    target_span = day_loc.locator(f"span:text-is('{month_day}')")
-                    day_element = target_span.locator("..")  # 获取父元素 .day
-
-                    # 检查是否已选中（通过检查是否有 selected 类）
-                    day_class = day_element.get_attribute("class") or ""
+                    day_item = date_content.locator(".date-item").filter(has_text=re.compile(rf"^\s*{re.escape(month_day)}\s*$")).first
+                    day_class = day_item.get_attribute("class") or ""
                     if "selected" not in day_class:
-                        day_element.click()
+                        day_item.click()
 
                 logger.info(f"时间策略配置完成: 周期= {month_interval}, 循环间隔={month_days}")
 
-            elif cycle_type == "每天":
+            elif cycle_type == "天":
                 logger.info(f"时间策略配置完成: 周期={cycle_type}")
 
             else:
@@ -713,27 +673,11 @@ class BackUpPage(BasePage):
             task_name: 备份任务名称
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(task_name, "删除")
+        self.click_action(task_name, "删除")
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
         logger.info(f"备份任务删除请求已提交: {task_name}")
 
-    def assert_backup_task_exists(self, task_name: str):
-        """断言备份任务存在
-
-        Args:
-            task_name: 备份任务名称
-        """
-        self.assert_list_contain(task_name, "任务名")
-
-    def assert_backup_task_not_exists(self, task_name: str):
-        """断言备份任务不存在
-
-        Args:
-            task_name: 备份任务名称
-        """
-        logger.info(f"验证备份任务不存在: {task_name}")
-        self.assert_deleted(task_name)
 
     @submenu("任务")
     def backup_remove(self, names):
@@ -753,13 +697,12 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
 
     @submenu("任务")
     def backup_to_details(self, name: str):
@@ -780,38 +723,6 @@ class BackUpPage(BasePage):
 
         self.locator(".el-icon-back").click()
 
-    def assert_backup_policy_details(self, name, policy_infos: dict, tab="详情"):
-        """验证备份任务详情页面信息
-
-        Args:
-            name: 备份任务称
-            policy_infos: 需要验证的信息项字典
-        """
-        self.backup_to_details(name)
-        if tab == "详情":
-            sleep(2)
-            infos = self.policy_to_assert_dict(policy_infos)
-            self.logger.info(f"infos: {infos}")
-            # 逐个验证信息项
-            for k, v in infos.items():
-                label_loc = self.get_by_text(k, exact=True)
-                if k in ["备份方式", "限速策略"]:
-                    loc = label_loc.locator("xpath=../following-sibling::div")
-                    expect(loc).to_contain_text(v)
-                    self.logger.info(f"验证成功 {k}: {v}")
-                else:
-                    for i, policy_text in enumerate(v):
-                        loc = label_loc.locator(f"xpath=../following-sibling::div/div/div[{i + 1}]")
-                        # if k in ["存储策略", "保留策略", "高级配置"]:
-                        #     expect(loc).to_contain_text(policy_text.strip(": ")[-1])
-                        expect(loc).to_contain_text(policy_text)
-                        self.logger.info(f"验证成功 {k}[{i}]: {policy_text}")
-        else:
-            self.get_by_role("tab", name=tab).click()
-            for k, v in policy_infos.items():
-                self.assert_list_contain(v, k)
-
-        logger.info(f"备份任务{name} 详情信息 验证成功")
 
     def policy_to_assert_dict(self, original_policy):
         """转换备份信息字典格式, 用于断言
@@ -919,7 +830,7 @@ class BackUpPage(BasePage):
                         days_str = days_str.replace("星期天", "星期日")
                     single_policy_str = f"（{speed_frequency},{days_str} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
                 elif "天" in speed_period:
-                    single_policy_str = f"（ {speed_period} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
+                    single_policy_str = f"（ 每{speed_period} {speed_start}开始, {speed_end}结束; 限速大小{speed_size_formatted}）"
                 else:
                     raise Exception(f"未知的备份频率: {speed_period}")
             else:
@@ -989,11 +900,9 @@ class BackUpPage(BasePage):
             operation: 操作类型，启动/停止
         """
         # 使用BasePage中的通用下拉菜单选项点击方法
-        self.click_dropdown_option(name, operation)
+        self.click_action(name, operation)
         # 断言弹窗成功
         self.assert_popup_success(f"{operation}备份任务成功")
-        # 等待页面加载完成
-        self.wait_for_page_ready()
 
         self.logger.info(f"成功{operation}备份任务{name}")
 
@@ -1010,15 +919,13 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
 
-        self.click_dropdown_option(name, "修改名称")
+        self.click_action(name, "修改名称")
 
         self.get_by_label("修改名称").get_by_role("textbox").fill(new_name)
 
         self.dialog_confirm.click()
 
         # 等待详情页面加载完成
-        self.wait_for_page_ready()
-
         self.logger.info(f"操作完成: 修改名称 {name} 为 {new_name}")
 
     @submenu("任务")
@@ -1035,8 +942,7 @@ class BackUpPage(BasePage):
         # 使用BasePage中的通用下拉菜单选项点击方法
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
-        self.click_dropdown_option(name, "管理云服务器")
-        self.wait_for_page_ready()
+        self.click_action(name, "管理云服务器")
 
         # 选择虚机类型
         if vm_type != "弹性云服务器":
@@ -1064,7 +970,7 @@ class BackUpPage(BasePage):
         """
         if self.get_row_data(name).get("状态") == "已启动":
             self.backup_start_stop(name, "停止")
-        self.click_dropdown_option(name, "修改策略")
+        self.click_action(name, "修改策略")
         # 配置备份策略
         policy_type = policy.get("策略类型", "自定义策略")
         time_policy = policy.get("时间策略", {})
@@ -1103,7 +1009,7 @@ class BackUpPage(BasePage):
             method: 迁移方式
             target: 目标项目
         """
-        self.click_dropdown_option(name, "迁移")
+        self.click_action(name, "迁移")
         if method != "自动":
             self.get_by_role("radio", name=method).click()
             self.get_by_placeholder("请选择迁移节点").click()
@@ -1123,7 +1029,7 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") != "已启动":
             self.backup_start_stop(name, "启动")
             self.assert_status(name, "已启动")
-        self.click_dropdown_option(name, method)
+        self.click_action(name, method)
         logger.info(f"操作完成: 备份任务{name} {method}")
 
     @submenu("任务")
@@ -1136,7 +1042,7 @@ class BackUpPage(BasePage):
         if self.get_row_data(name).get("状态") != "备份中":
             pytest.skip(f"备份任务{name}状态不是备份中，无法重置")
 
-        self.click_dropdown_option(name, "重置任务")
+        self.click_action(name, "重置任务")
 
     def _click_batch_operation_option(self, operation: str):
         """点击批量操作选项
@@ -1215,13 +1121,12 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 使用BasePage中的通用确认按钮
         self.dialog_confirm.click()
 
         # 等待操作完成
-        self.wait_for_page_ready()
 
     @submenu("回收")
     def backup_recovery(self, name):
@@ -1231,7 +1136,7 @@ class BackUpPage(BasePage):
             name: 备份名称（字符串）或备份名称列表（列表）
         """
 
-        self.click_option(name, "恢复")
+        self.click_action(name, "恢复")
 
         self.assert_popup_success(f"{name}任务找回成功")
         logger.info(f"恢复备份资源请求已提交: {name}")
@@ -1253,15 +1158,89 @@ class BackUpPage(BasePage):
 
     def _get_tree_item(self, server_name: str):
         """获取虚机的备份数据节点"""
-        tree_item = self.get_by_role("treeitem", name=re.compile(f".*{server_name}")).first
-        # 检查 class 属性是否包含 is-expanded
-        class_attr = tree_item.get_attribute("class")
-        if "is-expanded" not in class_attr:
-            tree_item.click()
-        else:
-            logger.debug(f"备份数据节点已展开，跳过点击: {server_name}")
-        # 获取所有子节点
-        return tree_item.locator(".el-tree-node__children .custom-tree-node")
+        # 改进定位器：确保定位到包含服务器名称的树节点
+        tree_item = self.get_by_role("treeitem", name=re.compile(rf".*{re.escape(server_name)}")).first
+        child_nodes = tree_item.locator(".el-tree-node__children .custom-tree-node")
+        self._ensure_tree_item_expanded(tree_item, child_nodes, server_name)
+        return child_nodes
+
+    def _ensure_tree_item_expanded(self, tree_item, child_nodes, server_name: str):
+        """确保树节点已展开并且子节点已经加载出来"""
+        for attempt in range(3):
+            class_attr = tree_item.get_attribute("class") or ""
+            child_count = child_nodes.count()
+            if "is-expanded" in class_attr and child_count > 0:
+                if attempt > 0:
+                    logger.info(f"备份数据节点展开成功: {server_name}，共找到 {child_count} 个子节点")
+                else:
+                    logger.debug(f"备份数据节点已展开，跳过点击: {server_name}")
+                return
+
+            if "is-expanded" in class_attr:
+                self.page.wait_for_timeout(500)
+                continue
+
+            expand_icon = tree_item.locator(".el-tree-node__expand-icon").first
+            expand_icon_class = expand_icon.get_attribute("class") or ""
+            if expand_icon.is_visible() and "is-leaf" not in expand_icon_class:
+                expand_icon.click(force=True)
+            else:
+                tree_item.locator(".el-tree-node__content").first.click(force=True)
+            self.page.wait_for_timeout(500)
+
+        logger.warning(f"备份数据节点可能未完全展开: {server_name}，当前找到 {child_nodes.count()} 个子节点")
+
+    def _is_tree_node_checked(self, child_node) -> bool:
+        """判断树节点是否已勾选"""
+        tree_item = child_node.locator("xpath=ancestor::*[@role='treeitem'][1]")
+        if (tree_item.get_attribute("aria-checked") or "").lower() == "true":
+            return True
+
+        checked_locators = [
+            tree_item.locator(".el-checkbox__input.is-checked").first,
+            tree_item.locator("label.is-checked").first,
+            tree_item.locator("input[type='checkbox']:checked").first,
+        ]
+        return any(locator.count() > 0 for locator in checked_locators)
+
+    def _click_tree_node_checkbox(self, child_node, node_text: str) -> bool:
+        """勾选树节点，兼容不同 DOM 结构"""
+        if self._is_tree_node_checked(child_node):
+            logger.info(f"备份数据节点已处于勾选状态: {node_text}")
+            return True
+
+        tree_item = child_node.locator("xpath=ancestor::*[@role='treeitem'][1]")
+        candidates = [
+            ("同级label", child_node.locator("xpath=../label").first),
+            ("同级checkbox", child_node.locator("xpath=../label//span[contains(@class,'el-checkbox__inner')]").first),
+            ("树节点label", tree_item.locator(".el-tree-node__content label.el-checkbox").first),
+            ("树节点checkbox", tree_item.locator(".el-tree-node__content .el-checkbox__inner").first),
+        ]
+
+        for name, checkbox in candidates:
+            if checkbox.count() == 0:
+                continue
+
+            try:
+                checkbox.scroll_into_view_if_needed()
+            except Exception:
+                pass
+
+            try:
+                if not checkbox.is_visible():
+                    continue
+                checkbox.click(force=True)
+                self.page.wait_for_timeout(300)
+            except Exception as exc:
+                logger.debug(f"勾选备份数据节点失败，定位器[{name}]，节点: {node_text}，原因: {exc}")
+                continue
+
+            if self._is_tree_node_checked(child_node):
+                logger.info(f"勾选备份数据节点成功，定位器[{name}]，节点: {node_text}")
+                return True
+
+        logger.warning(f"未能勾选备份数据节点: {node_text}")
+        return False
 
     def get_backup_data(self, server_name: str):
         """获取虚机的备份数据
@@ -1303,49 +1282,26 @@ class BackUpPage(BasePage):
 
             for i in range(count):
                 child_node = child_nodes.nth(i)
-                node_text = child_node.inner_text()
+                node_text = child_node.inner_text().split("\n")[0].strip()
                 logger.info(f"检查备份数据节点[{i}]: {node_text}")
-                checkbox = child_node.locator("xpath=preceding-sibling::label/span")
-
-                # 检查是否可以勾选
-                if not (checkbox.is_visible() and checkbox.is_enabled()):
-                    continue
 
                 # 检查是否匹配（使用完整文本）
                 if backup_data not in node_text:
                     continue
 
                 # 找到目标节点，点击勾选
-                checkbox.evaluate("el => el.click()")
-                logger.info(f"已选择备份数据节点: {node_text}")
-                break
+                if self._click_tree_node_checkbox(child_node, node_text):
+                    logger.info(f"已选择备份数据节点: {node_text}")
+                    break
+            else:
+                raise Exception(f"未找到可勾选的匹配备份数据: {backup_data}")
         else:
-            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").first
-            checkbox.evaluate("el => el.click()")
-            self.logger.info(f"已选择全部备份数据节点: {server_name}")
+            checkbox = self.get_by_role("treeitem").filter(has_text=server_name).locator("label span").nth(1)
+            checkbox.click(force=True)
+            logger.info(f"已选择全部备份数据节点: {server_name}")
         time.sleep(1) # 等待删除按钮状态变为可点击
         self.locator(".cloud-button .cloud-button-btn").filter(has_text="删除").click()
         self.dialog_confirm.click()
-
-    def assert_backup_data(self, server_name: str, status):
-        """
-        断言备份数据状态
-        Args:
-            server_name: 实例名称
-            status: 备份数据状态, 支持单个或列表
-        """
-        self.backup_data_search(server_name)
-
-        self.get_by_text(server_name).click()
-
-        # self.get_by_role("group").locator(".custom-tree-node").filter(has_text=f"{server_name}_{time.strftime('%Y%m%d%H%M')}").inner_text()
-        # 获取最后一个节点, 一般情况是最后一个节点是最新的备份数据
-        actual_status = self.get_by_role("group").locator(".custom-tree-node").filter(has_text=f"{server_name}").last.inner_text()
-        if isinstance(status, str):
-            status = [status]
-
-        for status in status:
-            assert status in actual_status, f"备份数据状态不匹配，预期: {status}, 实际: {actual_status}"
 
 
     @submenu("恢复任务")
@@ -1354,6 +1310,7 @@ class BackUpPage(BasePage):
             source_vm: str,
             re_vm: str,
             re_task: str,
+            project: str = "默认项目",
             data: dict = None,
             **kwargs
     ):
@@ -1363,12 +1320,11 @@ class BackUpPage(BasePage):
             source_vm: 备份数据来源的虚机
             re_vm: 恢复虚机
             re_task: 恢复任务名称
+            project: 恢复至项目，默认"默认项目"
             data: 恢复任务数据字典，包含中文键：
-                - 云环境类型: 云环境类型，默认"曙光云"
-                - 云环境列表: 云环境列表，默认"曙光云"
-                - 恢复至项目: 恢复至项目，默认"默认项目"
                 - 备份数据: 备份数据标识（可选），用于选择具体的备份点
                 - 恢复配置: 恢复配置字典，按页面模块划分（中文键）：
+                    - 恢复至项目: 项目名称
                     - 基本设置: 实例名称、集群
                     - 网络设置: 网络、子网
                     - 存储配置: 云硬盘模式
@@ -1381,50 +1337,52 @@ class BackUpPage(BasePage):
         data = data or {}
 
         # 从字典中使用中文键获取值，kwargs可覆盖
-        cloud_type = kwargs.get("cloud_type") or data.get("云环境类型", "曙光云")
-        cloud_list = kwargs.get("cloud_list") or data.get("云环境列表", "曙光云")
-        project = kwargs.get("project") or data.get("恢复至项目", "默认项目")
         backup_data = kwargs.get("backup_data") or data.get("备份数据")
         resume_config = kwargs.get("resume_config") or data.get("恢复配置", {})
         re_method = kwargs.get("re_method") or data.get("恢复方式", {})
+        basic_settings = resume_config.get("基本设置", {})
 
         # 点击新建恢复任务按钮
         self.get_by_text("新建恢复任务").click()
 
-        # 第一步: 选择云环境和项目
-        self._select_cloud_type(cloud_type)
-        self._select_cloud_list(cloud_list)
-        self._select_project(project)
-        self._click_next_step()
-
-        # 第二步: 搜索并选择要恢复的实例
+        # 第一步: 搜索并选择要恢复的实例
         self._search_and_select_backup_server(source_vm, backup_data)
         self._click_next_step()
 
-        # 第三步:
+        # 第二步:
         # (1) 配置恢复类型
         resume_type = resume_config.get("恢复类型", "新建资源")
         if resume_type != "新建资源":
             self._select_backup_type(resume_type)
-        else:
-            # (2) 配置基本设置（实例名称、集群）
-            basic_settings = resume_config.get("基本设置", {})
+
+        # (2) 配置恢复至项目
+        resume_project = (
+            resume_config.get("恢复至项目")
+            or basic_settings.get("项目")
+            or kwargs.get("project")
+            or project
+        )
+
+        if resume_type == "新建资源":
+            self._config_resume_project(resume_project)
+
+            # (3) 配置基本设置（实例名称、集群）
             self._config_basic_settings(re_vm, basic_settings)
 
-            # (3) 配置网络设置（网络、子网）
+            # (4) 配置网络设置（网络、子网）
             network_settings = resume_config.get("网络设置", {})
             self._config_network_settings(network_settings)
 
-            # (4) 配置存储配置（云硬盘模式）
+            # (5) 配置存储配置（云硬盘模式）
             storage_settings = resume_config.get("存储配置", {"存储类型": Config.get('stor'), "云硬盘模式": "精简置备"})
             if storage_settings:
                 self._config_storage_settings(storage_settings)
 
-            # (5) 配置规格配置
+            # (6) 配置规格配置
             flavor_settings = resume_config.get("规格配置", {})
             self._config_flavor_settings(flavor_settings)
 
-            # (6) 配置管理配置（登录密码、VNC密码）
+            # (7) 配置管理配置（登录密码、VNC密码）
             management_settings = resume_config.get("管理配置", {})
             self._config_management_settings(management_settings)
 
@@ -1440,20 +1398,6 @@ class BackUpPage(BasePage):
         self._set_resume_task_name(re_task)
         logger.info(f"恢复任务{re_task}已提交")
 
-    def _select_project(self, project: str):
-        """选择恢复至项目
-
-        Args:
-            project: 项目名称
-        """
-        locs = [
-            self.get_by_label("恢复至项目").get_by_placeholder("请选择"),
-            self.get_by_text("恢复至项目").locator("xpath=./following-sibling::div//input")
-        ]
-        self._find_element(locs, "恢复至项目").click()
-        self.locator("li").filter(has_text=project).click()
-        logger.info(f"选择恢复至项目: {project}")
-
     def _select_backup_type(self, backup_type: str):
         """选择备份类型
 
@@ -1465,6 +1409,17 @@ class BackUpPage(BasePage):
             loc.click()
         logger.info(f"选择备份类型: {backup_type}")
 
+    def _config_resume_project(self, project: str = "默认项目"):
+        """配置恢复至项目"""
+        self.get_by_placeholder("请选择项目").click()
+        locs = [
+            self.locator("li").filter(has_text=re.compile(rf"^{re.escape(project)}$")).first,
+            self.get_by_role("listitem").filter(has_text=project).first,
+            self.get_by_text(project, exact=True).last
+        ]
+        self._find_element(locs, "恢复至项目").click()
+        logger.info(f"选择恢复至项目: {project}")
+
     def _config_basic_settings(self, re_vm: str, config: dict):
         """配置基本设置
 
@@ -1475,10 +1430,6 @@ class BackUpPage(BasePage):
         """
         cluster = config.get("集群", "Autotest")
 
-        # 填写实例名称
-        self.get_by_placeholder("请输入名称").fill(re_vm)
-        logger.info(f"设置实例名称: {re_vm}")
-
         # 选择集群
         self.get_by_placeholder("请选择集群").click()
         locs = [
@@ -1487,6 +1438,10 @@ class BackUpPage(BasePage):
         ]
         self._find_element(locs, "集群").click()
         logger.info(f"选择集群: {cluster}")
+
+        # 填写实例名称
+        self.get_by_placeholder("请输入名称").fill(re_vm)
+        logger.info(f"设置实例名称: {re_vm}")
 
     def _config_network_settings(self, config: dict):
         """配置网络设置
@@ -1502,6 +1457,7 @@ class BackUpPage(BasePage):
         allocation_mode = config.get("分配模式", {"方式": "自动分配"})
         # 选择网络
         self.get_by_placeholder("请选择网络").click()
+        self.page.wait_for_timeout(1000) # 等待网络列表加载完成, 渲染稳定
         locs = [
             self.get_by_text("Autotest", exact=True).nth(1),
             self.locator("li").filter(has_text=re.compile(rf"^{network}$")).nth(1)
@@ -1621,10 +1577,10 @@ class BackUpPage(BasePage):
 
         Args:
             config: 规格配置字典
-                - 规格: 规格名称，如"ecs.c6.large"
+                - 规格: 规格名称，如"ecs.c6.Autotest"
         """
         # 使用中文键从字典获取值
-        flavor = config.get("规格", "ecs.c6.large")
+        flavor = config.get("规格", "ecs.c6.Autotest")
         flavor_type = flavor.split(".")[1][0]
         # 搜索并选择规格
         self.search(flavor)
@@ -1805,24 +1761,18 @@ class BackUpPage(BasePage):
 
         for i in indices:
             child_node = child_nodes.nth(i)
-            node_text = child_node.inner_text()
-            node_text = node_text.split("\n")[0]
+            # 处理节点文本，去除图标字符和空格
+            node_text = child_node.inner_text().split("\n")[0].strip()
             logger.info(f"检查备份数据节点[{i}]: {node_text}")
-            checkbox = child_node.locator("xpath=preceding-sibling::label/span")
-
-            # 检查是否可以勾选
-            if not (checkbox.is_visible() and checkbox.is_enabled()):
-                continue
 
             # 如果传入了backup_data，检查是否匹配
             if backup_data and backup_data not in node_text:
                 continue
 
             # 找到目标节点，点击勾选
-            checkbox.evaluate("el => el.click()")
-            # checkbox.click()
-            logger.info(f"选择{target_desc}备份数据，节点[{i}]: {node_text}")
-            return
+            if self._click_tree_node_checkbox(child_node, node_text):
+                logger.info(f"选择{target_desc}备份数据，节点[{i}]: {node_text}")
+                return
 
         # 没找到
         if backup_data:
@@ -1846,39 +1796,6 @@ class BackUpPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(task_names, "删除")
+            self.click_action(task_names, "删除")
         self.dialog_confirm.click()
 
-    @submenu("恢复任务")
-    def assert_resume_task_details(self, name, details: dict, tab="详情"):
-        """
-        验证恢复任务详情
-        Args:
-            name: 恢复任务名称
-            details: 恢复任务配置字典
-        """
-        self.get_by_role("cell", name=name).locator("span").click()
-        if tab == "详情":
-            if "速度" in details and "单位" in details:
-                speed_value = float(details["速度"])
-                unit = details["单位"]
-                new_details = details.copy()
-                del new_details["速度"]
-                del new_details["单位"]
-
-                # 格式化为保留3位小数
-                new_details["限速策略"] = f"{speed_value:.3f} {unit}"
-                details = new_details
-            for k, v in details.items():
-                label_loc = self.get_by_text(k, exact=True)
-                loc = label_loc.locator("xpath=../following-sibling::div/span")
-                expect(loc).to_contain_text(v)
-                self.logger.info(f"验证成功 {k}: {v}")
-        else:
-            self.get_by_role("tab", name=tab).click()
-            for k, v in details.items():
-                # if k in ["恢复进度", "执行结果"]:
-                #     self.assert_column_all_match(v, k)
-                # else:
-                self.assert_list_contain(v, k)
-                self.logger.info(f"验证成功 {k}: {v}")

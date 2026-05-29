@@ -1,6 +1,7 @@
 import allure
 import pytest
 
+from sugon_web.testcase.compute._ecs_fixtures import labels
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
 
@@ -23,7 +24,6 @@ class TestECSLabels:
 
         with allure_step_log(f"步骤3: 重置搜索条件"):
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
 
@@ -32,6 +32,7 @@ class TestECSLabels:
             ecs_page.assert_deleted(label_name)
 
     @allure.title("验证编辑标签功能")
+    @pytest.mark.parametrize("vm", [{"inject_dependencies": False}], indirect=True)
     def test_ecs_edit_label(self, ecs_page, labels, vm):
         """测试编辑标签功能"""
         vm_name = vm.get("name")
@@ -94,6 +95,7 @@ class TestECSLabels:
                 ecs_page.delete_label(label_name)
 
     @allure.title("验证标签解绑实例功能")
+    @pytest.mark.parametrize("vm", [{"inject_dependencies": False}], indirect=True)
     def test_ecs_unbind_vm_from_label(self, ecs_page, vm, labels):
         """标签解绑实例"""
         vm_name = vm.get("name")
@@ -111,7 +113,7 @@ class TestECSLabels:
             ecs_page.assert_ecs_details_info([vm_name], info_items={"标签": "--"})
 
     @allure.title("验证批量标签设置功能")
-    @pytest.mark.parametrize("vm", [{"count": 2, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 2},"inject_dependencies": False, "bind_mfip": False}], indirect=True)
     @pytest.mark.parametrize("labels", [{"count": 3}], indirect=True)
     def test_ecs_batch_bind_labels(self, ecs_page, vm, labels):
         """批量标签设置"""

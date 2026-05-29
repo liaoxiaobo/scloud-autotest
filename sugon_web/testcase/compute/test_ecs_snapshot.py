@@ -10,7 +10,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.story('快照基本功能验证')
 class TestECSS:
 
-    @allure.title("验证创建&删除快照")
+    @allure.title("云服务器快照-创建和删除")
     def test_ecs_system_snapshot(self, ecs_page, vm, ssh_host):
         """测试创建云服务器快照"""
         snapshot_name = f"snapshot_{vm['name']}"
@@ -41,9 +41,9 @@ class TestECSS:
 
         with allure_step_log("步骤4: 验证快照已删除"):
             ecs_page.assert_deleted(snapshot_name, refresh=True)    # 刷新页面，确保删除成功
-            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+            ssh_host.wait_image_deleted(snapshot_name)
 
-    @allure.title("验证批量删除快照")
+    @allure.title("云服务器快照-批量删除")
     def test_ecs_batch_snapshot(self, ecs_page, vm, ssh_host):
         """测试批量删除云服务器快照"""
         snapshot_names = []
@@ -59,7 +59,7 @@ class TestECSS:
                     snapshot_name=snapshot_name,
                 )
                 ecs_page.assert_popup_success("创建实例快照成功")
-                # ecs_page.wait_for_source_complete(vm['name'])
+                ecs_page.wait_for_source_complete(vm['name'])
                 ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证所有快照创建成功"):
@@ -73,9 +73,9 @@ class TestECSS:
 
         with allure_step_log("步骤4: 验证所有快照已删除"):
             ecs_page.assert_deleted(snapshot_names, refresh=True)
-            assert ssh_host.run(f"glance image-list| grep {snapshot_name}") == "", "底层未删除成功"
+            ssh_host.wait_image_deleted(snapshot_names)
 
-    @allure.title("验证修改快照")
+    @allure.title("云服务器快照-修改")
     @pytest.mark.parametrize("params", load_data('test_modify'))
     def test_ecss_modify(self, ecs_page, ecss: dict, params):
         """测试云服务器快照修改功能"""
@@ -94,7 +94,7 @@ class TestECSS:
             snapshot_data = ecs_page.get_row_data(new_name)
             assert snapshot_data["描述"] == new_desc
 
-    @allure.title("验证还原快照")
+    @allure.title("云服务器快照-还原")
     def test_ecss_restore(self, ecs_page, vm, ecss: dict, ssh_vm):
         """测试云服务器快照还原功能"""
 
@@ -110,6 +110,7 @@ class TestECSS:
         with allure_step_log("步骤2: 虚机还原快照"):
 
             # 还原快照
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.ecss_restore(ecss["name"])
             ecs_page.assert_popup_success(f"{vm['name']}实例还原快照成功")
 
@@ -123,6 +124,7 @@ class TestECSS:
             else:
                 ecs_page.assert_row_contains(vm['name'], ecss["name"])
             # ecs_page.assert_row_contains(vm['name'], "当前无任务")
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.assert_status(vm['name'])
             # ecs_page.wait_for_source_complete(vm['name'])
             # assert data["镜像名称"] == ecss["name"]
@@ -135,14 +137,14 @@ class TestECSS:
         with allure_step_log("步骤5: 重建虚机并删除快照"):
             image = ecs_page.storage_pool  # 获取存储池同名镜像
             if ecs_page.stor not in ["usan", "local", "nfs"]:     # 虚机有快照时，不支持重建
-                ecs_page.ecs_rebuild(vm['name'], 'centos7.9', '64位', image)
+                ecs_page.ecs_rebuild(vm['name'], image)
                 ecs_page.assert_popup_success(f"{vm['name']}实例重建成功")
                 # ecs_page.assert_status(vm['name'], status="当前无任务")
                 ecs_page.assert_status(vm['name'])
                 # ecs_page.wait_for_source_complete(vm['name'])
                 ecs_page.page.wait_for_timeout(5000)    # 延迟5秒，再去清理快照数据
 
-    @allure.title("验证列表页搜索&重置")
+    @allure.title("云服务器快照-搜索和重置")
     def test_ecss_search(self, ecs_page, ecss: dict):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -155,13 +157,12 @@ class TestECSS:
         with allure_step_log("步骤3: 重置搜索条件"):
             ecs_page.ecss_search(random_data())
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
 
         with allure_step_log("步骤4: 验证重置结果"):
             assert input_loc.input_value() == "", "重置后搜索输入框未被清空"
             assert len(ecs_page.table_rows) > 0, "重置后列表数据为空"
 
-    @allure.title("快照策略-创建&删除")
+    @allure.title("快照策略-创建和删除")
     @pytest.mark.parametrize("params", load_data('test_create_policies'))
     def test_ecss_policy_create(self, ecs_page, params):
         """测试云服务器快照策略创建功能"""
@@ -230,10 +231,9 @@ class TestECSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             ecs_page.btn_reset.click()
-            ecs_page.wait_for_page_ready()
             assert ecs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("快照策略-虚机绑定快照策略")
+    @allure.title("快照策略-绑定云服务器")
     def test_ecss_bind_policy(self, ecs_page, ecss_policy, vm):
         """测试云服务器快照策略绑定功能"""
         ecs_page.goto_submenu("弹性云服务器")
@@ -289,7 +289,7 @@ class TestECSS:
             ecs_page.assert_popup_success("删除策略成功")
             ecs_page.assert_deleted(new_policy)
 
-    @allure.title("快照任务-开启/禁用自动快照")
+    @allure.title("快照任务-开启和禁用自动快照")
     def test_ecss_en_disable_auto_snapshot(self, ecs_page, ecss_policy, vm, ssh_vm):
         """测试禁用/开启自动快照功能"""
         vm_name = vm["name"]
@@ -317,7 +317,7 @@ class TestECSS:
             ecs_page.ecss_bind_unbind_snapshot_policy(vm_name, policy, bind=False)
 
     @allure.title("快照任务-删除快照任务")
-    @pytest.mark.parametrize("vm", [{"count": 3, "bind_mfip": False}], indirect=True)
+    @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     def test_ecss_delete_snapshot_task(self, ecs_page, ecss_policy, vm):
         """测试删除快照任务功能"""
         vm_names = [vm[i].get("name") for i in range(len(vm))]
@@ -335,7 +335,7 @@ class TestECSS:
         with allure_step_log("步骤3: 删除多个快照任务"):
             ecs_page.ecss_delete_task(vm_names)
 
-    @allure.title("快照策略-编辑策略")
+    @allure.title("快照策略-修改")
     def test_ecss_policy_edit(self, ecs_page, ecss_policy):
         """测试快照策略编辑功能"""
         policy_name = ecss_policy["name"]
@@ -354,7 +354,7 @@ class TestECSS:
             ecs_page.assert_popup_success("修改策略成功")
             ecs_page.btn_reset.click()
 
-    @allure.title("快照策略-虚机绑定快照策略等待自动创建快照")
+    @allure.title("快照策略-绑定云服务器后自动创建快照")
     @pytest.mark.slow
     def test_ecss_bind_wait_snapshot(self, ecs_page, vm):
         """测试云服务器绑定快照策略等待自动快照功能"""

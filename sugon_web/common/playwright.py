@@ -32,7 +32,7 @@ class Playwright:
         self.page = page
         self.logger = logger
 
-    def locator(self, selector):
+    def locator(self, selector: str) -> "CustomLocator":
         """创建页面元素定位器，返回自定义包装的定位器
 
         Args:
@@ -45,7 +45,7 @@ class Playwright:
         original_locator = self.page.locator(selector)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_test_id(self, test_id):
+    def get_by_test_id(self, test_id: str) -> "CustomLocator":
         """通过测试ID创建定位器
 
         Args:
@@ -58,7 +58,7 @@ class Playwright:
         original_locator = self.page.get_by_test_id(test_id)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_role(self, role, name=None, exact=False):
+    def get_by_role(self, role: str, name: str | None = None, exact: bool = False) -> "CustomLocator":
         """通过角色和名称创建定位器
 
         Args:
@@ -73,7 +73,7 @@ class Playwright:
         original_locator = self.page.get_by_role(role, name=name, exact=exact)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_placeholder(self, text, exact=False):
+    def get_by_placeholder(self, text: str, exact: bool = False) -> "CustomLocator":
         """通过占位符创建定位器
 
         Args:
@@ -87,7 +87,7 @@ class Playwright:
         original_locator = self.page.get_by_placeholder(text, exact=exact)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_label(self, text, exact=False):
+    def get_by_label(self, text: str, exact: bool = False) -> "CustomLocator":
         """通过标签文本创建定位器
 
         Args:
@@ -101,7 +101,7 @@ class Playwright:
         original_locator = self.page.get_by_label(text, exact=exact)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_text(self, text, exact=False):
+    def get_by_text(self, text: str, exact: bool = False) -> "CustomLocator":
         """通过文本内容创建定位器
 
         Args:
@@ -115,7 +115,7 @@ class Playwright:
         original_locator = self.page.get_by_text(text, exact=exact)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_alt_text(self, text, exact=False):
+    def get_by_alt_text(self, text: str, exact: bool = False) -> "CustomLocator":
         """通过ALT文本创建定位器
 
         Args:
@@ -129,7 +129,7 @@ class Playwright:
         original_locator = self.page.get_by_alt_text(text, exact=exact)
         return CustomLocator(original_locator, self, self.logger)
 
-    def get_by_title(self, text, exact=False):
+    def get_by_title(self, text: str, exact: bool = False) -> "CustomLocator":
         """通过标题创建定位器
 
         Args:
@@ -144,8 +144,12 @@ class Playwright:
         return CustomLocator(original_locator, self, self.logger)
 
 
-    def click(self, selector):
-        """点击元素
+    def click(self, selector: str) -> None:
+        """点击元素。
+
+        注意：点击后仅自动触发 wait_for_page_ready()，
+        不会触发 wait_for_operation_complete()。
+        若需要等待操作完成，请显式调用后者，或改用 CustomLocator.click()。
 
         Args:
             selector: 元素选择器
@@ -156,7 +160,21 @@ class Playwright:
         try:
             original_selector = selector
             formatted_selector = _format_selector(selector)
-            self.page.click(formatted_selector)
+            try:
+                self.page.click(formatted_selector)
+            except Exception:
+                # 回退1：使用精确文本匹配
+                try:
+                    self.page.get_by_text(original_selector, exact=True).first.click()
+                except Exception:
+                    # 回退2：force=True 强制点击（处理不可见但被折叠的元素）
+                    try:
+                        self.page.get_by_text(original_selector, exact=True).first.click(force=True)
+                    except Exception:
+                        # 回退3：JavaScript 点击
+                        self.page.evaluate(
+                            f"() => {{ const el = document.evaluate(\"//*[contains(text(), '{original_selector}')]\", document).iterateNext(); if(el) el.click(); }}"
+                        )
             self.logger.info(f"成功点击元素: {original_selector}")
             self.wait_for_page_ready()
         except Exception as e:
@@ -202,13 +220,19 @@ class Playwright:
             raise
 
     # 切换浏览器tab页
-    def switch_to_new_tab(self, wait_for_selector=None,timeout=30000, wait_for_load_state="domcontentloaded"):
+    def switch_to_new_tab(
+        self,
+        wait_for_selector: str | None = None,
+        timeout: int = 30_000,
+        wait_for_load_state: str = "domcontentloaded",
+    ) -> Page:
         """
         切换到新打开的标签页，并等待页面加载完成
+
         Args:
-            timeout (int): 等待超时时间（毫秒），默认为30秒
-            wait_for_selector (str): 可选，等待特定选择器元素出现后再返回
-            wait_for_load_state (str): 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
+            wait_for_selector: 可选，等待特定选择器元素出现后再返回
+            timeout: 等待超时时间（毫秒），默认为30秒
+            wait_for_load_state: 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
 
         Returns:
             Page: 新切换到的页面对象
@@ -247,15 +271,21 @@ class Playwright:
         return new_page
 
     @contextmanager
-    def new_tab_context(self, trigger_action=None, wait_for_selector=None, timeout=30, wait_for_load_state="domcontentloaded"):
+    def new_tab_context(
+        self,
+        trigger_action=None,
+        wait_for_selector: str | None = None,
+        timeout: int = 30,
+        wait_for_load_state: str = "domcontentloaded",
+    ):
         """
         上下文管理器，用于在新标签页中执行操作
 
         Args:
-            trigger_action (callable): 触发新标签页打开的操作（如：lambda: self.click_option(name, "登录")）
-            wait_for_selector (str): 可选，等待特定选择器元素出现后再返回
-            timeout (int): 等待超时时间（毫秒），默认为30秒
-            wait_for_load_state (str): 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
+            trigger_action: 触发新标签页打开的操作（如：lambda: self.click_action(name, "登录")）
+            wait_for_selector: 可选，等待特定选择器元素出现后再返回
+            timeout: 等待超时时间（秒），默认为30秒
+            wait_for_load_state: 等待页面加载状态，可选值为"domcontentloaded"、"load"或"networkidle"，默认为"domcontentloaded"
         """
         timeoutms = timeout * 1000
         original_page = self.page
@@ -285,36 +315,45 @@ class Playwright:
             except Exception as e:
                 self.logger.warning(f"关闭新标签页时出错: {str(e)}")
 
-    def wait_for_page_ready(self):
-        """公共方法: 等待页面完全就绪"""
-        self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
-        self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
-        # self.page.wait_for_load_state("networkidle")    # 等待网络活动静止
-        # self.page.wait_for_selector(".el-loading-spinner", state='hidden')
-        # 等待所有 .el-loading-spinner 元素隐藏
+    def wait_for_page_ready(self) -> None:
+        """等待页面完全就绪。
+
+        依次等待：
+        1. DOM 加载完成（domcontentloaded）
+        2. 页面资源加载完成（load：图片、样式表、脚本）
+        3. 所有 Element UI loading 遮罩（.el-loading-spinner）消失
+
+        注意：本方法在 BasePage MRO 中优先级高于 WaitsMixin 的同名方法，
+        实际调用的是本实现。
+        """
+        self.page.wait_for_load_state("load")
+        self.page.wait_for_load_state("domcontentloaded")
         loading_spinners = self.page.locator(".el-loading-spinner")
         count = loading_spinners.count()
         if count > 0:
             for i in range(count):
                 loading_spinners.nth(i).wait_for(state='hidden')
-    def wait_for_operation_complete(self, timeout=60):
-        """等待操作完成
+
+    def wait_for_operation_complete(self, timeout: int = 30) -> None:
+        """等待页面操作完成。
+
+        轮询检测以下加载标识是否全部消失：
+        - .el-icon-loading:visible（Element UI 加载图标）
+        - .el-button.is-loading:visible（加载中按钮）
+
+        注意：本方法在 BasePage MRO 中优先级高于 WaitsMixin 的同名方法，
+        实际调用的是本实现。
 
         Args:
             timeout: 超时时间（秒）
         """
         start_time = time.time()
+        loading_selector = ".el-icon-loading:visible, .el-button.is-loading:visible"
 
         while time.time() - start_time < timeout:
             try:
-                # 检查是否有加载中的元素
-                loading_elements = [
-                    self.locator(".el-icon-loading"),
-                    self.locator(".el-button.is-loading")
-                ]
-
-                # 如果没有加载中的元素，认为操作完成
-                if not any(element.count() > 0 for element in loading_elements):
+                # 如果没有任何可见的加载标识，认为操作完成
+                if self.page.locator(loading_selector).count() == 0:
                     return
 
                 # 等待1秒后重试
@@ -360,12 +399,14 @@ class CustomLocator:
         """返回定位器的正式字符串表示"""
         return self.__str__()
 
-    def click(self, **kwargs):
-        """点击元素，直接在内部 locator 上调用"""
+    def click(self, **kwargs) -> None:
+        """点击元素。
+
+        注意：点击后会自动触发 wait_for_page_ready() 和
+        wait_for_operation_complete()，无需在外部重复等待。
+        """
         try:
-            # 直接在内部 locator 上调用 click
             self._locator.click(**kwargs)
-            # 触发等待（确保页面加载完成）
             self._playwright.wait_for_page_ready()
             self._playwright.wait_for_operation_complete()
         except Exception as e:

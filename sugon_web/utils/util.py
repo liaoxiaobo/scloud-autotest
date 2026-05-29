@@ -229,9 +229,8 @@ def capture_failure_screenshot(page, item, failure_stage):
     """
     try:
         logger.info(f"开始生成失败截图")
-        # 获取项目根目录
-        current_dir = Path(__file__).resolve().parent
-        project_root = current_dir.parent
+        # 统一将运行产物落在仓库根目录，避免写入包目录
+        project_root = Path(__file__).resolve().parents[2]
 
         # 创建 screenshots 目录
         screenshot_dir = project_root / "screenshots"

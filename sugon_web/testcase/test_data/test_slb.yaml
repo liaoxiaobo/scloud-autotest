@@ -1,0 +1,167 @@
+slb:
+  test_slb_create_orthogonal:
+    - case_desc: "V1, 开启HA, 自动分配"
+      version: "V1"
+      ha_enable: true
+      ip_type: "自动分配"
+
+    - case_desc: "V1, 关闭HA, 快速选择"
+      version: "V1"
+      ha_enable: false
+      ip_type: "快速选择"
+      slb_desc: ""
+
+    - case_desc: "V1, 开启HA, 手动输入"
+      version: "V1"
+      ha_enable: true
+      ip_type: "手动输入"
+
+    - case_desc: "V2, 关闭HA, 自动分配"
+      version: "V2"
+      ha_enable: false
+      ip_type: "自动分配"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+      slb_desc: "SLB_Description_Boundary_Test_255_Characters_Start_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX_End"
+
+    - case_desc: "V2, 开启HA, 快速选择"
+      version: "V2"
+      ha_enable: true
+      ip_type: "快速选择"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+
+    - case_desc: "V2, 关闭HA, 手动输入"
+      version: "V2"
+      ha_enable: false
+      ip_type: "手动输入"
+      cluster: "Autotest"
+      spec: "slb.d6.large 2核 4GiB 内网带宽"
+
+  test_slb_listener_create:
+    - case_desc: "TCP-轮询-健康检查TCP-常规端口"
+      protocol: "TCP"
+      port: 80
+      pool_name: "pool-tcp-random"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "TCP"
+      health_max_retries: 3
+      health_timeout: 5
+      health_interval: 20
+      session_persistence: false
+
+    - case_desc: "UDP-源IP-关闭健康检查"
+      protocol: "UDP"
+      port: 53
+      pool_name: "pool-udp-source"
+      balance_method: "源IP"
+      health_check: false
+
+    - case_desc: "HTTP-加权轮询-HTTP健康检查-会话保持SOURCE_IP"
+      protocol: "HTTP"
+      port: 8080
+      pool_name: "pool-http-weight"
+      balance_method: "加权轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "GET"
+      url_path: "/health"
+      session_persistence: true
+      session_type: "SOURCE IP"
+      health_max_retries: 2
+      health_timeout: 4
+      health_interval: 15
+
+    - case_desc: "HTTP-轮询-HTTP健康检查-会话保持禁用"
+      protocol: "HTTP"
+      port: 8000
+      pool_name: "pool-http-basic"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "HEAD"
+      url_path: "/status"
+      session_persistence: false
+
+    - case_desc: "TCP-加权轮询-关闭健康检查-最小端口"
+      protocol: "TCP"
+      port: 1
+      pool_name: "pool-tcp-port-min"
+      balance_method: "加权轮询"
+      health_check: false
+      session_persistence: false
+
+    - case_desc: "HTTP-轮询-HTTP健康检查-最大端口"
+      protocol: "HTTP"
+      port: 65535
+      pool_name: "pool-http-port-max"
+      balance_method: "轮询"
+      health_check: true
+      health_type: "HTTP"
+      http_method: "GET"
+      url_path: "/"
+      session_persistence: false
+
+#    - case_desc: "HTTPS, 单向认证, 国际证书, HTTP重定向"
+#      protocol: "HTTPS"
+#      port: 443
+#      auth_mode: "单向认证"
+#      cert_type: "国际服务器证书"
+#      server_cert: "tst"
+#      http_redirect: true
+#      redirect_port: 80
+#      pool_name: "pool-https-1"
+#      balance_method: "轮询"
+#      health_check: true
+#      session_persistence: true
+#
+#    - case_desc: "HTTPS, 双向认证, 国际+国密双证书, CA证书"
+#      protocol: "HTTPS"
+#      port: 444
+#      auth_mode: "双向认证"
+#      cert_type: ["国际服务器证书", "国密服务器证书"]
+#      server_cert: {"国际": "tst", "国密": "tst-gm"}
+#      ca_cert: "ca-tst"
+#      http_redirect: false
+#      pool_name: "pool-https-2"
+#      balance_method: "源IP"
+#      health_check: true
+#      session_persistence: false
+
+  test_lb_detail_edit:
+    - title: "名称"
+      field: "name"
+      new_name_suffix: "-edit"
+
+    - title: "描述"
+      field: "desc"
+      new_desc: "autotest listener description"
+
+    - title: "前端端口"
+      field: "port"
+      new_port: 65535
+
+    - title: "访问控制"
+      field: "access_control"
+      enable: true
+      policy: "白名单"
+
+  test_lb_pool_add_resource:
+    - case_desc: "单资源-常规端口"
+      vm_count: 1
+      ports: 8080
+
+    - case_desc: "多资源-不同端口"
+      vm_count: 2
+      ports:
+        - 8080
+        - 8081
+
+    - case_desc: "单资源-最小端口"
+      vm_count: 1
+      ports: 1
+
+    - case_desc: "单资源-最大端口"
+      vm_count: 1
+      ports: 65535

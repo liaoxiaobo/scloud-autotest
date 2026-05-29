@@ -1,40 +1,12 @@
 import allure
 import pytest
-
-from sugon_web.pages.login import LoginPage
-from sugon_web.pages.mysql import MySQLPage
-from sugon_web.pages.doris import DorisPage
-from sugon_web.pages.pgsql import PgSQLPage
-from sugon_web.pages.mongodb import MongoDBPage
+from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQLPage, PgSQLPage, XScalePage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
+from sugon_web.conftest import _create_logged_in_page
 
 
-@pytest.fixture(scope="function", autouse=True)
-def close_dialog_before_test(page):
-    """用例执行前关闭可能存在的对话框，避免页面元素定位被遮挡或干扰"""
-
-    try:
-        # 直接检查并关闭对话框
-        close_button = page.get_by_role("button", name="Close")
-        if close_button.is_visible():
-            logger.info("发现未关闭的对话框，正在关闭...")
-            close_button.click()
-    except:
-        pass  # 忽略对话框不存在的情况
-
-    yield
-
-@pytest.fixture(scope="module")
-def login_page(page):
-    """初始化登录页对象"""
-    login_page = LoginPage(page)
-    login_page.logout()   # 登录测试用例需要先退出登录状态
-    return login_page
-
-
-
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def mysql_page(page):
     """初始化MySQL实例管理页面"""
     mysql_page = MySQLPage(page)
@@ -42,7 +14,7 @@ def mysql_page(page):
     return mysql_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def doris_page(page):
     """初始化Doris实例管理页面"""
     doris_page = DorisPage(page)
@@ -50,7 +22,7 @@ def doris_page(page):
     return doris_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def pgsql_page(page):
     """初始化PostgreSQL实例管理页面"""
     pgsql_page = PgSQLPage(page)
@@ -58,7 +30,15 @@ def pgsql_page(page):
     return pgsql_page
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
+def kingbase_page(page):
+    """初始化KingbaseES实例管理页面"""
+    kingbase_page = KingbasePage(page)
+    kingbase_page.goto_service('人大金仓 KingbaseES')
+    return kingbase_page
+
+
+@pytest.fixture(scope="function")
 def mongodb_page(page):
     """初始化MongoDB实例管理页面"""
     mongodb_page = MongoDBPage(page)
@@ -66,9 +46,18 @@ def mongodb_page(page):
     return mongodb_page
 
 
+@pytest.fixture(scope="function")
+def xscale_page(page):
+    """初始化XScale实例管理页面"""
+    return XScalePage(page)
+
+
 @pytest.fixture(scope="class")
-def doris(doris_page):
+def doris(browser_context, config):
     """创建一个供整个测试类使用的Doris实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    doris_page = DorisPage(page)
+    doris_page.goto_service('数据仓库 Doris')
     name = f"doris-{random_data()}"
     admin_password = "admin1234@sugon"  # Doris默认密码
     db_name = f"autodb_{random_string(k=5)}"
@@ -76,7 +65,8 @@ def doris(doris_page):
     user_name = f"user_{random_string(k=5)}"
     user_name1 = f"user_{random_string(k=5)}"
     user_password = f"Pwd@1{random_string(k=5)}"
-    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1,
+            "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享Doris实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -106,17 +96,22 @@ def doris(doris_page):
         logger.info(f"清理共享Doris实例: {name}")
         doris_page.delete_instance(data["name"])
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def mysql(mysql_page):
+def mysql(browser_context, config):
     """创建一个供整个测试类使用的MySQL实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    mysql_page = MySQLPage(page)
+    mysql_page.goto_service('AnhanDB(for MySQL)')
     name = random_data()
     type = "集群"
     db_name = f"autodb-{random_string(k=5)}"
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
     privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "db_name": db_name, "user_name": user_name, "admin_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -131,7 +126,7 @@ def mysql(mysql_page):
 
     with allure_step_log(f"前置操作：创建新用户 {db_name}"):
         mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功",10)
+        mysql_page.assert_popup_success("创建用户成功", 10)
 
     yield data
 
@@ -140,10 +135,15 @@ def mysql(mysql_page):
         # 在删除前，确保页面在实例列表页，防止在详情页删除失败
         mysql_page.delete_instance(data["name"])
 
+    page.close()
+
 
 @pytest.fixture(scope="class")
-def pgsql(pgsql_page):
+def pgsql(browser_context, config):
     """创建一个供整个测试类使用的PostgreSQL实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    pgsql_page = PgSQLPage(page)
+    pgsql_page.goto_service('AnhanDB(for PostgreSQL)')
     name = f"pgsql-{random_data()}"
     instance_type = "单机"
     user_name = f"user_{random_string(k=5)}"
@@ -166,14 +166,66 @@ def pgsql(pgsql_page):
         logger.info(f"清理共享PostgreSQL实例: {name}")
         pgsql_page.delete_instance(data["name"])
 
+    page.close()
+
+
 @pytest.fixture(scope="class")
-def mongodb(mongodb_page):
+def kingbase(browser_context, config):
+    """创建一个供整个测试类使用的KingbaseES集群实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    kingbase_page = KingbasePage(page)
+    kingbase_page.goto_service('人大金仓 KingbaseES')
+    name = f"kingbase-{random_data()}"
+    instance_type = "集群"
+    admin_password = "Admin1234@sugon"
+    db_name = f"autodb_{random_string(k=5)}"
+    user_name = f"user_{random_string(k=5)}"
+    user_password = f"Pwd@1{random_string(k=5)}"
+    data = {
+        "name": name,
+        "admin_password": admin_password,
+        "db_name": db_name,
+        "user_name": user_name,
+        "user_password": user_password,
+    }
+    logger.info(f"为测试类创建共享KingbaseES实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        kingbase_page.create_instance(name, instance_type=instance_type, password=admin_password)
+        kingbase_page.assert_popup_success("创建实例")
+        kingbase_page.assert_list_contain(name)
+        kingbase_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
+
+    with allure_step_log(f"前置操作：创建数据库 {db_name}"):
+        kingbase_page.create_database(name, db_name)
+        kingbase_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+        kingbase_page.assert_list_contain(db_name)
+
+    with allure_step_log(f"前置操作：创建用户 {user_name}"):
+        kingbase_page.create_user(name, user_name, user_password)
+        kingbase_page.assert_popup_success("创建用户成功")
+        kingbase_page.assert_list_contain(user_name, "用户名")
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享KingbaseES实例: {name}")
+        kingbase_page.delete_instance(data["name"])
+
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def mongodb(browser_context, config):
     """创建一个供整个测试类使用的MongoDB实例对象（副本集和分片集群）"""
+    page = _create_logged_in_page(browser_context, config)
+    mongodb_page = MongoDBPage(page)
+    mongodb_page.goto_service('AnhanDB(for MongoDB)')
     name = f"mongo-{random_data()}"
     name1 = f"mongo-shard-{random_data()}"
     root_password = "Admin1234#sugon"
     user_name = "root"
-    
+
     data = {"name": name, "name1": name1, "root_password": root_password, "user_name": user_name}
     logger.info(f"为测试类创建共享MongoDB实例: {name}(副本集), {name1}(分片集群)")
 
@@ -193,3 +245,43 @@ def mongodb(mongodb_page):
         logger.info(f"清理共享MongoDB实例: {name}, {name1}")
         mongodb_page.delete_instance(name1)
         mongodb_page.delete_instance(name)
+
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def xscale(browser_context, config, ssh_host, ssh_vm):
+    """创建一个供整个测试类使用的XScale实例对象，并预连接后端计算节点。"""
+    page = _create_logged_in_page(browser_context, config)
+    xscale_page = XScalePage(page)
+    name = f"xscale-{random_data()}"
+    admin_password = "admin1234@sugon"
+    data = {"name": name, "admin_password": admin_password}
+    logger.info(f"为测试类创建共享XScale实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        xscale_page.create_instance(name, password=admin_password)
+        xscale_page.assert_popup_success()
+        xscale_page.assert_list_contain(name)
+        xscale_page.assert_status(name, status="就绪", timeout=1500)
+
+    with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
+        node_name = f"{name}-cn-0"
+        xscale_page.goto_detail_page(name)
+        row_data = xscale_page.get_row_data(node_name)
+        fixed_ip = row_data.get("内网IP")
+        assert fixed_ip, f"未在节点 {node_name} 详情行中获取到内网IP，行数据: {row_data}"
+        mfip = ssh_host.find_mfip(fixed_ip)
+        ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
+        logger.info(f"后端连接成功: {name} -> {mfip}")
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {data['name']}"):
+        logger.info(f"清理共享XScale实例: {data['name']}")
+        xscale_page.delete_instance(data["name"])
+        xscale_page.assert_deleted(name)
+        ssh_host.wait_vm_deleted(name)
+        ssh_host.wait_volume_deleted(name)
+
+    page.close()

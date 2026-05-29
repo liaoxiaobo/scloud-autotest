@@ -70,6 +70,26 @@ pgsql:
         - instance_type: "集群"
           version: "12"
           disk_size: 60
+kingbase:
+    test_create_and_delete_kingbase:
+        - instance_type: "单机"
+          db_mode: "pg"
+          disk_size: 20
+        - instance_type: "单机"
+          db_mode: "oracle"
+          disk_size: 20
+        - instance_type: "单机"
+          db_mode: "mysql"
+          disk_size: 20
+        - instance_type: "集群"
+          db_mode: "pg"
+          disk_size: 30
+        - instance_type: "集群"
+          db_mode: "oracle"
+          disk_size: 30
+        - instance_type: "集群"
+          db_mode: "mysql"
+          disk_size: 30
 mongodb:
     test_create_and_delete_mongodb:
         - instance_type: "单机"
@@ -81,3 +101,65 @@ mongodb:
         - instance_type: "分片集群"
           version: "4.4"
           disk_size: 45
+redis:
+    test_create_and_delete_redis:
+        - instance_type: "单机"
+          version: "6.2.17"
+          disk_size: 20
+        - instance_type: "主备"
+          version: "6.2.17"
+          disk_size: 30
+        - instance_type: "高可用"
+          version: "6.2.17"
+          disk_size: 40
+        - instance_type: "集群"
+          version: "6.2.17"
+          disk_size: 50
+        - instance_type: "单机"
+          version: "6.2.5"
+          disk_size: 25
+        - instance_type: "主备"
+          version: "6.2.5"
+          disk_size: 35
+        - instance_type: "高可用"
+          version: "6.2.5"
+          disk_size: 45
+        - instance_type: "集群"
+          version: "6.2.5"
+          disk_size: 55
+kafka:
+    test_create_and_delete_kafka:
+        - version: "2.4.1"
+          security_mode: false
+        - version: "2.4.0"
+          security_mode: false
+        - version: "2.4.1"
+          security_mode: true
+        - version: "2.4.0"
+          security_mode: true
+es:
+    test_create_and_delete_es:
+        - version: "7.10.2"
+          disk_size: 10
+          security_mode: false
+        - version: "7.10.2"
+          disk_size: 20
+          security_mode: false
+        - version: "7.10.2"
+          disk_size: 10
+          security_mode: true
+        - version: "7.10.2"
+          disk_size: 20
+          security_mode: true
+        - version: "6.8.23"
+          disk_size: 10
+          security_mode: false
+        - version: "6.8.23"
+          disk_size: 20
+          security_mode: false
+        - version: "6.8.23"
+          disk_size: 10
+          security_mode: true
+        - version: "6.8.23"
+          disk_size: 20
+          security_mode: true

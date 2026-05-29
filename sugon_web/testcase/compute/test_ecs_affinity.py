@@ -1,4 +1,5 @@
 import allure
+import pytest
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
@@ -28,6 +29,7 @@ class TestEcsAffinityGroup:
 
 
     @allure.title("验证绑定/解绑亲和组功能")
+    @pytest.mark.parametrize("vm", [{"inject_dependencies": False}], indirect=True)
     def test_ecs_bind_unbind_group(self, ecs_page, vm):
         """测试绑定/解绑亲和组功能"""
 

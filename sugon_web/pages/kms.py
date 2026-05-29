@@ -86,12 +86,9 @@ class KmsPage(BasePage):
             self.btn_batch_delete.click()
         else:
             # 单个操作模式
-            self.click_option(names, "删除")
+            self.click_action(names, "删除")
 
         # 输入确认信息
         self.get_by_placeholder("请输入confirm").fill("confirm")
         self.dialog_confirm.click()
-
-        # 等待操作完成
-        self.wait_for_page_ready()
 

@@ -4,7 +4,6 @@ import allure
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, random_string
-from sugon_web.utils import db_util
 
 
 @allure.epic('数据库服务')
@@ -23,7 +22,7 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证重命名结果"):
             doris_page.assert_popup_success("修改实例名称成功")
             doris_page.assert_list_contain(renamed_name)
-            doris_page.assert_status(renamed_name, status="就绪")
+            doris_page.assert_status(renamed_name, status="就绪", refresh=True)
 
         with allure_step_log("步骤三：重命名实例回退"):
             doris_page.rename_instance(renamed_name, instance_name)
@@ -31,7 +30,7 @@ class TestDorisBasic:
         with allure_step_log("步骤四：验证重命名回退结果"):
             doris_page.assert_popup_success("修改实例名称成功")
             doris_page.assert_list_contain(instance_name)
-            doris_page.assert_status(instance_name, status="就绪")
+            doris_page.assert_status(instance_name, status="就绪", refresh=True)
 
     @allure.title("Doris-重置管理员密码")
     def test_reset_admin_password(self, doris_page, doris, ssh_host, ssh_vm):
@@ -44,11 +43,11 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：验证密码重置结果"):
             doris_page.assert_popup_success("执行成功")
-            doris_page.assert_status(instance_name, status="就绪", timeout=300)
+            doris_page.assert_status(instance_name, status="就绪", timeout=300, refresh=True)
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}_fe_node01"
-            ip_from_db = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
             # 验证新密码可以成功登录Doris
             cmd_new = f"mysql -uadmin -p'{new_password}' -P9030 -h127.0.0.1 -e 'SELECT 1;'"
@@ -73,7 +72,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤四：验证状态重置结果"):
             doris_page.assert_popup_success("实例数据库状态重置成功")
-            doris_page.assert_status(instance_name, status="就绪", timeout=1200)
+            doris_page.assert_status(instance_name, status="就绪", timeout=1200, refresh=True)
 
         with allure_step_log("步骤三：启动实例"):
             doris_page.start_instance(instance_name)
@@ -96,7 +95,6 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -111,8 +109,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             doris_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(doris_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             doris_page.instance_ip_unbinding(instance_name)
@@ -120,8 +117,7 @@ class TestDorisBasic:
         with allure_step_log("步骤四：验证解绑结果"):
             # 解绑后，IP地址信息应该不再显示
             doris_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(doris_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip,connected=False)
 
     @allure.title("Doris-修改节点云硬盘大小")
     def test_change_disk_size(self, doris_page, doris, ssh_host):
@@ -135,16 +131,16 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证调整结果"):
             node_name = f"{instance_name}_fe_node01"
             doris_page.assert_popup_success("调整云硬盘中")
-            doris_page.assert_status(node_name, status="调整云硬盘中", timeout=1200)
-            doris_page.assert_status(node_name, status="就绪", timeout=500)
-            assert db_util.get_disk_size(doris_page, node_name, ssh_host) == new_disk_size
+            doris_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
+            doris_page.assert_status(node_name, status="运行中", timeout=500, refresh=True)
+            assert ssh_host.get_volume_size(node_name) == new_disk_size
 
     @allure.title("Doris-修改节点规格")
     def test_change_specification(self, doris_page, doris, ssh_host):
         """测试修改Doris节点的规格"""
         instance_name = doris["name"]
-        specification_name = "doris.d1 doris.d1.8c16g 8核"  # 请根据实际情况修改目标规格
-        real_specification = "doris.d1.8c16g"
+        specification_name = "doris.d1 doris.d1.4c8g 4核"
+        real_specification = "doris.d1.4c8g"
 
         with allure_step_log("步骤一：执行修改规格操作"):
             doris_page.change_specification(instance_name, specification_name, node_type="be")
@@ -152,9 +148,9 @@ class TestDorisBasic:
         with allure_step_log("步骤二：验证规格是否修改成功"):
             node_name = f"{instance_name}_be_node01"
             doris_page.assert_popup_success("调整规格中")
-            doris_page.assert_status(node_name, status="调整规格中", timeout=1200)
-            doris_page.assert_status(node_name, status="就绪", timeout=5000)
-            assert db_util.get_specification(doris_page, node_name, ssh_host) == real_specification
+            doris_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
+            doris_page.assert_status(node_name, status="就绪", timeout=5000, refresh=True)
+            assert ssh_host.guest_show(node_name).get("flavor_name") == real_specification
 
     @allure.title("Doris-节点绑定和解绑公网IP")
     def test_node_bind_and_unbind_ip(self, doris_page, doris, ssh_host):
@@ -167,16 +163,14 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：验证绑定结果"):
             doris_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(doris_page, ip, ssh_host)
-            assert return_code == 0
+            ssh_host.ping(ip)
 
         with allure_step_log("步骤三：解绑公网IP"):
             doris_page.node_ip_unbinding(instance_name, node_type="fe")
 
         with allure_step_log("步骤四：验证解绑结果"):
             doris_page.assert_popup_success("执行成功")
-            return_code = db_util.get_ping_code(doris_page, ip, ssh_host)
-            assert return_code != 0
+            ssh_host.ping(ip, connected=False)
 
     @allure.title("Doris-添加BE节点")
     def test_add_be_node(self, doris_page, doris, ssh_host):
@@ -208,9 +202,9 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证Doris BE服务已停止"):
             # 连接到BE节点，检查doris_be服务状态
-            node_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            node_ip = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(node_ip, port=22022, pwd="admin1234@sugon")
-            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-be")
+            service_status = ssh_vm.get_service_status( "doris-be")
             assert service_status == "stopped", f"Doris BE服务状态异常: {service_status}"
             ssh_vm.close()
 
@@ -231,9 +225,9 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证节点在后端已运行"):
             # 通过后端验证节点确实已恢复运行
-            node_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            node_ip = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(node_ip, port=22022, pwd="admin1234@sugon")
-            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-be")
+            service_status = ssh_vm.get_service_status( "doris-be")
             assert service_status == "running", f"Doris BE服务状态异常: {service_status}"
             ssh_vm.close()
 
@@ -264,7 +258,8 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：验证BE节点是否删除成功"):
             doris_page.assert_deleted(node_name, timeout=1800, refresh=True)
-            db_util.assert_backend_deleted(doris_page, ssh_host, node_name)
+            ssh_host.wait_vm_deleted(node_name)
+            ssh_host.wait_volume_deleted(node_name)
 
     @allure.title("Doris-重启FE节点")
     def test_restart_fe_node(self, doris_page, doris, ssh_host, ssh_vm):
@@ -283,9 +278,9 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证节点在后端已运行"):
             # 通过后端验证节点确实已恢复运行
-            node_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            node_ip = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(node_ip, port=22022, pwd="admin1234@sugon")
-            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-fe")
+            service_status = ssh_vm.get_service_status( "doris-fe")
             assert service_status == "running", f"Doris BE服务状态异常: {service_status}"
             ssh_vm.close()
 
@@ -306,9 +301,9 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证节点在后端已运行"):
             # 通过后端验证节点确实已恢复运行
-            node_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            node_ip = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(node_ip, port=22022, pwd="admin1234@sugon")
-            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-be")
+            service_status = ssh_vm.get_service_status( "doris-be")
             assert service_status == "running", f"Doris BE服务状态异常: {service_status}"
             ssh_vm.close()
 
@@ -320,7 +315,7 @@ class TestDorisBasic:
         password = "admin1234@sugon"
 
         # 记录迁移前的物理机 (后端校验)
-        old_host = db_util.get_backend_host(doris_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
         allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
@@ -333,7 +328,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
             # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
-            new_host = db_util.get_backend_host(doris_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
 
             assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
@@ -342,14 +337,14 @@ class TestDorisBasic:
                 assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
 
         with allure_step_log("步骤四：验证迁移后数据库连接"):
-            ip_from_db = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_doris", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=password)
             # 验证Doris服务是否正常
-            service_status = db_util.get_service_status(doris_page, ssh_vm, "doris-fe")
+            service_status = ssh_vm.get_service_status( "doris-fe")
             assert service_status == "running", f"热迁移后Doris FE服务状态异常: {service_status}"
             ssh_vm.close()
 
-    @allure.title("Doris-创建并删除数据库")
+    @allure.title("Doris-创建和删除数据库")
     def test_create_and_delete_database(self, doris_page, doris, ssh_host, ssh_vm):
         """测试在实例下创建和删除数据库，并验证其在后端生效与失效"""
         instance_name = doris["name"]
@@ -365,7 +360,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤三：验证新创建的数据库在后端生效"):
             fe_node_name = f"{instance_name}_fe_node01"
-            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
             ssh_vm.connect(fe_ip, port=22022, pwd="admin1234@sugon")
             cmd_check_exist = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"SHOW DATABASES LIKE '{db_name}';\""
             result_exist = ssh_vm.run(cmd_check_exist)
@@ -381,7 +376,7 @@ class TestDorisBasic:
             sleep(2)
         with allure_step_log("步骤六：验证数据库在后端已失效"):
             fe_node_name = f"{instance_name}_fe_node01"
-            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
             ssh_vm.connect(fe_ip, port=22022, pwd="admin1234@sugon")
             cmd_check_gone = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"SHOW DATABASES LIKE '{db_name}';\""
             result_gone = ssh_vm.run(cmd_check_gone)
@@ -399,16 +394,13 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入数据库名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="数据库", exact=True).click()
-            doris_page.wait_for_page_ready()
             keyword = db_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_database_exist(keyword)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
@@ -421,20 +413,17 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入用户名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             doris_page.get_by_role("tab", name="用户").click()
-            doris_page.wait_for_page_ready()
             keyword = user_name[:-2]
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "用户名", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("Doris-创建并删除用户")
+    @allure.title("Doris-创建和删除用户")
     def test_create_and_delete_user(self, doris_page, doris, ssh_host, ssh_vm):
         """测试创建和删除Doris用户，并进行后端验证"""
         instance_name = doris["name"]
@@ -452,7 +441,7 @@ class TestDorisBasic:
 
         with allure_step_log(f"步骤三：后端验证：使用新用户登录并执行查询"):
             fe_node_name = f"{instance_name}_fe_node01"
-            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
             ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
             # 验证新用户可以成功登录
             cmd_login = f"mysql -u{user_name} -p'{user_password}' -P9030 -h127.0.0.1 -e 'SELECT 1;'"
@@ -487,7 +476,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤二：后端验证：使用旧密码登录成功"):
             fe_node_name = f"{instance_name}_fe_node01"
-            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
             ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
             cmd_old_pwd = f"mysql -u{user_name} -p'{old_password}' -P9030 -h127.0.0.1 -e 'SELECT 1;'"
             result_old = ssh_vm.run(cmd_old_pwd)
@@ -536,7 +525,7 @@ class TestDorisBasic:
 
         with allure_step_log("步骤四：后端验证：所有用户已删除"):
             fe_node_name = f"{instance_name}_fe_node01"
-            fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+            fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
             ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
             for user_name in user_names:
                 cmd_check = f"mysql -uadmin -p'{admin_password}' -P9030 -h127.0.0.1 -e \"SELECT user FROM mysql.user WHERE user = '{user_name}';\""
@@ -560,7 +549,7 @@ class TestDorisBasic:
 
         # 获取FE节点IP，用于后端验证
         fe_node_name = f"{instance_name}_fe_node01"
-        fe_ip = db_util.get_node_mfip_from_db(doris_page, ssh_host, "sugoncloud_doris", fe_node_name)
+        fe_ip = ssh_host.get_node_mfip("sugoncloud_doris", fe_node_name)
         ssh_vm.connect(fe_ip, port=22022, pwd=admin_password)
 
         # 测试1: 对数据库、表的只读权限
@@ -732,10 +721,10 @@ class TestDorisBasic:
 
         with allure_step_log(f"步骤三：编辑BE参数 {be_param_name} 值为 {be_param_value}"):
             doris_page.edit_be_parameter(instance_name, be_param_name, be_param_value)
-            doris_page.assert_list_contain("47", "运行值", exact_match=True)
 
         with allure_step_log("步骤四：验证BE参数编辑结果"):
             doris_page.assert_popup_success("执行成功")
+            doris_page.assert_list_contain("47", "运行值", exact_match=True)
 
     @allure.title("Doris-参数设置页搜索")
     def test_parameter_search(self, doris_page, doris):
@@ -746,17 +735,14 @@ class TestDorisBasic:
         with allure_step_log("步骤一：输入参数名称进行搜索"):
             doris_page.goto_submenu("实例管理")
             doris_page.locator("#cloud-container-content").get_by_text(instance_name).first.click()
-            doris_page.wait_for_page_ready()
             sleep(2)
             doris_page.get_by_role("tab", name="参数设置").click()
             sleep(3)
-            doris_page.wait_for_page_ready()
             keyword = param_keyword
             doris_page.search(keyword)
             doris_page.assert_list_contain(keyword, "参数名称", exact_match=False)
 
         with allure_step_log("步骤二：重置搜索条件"):
             doris_page.locator("div.cloud-button-btn").get_by_text("重置").click()
-            doris_page.wait_for_page_ready()
             # 断言搜索输入框已清空
             assert doris_page._input_search.input_value() == "", "重置后搜索输入框未被清空"

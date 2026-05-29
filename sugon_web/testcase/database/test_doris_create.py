@@ -3,7 +3,6 @@ import pytest
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, random_string
-from sugon_web.utils import db_util
 
 
 
@@ -29,14 +28,15 @@ class TestDorisCreate:
         with allure_step_log("步骤二：验证创建结果"):
             doris_page.assert_popup_success("Doris创建任务提交成功")
             doris_page.assert_list_contain(instance_name)
-            doris_page.assert_status(instance_name, status="就绪", timeout=1800)
+            doris_page.assert_status(instance_name, status="就绪", timeout=1800, refresh=True)
 
         with allure_step_log("步骤三：删除实例"):
             doris_page.delete_instance(instance_name)
 
         with allure_step_log("步骤四：验证删除结果"):
             doris_page.assert_deleted(instance_name, timeout=1200)
-            db_util.assert_backend_deleted(doris_page, ssh_host, instance_name)
+            ssh_host.wait_vm_deleted(instance_name)
+            ssh_host.wait_volume_deleted(instance_name)
 
     @allure.title("Doris-批量删除实例")
     def test_batch_delete_instances(self, doris_page, ssh_host):
@@ -48,7 +48,7 @@ class TestDorisCreate:
                 doris_page.create_instance(name=instance_name)
                 doris_page.assert_popup_success("Doris创建任务提交成功")
                 doris_page.assert_list_contain(instance_name)
-                doris_page.assert_status(instance_name, status="就绪", timeout=1800)
+                doris_page.assert_status(instance_name, status="就绪", timeout=1800, refresh=True)
 
         with allure_step_log("步骤二：批量删除实例"):
             doris_page.batch_delete_instances(instance_names)
@@ -56,4 +56,5 @@ class TestDorisCreate:
         with allure_step_log("步骤三：验证批量删除结果"):
             for instance_name in instance_names:
                 doris_page.assert_deleted(instance_name, timeout=1200)
-                db_util.assert_backend_deleted(doris_page, ssh_host, instance_name)
+                ssh_host.wait_vm_deleted(instance_name)
+                ssh_host.wait_volume_deleted(instance_name)

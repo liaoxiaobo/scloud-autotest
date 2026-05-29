@@ -9,7 +9,7 @@ from sugon_web.utils.util import random_data, load_data
 @allure.story('云硬盘-快照基本功能验证')
 class TestEVSS:
 
-    @allure.title("云硬盘快照-创建&删除")
+    @allure.title("云硬盘快照-创建和删除")
     @pytest.mark.parametrize("params", load_data('test_volume_add_snapshot'))
     def test_volume_add_snapshot(self, evs_page, volume, params):
         snapshot_name = params["snapshot_name_prefix"] + random_data()
@@ -28,6 +28,7 @@ class TestEVSS:
         with allure_step_log("步骤3: 删除云硬盘快照"):
             evs_page.evss_delete(snapshot_name)
             evs_page.assert_deleted(snapshot_name)
+            evs_page.page.wait_for_timeout(3000)  # 硬等待云盘解除其快照关联，解决删除云盘报错问题
 
     @allure.title("云硬盘快照-批量删除")
     def test_snapshot_batch_delete(self, evs_page, volume):
@@ -52,7 +53,7 @@ class TestEVSS:
             for name in snapshot_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("云硬盘快照-列表页搜索&重置")
+    @allure.title("云硬盘快照-搜索和重置")
     def test_evss_search(self, evs_page, evss):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -62,7 +63,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("云硬盘快照-修改")
@@ -104,9 +104,9 @@ class TestEVSS:
             evs_page.evs_remove(name)
             evs_page.evs_delete(name)
             evs_page.assert_deleted(name)
-            assert ssh_host.run(f"cinder list| grep {name}") == ""
+            ssh_host.wait_volume_deleted(name)
 
-    @allure.title("快照策略-创建&删除")
+    @allure.title("快照策略-创建和删除")
     @pytest.mark.parametrize("params", load_data('test_create_policies'))
     def test_evss_policy_create(self, evs_page, params):
         """测试云服务器快照策略创建功能"""
@@ -162,7 +162,7 @@ class TestEVSS:
             for name in policy_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("快照策略-列表页搜索&重置")
+    @allure.title("快照策略-搜索和重置")
     def test_evss_policy_search(self, evs_page, evss_policy):
 
         with allure_step_log("步骤1: 输入名称进行搜索"):
@@ -172,7 +172,6 @@ class TestEVSS:
 
         with allure_step_log("步骤2: 重置搜索条件"):
             evs_page.btn_reset.click()
-            evs_page.wait_for_page_ready()
             assert evs_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
     @allure.title("快照策略-修改")
@@ -182,7 +181,7 @@ class TestEVSS:
             evs_page.evss_policy_edit(name=evss_policy, hours=[7,8,9])
             evs_page.assert_popup_success("修改策略成功")
 
-    @allure.title("快照策略-云硬盘绑定&解绑快照策略")
+    @allure.title("快照策略-绑定和解绑云硬盘")
     def test_volume_bind_evss_policy(self, evs_page, volume, evss_policy):
 
         with allure_step_log("步骤1: 绑定快照策略"):
@@ -214,7 +213,7 @@ class TestEVSS:
             )
             evs_page.assert_popup_success("创建云硬盘成功")
 
-            for i in range(3):
+            for i in range(1, 4):
                 volume_names.append(f"{base_name}-{i}")
 
             for name in volume_names:
@@ -247,7 +246,7 @@ class TestEVSS:
             for name in volume_names:
                 evs_page.assert_deleted(name)
 
-    @allure.title("快照任务-禁用&开启自动快照")
+    @allure.title("快照任务-禁用和开启自动快照")
     def test_volume_auto_snapshot(self, evs_page, volume, evss_policy):
 
         with allure_step_log("步骤1: 绑定快照策略"):
