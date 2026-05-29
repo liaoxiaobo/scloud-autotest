@@ -1,6 +1,6 @@
 import allure
 import pytest
-from sugon_web.pages.database import DorisPage, MongoDBPage, MySQLPage, PgSQLPage, XScalePage
+from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQLPage, PgSQLPage, XScalePage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
@@ -29,6 +29,14 @@ def pgsql_page(page):
     pgsql_page = PgSQLPage(page)
     pgsql_page.goto_service('AnhanDB(for PostgreSQL)')
     return pgsql_page
+
+
+@pytest.fixture(scope="function")
+def kingbase_page(page):
+    """初始化KingbaseES实例管理页面"""
+    kingbase_page = KingbasePage(page)
+    kingbase_page.goto_service('人大金仓 KingbaseES')
+    return kingbase_page
 
 
 @pytest.fixture(scope="function")
@@ -159,6 +167,53 @@ def pgsql(browser_context, config):
         pgsql_page.delete_instance(data["name"])
 
     page.close()
+
+
+@pytest.fixture(scope="class")
+def kingbase(browser_context, config):
+    """创建一个供整个测试类使用的KingbaseES集群实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    kingbase_page = KingbasePage(page)
+    kingbase_page.goto_service('人大金仓 KingbaseES')
+    name = f"kingbase-{random_data()}"
+    instance_type = "集群"
+    admin_password = "Admin1234@sugon"
+    db_name = f"autodb_{random_string(k=5)}"
+    user_name = f"user_{random_string(k=5)}"
+    user_password = f"Pwd@1{random_string(k=5)}"
+    data = {
+        "name": name,
+        "admin_password": admin_password,
+        "db_name": db_name,
+        "user_name": user_name,
+        "user_password": user_password,
+    }
+    logger.info(f"为测试类创建共享KingbaseES实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        kingbase_page.create_instance(name, instance_type=instance_type, password=admin_password)
+        kingbase_page.assert_popup_success("创建实例")
+        kingbase_page.assert_list_contain(name)
+        kingbase_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
+
+    with allure_step_log(f"前置操作：创建数据库 {db_name}"):
+        kingbase_page.create_database(name, db_name)
+        kingbase_page.assert_popup_success("创建数据库成功,如果数据未更新,请刷新页面")
+        kingbase_page.assert_list_contain(db_name)
+
+    with allure_step_log(f"前置操作：创建用户 {user_name}"):
+        kingbase_page.create_user(name, user_name, user_password)
+        kingbase_page.assert_popup_success("创建用户成功")
+        kingbase_page.assert_list_contain(user_name, "用户名")
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享KingbaseES实例: {name}")
+        kingbase_page.delete_instance(data["name"])
+
+    page.close()
+
 
 @pytest.fixture(scope="class")
 def mongodb(browser_context, config):
