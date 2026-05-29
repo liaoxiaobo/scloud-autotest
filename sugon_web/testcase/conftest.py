@@ -309,7 +309,7 @@ def ecs_page(page):
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    ops_page.goto_service('网络设施')
+    # ops_page.goto_service('网络设施')
     return ops_page
 
 def _get_vm_fixture_params(request: pytest.FixtureRequest) -> VmFixtureParams:
@@ -656,7 +656,7 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            ops_page.goto_service("网络设施")
+            # ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
@@ -786,10 +786,8 @@ def vm(
                 instance_config = _build_vm_instance_params(shared_params, instance_params)
                 base_name = random_data()
                 create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
-                if count != 1:
-                    raise ValueError("'vm.instances' items do not support basic.count > 1")
 
-                current_vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+                current_vm_names = _build_vm_fixture_names(base_name, count)
                 _create_vm_resources(
                     ecs_page=ecs_page,
                     create_request=create_request,
@@ -845,6 +843,7 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+        vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []

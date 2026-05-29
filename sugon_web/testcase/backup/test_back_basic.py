@@ -167,7 +167,7 @@ class TestBackupBasic:
             backup_page.backup_search(task_name)
             backup_page.assert_status(task_name, "已启动", timeout=900)
             backup_page.assert_status(task_name, "成功", timeout=5)
-            backup_page.assert_backup_data(server_name, "备份成功")
+            backup_page.assert_backup_data_status(server_name, "备份成功")
             backup_page.get_backup_data(server_name)
             backup_page.goto_submenu('任务')
             backup_page.assert_backup_policy_details(task_name, {"状态": "备份成功"}, "周期性任务")

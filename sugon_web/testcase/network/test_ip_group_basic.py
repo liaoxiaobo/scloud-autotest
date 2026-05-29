@@ -99,7 +99,7 @@ class TestIpGroupBasic:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤2: 验证详情页修改结果"):
-            vpc_page.assert_detail_basic_info(name=group_name, desc=ip_group["desc"])
+            vpc_page.assert_ip_group_detail_basic_info(name=group_name, desc=ip_group["desc"])
             detail_ips = vpc_page.get_detail_ip_addresses()
             for ip in new_ip_addresses:
                 assert ip in detail_ips, f"详情页IP修改失败，期望包含: {ip}，实际: {detail_ips}"
@@ -124,7 +124,7 @@ class TestIpGroupBasic:
 
         with allure_step_log(f"步骤1: 进入IP地址组 {group_name} 详情页并校验基本信息"):
             vpc_page.goto_ip_group_detail(group_name)
-            vpc_page.assert_detail_basic_info(name=group_name, desc=ip_group["desc"])
+            vpc_page.assert_ip_group_detail_basic_info(name=group_name, desc=ip_group["desc"])
             detail_ips = vpc_page.get_detail_ip_addresses()
             for ip in ip_group["ip_addresses"]:
                 assert ip in detail_ips, f"详情页初始IP缺失，期望包含: {ip}，实际: {detail_ips}"
