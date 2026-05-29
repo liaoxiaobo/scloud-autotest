@@ -4,6 +4,7 @@ import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.storage import EvsPage
+from sugon_web.pages.storage.obs import ObsPage
 from sugon_web.pages.compute import EcsPage, BmsPage
 from sugon_web.pages.compute.ecs import (
     EcsCreateRequest,
@@ -305,6 +306,15 @@ def volume(evs_page, request):
 def ecs_page(page):
     """初始化弹性云服务器页对象"""
     return EcsPage(page)
+
+
+@pytest.fixture(scope="function")
+def obs_page(page):
+    """初始化对象存储专业版页对象并导航到服务页"""
+    obs = ObsPage(page)
+    obs.goto_service("对象存储专业版")
+    return obs
+
 
 @pytest.fixture(scope="function")
 def ops_page(page):
