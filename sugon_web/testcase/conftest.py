@@ -670,9 +670,22 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         return
     with allure_step_log(f"清理虚机资源"):
         ecs_page.goto_service("弹性云服务器")
-        ecs_page.ecs_remove(vm_names)
-        ecs_page.ecs_delete(vm_names)
-        ecs_page.assert_deleted(vm_names, timeout=600)
+        # 过滤掉已经被删除的虚机，避免重复删除报错
+        existing_names = []
+        for name in vm_names:
+            try:
+                ecs_page.search(name)
+                ecs_page.get_row_by_name(name)
+                existing_names.append(name)
+            except Exception:
+                logger.info(f"虚机 {name} 已不存在，跳过清理")
+                continue
+        if not existing_names:
+            logger.info("所有虚机已清理，无需操作")
+            return
+        ecs_page.ecs_remove(existing_names)
+        ecs_page.ecs_delete(existing_names)
+        ecs_page.assert_deleted(existing_names, timeout=600)
 
 
 @pytest.fixture(scope="class")
@@ -780,11 +793,13 @@ def vm(
     try:
         metadata_list: list[VmMetadata] = []
 
+        name_prefix = params.get('name_prefix', '')
+
         if instance_params_list:
             shared_params = {key: value for key, value in params.items() if key != "instances"}
             for instance_params in instance_params_list:
                 instance_config = _build_vm_instance_params(shared_params, instance_params)
-                base_name = random_data()
+                base_name = f"{name_prefix}{random_data()}"
                 create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
                 if count != 1:
                     raise ValueError("'vm.instances' items do not support basic.count > 1")
@@ -803,7 +818,7 @@ def vm(
                 metadata_list.extend(current_metadata)
         else:
             bind_mfip = params.get("bind_mfip", True)
-            base_name = random_data()
+            base_name = f"{name_prefix}{random_data()}"
             create_request, count, network, subnet = _build_vm_create_request(request, params, base_name)
             vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
 
