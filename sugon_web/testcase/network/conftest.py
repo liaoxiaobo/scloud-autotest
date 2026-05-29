@@ -3,7 +3,7 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import VpcPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -32,10 +32,52 @@ def vpc_page(page):
     return VpcPage(page)
 
 
+@pytest.fixture(scope="function")
+def dc_page(page):
+    """初始化云专线DC页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        DcPage: 云专线DC页面对象实例。
+    """
+    return DcPage(page)
+
+
+@pytest.fixture(scope="function")
+def er_page(page):
+    """初始化企业路由器页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        ErPage: 企业路由器页面对象实例。
+    """
+    return ErPage(page)
+
+
+@pytest.fixture(scope="function")
+def tm_page(page):
+    """初始化流量镜像页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        TmPage: 流量镜像页面对象实例。
+    """
+    return TmPage(page)
+
+
 def _build_vpc_create_kwargs(params=None):
     """根据参数构建VPC创建入参。"""
     params = params or {}
+    name_prefix = params.get('name_prefix', '')
     name = params.get('name', random_data(length=3))
+    if name_prefix:
+        name = f"{name_prefix}{name}"
 
     return {
         "name": name,

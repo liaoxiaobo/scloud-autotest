@@ -221,7 +221,26 @@ class BasePage(Playwright):
         if self.dialog_close.is_visible():
             self.logger.info("发现未关闭的对话框，正在关闭...")
             self.dialog_close.click()
-            # self.page.keyboard.press("Escape")    # 也可以按ESC键
+        # 补充关闭 Element UI / sugon 弹窗
+        for btn_text in ["确定", "确 定", "知道了", "关闭", "确认"]:
+            for btn in self.page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button, .sugon-dialog button").filter(has_text=btn_text).all():
+                try:
+                    if btn.is_visible():
+                        btn.click()
+                        self.page.wait_for_timeout(500)
+                        break
+                except Exception:
+                    continue
+        # 兜底：JS 强制移除残留的 sugon-dialog 遮罩
+        self.page.evaluate("""
+            () => {
+                document.querySelectorAll('.sugon-dialog').forEach(d => {
+                    d.style.display = 'none';
+                });
+            }
+        """)
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(300)
 
     def search(self, keyword: str):
         """公共方法: 搜索操作"""
@@ -281,6 +300,10 @@ class BasePage(Playwright):
 
     def _goto_service_by_menu(self, service: str) -> bool:
         """通过原有顶栏菜单导航到指定服务。"""
+        # 关闭可能遮挡菜单的弹窗（由 close_dialog_if_exists 统一处理）
+        self.close_dialog_if_exists()
+        self.page.wait_for_timeout(500)
+
         navigation_path = SERVICE_MAP[service]
 
         if len(navigation_path) == 1:
@@ -302,8 +325,16 @@ class BasePage(Playwright):
             self.hover(root_menu)
             self.page.wait_for_timeout(500)
             self.hover(category)
-            self.page.wait_for_timeout(500)
-            self.click(service)
+            self.page.wait_for_timeout(800)
+            try:
+                self.click(service)
+            except Exception:
+                # 部分菜单无第三层（如 运营→租户 直接进入IAM），回退点击二级菜单中可见项
+                self.logger.info(f"未找到'{service}'子项，点击二级菜单中可见'{category}'")
+                for el in self.page.get_by_text(category).all():
+                    if el.is_visible():
+                        el.click()
+                        break
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
             except:
@@ -382,8 +413,8 @@ class BasePage(Playwright):
             is_expanded = parent.evaluate("el => el.classList.contains('one-tree-expand')")
             if not is_expanded:
                 parent.click()
-        # 根据子菜单参数导航到对应页面
-        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).click()
+        # 根据子菜单参数导航到对应页面（使用 first 处理菜单项重复的情况）
+        self.locator("#cloud-menu-left").get_by_text(submenu, exact=True).first.click()
         self.page.wait_for_timeout(1000)    # 确保页面导航后页面加载完全
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
@@ -1188,6 +1219,9 @@ class BasePage(Playwright):
             headers = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper th").all_text_contents()
         else:
             headers = self.table_headers
+
+        # 清理表头文本中的特殊空白字符（如 \xa0、&nbsp;），与 _get_cell_contents 保持一致
+        headers = [re.sub(r'\s+', ' ', h).strip() for h in headers]
 
         cell_contents = self._get_cell_contents(target_row)
 

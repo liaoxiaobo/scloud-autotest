@@ -78,7 +78,10 @@ class OpsPage(BasePage):
 
         # 选择端口
         self.get_by_placeholder("请选择端口").click()
-        self.get_by_text(ip, exact=exact).click()
+        self.page.wait_for_timeout(500)
+        dropdown = self.page.locator(".el-select-dropdown:visible")
+        option = dropdown.get_by_text(ip, exact=exact).first
+        option.click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()
 
     @submenu("平台网络")
