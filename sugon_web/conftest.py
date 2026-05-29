@@ -432,6 +432,18 @@ def _login(page, config, max_retries=3):
                 logger.info(f"{'=' * 40}")
 
             try:
+                # 关闭可能存在的系统提示弹窗
+                try:
+                    msg = page.locator(".el-message-box__wrapper:visible")
+                    if msg.count() > 0:
+                        btn = msg.locator("button").filter(has_text="确定")
+                        if btn.count() > 0 and btn.first.is_visible():
+                            btn.first.click()
+                        else:
+                            page.keyboard.press("Escape")
+                        page.wait_for_timeout(500)
+                except Exception:
+                    pass
                 # 填写登录信息
                 page.get_by_placeholder("请输入登录账号").fill(username)
                 page.get_by_placeholder("请输入登录密码").fill(password)

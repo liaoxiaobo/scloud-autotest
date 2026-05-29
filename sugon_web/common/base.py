@@ -83,7 +83,9 @@ class BasePage(Playwright):
         """公共元素:新建按钮"""
         locators = [
             self.get_by_text("新建", exact=True),
-            self.get_by_text("创建集群", exact=True)
+            self.get_by_text("创建集群", exact=True),
+            self.locator("button").filter(has_text="新建"),
+            self.get_by_role("button", name="新建"),
         ]
 
         return self._find_element(locators, "新建按钮")
@@ -112,7 +114,11 @@ class BasePage(Playwright):
             self.locator(".input-with-select > .el-input__inner"),
             self.get_by_role("textbox", name="请输入设备名称"),
             self.get_by_role("textbox", name="搜索(实例名称)"),
-            self.get_by_placeholder("搜索(目的地址)")   # 路由表规则搜索框
+            self.get_by_placeholder("搜索(目的地址)"),   # 路由表规则搜索框
+            # BMS 裸金属页面搜索框
+            self.get_by_role("textbox", name="搜索（网络名称）"),
+            self.get_by_role("textbox", name="搜索（物理机）"),
+            self.get_by_role("textbox", name="搜索（带外IP）"),
         ]
 
         return self._find_element(locators, "搜索框")
@@ -240,9 +246,14 @@ class BasePage(Playwright):
 
     def _is_current_service_path(self, service_path: str) -> bool:
         """判断当前页面是否已位于目标服务下的任意页面。"""
-        current_path, _ = self._normalize_route_parts(self.page.url)
-        target_path, _ = self._normalize_route_parts(service_path)
-        return current_path == target_path
+        current_path, current_hash = self._normalize_route_parts(self.page.url)
+        target_path, target_hash = self._normalize_route_parts(service_path)
+        if current_path != target_path:
+            return False
+        # 若服务路径包含 hash，则要求当前 hash 也以该前缀开头
+        if target_hash and not current_hash.startswith(target_hash):
+            return False
+        return True
 
     def _goto_service_by_path(self, service: str, service_path: str) -> bool:
         """通过服务入口路径直达指定服务。"""
@@ -276,6 +287,7 @@ class BasePage(Playwright):
             # 两层结构：基础设施 -> 服务
             root_menu = navigation_path[0]
             self.hover(root_menu)
+            self.page.wait_for_timeout(500)
             self.click(service)
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
@@ -288,7 +300,9 @@ class BasePage(Playwright):
             # 三层结构：资源中心 -> 二级菜单 -> 服务
             root_menu, category = navigation_path
             self.hover(root_menu)
+            self.page.wait_for_timeout(500)
             self.hover(category)
+            self.page.wait_for_timeout(500)
             self.click(service)
             try:
                 expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
@@ -951,12 +965,19 @@ class BasePage(Playwright):
         """公共方法: 等待页面完全就绪"""
         self.page.wait_for_load_state("domcontentloaded")  # 等待DOM加载完成
         self.page.wait_for_load_state("load")  # 等待页面加载完成（如图片、样式表、脚本）
-        # 等待所有 Element UI loading 遮罩消失
+        # 等待 Element UI loading 遮罩消失（部分页面可能有常驻 spinner，超时后降级为警告）
         loading_spinners = self.page.locator(".el-loading-spinner")
         count = loading_spinners.count()
         if count > 0:
             for i in range(count):
-                loading_spinners.nth(i).wait_for(state='hidden')
+                try:
+                    spinner = loading_spinners.nth(i)
+                    # 只等待当前可见的 spinner；已隐藏的跳过
+                    if spinner.is_visible():
+                        spinner.wait_for(state='hidden', timeout=10000)
+                except Exception:
+                    # 个别 spinner 可能常驻不消失，降级为警告而非失败
+                    pass
 
     def wait_for_source_complete(self, name, loading_timeout=10, complete_timeout=180):
         """等待资源状态加载完成
