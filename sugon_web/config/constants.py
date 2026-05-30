@@ -36,6 +36,7 @@ SERVICE_PATH_MAP = {
     '云容器引擎': '/cce',
     '交换机组': '/ops/#/exchange-unit-list',
     '基础设施': '/ops',
+    '统一身份认证IAM': '/iam/#/departmentManage',
     '运维': '/cms'
 }
 
