@@ -16,7 +16,7 @@ class TestIpGroupListenerAssociation:
     @allure.title("IP地址组-创建监听器的同时关联IP地址组")
     def test_create_listener_with_ip_group(self, vpc_page, slb, ip_group, clean_lb_listener):
         """场景1：创建监听器的同时关联IP地址组（用例410585）"""
-        slb_name = slb
+        slb_name = slb["name"]
         group_name = ip_group["name"]
         lb_name = f"lb-{random_data()}"
         pool_name = "backend_1"
@@ -62,7 +62,7 @@ class TestIpGroupListenerAssociation:
     @allure.title("IP地址组-先创建监听器再关联IP地址组")
     def test_create_listener_then_associate_ip_group(self, vpc_page, slb, ip_group, clean_lb_listener):
         """场景2：先创建监听器再关联IP地址组（用例410587）"""
-        slb_name = slb
+        slb_name = slb["name"]
         group_name = ip_group["name"]
         lb_name = f"lb-{random_data()}"
         pool_name = "backend_1"

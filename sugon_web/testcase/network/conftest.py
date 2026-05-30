@@ -805,7 +805,18 @@ def slb(browser_context, config, vpc, request):
         vpc_page.search(slb_name)
         vpc_page.assert_status(slb_name, status="运行中")
 
-    yield slb_name
+    # 进入详情页获取完整信息（列表页信息不全）
+    with allure_step_log(f"Setup: 获取负载均衡 {slb_name} 详情信息"):
+        detail_info = vpc_page.get_slb_detail_info(slb_name)
+
+    yield {
+        "name": slb_name,
+        "vip": detail_info.get("vip"),
+        "id": detail_info.get("id"),
+        "status": detail_info.get("status"),
+        "version": detail_info.get("version"),
+        "ha": detail_info.get("ha"),
+    }
 
     with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):
         try:
@@ -826,7 +837,7 @@ def lb(browser_context, config, slb, request):
     vpc_page = VpcPage(page)
     params = getattr(request, "param", {})
 
-    params.setdefault("slb_name", slb)
+    params.setdefault("slb_name", slb["name"])
     params.setdefault("protocol", "TCP")
     params.setdefault("port", 80)
 

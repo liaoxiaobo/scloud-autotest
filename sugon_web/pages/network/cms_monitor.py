@@ -89,6 +89,8 @@ class MonitorMixin(MonitorAssertionMixin, BasePage):
 
         self.page.wait_for_timeout(3000)
         self.wait_for_page_ready()
+        # 等待监控页面关键元素渲染（Vue 异步加载可能超过 3 秒）
+        self.wait_for_monitor_page_ready(timeout=30000)
 
         # 验证是否已成功导航到详情页
         if list_url_path in self.page.url and "detail" not in self.page.url:
@@ -213,20 +215,31 @@ class MonitorMixin(MonitorAssertionMixin, BasePage):
         # 页面加载后默认radioType=-1即为实时，先检查当前是否已是目标状态
         # el-radio-button 会渲染 label[role=radio] 和 input[type=radio] 两个元素，
         # 使用 filter 定位到可见的 label 元素避免 strict mode violation
-        radio = self.locator("label.el-radio-button").filter(has_text=range_name).first
-        if radio.count() > 0 and radio.is_visible():
-            is_checked = radio.evaluate(
-                "el => el.classList.contains('is-checked') || "
-                "el.getAttribute('aria-checked') === 'true'"
+        # 轮询等待元素出现（Vue 异步渲染可能延迟）
+        deadline = time.time() + 30
+        radio = None
+        while time.time() < deadline:
+            radio = self.locator("label.el-radio-button").filter(has_text=range_name).first
+            if radio.count() > 0 and radio.is_visible():
+                break
+            time.sleep(1)
+
+        if not radio or radio.count() == 0:
+            raise AssertionError(
+                f"未找到时间范围radio: {range_name}，页面可能未正确加载。"
+                f"当前URL: {self.page.url}"
             )
-            if is_checked:
-                self.logger.info(f"当前已是目标时间范围: {range_name}，跳过点击")
-                return
-            radio.click()
-            self.page.wait_for_timeout(1000)
-            self.logger.info(f"选择监控时间范围: {range_name}")
-        else:
-            self.logger.warning(f"未找到时间范围radio: {range_name}")
+
+        is_checked = radio.evaluate(
+            "el => el.classList.contains('is-checked') || "
+            "el.getAttribute('aria-checked') === 'true'"
+        )
+        if is_checked:
+            self.logger.info(f"当前已是目标时间范围: {range_name}，跳过点击")
+            return
+        radio.click()
+        self.page.wait_for_timeout(1000)
+        self.logger.info(f"选择监控时间范围: {range_name}")
 
     # ------------------------------------------------------------------
     # 监控对象切换

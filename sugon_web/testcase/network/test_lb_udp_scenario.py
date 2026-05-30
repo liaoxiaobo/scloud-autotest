@@ -57,11 +57,11 @@ class _BaseTestLbUdpScenario:
         backends = vm[1:4]
         lb_name = f"lb-udp-{random_data()}"
         pool_name = f"pool-{random_data()}"
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤1: 创建UDP监听器"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="UDP",
                 port=PORT,
@@ -72,7 +72,7 @@ class _BaseTestLbUdpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤2: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -111,10 +111,10 @@ class _BaseTestLbUdpScenario:
             )
 
         with allure_step_log("步骤5: 绑定公网IP"):
-            eip = vpc_page.slb_bind_eip(slb)
-            cleanup.add_eip(slb)
+            eip = vpc_page.slb_bind_eip(slb["name"])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
-            actual_eip = vpc_page.get_slb_eip(slb)
+            actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip == eip, f"绑定公网IP不一致: 期望{eip}, 实际{actual_eip}"
 
         with allure_step_log("步骤6: 公网FIP发送UDP消息"):
@@ -153,7 +153,7 @@ class _BaseTestLbUdpScenario:
         backends = vm[1:4]
         lb_name = f"lb-udp-hc-{random_data()}"
         pool_name = f"pool-{random_data()}"
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤1: 后端启动UDP server"):
             for backend in backends:
@@ -162,7 +162,7 @@ class _BaseTestLbUdpScenario:
 
         with allure_step_log("步骤2: 创建UDP监听器(开启健康检查)"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="UDP",
                 port=PORT,
@@ -174,7 +174,7 @@ class _BaseTestLbUdpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤3: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -301,7 +301,7 @@ class _BaseTestLbUdpScenario:
         lb_name = f"lb-udp-acl-{random_data()}"
         pool_name = f"pool-{random_data()}"
         ip_group_name = f"ipg-{random_data()}"
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("前置: 创建IP地址组(包含ecs0的IP)"):
             vpc_page.ip_group_create(
@@ -318,7 +318,7 @@ class _BaseTestLbUdpScenario:
 
         with allure_step_log("步骤2: 创建UDP监听器并添加资源池成员"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="UDP",
                 port=PORT,
@@ -329,7 +329,7 @@ class _BaseTestLbUdpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
             vpc_page.lb_pool_add_vm(
                 vm_names=[b["name"] for b in backends],
@@ -340,7 +340,7 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤3: 配置访问控制(黑名单,包含ecs0)"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(
                 lb_name,
                 "access_control",
@@ -409,7 +409,7 @@ class _BaseTestLbUdpScenario:
             assert received, f"移除黑名单后ecs1访问应被后端接收: {hit_map}"
 
         with allure_step_log("步骤10: 修改为允许所有IP"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(lb_name, "access_control", enable=False)
             vpc_page.assert_popup_success()
             vpc_page.assert_lb_basic_info("允许所有IP访问")
@@ -445,7 +445,7 @@ class _BaseTestLbUdpScenario:
         lb_name = f"lb-udp-acl-ext-{random_data()}"
         pool_name = f"pool-{random_data()}"
         ip_group_name = f"ipg-{random_data()}"
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("前置: 创建IP地址组(包含ecs0的IP)"):
             vpc_page.ip_group_create(
@@ -462,7 +462,7 @@ class _BaseTestLbUdpScenario:
 
         with allure_step_log("步骤2: 创建UDP监听器并添加资源池成员"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="UDP",
                 port=PORT,
@@ -473,7 +473,7 @@ class _BaseTestLbUdpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
             vpc_page.lb_pool_add_vm(
                 vm_names=[b["name"] for b in backends],
@@ -484,7 +484,7 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_popup_success()
 
         with allure_step_log("步骤3: 配置访问控制(黑名单)"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(
                 lb_name,
                 "access_control",
@@ -507,8 +507,8 @@ class _BaseTestLbUdpScenario:
             assert_udp_all_rejected(hit_map, f"{self.SLB_VERSION} UDP 外网黑名单ecs0被拒绝")
 
         with allure_step_log("步骤5: 绑定公网IP"):
-            eip = vpc_page.slb_bind_eip(slb)
-            cleanup.add_eip(slb)
+            eip = vpc_page.slb_bind_eip(slb["name"])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤6: 外网客户端访问(黑名单外,应可达)"):
