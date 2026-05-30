@@ -333,7 +333,7 @@ class TestSlbV2UdpMonitorScenario:
         # 步骤1: 创建UDP监听器并添加资源池成员
         with allure_step_log("步骤1: 创建UDP监听器并添加资源池成员"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="UDP",
                 port=PORT_UDP,
@@ -345,7 +345,7 @@ class TestSlbV2UdpMonitorScenario:
             vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
             vpc_page.assert_listener_exists(lb_name)
             cleanup.add_listener({
-                "slb_name": slb,
+                "slb_name": slb["name"],
                 "lb_name": lb_name,
                 "pool_name": pool_name,
             })
@@ -370,9 +370,9 @@ class TestSlbV2UdpMonitorScenario:
                     backend, port=PORT_UDP, kill_pattern=f"UDP_server.py.*{PORT_UDP}"
                 )
 
-        lb_vip = vpc_page.get_slb_vip(slb)
-        slb_uuid = vpc_page.get_slb_uuid(slb)
-        project_id = vpc_page.get_slb_project_id(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
+        slb_uuid = vpc_page.get_slb_uuid(slb["name"])
+        project_id = vpc_page.get_slb_project_id(slb["name"])
 
         # 步骤3: 验证UDP连通性
         with allure_step_log("步骤3: 验证UDP连通性"):
@@ -386,7 +386,7 @@ class TestSlbV2UdpMonitorScenario:
             from sugon_web.pages.cms import CmsPage
             cms_page = CmsPage(page)
             cms_page.goto_submenu("负载均衡（基础版）")
-            cms_page.click_slb_in_list(slb, slb_uuid=slb_uuid)
+            cms_page.click_slb_in_list(slb["name"], slb_uuid=slb_uuid)
             cms_page.wait_for_page_ready()
             cms_page.page.wait_for_timeout(3000)
             cms_page.select_time_range("实时")
@@ -449,7 +449,7 @@ class TestSlbV2UdpMonitorScenario:
         with allure_step_log("步骤9: 查看实例级别监控曲线（网络服务）"):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.goto_submenu("负载均衡（基础版）")
-            vpc_page.click_action(slb, "查看监控")
+            vpc_page.click_action(slb["name"], "查看监控")
             vpc_page.select_time_range("实时")
             vpc_page.select_object_tab("实例")
             vpc_page.assert_monitor_charts_visible(min_charts=1)

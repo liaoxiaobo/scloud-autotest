@@ -36,11 +36,11 @@ class TestSlbV1LbScenario:
         backend_markers = {
             f"ecs{i + 1}": f"this is ecs{i + 1}" for i in range(len(backends))
         }
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤1: 创建监听器并添加资源池成员"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=PORT,
@@ -50,7 +50,7 @@ class TestSlbV1LbScenario:
             )
             vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
             vpc_page.lb_pool_add_vm(
                 vm_names=[b["name"] for b in backends],
@@ -83,16 +83,16 @@ class TestSlbV1LbScenario:
             )
 
         with allure_step_log("步骤4: 绑定第一个公网IP"):
-            available_eips = vpc_page.get_available_eips(slb)
+            available_eips = vpc_page.get_available_eips(slb["name"])
             if len(available_eips) < 2:
                 pytest.skip(
                     f"环境问题：当前环境可用公网IP仅{len(available_eips)}个，"
                     f"不足2个，无法完成更换公网IP验证"
                 )
-            first_eip = vpc_page.slb_bind_eip_by_ip(slb, available_eips[0])
-            cleanup.add_eip(slb)
+            first_eip = vpc_page.slb_bind_eip_by_ip(slb["name"], available_eips[0])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
-            actual_eip = vpc_page.get_slb_eip(slb)
+            actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip == first_eip, f"绑定公网IP不一致: 期望{first_eip}, 实际{actual_eip}"
 
         with allure_step_log("步骤5: 通过第一个公网IP访问"):
@@ -127,8 +127,8 @@ class TestSlbV1LbScenario:
             )
 
         with allure_step_log("步骤6: 解绑公网IP"):
-            vpc_page.slb_unbind_eip(slb)
-            actual_eip = vpc_page.get_slb_eip(slb)
+            vpc_page.slb_unbind_eip(slb["name"])
+            actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip is None, f"解绑后不应还有公网IP，实际: {actual_eip}"
 
         with allure_step_log("步骤7: 验证解绑后无法访问"):
@@ -141,10 +141,10 @@ class TestSlbV1LbScenario:
             )
 
         with allure_step_log("步骤8: 绑定第二个公网IP"):
-            second_eip = vpc_page.slb_bind_eip_by_ip(slb, available_eips[1])
-            cleanup.add_eip(slb)
+            second_eip = vpc_page.slb_bind_eip_by_ip(slb["name"], available_eips[1])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
-            actual_eip = vpc_page.get_slb_eip(slb)
+            actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip == second_eip, f"绑定公网IP不一致: 期望{second_eip}, 实际{actual_eip}"
             assert second_eip != first_eip, (
                 f"第二次绑定应选择不同的公网IP，实际两次均为: {first_eip}"

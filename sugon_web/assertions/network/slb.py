@@ -90,7 +90,7 @@ class SlbAssertionMixin:
         self.logger.info(f"资源池成员信息校验成功: {vm_name}, row_data={row_data}")
         return row_data
 
-    def assert_dialog_error(self, *expected_texts):
+    def assert_slb_dialog_error(self, *expected_texts):
         """
         验证包含预期错误信息的弹窗，并关闭该弹窗
 
