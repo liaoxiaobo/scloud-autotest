@@ -29,7 +29,7 @@ requirements_csv/目录下存放着本次编码任务的测试需求的csv文件
 2. CSV 文件中的同一组操作若需要执行多个执行命令才能完成的，则使用 `&&` 合并成同一行命令，如：`cd /root/test/ && echo "this is ecs1" >> index.html`
 3. CSV 文件中有些命令在执行后，系统不会立刻返回执行结果，这种命令则必须增加轮询等待，直至命令输出符合预期的正确结果，设置最长等待时长为 60 秒，如：`nohup python3 -m http.server 8080 > /dev/null 2>&1 &` 这类命令则需要轮询等待。
 4. CSV 文件中若有【打开虚拟机 vnc】、【打开虚拟机 vnc 控制台】、【打开虚拟机 vnc 窗口】等类似的操作虚拟机 VNC 的描述，则在 md 文件中必须改写为：通过 `ssh_vm` fixture 连接虚拟机后台，使用 `ssh_vm.connect(vm_mfip)` 建立 SSH 连接，再调用 `ssh_vm.run()` 执行命令。
-5. CSV 文件中若有【ssh 连接虚拟机系统后台】、【ssh 连接虚拟机】、【连接虚拟机后台】等类似的描述，则在 md 文件中必须改写为：使用 `ssh_vm` fixture（`sugon_web/conftest.py`）提供的 SSH 实例，调用其 `connect()`、`run()`、`ping()` 等方法（定义于 `sugon_web/common/ssh.py`）。
+5. CSV 文件中若有【ssh 连接虚拟机系统后台】、【ssh 连接虚拟机】、【连接虚拟机后台】等类似的描述，则在 md 文件中必须改写为：使用 `ssh_vm` fixture（`sugon_web/conftest.py`）提供的 SSH 实例，调用其 `connect()`、`run()`、`ping()` 等方法（定义于 `sugon_web/common/remote/ssh.py`）。
 6. CSV 文件中若有【本地客户端 ssh 连接环境和访问】、【ssh 连接环境物理机后台时】、【连接节点后台】等类似的描述（如：本地客户端通过 fip 访问负载均衡，执行命令：`curl http://$lb_fip:8080/index.html`），则在 md 文件中必须改写为：使用 `ssh_host` fixture 用于直接连接测试环境的系统后台。
 
 ## 第二部分：需求文档校验
@@ -82,6 +82,8 @@ requirements_csv/目录下存放着本次编码任务的测试需求的csv文件
 ## 阶段一完成时立即输出（必须，不得延迟到 SKILL 总收尾）
 
 **触发时机**：本阶段达到完成标志或被迫中断时,立即在对话框输出以下内容（不得跳过、不得合并到下一阶段）。
+
+> **同步持久化（强制）**：以下内容在对话框输出的同时，必须**追加写入运行报告文件** `skill_runs/test-script-workflow/test-script-workflow_{任务标识}_{YYYYMMDD_HHMM}.md`（任务标识 = 本阶段产出的需求 MD 英文文件名去 `.md`，后续各阶段均沿用此标识，不得改用脚本名）。本阶段为运行首个阶段时，先创建该文件并写入文件头（任务标识、运行开始时间、CSV/MD 来源），再追加本阶段内容；追加内容最前面须记录本阶段完成时间，格式：`## 阶段一：需求转换与校验　完成时间：YYYY-MM-DD HH:MM:SS`。
 
 1. **状态标题**
    - 正常完成 → `阶段一任务已完成`

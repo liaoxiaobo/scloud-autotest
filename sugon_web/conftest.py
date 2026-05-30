@@ -9,7 +9,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
-from sugon_web.common.ssh import SSH
+from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
 
@@ -157,7 +157,8 @@ def browser(config):
             # 动态选择浏览器类型
             browser = getattr(p, browser_type).launch(
                 headless=headless,
-                slow_mo=slow_mo
+                slow_mo=slow_mo,
+                args=["--ignore-certificate-errors", "--ignore-certificate-errors-spki-list"],
             )
             logger.info(f"浏览器 {browser_type} 启动成功")
 
@@ -448,6 +449,18 @@ def _login(page, config, max_retries=3):
                 logger.info(f"{'=' * 40}")
 
             try:
+                # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
+                for _close_attempt in range(3):
+                    try:
+                        dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
+                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
+                            dialog_btn.click()
+                            page.wait_for_timeout(500)
+                            continue
+                    except Exception:
+                        pass
+                    break
+
                 # 填写登录信息
                 page.get_by_placeholder("请输入登录账号").fill(username)
                 page.get_by_placeholder("请输入登录密码").fill(password)
