@@ -2,7 +2,6 @@ import re
 from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.assertions.database.doris import DorisAssertionMixin
 
 
@@ -65,12 +64,12 @@ class DorisPage(DorisAssertionMixin, BasePage):
         self.locator("li").filter(has_text=re.compile(rf"^{re.escape(version)}$")).click()
 
         # 项目选择
-        db_util.project_dropdown(self).click()
-        db_util.project_autotest(self).click()
+        self.project_dropdown().click()
+        self.project_autotest().click()
 
         # --- 网络设置 ---
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         # --- 配置设置 ---
         # 大小写策略已改为单选项；新版页面上第 3 项默认就是选中态
