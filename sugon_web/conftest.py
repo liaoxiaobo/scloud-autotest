@@ -21,6 +21,7 @@ def pytest_addoption(parser):
     parser.addoption("--stor", action="store", help="指定存储类型")
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
+    parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -185,11 +186,26 @@ def browser_context(browser, request):
         permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
     )
 
+    # 根据 --tracing 参数决定是否开启 Playwright tracing
+    trace_enabled = request.config.getoption("--tracing")
+    trace_path = None
+    if trace_enabled:
+        trace_dir = Path(__file__).resolve().parent.parent / "traces"
+        trace_dir.mkdir(exist_ok=True)
+        trace_path = trace_dir / f"trace_{request.node.name}.zip"
+        # screenshots=False + sources=False 大幅减小 trace 体积（约90%），
+        # 保留 snapshots=True 以获取 DOM 结构用于失败分析（弹窗内容、数据量等）
+        context.tracing.start(screenshots=False, snapshots=True, sources=False)
+        logger.info(f"tracing 已开启，trace 文件将保存至: {trace_path}")
+
     logger.info("浏览器上下文创建成功")
     request.node._browser_context = context
 
     yield context
 
+    if trace_enabled and trace_path:
+        context.tracing.stop(path=str(trace_path))
+        logger.info(f"tracing 已停止，trace 文件: {trace_path}")
     context.close()
     logger.info("浏览器上下文已关闭")
 
