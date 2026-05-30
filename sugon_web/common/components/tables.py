@@ -393,3 +393,27 @@ class TablesMixin:
         else:
             caret_wrapper.locator("i.ascending").click()
             self.logger.info(f"已按 {header_name} 升序排列")
+
+    def _get_interactive_row(self, row: Locator) -> Locator:
+        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
+        try:
+            # 1. 获取当前行在所属 tbody 中的物理索引
+            row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
+
+            # 2. 获取当前所属表格在页面所有 el-table 中的索引，用于解决多表格共存时的定位偏移
+            table_index = row.evaluate("""
+                el => {
+                    const table = el.closest('.el-table');
+                    if (!table) return -1;
+                    return Array.from(document.querySelectorAll('.el-table')).indexOf(table);
+                }
+            """)
+
+            if table_index != -1:
+                # 3. 在对应的表格内根据索引定位固定列中心对应的行
+                fixed_right = self.locator(".el-table").nth(table_index).locator(".el-table__fixed-right .el-table__row").nth(row_index)
+                if fixed_right.count() > 0 and fixed_right.is_visible():
+                    return fixed_right
+        except Exception as e:
+            self.logger.debug(f"通过索引获取可交互行时出错: {e}")
+        return row
