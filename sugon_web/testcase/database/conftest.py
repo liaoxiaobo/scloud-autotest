@@ -4,7 +4,6 @@ from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQL
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
-from sugon_web.assertions.backend import assert_backend_deleted
 
 
 @pytest.fixture(scope="function")
@@ -281,6 +280,7 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         logger.info(f"清理共享XScale实例: {data['name']}")
         xscale_page.delete_instance(data["name"])
         xscale_page.assert_deleted(name)
-        assert_backend_deleted(xscale_page.logger,ssh_host, name)
+        ssh_host.wait_vm_deleted(name)
+        ssh_host.wait_volume_deleted(name)
 
     page.close()
