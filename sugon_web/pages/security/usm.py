@@ -1,12 +1,14 @@
 import re
 import time
 import allure
+import pytest
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
+from sugon_web.assertions.security import UsmAssertionMixin
 from sugon_web.utils.logger import logger
 
 
-class UsmPage(BasePage):
+class UsmPage(UsmAssertionMixin, BasePage):
     """云堡垒机高级版USM 页面对象。
 
     覆盖以下能力：
@@ -745,65 +747,6 @@ class UsmPage(BasePage):
                 logger.debug(f"验证公网IP绑定状态失败: {e}")
             time.sleep(5)
         raise AssertionError(f"USM 实例 {name} 网络列未显示公网IP {eip}")
-
-    def assert_usm_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300) -> dict:
-        """断言 USM 实例的服务状态与虚拟机状态。
-
-        创建后若服务状态为"授权失败"，自动执行授权操作（选择1个月购买时长），
-        然后继续等待目标状态。
-
-        Args:
-            name: 实例名称
-            service_status: 期望的服务状态，默认"运行"
-            vm_status: 期望的虚拟机状态，默认"运行"
-            timeout: 超时时间（秒），默认 300
-
-        Returns:
-            dict: 匹配时的行数据字典
-        """
-        start_time = time.time()
-        last_data = {}
-        authorized = False
-        while time.time() - start_time < timeout:
-            try:
-                self.goto_service(self.service_name)
-                row_data = self.get_row_data(name)
-                last_data = row_data
-                svc = row_data.get("服务状态", "")
-                vmst = row_data.get("虚拟机状态", "")
-                if service_status in svc and vm_status in vmst:
-                    logger.info(f"USM 实例 {name} 状态符合预期: 服务={svc}, 虚拟机={vmst}")
-                    return row_data
-                # 检测到创建失败状态：虚拟机"创建中" + 服务"不可用"，说明该实例无法创建成功
-                if "创建中" in vmst and "不可用" in svc:
-                    logger.warning(f"USM 实例 {name} 创建失败（虚拟机=创建中, 服务=不可用），将自动清理并抛出异常供重新创建")
-                    try:
-                        self.usm_delete(name)
-                        self.assert_deleted(name, timeout=120)
-                        logger.info(f"USM 实例 {name} 已自动删除")
-                    except Exception as del_err:
-                        logger.warning(f"USM 实例 {name} 自动删除失败: {del_err}")
-                    raise AssertionError(
-                        f"USM 实例 {name} 创建失败（虚拟机状态=创建中, 服务状态=不可用），"
-                        f"已自动清理，请重新创建"
-                    )
-                # 创建后可能处于"授权失败"状态，需执行授权操作（仅一次）
-                # 虚拟机状态为"创建中"时授权按钮不可用，需等待 VM 就绪后再授权
-                if not authorized and "授权失败" in svc and "创建中" not in vmst:
-                    logger.info(f"USM 实例 {name} 服务状态为'授权失败'，执行授权操作")
-                    authorized = True
-                    try:
-                        self._usm_authorize(name)
-                        continue
-                    except Exception as e:
-                        logger.warning(f"USM 实例 {name} 自动授权失败: {e}")
-            except Exception as e:
-                logger.debug(f"读取 USM 实例 {name} 状态失败: {e}")
-            time.sleep(5)
-        raise AssertionError(
-            f"USM 实例 {name} 状态不符合预期：期望 服务={service_status}, 虚拟机={vm_status}; "
-            f"实际={last_data}"
-        )
 
     def _usm_authorize(self, name: str, duration: str = "1个月"):
         """对 USM 实例执行授权操作（自动触发，仅用于创建后授权失败场景）。

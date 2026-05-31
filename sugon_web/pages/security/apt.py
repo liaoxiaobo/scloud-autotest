@@ -2,10 +2,11 @@ import re
 import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
+from sugon_web.assertions.security import AptAssertionMixin
 from sugon_web.utils.logger import logger
 
 
-class AptPage(BasePage):
+class AptPage(AptAssertionMixin, BasePage):
     """攻击预警 页面对象。
 
     覆盖以下能力：
@@ -327,56 +328,6 @@ class AptPage(BasePage):
             logger.debug("APT 删除：无需勾选确认框")
         self._click_dialog_confirm()
         logger.info(f"APT 实例 {name} 删除请求已提交")
-
-    def assert_apt_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300):
-        """断言 APT 实例的服务状态与虚拟机状态。
-
-        Args:
-            name: 实例名称
-            service_status: 期望的服务状态，默认"运行"
-            vm_status: 期望的虚拟机状态，默认"运行"
-            timeout: 超时时间（秒），默认 300
-        """
-        start_time = time.time()
-        last_data = {}
-        iteration = 0
-        while time.time() - start_time < timeout:
-            iteration += 1
-            try:
-                current_url = self.page.url
-                if "#/apt" not in current_url or "create-apt" in current_url or "detail" in current_url:
-                    base_url = current_url.split('#')[0].rstrip('/')
-                    if not base_url.endswith('/das'):
-                        base_url = f"{base_url}/das"
-                    self.page.goto(f"{base_url}/#/apt")
-                else:
-                    self.page.reload()
-                self.wait_for_page_ready()
-                # 等待表格数据加载（表格有数据行且不是"暂无数据"）
-                try:
-                    self.page.wait_for_selector(".el-table__body-wrapper table tbody tr td:nth-child(2)", timeout=10000)
-                except Exception:
-                    pass
-                row_data = self.get_row_data(name)
-                last_data = row_data
-
-                svc = str(row_data.get("服务状态", "")).strip()
-                vmst = str(row_data.get("虚拟机状态", "")).strip()
-
-                logger.info(f"APT 状态检查 #{iteration}: 服务状态='{svc}', 虚拟机状态='{vmst}', 期望=({service_status},{vm_status}), 耗时={int(time.time()-start_time)}s")
-                svc_match = service_status in svc or svc in service_status or service_status == svc
-                vm_match = vm_status in vmst or vmst in vm_status or vm_status == vmst
-                logger.info(f"APT 状态匹配: svc_match={svc_match}, vm_match={vm_match}")
-                if svc_match and vm_match:
-                    logger.info(f"APT 实例 {name} 状态符合预期: 服务={svc}, 虚拟机={vmst}")
-                    return
-            except Exception as e:
-                logger.warning(f"读取 APT 实例 {name} 状态失败 (第{iteration}次): {e}")
-            time.sleep(5)
-        raise AssertionError(
-            f"APT 实例 {name} 状态不符合预期：期望 服务={service_status}, 虚拟机={vm_status}; "
-            f"实际={last_data}, 共检查{iteration}次, 耗时{int(time.time()-start_time)}s"
-        )
 
     def apt_to_details(self, name: str):
         """点击实例名称，进入详情页。
