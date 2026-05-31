@@ -45,7 +45,7 @@ class TestSlbV1EditPort:
 
         with allure_step_log("步骤1: 创建前置监听器"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_tcp_name,
                 protocol="TCP",
                 port=PORT_8080,
@@ -56,10 +56,10 @@ class TestSlbV1EditPort:
             )
             vpc_page.assert_popup_success(f"新建监听器 {lb_tcp_name} 成功")
             vpc_page.assert_listener_exists(lb_tcp_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_tcp_name, "pool_name": pool_tcp_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_tcp_name, "pool_name": pool_tcp_name})
 
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_http_name,
                 protocol="HTTP",
                 port=7070,
@@ -70,10 +70,10 @@ class TestSlbV1EditPort:
             )
             vpc_page.assert_popup_success(f"新建监听器 {lb_http_name} 成功")
             vpc_page.assert_listener_exists(lb_http_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_http_name, "pool_name": pool_http_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_http_name, "pool_name": pool_http_name})
 
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_udp_name,
                 protocol="UDP",
                 port=5050,
@@ -84,7 +84,7 @@ class TestSlbV1EditPort:
             )
             vpc_page.assert_popup_success(f"新建监听器 {lb_udp_name} 成功")
             vpc_page.assert_listener_exists(lb_udp_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_udp_name, "pool_name": pool_udp_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_udp_name, "pool_name": pool_udp_name})
 
         temp_lb_8082 = f"temp-tcp-8082-{random_data()}"
         temp_pool_8082 = f"pool-{random_data()}"
@@ -93,7 +93,7 @@ class TestSlbV1EditPort:
 
         with allure_step_log("步骤2: 创建临时监听器用于端口冲突测试"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=temp_lb_8082,
                 protocol="TCP",
                 port=8082,
@@ -103,10 +103,10 @@ class TestSlbV1EditPort:
             )
             vpc_page.assert_popup_success(f"新建监听器 {temp_lb_8082} 成功")
             vpc_page.assert_listener_exists(temp_lb_8082)
-            cleanup.add_listener({"slb_name": slb, "lb_name": temp_lb_8082, "pool_name": temp_pool_8082})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": temp_lb_8082, "pool_name": temp_pool_8082})
 
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=temp_lb_8083,
                 protocol="TCP",
                 port=8083,
@@ -116,7 +116,7 @@ class TestSlbV1EditPort:
             )
             vpc_page.assert_popup_success(f"新建监听器 {temp_lb_8083} 成功")
             vpc_page.assert_listener_exists(temp_lb_8083)
-            cleanup.add_listener({"slb_name": slb, "lb_name": temp_lb_8083, "pool_name": temp_pool_8083})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": temp_lb_8083, "pool_name": temp_pool_8083})
 
         with allure_step_log("步骤3: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -136,10 +136,10 @@ class TestSlbV1EditPort:
                 prepare_http_backend(ssh_vm, backend, f"ecs{i + 1}", port=PORT_8080)
                 cleanup.add_backend_server(backend, port=PORT_8080)
 
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤5: 修改端口为8081"):
-            vpc_page.goto_slb_detail(slb, "监听器")
+            vpc_page.goto_slb_detail(slb["name"], "监听器")
             vpc_page.lb_edit_basic_info(lb_tcp_name, field="port", port=8081)
             vpc_page.assert_popup_success()
             vpc_page.goto_lb_detail(lb_tcp_name)
@@ -161,14 +161,14 @@ class TestSlbV1EditPort:
         with allure_step_log("步骤7: 修改端口为8082（期望失败）"):
             vpc_page.lb_edit_basic_info(lb_tcp_name, field="port", port=8082)
             vpc_page.assert_popup_error("已经被使用")
-            vpc_page.goto_slb_detail(slb, "监听器")
+            vpc_page.goto_slb_detail(slb["name"], "监听器")
             vpc_page.goto_lb_detail(lb_tcp_name)
             vpc_page.assert_lb_basic_info("8081")
 
         with allure_step_log("步骤8: 修改端口为8083（期望失败）"):
             vpc_page.lb_edit_basic_info(lb_tcp_name, field="port", port=8083)
             vpc_page.assert_popup_error("已经被使用")
-            vpc_page.goto_slb_detail(slb, "监听器")
+            vpc_page.goto_slb_detail(slb["name"], "监听器")
             vpc_page.goto_lb_detail(lb_tcp_name)
             vpc_page.assert_lb_basic_info("8081")
 

@@ -42,7 +42,7 @@ class _BaseTestLbTcpScenario:
 
         with allure_step_log("步骤1: 创建TCP监听器"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=PORT,
@@ -53,7 +53,7 @@ class _BaseTestLbTcpScenario:
             )
             vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤2: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -71,7 +71,7 @@ class _BaseTestLbTcpScenario:
                 prepare_http_backend(ssh_vm, backend, f"ecs{i + 1}", port=PORT)
                 cleanup.add_backend_server(backend, port=PORT)
 
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤4: 内网VIP访问测试"):
             ssh_vm.connect(requester["mfip"])
@@ -87,10 +87,10 @@ class _BaseTestLbTcpScenario:
             )
 
         with allure_step_log("步骤5: 绑定公网IP"):
-            eip = vpc_page.slb_bind_eip(slb)
-            cleanup.add_eip(slb)
+            eip = vpc_page.slb_bind_eip(slb["name"])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
-            actual_eip = vpc_page.get_slb_eip(slb)
+            actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip == eip, f"绑定公网IP不一致: 期望{eip}, 实际{actual_eip}"
 
         with allure_step_log("步骤6: 公网IP访问测试"):
@@ -120,7 +120,7 @@ class _BaseTestLbTcpScenario:
 
         with allure_step_log("步骤1: 创建TCP监听器（开启健康检查）"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=PORT,
@@ -131,7 +131,7 @@ class _BaseTestLbTcpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤2: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -168,7 +168,7 @@ class _BaseTestLbTcpScenario:
                 backends[2]["name"], resource_status="运行中"
             )
 
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤7: 内网VIP访问只返回ecs3"):
             ssh_vm.connect(requester["mfip"])
@@ -186,7 +186,7 @@ class _BaseTestLbTcpScenario:
             cleanup.add_backend_server(backends[1], port=PORT)
 
         with allure_step_log("步骤9: 确认全部节点恢复运行中"):
-            vpc_page.goto_slb_detail(slb, "监听器")
+            vpc_page.goto_slb_detail(slb["name"], "监听器")
             for backend in backends[:2]:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
@@ -287,7 +287,7 @@ class _BaseTestLbTcpScenario:
 
         with allure_step_log("步骤1: 创建TCP监听器"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=PORT,
@@ -297,7 +297,7 @@ class _BaseTestLbTcpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤2: 添加资源池成员（ecs2、ecs3）"):
             vpc_page.lb_pool_add_vm(
@@ -313,10 +313,10 @@ class _BaseTestLbTcpScenario:
                 prepare_http_backend(ssh_vm, backend, f"ecs{i + 2}", port=PORT)
                 cleanup.add_backend_server(backend, port=PORT)
 
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤4: 配置访问控制（白名单）"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(
                 lb_name,
                 "access_control",
@@ -371,7 +371,7 @@ class _BaseTestLbTcpScenario:
             assert result["rc"] != 0 or not result["stdout"].strip()
 
         with allure_step_log("步骤11: 修改为允许所有IP"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(lb_name, "access_control", enable=False)
             vpc_page.assert_popup_success()
             vpc_page.assert_lb_basic_info("允许所有IP访问")
@@ -410,7 +410,7 @@ class _BaseTestLbTcpScenario:
 
         with allure_step_log("步骤1: 创建TCP监听器"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=PORT,
@@ -420,7 +420,7 @@ class _BaseTestLbTcpScenario:
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
-            cleanup.add_listener({"slb_name": slb, "lb_name": lb_name, "pool_name": pool_name})
+            cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
         with allure_step_log("步骤2: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
@@ -436,10 +436,10 @@ class _BaseTestLbTcpScenario:
                 prepare_http_backend(ssh_vm, backend, f"ecs{i + 2}", port=PORT)
                 cleanup.add_backend_server(backend, port=PORT)
 
-        lb_vip = vpc_page.get_slb_vip(slb)
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤4: 配置访问控制（白名单）"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.lb_edit_basic_info(
                 lb_name,
                 "access_control",
@@ -458,8 +458,8 @@ class _BaseTestLbTcpScenario:
             assert any("this is ecs" in key for key in counter), f"ecs0访问失败: {dict(counter)}"
 
         with allure_step_log("步骤6: 绑定公网IP"):
-            eip = vpc_page.slb_bind_eip(slb)
-            cleanup.add_eip(slb)
+            eip = vpc_page.slb_bind_eip(slb["name"])
+            cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤7: 外网客户端访问失败（白名单外）"):

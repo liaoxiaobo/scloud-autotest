@@ -523,7 +523,7 @@ def _build_vm_create_request(
     storage = _merge_vm_section(
         {
             "storage_pool": f"{Config.get('stor')}-test",
-            "image": {"source": "镜像", "name": Config.get("image", f"{Config.get('stor')}-test")},
+            "image": {"source": "镜像", "name": f"{Config.get('stor')}-test"},
             "system_disk": 25,
         },
         dependency_overrides.get("storage"),

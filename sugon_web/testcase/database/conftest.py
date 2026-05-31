@@ -65,8 +65,7 @@ def doris(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_name1 = f"user_{random_string(k=5)}"
     user_password = f"Pwd@1{random_string(k=5)}"
-    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1,
-            "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享Doris实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -111,7 +110,7 @@ def mysql(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
     privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "admin_password": user_password}
+    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -126,7 +125,7 @@ def mysql(browser_context, config):
 
     with allure_step_log(f"前置操作：创建新用户 {db_name}"):
         mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功", 10)
+        mysql_page.assert_popup_success("创建用户成功",10)
 
     yield data
 
