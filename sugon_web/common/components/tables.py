@@ -1,4 +1,5 @@
 import re
+import time
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator, expect
@@ -283,12 +284,71 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
+    def _expand_page_size(self, target_size: str = "50") -> bool:
+        """尝试将当前可见表格的分页条数扩大。
+
+        按优先级查找分页器：
+        1. 主内容区 (#cloud-container-content)
+        2. 当前激活 tab 页
+        3. 页面全局
+
+        点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
+        若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
+
+        Args:
+            target_size: 目标分页条数，默认 "50"
+
+        Returns:
+            bool: 是否成功调整分页条数
+        """
+        try:
+            size_triggers = [
+                self.locator("#cloud-container-content .el-pagination__sizes .el-input__inner"),
+                self.locator(".el-tab-pane:not([aria-hidden='true']) .el-pagination__sizes .el-input__inner"),
+                self.locator(".el-pagination__sizes .el-input__inner"),
+            ]
+
+            size_trigger = None
+            for loc in size_triggers:
+                if loc.count() > 0 and loc.first.is_visible():
+                    size_trigger = loc.first
+                    break
+
+            if size_trigger is None:
+                self.logger.debug("未找到可见的分页条数切换器")
+                return False
+
+            size_trigger.click()
+            self.page.wait_for_timeout(500)
+
+            for size in [f"{target_size}条/页", "100条/页", "50条/页"]:
+                option = self.locator("li:visible").filter(has_text=size).last
+                if option.count() > 0 and option.is_visible():
+                    option.click()
+                    if hasattr(self, "wait_for_page_ready"):
+                        self.wait_for_page_ready()
+                    else:
+                        self.page.wait_for_timeout(1000)
+                    self.logger.info(f"分页条数已调整为 {size}")
+                    return True
+
+            # 点开了下拉但没找到选项，关闭下拉避免遮挡后续操作
+            self.page.keyboard.press("Escape")
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"扩大分页条数失败: {e}")
+            return False
+
     def select_rows_by_names(self, names: list[str]) -> None:
         """公共方法: 根据名称列表勾选表格行
 
         Args:
             names: 资源名称列表
         """
+        # 先尝试扩大分页条数，让尽可能多的目标行在同一页可见
+        self._expand_page_size()
+
         for name in names:
             loc = self.get_by_role("row", name=name).locator("label span").last
             if not loc.is_checked():
