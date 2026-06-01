@@ -700,6 +700,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         if not existing_names:
             logger.info("所有虚机已清理，无需操作")
             return
+        ecs_page.btn_reset.click()
         ecs_page.ecs_remove(existing_names)
         ecs_page.ecs_delete(existing_names)
         ecs_page.assert_deleted(existing_names, timeout=600)
