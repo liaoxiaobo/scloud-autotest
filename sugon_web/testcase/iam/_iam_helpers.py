@@ -234,14 +234,15 @@ def create_iam_child_org(page, parent_name: str, child_name: str = None):
     }
 
 
-def delete_iam_user(page, name: str):
+def delete_iam_user(page, name: str, target_org: str = None):
     """删除 IAM 用户并断言已从列表中消失。
 
     Args:
         page: Playwright page 对象（需已登录 admin）
         name: 用户显示名称（用于列表搜索）
+        target_org: 目标子组织名称，用于精准导航到指定组织树节点
     """
     iam = IamPage(page)
     iam.goto_service("统一身份认证IAM")
-    iam.iam_delete_user(name)
+    iam.iam_delete_user(name, target_org=target_org)
     iam.assert_deleted(name, timeout=30, refresh=True)
