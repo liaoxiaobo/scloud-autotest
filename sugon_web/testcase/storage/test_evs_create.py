@@ -40,7 +40,7 @@ class TestEVSCreate:
             assert data['可启动'] == ('是' if not params['empty'] else '否')
             assert data['容量'] == f"{params['size']}GiB"
             assert data['共享盘'] == ('是' if params.get('shared', False) else '否')
-            assert data['机密存储开启关闭   筛选   重置 '] == "关闭"
+            assert data['机密存储开启关闭 筛选 重置'] == "关闭"
 
         with allure_step_log("步骤2: 删除单个云硬盘"):
             evs_page.evs_remove(name)
@@ -70,7 +70,7 @@ class TestEVSCreate:
             evs_page.set_table_header("机密存储")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
-            assert data['机密存储开启关闭   筛选   重置 '] == "开启"
+            assert data['机密存储开启关闭 筛选 重置'] == "开启"
 
         with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘
@@ -102,7 +102,7 @@ class TestEVSCreate:
             evs_page.set_table_header("机密存储")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
-            assert data['机密存储开启关闭   筛选   重置 '] == "开启"
+            assert data['机密存储开启关闭 筛选 重置'] == "开启"
 
         with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘

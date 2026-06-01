@@ -32,7 +32,7 @@ class TestECSS:
 
             # 验证快照属性
             snapshot_data = ecs_page.get_row_data(snapshot_name)
-            assert snapshot_data["是否快照数据卷是否   筛选   重置 "] == "否"
+            assert snapshot_data["是否快照数据卷是否 筛选 重置"] == "否"
             # assert snapshot_data["是否启动源"] == "是"
 
         with allure_step_log("步骤3: 删除系统盘快照"):
