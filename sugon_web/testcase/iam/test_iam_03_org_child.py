@@ -28,30 +28,16 @@ class TestIamOrgChild:
         with allure_step_log(f"步骤3: 验证子组织 {child_name} 存在于父组织 {parent_name} 下"):
             iam_page.page.reload()
             iam_page.wait_for_page_ready()
-            iam_page.page.wait_for_timeout(5000)
 
+            iam_page.iam_assert_org_in_tree(parent_name)
             tree_container = iam_page.page.locator("#iam-department")
             parent_node = tree_container.locator(".depart_name").filter(
                 has_text=parent_name
             )
-            for _ in range(5):
-                if parent_node.count() > 0:
-                    break
-                iam_page.page.wait_for_timeout(1500)
-            assert parent_node.count() > 0, f"组织树中未找到父组织 {parent_name}"
-
             parent_node.first.click()
             iam_page.page.wait_for_timeout(1500)
 
-            child_node = tree_container.locator(".depart_name").filter(
-                has_text=child_name
-            )
-            for _ in range(5):
-                if child_node.count() > 0:
-                    break
-                iam_page.page.wait_for_timeout(1500)
-            assert child_node.count() > 0, \
-                f"父组织 {parent_name} 下未找到子组织 {child_name}"
+            iam_page.iam_assert_org_in_tree(child_name)
             logger.info(f"验证成功：子组织 {child_name} 存在于组织树中")
 
     @allure.title("IAM-组织管理-修改子组织")

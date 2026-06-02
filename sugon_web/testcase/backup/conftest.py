@@ -106,7 +106,7 @@ def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
         pytest.skip: 当环境中不存在已启用备份节点时主动跳过。
     """
     with allure_step_log("检查环境备份节点"):
-        ecs_page.goto_service("备份设施")
+        ecs_page.goto_service("基础设施")
         ecs_page.goto_submenu("备份节点")
 
         all_states = ecs_page.get_column_data("服务状态")

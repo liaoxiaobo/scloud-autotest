@@ -30,9 +30,9 @@ class TestIamOrgCreate:
             logger.info("admin已登录并进入IAM页面")
 
         with allure_step_log(f"步骤2: 验证组织 {org_name} 存在于组织树中"):
-            tree_container = iam_page.page.locator("#iam-department")
-            org_node = tree_container.locator(".depart_name").filter(has_text=org_name)
-            assert org_node.count() > 0, f"组织树中未找到组织 {org_name}"
+            iam_page.page.reload()
+            iam_page.wait_for_page_ready()
+            iam_page.iam_assert_org_in_tree(org_name)
             logger.info(f"组织 {org_name} 已在组织树中")
 
         with allure_step_log(f"步骤3: 使用组织管理员 {username} 登录云平台"):

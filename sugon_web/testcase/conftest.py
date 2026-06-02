@@ -320,7 +320,6 @@ def obs_page(page):
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    # ops_page.goto_service('网络设施')
     return ops_page
 
 
@@ -673,7 +672,6 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            # ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
@@ -700,6 +698,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         if not existing_names:
             logger.info("所有虚机已清理，无需操作")
             return
+        ecs_page.btn_reset.click()
         ecs_page.ecs_remove(existing_names)
         ecs_page.ecs_delete(existing_names)
         ecs_page.assert_deleted(existing_names, timeout=600)

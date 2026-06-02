@@ -89,7 +89,8 @@ def pool(ops_page, vm, request):
     yield pool_data
 
     try:
-        ops_page.goto_service("存储设施")
+        ops_page.goto_service("基础设施")
+        ops_page.goto_submenu("存储池")
         ops_page.search(pool_name)
         ops_page.delete_storage_pool(pool_name)
     except Exception as e:

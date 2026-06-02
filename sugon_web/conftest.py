@@ -417,7 +417,7 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return ("/#/index" in current_url or "/#" in current_url) and "login" not in current_url
+    return ("/#/index" in current_url or "/#/console-page" in current_url or "/#" in current_url) and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -467,7 +467,7 @@ def _login(page, config, max_retries=3):
                 page.get_by_text("登 录").click()
 
                 # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
-                page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=10000)
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_load_state("load")
 
