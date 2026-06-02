@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import expect
 
 from sugon_web.config.config import Config
-from sugon_web.config.constants import SERVICE_MAP, SERVICE_PATH_MAP
+from sugon_web.config.constants import SERVICE_PATH_MAP
 
 
 def submenu(name: str) -> Callable:
@@ -72,68 +72,22 @@ class NavigationMixin:
             self.logger.error(f"通过 URL 直达服务 {service} 失败: {e}")
             raise AssertionError(f"通过 URL 直达服务 {service} 失败: {e}") from e
 
-    def _goto_service_by_menu(self, service: str) -> bool:
-        """通过原有顶栏菜单导航到指定服务。"""
-        navigation_path = SERVICE_MAP[service]
-
-        if len(navigation_path) == 1:
-            root_menu = navigation_path[0]
-            self.hover(root_menu)
-            self.click(service)
-            try:
-                expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
-            except:
-                pass
-            self.wait_for_page_ready()
-            self.logger.info(f"成功导航到服务: {root_menu} -> {service}")
-
-        elif len(navigation_path) == 2:
-            root_menu, category = navigation_path
-            self.hover(root_menu)
-            self.hover(category)
-            self.page.wait_for_timeout(800)
-            try:
-                self.click(service)
-            except Exception:
-                # 部分菜单无第三层（如 运营→租户 直接进入IAM），回退点击二级菜单中可见项
-                self.logger.info(f"未找到'{service}'子项，点击二级菜单中可见'{category}'")
-                for el in self.page.get_by_text(category).all():
-                    if el.is_visible():
-                        el.click()
-                        break
-            try:
-                expect(self.page.locator(".el-loading-spinner")).to_be_attached(timeout=10000)
-            except:
-                pass
-            self.wait_for_page_ready()
-            self.logger.info(f"成功导航到服务: {root_menu} -> {category} -> {service}")
-
-        else:
-            self.logger.error(f"服务 {service} 的导航路径配置错误: {navigation_path}")
-            raise AssertionError(f"服务 {service} 的导航路径配置错误: {navigation_path}")
-
-        return True
-
     def goto_service(self, service: str):
-        """公共方法: 导航到指定服务，优先通过服务入口路径直达，未配置时回退到菜单导航。
+        """导航到指定服务，通过服务入口路径直达。
 
         Args:
             service: 服务名称，如 '云容器引擎'、'云硬盘'、'物理服务器' 等
 
-        Returns:
-            bool: 导航是否成功
+        Raises:
+            AssertionError: 未知服务或导航失败
         """
-        if service not in SERVICE_PATH_MAP and service not in SERVICE_MAP:
+        if service not in SERVICE_PATH_MAP:
             self.logger.error(f"未知的服务: {service}，请检查服务名称或更新导航映射表")
             raise AssertionError(f"未知的服务: {service}")
 
+        service_path = SERVICE_PATH_MAP.get(service)
         try:
-            service_path = SERVICE_PATH_MAP.get(service)
-            if service_path:
-                return self._goto_service_by_path(service, service_path)
-
-            self.logger.info(f"服务 {service} 未配置入口路径，继续使用菜单导航")
-            return self._goto_service_by_menu(service)
+            return self._goto_service_by_path(service, service_path)
         except Exception as e:
             self.logger.error(f"导航到服务 {service} 失败: {e}")
             raise AssertionError(f"导航到服务 {service} 失败: {e}") from e
