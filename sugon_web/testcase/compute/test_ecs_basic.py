@@ -606,8 +606,8 @@ class TestECSBasic:
             ecs_page.assert_popup_success(f"{name}实例扩容成功")
 
         with allure_step_log("步骤2: 验证扩容结果"):
-            ecs_page.assert_ecs_info(name, "系统盘关闭机密存储开启机密存储   筛选   重置 ", f"容量(GiB):{new_size}")
-            assert new_size in ecs_page.get_row_data(name).get("系统盘关闭机密存储开启机密存储   筛选   重置 ")
+            ecs_page.assert_ecs_info(name, "系统盘", f"容量(GiB):{new_size}")
+            assert new_size in ecs_page.get_row_data(name).get("系统盘")
             ecs_page.assert_ecs_details_info(name, {"系统盘": new_size})
 
             # 验证扩容后页面展示的系统盘大小 和 通过 scli guest show 获取的系统盘大小是否一致

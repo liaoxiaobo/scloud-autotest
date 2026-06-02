@@ -1842,8 +1842,8 @@ class EcsMixin(EcsAssertionMixin, OpsPage):
         first_row = self.locator(".el-table__body-wrapper .el-table__body tr").first
         expect(first_row).to_be_visible(timeout=5000)
 
-        headers = self.locator(".el-table__header-wrapper th").all_text_contents()
-        headers = [h.strip() for h in headers]
+        th_elements = self.locator(".el-table__header-wrapper th").all()
+        headers = [self._extract_header_text(th) for th in th_elements]
 
         cells = first_row.locator("td").all()
         cell_contents = []
@@ -2462,8 +2462,9 @@ class EcsMixin(EcsAssertionMixin, OpsPage):
 
         # 查找当前激活的tab页中的表格 headers 和 rows
         active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])", ".active-tab").first
-        headers = [h.strip() for h in active_tab.locator(".el-table__header-wrapper th").all_text_contents() if
-                   h.strip()]
+        th_elements = active_tab.locator(".el-table__header-wrapper th").all()
+        headers = [self._extract_header_text(th) for th in th_elements]
+        headers = [h for h in headers if h]
 
         # 过滤掉可能存在的方向选择器文字
         headers = [h for h in headers if h not in ["入口", "出口"]]

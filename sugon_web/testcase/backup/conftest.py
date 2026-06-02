@@ -228,7 +228,7 @@ def _prepare_single_vm_backup_metadata(
         ecs_page.ecs_bind_pub_ip(vm_data["name"])
         ecs_page.assert_popup_success("执行成功")
         row_data = ecs_page.get_row_data(vm_data["name"])
-        arch = row_data.get("架构x86_64aarch64   筛选   重置 ")
+        arch = row_data.get("架构")
         ip = row_data.get("IP地址").split("固定:")[1].strip()
         mfip = OpsPage(ecs_page.page).bind_mfip(ip)
         ssh_vm.connect(mfip)
