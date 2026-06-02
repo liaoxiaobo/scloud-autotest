@@ -11,7 +11,7 @@ from sugon_web.common.components.actions import ActionsMixin
 from sugon_web.assertions.base import AssertionsMixin
 from sugon_web.common.components.waits import WaitsMixin
 from sugon_web.config.config import Config
-from sugon_web.config.constants import SERVICE_MAP, SERVICE_PATH_MAP
+from sugon_web.config.constants import SERVICE_PATH_MAP
 
 
 
