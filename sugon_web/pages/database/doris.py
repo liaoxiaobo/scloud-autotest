@@ -337,9 +337,9 @@ class DorisPage(BasePage):
         dialog.get_by_text("数据盘类型", exact=True) \
             .locator("xpath=ancestor::div[contains(@class,'el-form-item')]") \
             .locator("input").click()
-        # 使用指定的磁盘类型，如果未指定则使用环境变量中的磁盘类型
+        # 使用和其他数据库一致的选择方式，避免模糊匹配命中多个磁盘类型
         selected_disk_type = disk_type if disk_type else self.volume_type
-        self.page.locator("li").filter(has_text=selected_disk_type).click()
+        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["数据盘类型"])
 
         # 选择计算规格
         dialog.get_by_role("row", name=specification_name).get_by_role("radio").click()
