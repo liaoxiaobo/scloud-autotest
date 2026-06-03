@@ -88,7 +88,7 @@ class TestECSS:
             ecs_page.assert_popup_success("修改快照成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.ecss_el_setting("描述")
+            ecs_page.set_table_header("描述")
             ecs_page.assert_list_contain(new_name)
             # 获取修改后的快照数据并验证
             snapshot_data = ecs_page.get_row_data(new_name)
