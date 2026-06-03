@@ -4,7 +4,8 @@ import pytest
 import allure
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, skip_stor, skip_if_nodes_less_than, skip_arch, retry_check
+from sugon_web.utils.data import random_data, load_data, retry_check
+from sugon_web.framework.decorators import skip_stor, skip_if_nodes_less_than, skip_arch
 
 
 @allure.epic('计算服务')
