@@ -1,7 +1,7 @@
 import re
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import only_stor
+from sugon_web.framework.decorators import only_stor
 
 
 @allure.epic('安全合规')

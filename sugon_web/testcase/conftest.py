@@ -36,7 +36,7 @@ from typing import Any, Callable, Iterator, NotRequired, TypedDict
 from sugon_web.pages.ops import OpsPage
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 
 

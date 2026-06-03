@@ -4,7 +4,7 @@ from time import sleep, time
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.data import random_data, random_string
 
 NODE_TYPES = ["元数据节点", "日志节点", "计算节点", "存储节点"]
 

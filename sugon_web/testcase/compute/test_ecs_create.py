@@ -1,7 +1,8 @@
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import skip_stor, random_data
+from sugon_web.utils.data import random_data
+from sugon_web.framework.decorators import skip_stor
 
 
 @allure.epic('计算服务')
