@@ -237,10 +237,17 @@ class TestECSBasic:
         cpu = spec.get("CPU", "2")
         mem = spec.get("Mem", "4")
         ecs_id = vm.get("id")
+        need_shutdown = spec.get("shutdown", False)
         ecs_page.goto_service('弹性云服务器')
 
         with allure_step_log(f"步骤1: {name}修改规格:{spec.get('desc')}"):
+            if need_shutdown:
+                ecs_page.ecs_operations(name, "关机")
+                ecs_page.assert_status(name, "关机")
             ecs_page.ecs_modify_spec(name, spec)
+            if need_shutdown:
+                ecs_page.ecs_operations(name, "启动")
+                ecs_page.assert_status(name)
 
         with allure_step_log("步骤2: 验证修改结果"):
             ecs_page.assert_ecs_info(name, "规格", f"{cpu} 核 {mem}.00 GiB")
