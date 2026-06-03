@@ -20,7 +20,8 @@ class SgMixin(BasePage):
 
         for table in candidate_tables:
             try:
-                headers = table.locator(".el-table__header-wrapper th").all_text_contents()
+                th_elements = table.locator(".el-table__header-wrapper th").all()
+                headers = [self._extract_header_text(th) for th in th_elements]
                 if any("方向" in header for header in headers) and any("协议" in header for header in headers):
                     self.logger.info(f"已定位安全组规则表，表头: {headers}")
                     return table, headers

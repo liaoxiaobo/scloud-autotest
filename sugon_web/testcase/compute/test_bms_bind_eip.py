@@ -1,6 +1,7 @@
 import pytest
 import allure
-from sugon_web.common.ssh import SSH
+
+from sugon_web.common.remote import SSH
 from sugon_web.utils.logger import allure_step_log, logger
 
 

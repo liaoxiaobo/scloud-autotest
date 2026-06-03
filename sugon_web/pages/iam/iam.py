@@ -40,15 +40,6 @@ class IamPage(BasePage):
         self.close_dialog_if_exists()
         self.page.wait_for_timeout(3000)
 
-        # 如果用户管理tab已经激活且无指定目标组织，直接返回
-        if not target_org and self._tab_user_manage.count() > 0:
-            try:
-                if "is-active" in (self._tab_user_manage.first.get_attribute("class") or ""):
-                    logger.info("IAM：用户管理tab已激活，跳过树节点点击")
-                    return
-            except Exception:
-                pass
-
         # "请先创建组织"可能是页面树组件加载中的瞬态，等待后重试
         for attempt in range(3):
             no_org_hint = self.page.get_by_text("请先创建组织")
@@ -282,13 +273,16 @@ class IamPage(BasePage):
                 return
         self.page.wait_for_timeout(1000)
 
-    def iam_get_user_list(self) -> list[str]:
+    def iam_get_user_list(self, target_org: str = None) -> list[str]:
         """获取当前用户管理列表页所有用户名。
+
+        Args:
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
 
         Returns:
             list[str]: 用户名文本列表
         """
-        self._navigate_to_user_management()
+        self._navigate_to_user_management(target_org)
         self.wait_for_page_ready()
         # cl-table 使用标准 table 结构，但可能没有 el-table__body-wrapper
         # 先尝试标准 el-table，再尝试通用 table
@@ -302,13 +296,14 @@ class IamPage(BasePage):
                 return names
         return []
 
-    def iam_search_user(self, keyword: str):
+    def iam_search_user(self, keyword: str, target_org: str = None):
         """在用户管理列表页搜索用户（仅使用 IAM 表格区域内的搜索，不触碰全局 header 搜索框）。
 
         Args:
             keyword: 搜索关键字
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        self._navigate_to_user_management()
+        self._navigate_to_user_management(target_org)
         # 限定在表格上方的搜索栏内查找，避免误匹配全局 app-mainframe-header 中的搜索框
         search_input = self.page.locator(
             "input[placeholder='搜索（用户名称）'], input[placeholder='搜索（名称）']"
@@ -322,29 +317,31 @@ class IamPage(BasePage):
         self.page.wait_for_timeout(1500)
         logger.info(f"IAM：搜索用户 {keyword}")
 
-    def iam_delete_user(self, name: str):
+    def iam_delete_user(self, name: str, target_org: str = None):
         """删除IAM用户。
 
         Args:
             name: 用户账号名
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        self._navigate_to_user_management()
+        self._navigate_to_user_management(target_org)
         self.click_action(name, "删除")
         self.page.wait_for_timeout(500)
         # 确认删除弹窗
         try:
             confirm_btn = self.dialog_confirm
-            if confirm_btn.count() > 0 and confirm_btn.is_visible(timeout=3000):
+            if confirm_btn.count() > 0 and confirm_btn.is_visible():
                 confirm_btn.first.click()
         except Exception:
             pass
         logger.info(f"IAM：已提交删除用户请求 {name}")
 
-    def iam_modify_user(self, name: str, **kwargs):
+    def iam_modify_user(self, name: str, target_org: str = None, **kwargs):
         """修改IAM用户。打开修改弹窗，填写指定字段后提交。
 
         Args:
             name: 当前用户账号名（用于定位行）
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
             **kwargs: 要修改的字段
                 alias: 用户名, email: 邮箱, phone: 手机号,
                 extra: 描述, role: 角色名或特殊值"__non_default__"表示自动选取一个非默认角色
@@ -352,7 +349,7 @@ class IamPage(BasePage):
         Returns:
             dict: 若 role="__non_default__"，返回 {"role": <选中的角色名>}，否则返回 {}
         """
-        self._navigate_to_user_management()
+        self._navigate_to_user_management(target_org)
         self.click_action(name, "修改用户")
         self.page.wait_for_timeout(500)
 
@@ -442,9 +439,14 @@ class IamPage(BasePage):
             self.page.wait_for_timeout(300)
             return role_name
 
-    def iam_open_user_detail(self, name: str):
-        """点击用户管理列表中目标用户的'账号'链接进入详情页。"""
-        self._navigate_to_user_management()
+    def iam_open_user_detail(self, name: str, target_org: str = None):
+        """点击用户管理列表中目标用户的'账号'链接进入详情页。
+
+        Args:
+            name: 用户账号名
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
+        """
+        self._navigate_to_user_management(target_org)
         row = self.get_row_by_name(name)
         row.locator("a, .cl-table-cell a, td:first-child a").first.click()
         self.wait_for_page_ready()
@@ -463,9 +465,17 @@ class IamPage(BasePage):
                 return [rows.nth(i).inner_text() for i in range(rows.count())]
         return []
 
-    def _open_user_operation_dialog(self, name: str, operation_text: str, dialog_title: str):
-        """打开用户操作弹窗的公共方法。"""
-        self._navigate_to_user_management()
+    def _open_user_operation_dialog(self, name: str, operation_text: str, dialog_title: str,
+                                     target_org: str = None):
+        """打开用户操作弹窗的公共方法。
+
+        Args:
+            name: 用户账号名
+            operation_text: 操作按钮文本
+            dialog_title: 弹窗标题
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
+        """
+        self._navigate_to_user_management(target_org)
         self.click_action(name, operation_text)
         self.page.wait_for_timeout(800)
         dialog = self.get_by_role("dialog").filter(has_text=dialog_title)
@@ -503,14 +513,15 @@ class IamPage(BasePage):
         except Exception:
             pass
 
-    def iam_modify_user_status(self, name: str, enabled: bool):
+    def iam_modify_user_status(self, name: str, enabled: bool, target_org: str = None):
         """修改用户状态（启用/禁用）。
 
         Args:
             name: 用户账号名（列表行定位用）
             enabled: True=激活, False=禁用
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        dialog = self._open_user_operation_dialog(name, "修改用户状态", "修改用户状态")
+        dialog = self._open_user_operation_dialog(name, "修改用户状态", "修改用户状态", target_org)
         status_text = "激活" if enabled else "禁用"
         # el-radio-group 中第二个 radio 是"禁用"(label=false)，第一个是"激活"(label=true)
         radios = dialog.locator(".el-radio-group .el-radio")
@@ -520,50 +531,80 @@ class IamPage(BasePage):
         logger.info(f"IAM：修改用户状态 -> {status_text}")
         self._submit_and_close_dialog(dialog, f"修改用户状态({name})")
 
-    def iam_reset_password(self, name: str, new_password: str):
+    def iam_reset_password(self, name: str, new_password: str, target_org: str = None):
         """重置用户密码。
 
         Args:
             name: 用户账号名
             new_password: 新密码
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        dialog = self._open_user_operation_dialog(name, "重置密码", "重置密码")
+        dialog = self._open_user_operation_dialog(name, "重置密码", "重置密码", target_org)
         self._fill_form_field(dialog, "新密码", new_password)
         self._fill_form_field(dialog, "确认新密码", new_password)
         self._submit_and_close_dialog(dialog, f"重置密码({name})")
 
     def _select_date_in_picker(self, dialog, label: str, year: int, month: int, day: int,
-                                input_index: int = 0):
-        """在日期选择器中点击日历面板上的指定日期。
+                                input_index: int = 0, use_input: bool = True):
+        """在日期选择器中设置指定日期。
+
+        支持两种模式：
+        - use_input=True（默认）：通过输入框直接填写，支持跨月/跨年日期，
+          填入后加空格并点击空白处以触发 Vue 绑定和面板收起。
+        - use_input=False：通过点击日历面板上的日期单元格，仅适用于当前显示月份。
 
         Args:
             label: 日期字段的 label 文本
             input_index: 同一个 form-item 中第几个 input（0-based）
+            use_input: 是否使用输入框直接填写（True）或日历点击（False）
         """
         form_item = dialog.locator(".el-form-item").filter(has_text=label)
         inputs = form_item.locator("input")
         date_picker_input = inputs.nth(input_index) if inputs.count() > input_index else inputs.first
         date_picker_input.click()
-        self.page.wait_for_timeout(500)
-        target_day = str(day)
-        # 仅在可见的日历面板中查找（避免前一个date-picker残留DOM）
-        cells = self.page.locator(
-            ".el-picker-panel:visible .el-date-table td.available:not(.prev-month):not(.next-month) span"
-        )
-        for i in range(cells.count()):
-            if cells.nth(i).inner_text().strip() == target_day:
-                cells.nth(i).click()
-                break
         self.page.wait_for_timeout(300)
+        target_day = str(day)
 
-    def iam_set_user_expiry(self, name: str, date_str: str):
+        if use_input:
+            # 移除 readonly 使 fill 生效
+            input_el = date_picker_input.element_handle()
+            self.page.evaluate("el => el.removeAttribute('readonly')", input_el)
+            date_str = f"{year:04d}-{month:02d}-{day:02d}"
+            date_picker_input.fill(date_str + " ")
+            self.page.wait_for_timeout(300)
+            # 点击对话框内其他区域使日期选择器失去焦点并触发绑定
+            dialog_title = dialog.locator(".el-dialog__header")
+            if dialog_title.count() > 0:
+                dialog_title.first.click()
+            else:
+                dialog.click(position={"x": 10, "y": 10})
+            self.page.wait_for_timeout(500)
+        else:
+            # 日历点击方式：仅在当前显示月份中查找
+            cells = self.page.locator(
+                ".el-picker-panel:visible .el-date-table td.available:not(.prev-month):not(.next-month) span"
+            )
+            for i in range(cells.count()):
+                if cells.nth(i).inner_text().strip() == target_day:
+                    cells.nth(i).click()
+                    break
+            self.page.wait_for_timeout(300)
+
+        # 确保日期面板已关闭（防止遮挡后续点击）
+        panel = self.page.locator(".el-picker-panel:visible")
+        if panel.count() > 0:
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(300)
+
+    def iam_set_user_expiry(self, name: str, date_str: str, target_org: str = None):
         """设置用户过期时间。
 
         Args:
             name: 用户账号名
             date_str: 过期日期，格式 yyyy-MM-dd，空字符串表示不限
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        dialog = self._open_user_operation_dialog(name, "设置用户过期时间", "设置用户过期时间")
+        dialog = self._open_user_operation_dialog(name, "设置用户过期时间", "设置用户过期时间", target_org)
         parts = date_str.split("-")
         self._select_date_in_picker(dialog, "过期时间",
                                      int(parts[0]), int(parts[1]), int(parts[2]))
@@ -803,6 +844,11 @@ class IamPage(BasePage):
         """
         tree_container = self.page.locator("#iam-department")
         org_node = tree_container.locator(".depart_name").filter(has_text=org_name)
+        # 轮询等待组织节点出现（Vue 异步渲染可能延迟）
+        for _ in range(10):
+            if org_node.count() > 0:
+                break
+            self.page.wait_for_timeout(1000)
         if org_node.count() == 0:
             raise Exception(f"组织树中未找到组织 {org_name}")
 
@@ -1290,17 +1336,18 @@ class IamPage(BasePage):
             f"{service_name}-{metric_name} 配额显示不匹配，预期包含 {expected_value}，实际 {actual_value}"
         logger.info(f"IAM：验证 {service_name}-{metric_name} 配额显示为 {actual_value}")
 
-    def iam_set_access_control(self, name: str, **kwargs):
+    def iam_set_access_control(self, name: str, target_org: str = None, **kwargs):
         """设置用户访问控制。
 
         Args:
             name: 用户账号名
+            target_org: 目标子组织名称，用于精准导航到指定组织树节点
             **kwargs:
                 ip (str), start_date (str yyyy-MM-dd), end_date (str),
                 time_day (int): 允许登录的星期几（0=周一, 6=周日）
                 time_hour (int): 允许登录的小时（0-23）
         """
-        dialog = self._open_user_operation_dialog(name, "访问控制", "访问控制")
+        dialog = self._open_user_operation_dialog(name, "访问控制", "访问控制", target_org)
         if "ip" in kwargs:
             self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
         if "start_date" in kwargs:

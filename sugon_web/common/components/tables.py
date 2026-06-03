@@ -1,4 +1,5 @@
 import re
+import time
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator, expect
@@ -16,6 +17,90 @@ class TablesMixin:
     设计为与 Playwright 组合使用，依赖 self.locator / self.logger。
     """
 
+    _HEADER_NOISE_SELECTORS = [
+        '.el-table__column-filter-trigger',
+        '.el-table-filter',
+        '.el-table__filter',
+        '.el-table__filter-panel',
+        '.el-table-filter-panel',
+        '.filter-panel',
+        '[class*="filter-panel"]',
+        '[class*="table-filter"]',
+        '.el-popper',
+        '.el-popover',
+        '.el-dropdown',
+        '.el-dropdown-menu',
+        '.el-checkbox',
+        '.el-checkbox-group',
+        '.el-radio',
+        '.el-radio-group',
+        '.caret-wrapper',
+        '.el-table__column-sorter',
+        '.el-icon-arrow-down',
+        '.el-icon-arrow-up',
+        '.el-icon--right',
+        '[class*="filter-trigger"]',
+        '[class*="sort-caret"]',
+        '[class*="sorter"]',
+        'svg',
+        'i[class^="el-icon"]',
+    ]
+
+    def _extract_header_text(self, th_locator) -> str:
+        """从单个 <th> 元素中提取纯列名文本。
+
+        通过浏览器端 JS 执行，剔除筛选按钮、排序图标、下拉箭头等
+        交互元素产生的噪声文本，返回用户可见的列标题。
+
+        Args:
+            th_locator: 表格表头单元格 (<th>) 的 Playwright Locator 对象。
+
+        Returns:
+            清洗后的列名文本；若提取失败则回退到 text_content() 的原始值。
+        """
+        try:
+            return th_locator.evaluate("""
+                (el, selectors) => {
+                    const cell = el.querySelector('.cell');
+                    if (!cell) {
+                        return el.textContent.trim();
+                    }
+
+                    // 策略1：移除已知噪声元素
+                    const clone = cell.cloneNode(true);
+                    selectors.forEach(selector => {
+                        try {
+                            clone.querySelectorAll(selector).forEach(node => node.remove());
+                        } catch (e) {}
+                    });
+                    let text = (clone.textContent || '').replace(/\\s+/g, ' ').trim();
+
+                    // 策略2：兜底——如果仍有"筛选"+"重置"或文本过长，保守取首个文本/元素节点
+                    const noiseWords = ['筛选', '重置'];
+                    const hasNoise = noiseWords.every(w => text.includes(w));
+                    if (hasNoise || text.length > 15) {
+                        for (const node of cell.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                const t = node.textContent.trim();
+                                if (t) return t;
+                            }
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                const tag = node.tagName.toLowerCase();
+                                if (tag === 'span' || tag === 'div' || tag === 'p') {
+                                    const t = node.textContent.trim();
+                                    if (t && !noiseWords.every(w => t.includes(w))) return t;
+                                }
+                            }
+                        }
+                    }
+
+                    return text;
+                }
+            """, self._HEADER_NOISE_SELECTORS)
+        except Exception as e:
+            self.logger.warning(f"精确提取表头文本失败，回退到原始方式: {e}")
+            return (th_locator.text_content() or '').strip()
+
     @property
     def table_headers(self) -> list[str]:
         """获取主内容区第一个可见表格的表头文本列表。
@@ -29,12 +114,14 @@ class TablesMixin:
         header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible").first
 
         if header_wrapper.count() > 0:
-            headers = header_wrapper.locator("th").all_text_contents()
+            th_elements = header_wrapper.locator("th").all()
+            headers = [self._extract_header_text(th) for th in th_elements]
             self.logger.info(f"页面表头信息: {headers}, 共{len(headers)}个")
         else:
             self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
             if self.locator("thead").count() > 0:
-                headers = self.locator("thead:visible th").first.all_text_contents()
+                th_elements = self.locator("thead:visible th").all()
+                headers = [self._extract_header_text(th) for th in th_elements]
                 self.logger.info(f"使用备用方式获取表头信息: {headers}, 共{len(headers)}个")
             else:
                 self.logger.error(f"未找到任何表头信息")
@@ -167,7 +254,9 @@ class TablesMixin:
         """)
 
         if table_index != -1:
-            headers = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper th").all_text_contents()
+            header_wrapper = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper")
+            th_elements = header_wrapper.locator("th").all()
+            headers = [self._extract_header_text(th) for th in th_elements]
         else:
             headers = self.table_headers
 
@@ -236,7 +325,8 @@ class TablesMixin:
                 if header_wrapper.count() == 0:
                     continue
 
-                headers = header_wrapper.locator("th").all_text_contents()
+                th_elements = header_wrapper.locator("th").all()
+                headers = [self._extract_header_text(th) for th in th_elements]
 
                 if header_name in headers:
                     visible_table = table
@@ -283,12 +373,71 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
+    def _expand_page_size(self, target_size: str = "50") -> bool:
+        """尝试将当前可见表格的分页条数扩大。
+
+        按优先级查找分页器：
+        1. 主内容区 (#cloud-container-content)
+        2. 当前激活 tab 页
+        3. 页面全局
+
+        点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
+        若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
+
+        Args:
+            target_size: 目标分页条数，默认 "50"
+
+        Returns:
+            bool: 是否成功调整分页条数
+        """
+        try:
+            size_triggers = [
+                self.locator("#cloud-container-content .el-pagination__sizes .el-input__inner"),
+                self.locator(".el-tab-pane:not([aria-hidden='true']) .el-pagination__sizes .el-input__inner"),
+                self.locator(".el-pagination__sizes .el-input__inner"),
+            ]
+
+            size_trigger = None
+            for loc in size_triggers:
+                if loc.count() > 0 and loc.first.is_visible():
+                    size_trigger = loc.first
+                    break
+
+            if size_trigger is None:
+                self.logger.debug("未找到可见的分页条数切换器")
+                return False
+
+            size_trigger.click()
+            self.page.wait_for_timeout(500)
+
+            for size in [f"{target_size}条/页", "100条/页", "50条/页"]:
+                option = self.locator("li:visible").filter(has_text=size).last
+                if option.count() > 0 and option.is_visible():
+                    option.click()
+                    if hasattr(self, "wait_for_page_ready"):
+                        self.wait_for_page_ready()
+                    else:
+                        self.page.wait_for_timeout(1000)
+                    self.logger.info(f"分页条数已调整为 {size}")
+                    return True
+
+            # 点开了下拉但没找到选项，关闭下拉避免遮挡后续操作
+            self.page.keyboard.press("Escape")
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"扩大分页条数失败: {e}")
+            return False
+
     def select_rows_by_names(self, names: list[str]) -> None:
         """公共方法: 根据名称列表勾选表格行
 
         Args:
             names: 资源名称列表
         """
+        # 先尝试扩大分页条数，让尽可能多的目标行在同一页可见
+        self._expand_page_size()
+
         for name in names:
             loc = self.get_by_role("row", name=name).locator("label span").last
             if not loc.is_checked():
