@@ -26,7 +26,7 @@ def _create_vm_and_bind_mfip(ecs_page, ops_page, vm_name, vpc_name, subnet_name,
     vm_ip = vm_data["IP地址"].split("固定: ")[-1].strip()
 
     ops_page.close_dialog_if_exists()
-    ops_page.goto_service("网络设施")
+    ops_page.goto_service("基础设施")
     ops_page.close_dialog_if_exists()
     ops_page.wait_for_page_ready()
     ops_page.goto_submenu("平台网络")

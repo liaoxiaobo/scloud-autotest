@@ -1,3 +1,19 @@
+"""
+跨测试模块共享 Fixture 定义（vm、eip、volume、ops_page 等）。
+
+职责范围:
+- 页面与资源 fixture（login_page、ecs_page、vm、eip、volume 等）
+- vm fixture 的参数解析、依赖注入、创建与清理
+- 弹性公网 IP 的分配与释放
+- 飞书测试报告通知 (pytest_sessionfinish)
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import re
 import time
 import pytest
@@ -320,7 +336,6 @@ def obs_page(page):
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    # ops_page.goto_service('网络设施')
     return ops_page
 
 
@@ -673,7 +688,6 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            # ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
