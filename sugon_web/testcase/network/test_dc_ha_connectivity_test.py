@@ -226,19 +226,31 @@ class TestDCHaConnectivityTest:
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
+                vpc_page.page.wait_for_timeout(3000)
 
                 # 精确定位下拉框内的选项
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:
-                    dropdown.wait_for(state="visible", timeout=5000)
+                    dropdown.wait_for(state="visible", timeout=10000)
                     option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
-                    expect(option).to_be_visible(timeout=5000)
+                    expect(option).to_be_visible(timeout=10000)
                     option.click()
                     logger.info(f"下一跳选择成功: {dc_name} (通过 .el-select-dropdown__item)")
                 except Exception:
-                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 get_by_text 选择: {dc_name}")
-                    vpc_page.page.get_by_text(dc_name, exact=False).first.click()
+                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用可见下拉框内搜索: {dc_name}")
+                    try:
+                        vpc_page.page.locator(".el-select-dropdown:visible").get_by_text(dc_name, exact=False).first.click(force=True)
+                    except Exception:
+                        # 最终备选：通过键盘选择（先聚焦input确保事件发送到正确元素）
+                        logger.warning(f"可见下拉框内搜索失败，使用键盘选择: {dc_name}")
+                        input_el = vpc_page.locator(".el-form-item").filter(
+                            has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
+                        ).locator(".el-input__inner").first
+                        input_el.click()
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("ArrowDown")
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("Enter")
 
                 vpc_page.get_by_label("新建路由表规则").get_by_text("确定").click()
                 try:
@@ -247,12 +259,24 @@ class TestDCHaConnectivityTest:
                     pass
 
             with allure_step_log("步骤3: 验证路由规则列表"):
-                vpc_page.page.reload()
-                vpc_page.wait_for_page_ready()
-                vpc_page.page.mouse.move(1, 1)
-                vpc_page.get_by_role("tab", name="路由表").click()
+                # 增加重试：页面刷新后数据可能未立即加载
+                row_data = None
+                for attempt in range(3):
+                    vpc_page.page.reload()
+                    vpc_page.wait_for_page_ready()
+                    vpc_page.page.mouse.move(1, 1)
+                    vpc_page.get_by_role("tab", name="路由表").click()
+                    vpc_page.page.wait_for_timeout(3000)
+                    try:
+                        row_data = vpc_page.get_row_data(dest_cidr)
+                        if row_data:
+                            break
+                    except AssertionError:
+                        logger.warning(f"第 {attempt + 1} 次查找路由规则 {dest_cidr} 失败，重试中...")
+                        if attempt == 2:
+                            raise
+                        vpc_page.page.wait_for_timeout(5000)
 
-                row_data = vpc_page.get_row_data(dest_cidr)
                 actual_dest = row_data.get("目的地址", "")
                 actual_type = row_data.get("下一跳类型", "")
                 actual_next_hop = row_data.get("下一跳", "")
@@ -357,15 +381,20 @@ class TestDCHaConnectivityTest:
                 try:
                     vpc_page.goto_service("虚拟私有云")
                     vpc_page.goto_submenu("虚拟私有云")
-                    vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-                    vpc_page.page.mouse.move(1, 1)
-                    vpc_page.get_by_role("tab", name="路由表").click()
                     try:
-                        vpc_page.click_action(dest_cidr, "删除")
-                        vpc_page.dialog_confirm.click()
-                        vpc_page.assert_deleted(dest_cidr, timeout=30)
+                        row = vpc_page.get_row_by_name(vpc_name)
                     except Exception:
-                        logger.info(f"路由规则 {dest_cidr} 已不存在或已被自动清理，跳过删除")
+                        logger.warning(f"VPC {vpc_name} 未找到，可能已被自动清理，跳过路由规则删除")
+                    else:
+                        row.locator("a").first.click()
+                        vpc_page.page.mouse.move(1, 1)
+                        try:
+                            vpc_page.get_by_role("tab", name="路由表").click()
+                            vpc_page.click_action(dest_cidr, "删除")
+                            vpc_page.dialog_confirm.click()
+                            vpc_page.assert_deleted(dest_cidr, timeout=30)
+                        except Exception:
+                            logger.info(f"路由规则 {dest_cidr} 已不存在或已被自动清理，跳过删除")
                 except Exception as e:
                     cleanup_errors.append(f"删除路由规则: {e}")
 

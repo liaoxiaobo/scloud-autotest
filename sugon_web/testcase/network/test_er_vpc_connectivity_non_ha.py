@@ -237,10 +237,11 @@ class TestERVPCConnectivityNonHA:
 
             with allure_step_log("清理: 删除ER连接"):
                 try:
-                    er_page._ensure_list_page()
-                    er_page.close_dialog_if_exists()
+                    er_page.goto_er_detail(er_name)
                     er_page.wait_for_page_ready()
-                    er_page.goto_connection_tab(er_name)
+                    er_page.get_by_role("tab", name="连接").click()
+                    er_page.wait_for_page_ready()
+                    er_page.page.wait_for_timeout(2000)
                     er_page.er_connection_delete(conn1_name)
                     er_page.assert_deleted(conn1_name, timeout=30)
                     er_page.er_connection_delete(conn2_name)
@@ -265,18 +266,14 @@ class TestERVPCConnectivityNonHA:
             with allure_step_log("清理: 删除VM"):
                 try:
                     ecs_page.goto_service("弹性云服务器")
-                    ecs_page.close_dialog_if_exists()
                     ecs_page.wait_for_page_ready()
                     for vm_name in [vm1_name, vm2_name]:
                         try:
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.wait_for_page_ready()
                             ecs_page.ecs_remove(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)
                             logger.info(f"VM {vm_name} 已移入回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.goto_submenu("回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.wait_for_page_ready()
                             ecs_page.ecs_delete(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)

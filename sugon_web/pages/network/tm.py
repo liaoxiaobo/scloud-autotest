@@ -184,6 +184,60 @@ class TmMixin(BasePage):
 
         return name
 
+    def tm_edit(self, name, new_name=None, new_desc=None):
+        """修改指定流量镜像的名称和描述。
+
+        打开修改弹窗，可选修改名称和/或描述，点击确定提交。
+        修改弹窗中只有"名称"和"描述"两个字段可编辑。
+
+        Args:
+            name: 流量镜像当前名称，用于列表页定位。
+            new_name: 新名称，为None时不修改名称。
+            new_desc: 新描述，为None时不修改描述。
+
+        Returns:
+            dict: 包含修改前数据的字典，键为 "name" 和 "description"。
+        """
+        self._ensure_list_page()
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(3000)
+
+        # 搜索并点击修改
+        self.search(name)
+        self.page.wait_for_timeout(1000)
+        self.click_action(name, "修改")
+
+        # 等待弹窗出现
+        dialog = self.page.locator(".el-dialog:visible").first
+        dialog.wait_for(state="visible", timeout=15000)
+        self.page.wait_for_timeout(2000)
+
+        # 获取修改前的值
+        original_data = {}
+        # 修改弹窗中只有名称(input)和描述(textarea)两个字段
+        name_input = dialog.locator("input").first
+        name_input.wait_for(state="visible", timeout=10000)
+        original_data["name"] = name_input.input_value()
+
+        desc_textarea = dialog.locator("textarea").first
+        desc_textarea.wait_for(state="visible", timeout=10000)
+        original_data["description"] = desc_textarea.input_value()
+
+        # 修改名称
+        if new_name is not None:
+            name_input.fill("")
+            name_input.fill(new_name)
+
+        # 修改描述
+        if new_desc is not None:
+            desc_textarea.fill("")
+            desc_textarea.fill(new_desc)
+
+        # 点击确定
+        dialog.get_by_text("确定", exact=True).click()
+
+        return original_data
+
     def tm_delete(self, name):
         """删除指定名称的流量镜像。
 

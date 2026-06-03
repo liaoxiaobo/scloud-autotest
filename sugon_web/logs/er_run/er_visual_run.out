@@ -1,0 +1,1468 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.6, pytest-8.2.0, pluggy-1.6.0 -- /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/.venv/bin/python3.12
+cachedir: .pytest_cache
+metadata: {'Python': '3.12.6', 'Platform': 'macOS-26.5-x86_64-i386-64bit', 'Packages': {'pytest': '8.2.0', 'pluggy': '1.6.0'}, 'Plugins': {'assume': '2.4.3', 'repeat': '0.9.3', 'html': '4.1.1', 'metadata': '3.1.1', 'rerunfailures': '14.0', 'Faker': '15.0.0', 'allure-pytest': '2.13.5', 'xdist': '3.6.1', 'anyio': '4.13.0'}}
+rootdir: /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon
+configfile: pytest.ini
+plugins: assume-2.4.3, repeat-0.9.3, html-4.1.1, metadata-3.1.1, rerunfailures-14.0, Faker-15.0.0, allure-pytest-2.13.5, xdist-3.6.1, anyio-4.13.0
+collecting ... collected 2 items
+
+sugon_web/testcase/network/test_er_vpc_connectivity.py::TestERVPCConnectivity::test_er_vpc_connectivity 
+-------------------------------- live log setup --------------------------------
+2026-06-01 14:08:18.820 [INFO] sugon_web.utils.logger: === SETUP START: test_er_vpc_connectivity ===
+2026-06-01 14:08:18.849 [INFO] sugon_web.utils.logger: 读取环境 172.22.1.190 的特定配置
+2026-06-01 14:08:18.849 [INFO] sugon_web.utils.logger: 生成 base_url: https://172.22.1.190:30000
+2026-06-01 14:08:18.849 [INFO] sugon_web.utils.logger: 配置命令行参数 headless=False
+2026-06-01 14:08:18.849 [INFO] sugon_web.utils.logger: 测试配置加载完成: {'browser': 'chromium', 'headless': False, 'timeout': 10000, 'slow_mo': 0, 'host': '172.22.1.190', 'stor': 'ceph', 'data': 'Autotest', 'username': 'admin', 'password': 'keystone_sugon', 'image_source': 'http://172.22.5.66:9090', 'image': 'centos7.9_test.raw', 'pkey': 'pkey_scloudadmin', 'network': 'public_net(基础版)', 'xstor': 'iscsi_helper=lioadm\nvolume_group=cinder-volumes\nthin_provision=1\nsrv_port=3260\nusername=optadmin\npassword=NzBfMTA1XzExNF8xMTBfMTE1XzY5XzU0XzU1XzU2\niscsi_restful_ip=172.22.1.61\niscsi_svip=172.22.88.60\nstorage_pool_id=5', 'public_net': {'segment_id': 202, 'cidr': '172.22.11.128/25', 'gateway_ip': '172.22.11.254'}, 'base_url': 'https://172.22.1.190:30000'}
+2026-06-01 14:08:19.012 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.8)
+2026-06-01 14:08:19.298 [INFO] paramiko.transport: Authentication (publickey) successful!
+2026-06-01 14:08:19.299 [INFO] sugon_web.utils.logger: Connected successfully to server 172.22.1.190
+2026-06-01 14:08:19.299 [INFO] sugon_web.utils.logger: 开始获取补丁版本信息...
+2026-06-01 14:08:19.299 [INFO] sugon_web.utils.logger: Executing command: sudo kubectl get no -owide
+2026-06-01 14:08:20.022 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:20.023 [INFO] sugon_web.utils.logger: Command output: 
+                                                       NAME                   STATUS   ROLES                         AGE   VERSION   INTERNAL-IP     EXTERNAL-IP   OS-IMAGE                                  KERNEL-VERSION                    CONTAINER-RUNTIME
+                                                       master01.cloud.local   Ready    control-plane,master,worker   16d   v1.20.4   100.126.240.1   <none>        Kylin Linux Advanced Server V10 (Lance)   4.19.90-89.19.v2401.ky10.x86_64   docker://20.10.12
+2026-06-01 14:08:20.023 [INFO] sugon_web.utils.logger: Executing command: ssh -o StrictHostKeyChecking=no 100.126.240.1 cat /opt/extra/init-base/patch_release_version
+2026-06-01 14:08:21.078 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:21.078 [INFO] sugon_web.utils.logger: Command output: 
+                                                       TYPE: base
+                                                       VERSION: 8.0.6.0
+                                                       BUILD_TIME: 20260527_203046
+                                                       REQUIRE_VERSION: 8.0.5.630
+                                                       REQUIRE_BUILDVERSION: 20260309_192357
+2026-06-01 14:08:21.078 [INFO] sugon_web.utils.logger: 成功从 /opt/extra/init-base/patch_release_version 获取版本信息
+2026-06-01 14:08:21.078 [INFO] sugon_web.utils.logger: Executing command: arch
+2026-06-01 14:08:21.658 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:21.659 [INFO] sugon_web.utils.logger: Command output: 
+                                                       x86_64
+2026-06-01 14:08:21.661 [INFO] sugon_web.utils.logger: 开始获取物理机节点信息...
+2026-06-01 14:08:21.661 [INFO] sugon_web.utils.logger: Executing command: scli aggregate list | grep Autotest | awk '{print $6}'
+2026-06-01 14:08:22.277 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:22.278 [INFO] sugon_web.utils.logger: Command output: 
+                                                       Autotest(1)
+2026-06-01 14:08:22.280 [INFO] sugon_web.utils.logger: Executing command: hostname
+2026-06-01 14:08:22.807 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:22.807 [INFO] sugon_web.utils.logger: Command output: 
+                                                       master01.cloud.local
+2026-06-01 14:08:22.807 [INFO] sugon_web.utils.logger: Executing command: ssh -o StrictHostKeyChecking=no master01 "cat /opt/extra/init-base/env/env.yaml | grep deploy_mode"
+2026-06-01 14:08:23.872 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:08:23.872 [INFO] sugon_web.utils.logger: Command output: 
+                                                         deploy_mode: stack
+2026-06-01 14:08:23.965 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.8)
+2026-06-01 14:08:24.279 [INFO] paramiko.transport: Authentication (publickey) successful!
+2026-06-01 14:08:24.279 [INFO] sugon_web.utils.logger: Connected successfully to jumphost 172.22.1.190
+2026-06-01 14:08:24.281 [INFO] sugon_web.utils.logger: 开始初始化浏览器: type=chromium, headless=False
+2026-06-01 14:08:24.732 [INFO] sugon_web.utils.logger: 启动浏览器...
+2026-06-01 14:08:26.768 [INFO] sugon_web.utils.logger: 浏览器 chromium 启动成功
+2026-06-01 14:08:26.780 [INFO] sugon_web.utils.logger: 浏览器上下文创建成功
+2026-06-01 14:08:26.781 [INFO] sugon_web.utils.logger: 创建新页面...
+2026-06-01 14:08:27.202 [INFO] sugon_web.utils.logger: 页面创建成功
+2026-06-01 14:08:27.202 [INFO] sugon_web.utils.logger: 导航到目标URL: https://172.22.1.190:30000
+2026-06-01 14:08:27.632 [INFO] sugon_web.utils.logger: 页面导航完成，当前URL: https://172.22.1.190:30000/
+2026-06-01 14:08:36.067 [INFO] sugon_web.utils.logger: 页面导航完成，当前URL: https://172.22.1.190:30000/#/login
+2026-06-01 14:08:38.056 [INFO] sugon_web.utils.logger: 登录成功
+2026-06-01 14:08:38.069 [INFO] sugon_web.utils.logger: 发现未关闭的对话框，正在关闭...
+-------------------------------- live log call ---------------------------------
+2026-06-01 14:08:38.102 [INFO] sugon_web.utils.logger: === CALL START: test_er_vpc_connectivity ===
+2026-06-01 14:08:38.487 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:08:38.499 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+2026-06-01 14:08:46.825 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:08:50.069 [INFO] sugon_web.utils.logger: 创建虚拟私有云成功, VPC: er-vpc1-autotest-yp2z, 子网: subnet1-autotest-8qus, acl: None
+2026-06-01 14:08:53.957 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+2026-06-01 14:08:53.995 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+2026-06-01 14:08:53.998 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vpc1-autotest-yp2z -> 运行
+2026-06-01 14:08:53.998 [INFO] sugon_web.utils.logger: VPC1 er-vpc1-autotest-yp2z 创建成功
+2026-06-01 14:08:54.258 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:08:54.268 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:09:01.315 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:09:01.395 [INFO] sugon_web.utils.logger: basic信息: {'name': 'er-vm1-autotest-md43', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+2026-06-01 14:09:03.129 [INFO] sugon_web.utils.logger: 已选择集群: Autotest
+2026-06-01 14:09:03.129 [INFO] sugon_web.utils.logger: 规格: base
+2026-06-01 14:09:03.471 [INFO] sugon_web.utils.logger: 开始搜索: ecs.c6.Autotest
+2026-06-01 14:09:07.369 [INFO] sugon_web.utils.logger: 搜索操作完成: ecs.c6.Autotest
+2026-06-01 14:09:07.613 [INFO] sugon_web.utils.logger: 规格类型分类: 计算型
+2026-06-01 14:09:07.700 [INFO] sugon_web.utils.logger: 已选择规格类型: ecs.c6.Autotest
+2026-06-01 14:09:07.700 [INFO] sugon_web.utils.logger: storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+2026-06-01 14:09:08.386 [INFO] sugon_web.utils.logger: 已选择存储池: ceph-test
+2026-06-01 14:09:08.386 [INFO] sugon_web.utils.logger: 开始选择镜像: image_source=镜像, image_name=ceph-test
+2026-06-01 14:09:09.292 [INFO] sugon_web.utils.logger: 已选择镜像来源: 镜像
+2026-06-01 14:09:11.302 [INFO] sugon_web.utils.logger: network信息: {'networks': [{'network': 'er-vpc1-autotest-yp2z', 'subnet': 'subnet1-autotest-8qus'}]}
+2026-06-01 14:09:11.722 [INFO] sugon_web.utils.logger: 选择网络: er-vpc1-autotest-yp2z
+2026-06-01 14:09:12.640 [INFO] sugon_web.utils.logger: 选择子网: subnet1-autotest-8qus
+2026-06-01 14:09:12.640 [INFO] sugon_web.utils.logger: manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+2026-06-01 14:09:12.745 [INFO] sugon_web.utils.logger: 登录方式: 密码登录 设置成功
+2026-06-01 14:09:13.877 [INFO] sugon_web.utils.logger: 云服务器创建请求已提交: er-vm1-autotest-md43，数量: 1
+2026-06-01 14:09:17.774 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:09:17.802 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vm1-autotest-md43 -> 运行
+2026-06-01 14:09:17.802 [INFO] sugon_web.utils.logger: 开始获取资源(er-vm1-autotest-md43)的数据
+2026-06-01 14:09:17.929 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', 'er-vm1-autotest-md43 ID:bfe3f02b-2fc8-4766-83e1-bf916406fc85', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 173.3.3.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:09:15'], 共12个
+2026-06-01 14:09:17.930 [INFO] sugon_web.utils.logger: 处理后的数据: {'名称/ID': 'er-vm1-autotest-md43 ID:bfe3f02b-2fc8-4766-83e1-bf916406fc85', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 173.3.3.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:09:15'}
+2026-06-01 14:09:17.938 [INFO] sugon_web.utils.logger: 服务 网络设施 未配置入口路径，继续使用菜单导航
+2026-06-01 14:09:17.976 [INFO] sugon_web.utils.logger: 成功悬停元素: 基础设施
+2026-06-01 14:09:18.028 [INFO] sugon_web.utils.logger: 成功点击元素: 网络设施
+2026-06-01 14:09:21.692 [INFO] sugon_web.utils.logger: 成功导航到服务: 基础设施 -> 网络设施
+2026-06-01 14:09:23.113 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:09:23.126 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:09:24.204 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:09:25.662 [INFO] sugon_web.utils.logger: 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+2026-06-01 14:09:27.398 [INFO] sugon_web.utils.logger: 选择 'er-vpc1-autotest-yp2z' 后已捕获接口: /ports
+2026-06-01 14:09:32.924 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:09:32.942 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:09:34.030 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:09:34.920 [INFO] sugon_web.utils.logger: 开始搜索: 173.3.3.3
+2026-06-01 14:09:40.800 [INFO] sugon_web.utils.logger: 搜索操作完成: 173.3.3.3
+2026-06-01 14:09:40.801 [INFO] sugon_web.utils.logger: 开始获取资源(173.3.3.3)的数据
+2026-06-01 14:09:40.836 [INFO] sugon_web.utils.logger: 通过遍历找到 '173.3.3.3' 的精确匹配行
+2026-06-01 14:09:40.862 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '默认项目', '100.126.0.3', 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '173.3.3.3', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', ''], 共8个
+2026-06-01 14:09:40.862 [INFO] sugon_web.utils.logger: 处理后的数据: {'ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '项目': '默认项目', '管理IP地址': '100.126.0.3', '管理IP端口ID': 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '固定IP地址': '173.3.3.3', '固定IP端口ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '描述': ''}
+2026-06-01 14:09:40.862 [INFO] sugon_web.utils.logger: VM1创建成功: name=er-vm1-autotest-md43, ip=173.3.3.3, mfip=100.126.0.3
+2026-06-01 14:09:40.975 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:09:40.985 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+2026-06-01 14:09:48.029 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:09:51.022 [INFO] sugon_web.utils.logger: 创建虚拟私有云成功, VPC: er-vpc2-autotest-512h, 子网: subnet2-autotest-muwy, acl: None
+2026-06-01 14:09:54.910 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+2026-06-01 14:09:54.942 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+2026-06-01 14:09:54.944 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vpc2-autotest-512h -> 运行
+2026-06-01 14:09:54.945 [INFO] sugon_web.utils.logger: VPC2 er-vpc2-autotest-512h 创建成功
+2026-06-01 14:09:55.054 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:09:55.065 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:10:02.275 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:10:02.489 [INFO] sugon_web.utils.logger: basic信息: {'name': 'er-vm2-autotest-r68a', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+2026-06-01 14:10:02.993 [INFO] sugon_web.utils.logger: 已选择集群: Autotest
+2026-06-01 14:10:02.993 [INFO] sugon_web.utils.logger: 规格: base
+2026-06-01 14:10:03.876 [INFO] sugon_web.utils.logger: 开始搜索: ecs.c6.Autotest
+2026-06-01 14:10:07.197 [INFO] sugon_web.utils.logger: 搜索操作完成: ecs.c6.Autotest
+2026-06-01 14:10:07.435 [INFO] sugon_web.utils.logger: 规格类型分类: 计算型
+2026-06-01 14:10:07.536 [INFO] sugon_web.utils.logger: 已选择规格类型: ecs.c6.Autotest
+2026-06-01 14:10:07.536 [INFO] sugon_web.utils.logger: storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+2026-06-01 14:10:08.212 [INFO] sugon_web.utils.logger: 已选择存储池: ceph-test
+2026-06-01 14:10:08.212 [INFO] sugon_web.utils.logger: 开始选择镜像: image_source=镜像, image_name=ceph-test
+2026-06-01 14:10:09.121 [INFO] sugon_web.utils.logger: 已选择镜像来源: 镜像
+2026-06-01 14:10:11.637 [INFO] sugon_web.utils.logger: network信息: {'networks': [{'network': 'er-vpc2-autotest-512h', 'subnet': 'subnet2-autotest-muwy'}]}
+2026-06-01 14:10:12.046 [INFO] sugon_web.utils.logger: 选择网络: er-vpc2-autotest-512h
+2026-06-01 14:10:12.443 [INFO] sugon_web.utils.logger: 选择子网: subnet2-autotest-muwy
+2026-06-01 14:10:12.443 [INFO] sugon_web.utils.logger: manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+2026-06-01 14:10:12.551 [INFO] sugon_web.utils.logger: 登录方式: 密码登录 设置成功
+2026-06-01 14:10:13.641 [INFO] sugon_web.utils.logger: 云服务器创建请求已提交: er-vm2-autotest-r68a，数量: 1
+2026-06-01 14:10:17.537 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:10:49.976 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vm2-autotest-r68a -> 运行
+2026-06-01 14:10:49.976 [INFO] sugon_web.utils.logger: 开始获取资源(er-vm2-autotest-r68a)的数据
+2026-06-01 14:10:50.065 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', 'er-vm2-autotest-r68a ID:d3f9a993-f65b-4362-8735-b4aa15b4aef3', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 174.4.4.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:10:15'], 共12个
+2026-06-01 14:10:50.065 [INFO] sugon_web.utils.logger: 处理后的数据: {'名称/ID': 'er-vm2-autotest-r68a ID:d3f9a993-f65b-4362-8735-b4aa15b4aef3', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 174.4.4.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:10:15'}
+2026-06-01 14:10:50.074 [INFO] sugon_web.utils.logger: 服务 网络设施 未配置入口路径，继续使用菜单导航
+2026-06-01 14:10:50.113 [INFO] sugon_web.utils.logger: 成功悬停元素: 基础设施
+2026-06-01 14:10:50.169 [INFO] sugon_web.utils.logger: 成功点击元素: 网络设施
+2026-06-01 14:10:55.842 [INFO] sugon_web.utils.logger: 成功导航到服务: 基础设施 -> 网络设施
+2026-06-01 14:10:58.087 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:10:58.099 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:10:59.177 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:11:00.706 [INFO] sugon_web.utils.logger: 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+2026-06-01 14:11:02.787 [INFO] sugon_web.utils.logger: 选择 'er-vpc2-autotest-512h' 后已捕获接口: /ports
+2026-06-01 14:11:07.289 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:11:07.300 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:11:08.390 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:11:09.272 [INFO] sugon_web.utils.logger: 开始搜索: 174.4.4.3
+2026-06-01 14:11:14.536 [INFO] sugon_web.utils.logger: 搜索操作完成: 174.4.4.3
+2026-06-01 14:11:14.536 [INFO] sugon_web.utils.logger: 开始获取资源(174.4.4.3)的数据
+2026-06-01 14:11:14.569 [INFO] sugon_web.utils.logger: 通过遍历找到 '174.4.4.3' 的精确匹配行
+2026-06-01 14:11:14.593 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '默认项目', '100.126.0.15', '3c86fb5a-08b5-4219-b918-96a4ba4d1f42', '174.4.4.3', '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', ''], 共8个
+2026-06-01 14:11:14.593 [INFO] sugon_web.utils.logger: 处理后的数据: {'ID': '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '项目': '默认项目', '管理IP地址': '100.126.0.15', '管理IP端口ID': '3c86fb5a-08b5-4219-b918-96a4ba4d1f42', '固定IP地址': '174.4.4.3', '固定IP端口ID': '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '描述': ''}
+2026-06-01 14:11:14.593 [INFO] sugon_web.utils.logger: VM2创建成功: name=er-vm2-autotest-r68a, ip=174.4.4.3, mfip=100.126.0.15
+2026-06-01 14:11:26.636 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:12:27.582 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-ha-autotest-8rri -> 运行中
+2026-06-01 14:12:27.582 [INFO] sugon_web.utils.logger: HA ER er-ha-autotest-8rri 创建成功
+2026-06-01 14:12:29.504 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-ha-autotest-8rri
+2026-06-01 14:12:29.509 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-ha-autotest-8rri
+2026-06-01 14:12:29.509 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-ha-autotest-8rri
+2026-06-01 14:12:30.628 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-ha-autotest-8rri -> 管理连接 (使用 class 选择器)
+2026-06-01 14:12:42.040 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:13:02.301 [INFO] sugon_web.utils.logger: 资源状态验证成功: conn-vpc1-autotest-pruc -> 运行中
+2026-06-01 14:13:02.301 [INFO] sugon_web.utils.logger: VPC1连接 conn-vpc1-autotest-pruc 添加成功
+2026-06-01 14:13:11.670 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:13:31.948 [INFO] sugon_web.utils.logger: 资源状态验证成功: conn-vpc2-autotest-k7im -> 运行中
+2026-06-01 14:13:31.948 [INFO] sugon_web.utils.logger: VPC2连接 conn-vpc2-autotest-k7im 添加成功
+2026-06-01 14:13:31.958 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0d470b8db84d4d7fbd9ff8ad38c3b29b/er-ha-autotest-8rri/second/admin-inner-project?id=0d470b8db84d4d7fbd9ff8ad38c3b29b&name=er-ha-autotest-8rri&activeName=second&ha_type=open&project_id=admin-inner-project
+2026-06-01 14:13:31.979 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0d470b8db84d4d7fbd9ff8ad38c3b29b/er-ha-autotest-8rri/second/admin-inner-project?id=0d470b8db84d4d7fbd9ff8ad38c3b29b&name=er-ha-autotest-8rri&activeName=second&ha_type=open&project_id=admin-inner-project
+2026-06-01 14:13:33.065 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:13:33.112 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+2026-06-01 14:13:40.278 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:13:40.279 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否包含关键字 '174.4.4.0/24'
+2026-06-01 14:13:40.298 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:13:40.301 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:13:40.301 [INFO] sugon_web.utils.logger: 获取到的数据行共5行
+2026-06-01 14:13:40.328 [INFO] sugon_web.utils.logger: 获取到的列数据共5条: ['174.4.4.0/24', '100.64.0.0/16', '169.254.169.253/32', '173.3.3.0/24', '100.126.0.0/16']
+2026-06-01 14:13:40.328 [INFO] sugon_web.utils.logger: 断言通过: 列表包含 '174.4.4.0/24' (列: 目的地址)
+2026-06-01 14:13:40.328 [INFO] sugon_web.utils.logger: VPC1路由规则添加并验证成功
+2026-06-01 14:13:40.342 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+2026-06-01 14:13:40.368 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+2026-06-01 14:13:41.493 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:13:41.512 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+2026-06-01 14:13:48.176 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:13:48.176 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否包含关键字 '173.3.3.0/24'
+2026-06-01 14:13:48.196 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:13:48.200 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:13:48.200 [INFO] sugon_web.utils.logger: 获取到的数据行共5行
+2026-06-01 14:13:48.232 [INFO] sugon_web.utils.logger: 获取到的列数据共5条: ['173.3.3.0/24', '100.64.0.0/16', '174.4.4.0/24', '169.254.169.253/32', '100.126.0.0/16']
+2026-06-01 14:13:48.232 [INFO] sugon_web.utils.logger: 断言通过: 列表包含 '173.3.3.0/24' (列: 目的地址)
+2026-06-01 14:13:48.232 [INFO] sugon_web.utils.logger: VPC2路由规则添加并验证成功
+2026-06-01 14:13:48.321 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_7.4)
+2026-06-01 14:13:48.672 [INFO] paramiko.transport: Authentication (password) successful!
+2026-06-01 14:13:48.672 [INFO] sugon_web.utils.logger: Connected successfully to server 100.126.0.3
+2026-06-01 14:13:48.673 [INFO] sugon_web.utils.logger: Executing command: ping -c 4 174.4.4.3
+2026-06-01 14:13:51.921 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:13:51.922 [INFO] sugon_web.utils.logger: Command output: 
+                                                       PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                       64 bytes from 174.4.4.3: icmp_seq=1 ttl=61 time=4.14 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=2 ttl=61 time=1.43 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=3 ttl=61 time=0.703 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=4 ttl=61 time=0.669 ms
+                                                       
+                                                       --- 174.4.4.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3002ms
+                                                       rtt min/avg/max/mdev = 0.669/1.738/4.147/1.423 ms
+2026-06-01 14:13:51.922 [INFO] sugon_web.utils.logger: VM1 ping VM2结果:
+                                                       PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                       64 bytes from 174.4.4.3: icmp_seq=1 ttl=61 time=4.14 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=2 ttl=61 time=1.43 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=3 ttl=61 time=0.703 ms
+                                                       64 bytes from 174.4.4.3: icmp_seq=4 ttl=61 time=0.669 ms
+                                                       
+                                                       --- 174.4.4.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3002ms
+                                                       rtt min/avg/max/mdev = 0.669/1.738/4.147/1.423 ms
+2026-06-01 14:13:51.923 [INFO] sugon_web.utils.logger: VM1到VM2连通性验证通过
+2026-06-01 14:13:52.061 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_7.4)
+2026-06-01 14:13:52.422 [INFO] paramiko.transport: Authentication (password) successful!
+2026-06-01 14:13:52.423 [INFO] sugon_web.utils.logger: Connected successfully to server 100.126.0.15
+2026-06-01 14:13:52.423 [INFO] sugon_web.utils.logger: Executing command: ping -c 4 173.3.3.3
+2026-06-01 14:13:55.648 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:13:55.648 [INFO] sugon_web.utils.logger: Command output: 
+                                                       PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                       64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=1.79 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=0.633 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.812 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.654 ms
+                                                       
+                                                       --- 173.3.3.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3001ms
+                                                       rtt min/avg/max/mdev = 0.633/0.972/1.791/0.478 ms
+2026-06-01 14:13:55.649 [INFO] sugon_web.utils.logger: VM2 ping VM1结果:
+                                                       PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                       64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=1.79 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=0.633 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.812 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.654 ms
+                                                       
+                                                       --- 173.3.3.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3001ms
+                                                       rtt min/avg/max/mdev = 0.633/0.972/1.791/0.478 ms
+2026-06-01 14:13:55.650 [INFO] sugon_web.utils.logger: VM2到VM1连通性验证通过
+2026-06-01 14:13:55.673 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2905b186-d2cb-4d0d-a443-c34ea7d44e36?project_id=admin-inner-project
+2026-06-01 14:13:56.836 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:13:56.893 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+2026-06-01 14:14:00.179 [INFO] sugon_web.utils.logger: 通过遍历找到 '174.4.4.0/24' 的精确匹配行
+2026-06-01 14:14:00.255 [INFO] sugon_web.utils.logger: 点击平铺操作选项: 174.4.4.0/24 -> 删除
+2026-06-01 14:14:01.684 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否不包含关键字 '174.4.4.0/24'
+2026-06-01 14:14:01.697 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:14:01.700 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:14:01.700 [INFO] sugon_web.utils.logger: 获取到的数据行共4行
+2026-06-01 14:14:01.723 [INFO] sugon_web.utils.logger: 获取到的列数据共4条: ['100.64.0.0/16', '169.254.169.253/32', '173.3.3.0/24', '100.126.0.0/16']
+2026-06-01 14:14:01.723 [INFO] sugon_web.utils.logger: 断言通过: 列表不包含 '174.4.4.0/24' (列: 目的地址)
+2026-06-01 14:14:01.723 [INFO] sugon_web.utils.logger: VPC1路由规则删除成功
+2026-06-01 14:14:01.738 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+2026-06-01 14:14:02.875 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:14:02.909 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+2026-06-01 14:14:04.173 [INFO] sugon_web.utils.logger: 通过遍历找到 '173.3.3.0/24' 的精确匹配行
+2026-06-01 14:14:04.240 [INFO] sugon_web.utils.logger: 点击平铺操作选项: 173.3.3.0/24 -> 删除
+2026-06-01 14:14:05.653 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否不包含关键字 '173.3.3.0/24'
+2026-06-01 14:14:05.666 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:14:05.669 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:14:05.669 [INFO] sugon_web.utils.logger: 获取到的数据行共4行
+2026-06-01 14:14:05.690 [INFO] sugon_web.utils.logger: 获取到的列数据共4条: ['100.64.0.0/16', '174.4.4.0/24', '169.254.169.253/32', '100.126.0.0/16']
+2026-06-01 14:14:05.690 [INFO] sugon_web.utils.logger: 断言通过: 列表不包含 '173.3.3.0/24' (列: 目的地址)
+2026-06-01 14:14:05.691 [INFO] sugon_web.utils.logger: VPC2路由规则删除成功
+2026-06-01 14:14:11.860 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-ha-autotest-8rri
+2026-06-01 14:14:11.864 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-ha-autotest-8rri
+2026-06-01 14:14:11.864 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-ha-autotest-8rri
+2026-06-01 14:14:12.993 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-ha-autotest-8rri -> 管理连接 (使用 class 选择器)
+2026-06-01 14:14:15.097 [INFO] sugon_web.utils.logger: 点击平铺操作选项: conn-vpc1-autotest-pruc -> 删除
+2026-06-01 14:14:22.576 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: conn-vpc1-autotest-pruc
+2026-06-01 14:14:22.650 [INFO] sugon_web.utils.logger: 点击平铺操作选项: conn-vpc2-autotest-k7im -> 删除
+2026-06-01 14:14:28.100 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: conn-vpc2-autotest-k7im
+2026-06-01 14:14:28.100 [INFO] sugon_web.utils.logger: ER连接删除成功
+2026-06-01 14:14:35.176 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-ha-autotest-8rri
+2026-06-01 14:14:35.181 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-ha-autotest-8rri
+2026-06-01 14:14:35.181 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-ha-autotest-8rri
+2026-06-01 14:14:36.281 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-ha-autotest-8rri -> 删除 (使用 class 选择器)
+2026-06-01 14:14:41.378 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-ha-autotest-8rri
+2026-06-01 14:14:41.378 [INFO] sugon_web.utils.logger: ER er-ha-autotest-8rri 删除成功
+2026-06-01 14:14:41.686 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:14:41.704 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:14:46.421 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:14:46.500 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-vm1-autotest-md43
+2026-06-01 14:14:46.508 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-vm1-autotest-md43
+2026-06-01 14:14:46.508 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-vm1-autotest-md43
+2026-06-01 14:14:47.627 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-vm1-autotest-md43 -> 删除 (使用 id 选择器)
+2026-06-01 14:14:49.084 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm1-autotest-md43
+2026-06-01 14:14:49.085 [INFO] sugon_web.utils.logger: VM er-vm1-autotest-md43 已移入回收站
+2026-06-01 14:14:49.094 [INFO] sugon_web.utils.logger: 发现未关闭的对话框，正在关闭...
+2026-06-01 14:15:19.104 [ERROR] sugon_web.utils.logger: [CustomLocator.click] 点击失败: Locator.click: Timeout 30000ms exceeded.
+                                                        Call log:
+                                                          - waiting for get_by_role("button", name="Close")
+                                                            - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+                                                          - attempting click action
+                                                            2 × waiting for element to be visible, enabled and stable
+                                                              - element is not stable
+                                                            - retrying click action
+                                                            - waiting 20ms
+                                                            - waiting for element to be visible, enabled and stable
+                                                            - element is visible, enabled and stable
+                                                            - scrolling into view if needed
+                                                            - done scrolling
+                                                            - <div class="el-dialog__header">…</div> intercepts pointer events
+                                                          2 × retrying click action
+                                                              - waiting 100ms
+                                                              - waiting for element to be visible, enabled and stable
+                                                              - element is not visible
+                                                          55 × retrying click action
+                                                               - waiting 500ms
+                                                               - waiting for element to be visible, enabled and stable
+                                                               - element is not visible
+                                                          - retrying click action
+                                                            - waiting 500ms
+2026-06-01 14:15:19.104 [WARNING] sugon_web.utils.logger: 删除VM er-vm1-autotest-md43 失败: Locator.click: Timeout 30000ms exceeded.
+                                                          Call log:
+                                                            - waiting for get_by_role("button", name="Close")
+                                                              - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+                                                            - attempting click action
+                                                              2 × waiting for element to be visible, enabled and stable
+                                                                - element is not stable
+                                                              - retrying click action
+                                                              - waiting 20ms
+                                                              - waiting for element to be visible, enabled and stable
+                                                              - element is visible, enabled and stable
+                                                              - scrolling into view if needed
+                                                              - done scrolling
+                                                              - <div class="el-dialog__header">…</div> intercepts pointer events
+                                                            2 × retrying click action
+                                                                - waiting 100ms
+                                                                - waiting for element to be visible, enabled and stable
+                                                                - element is not visible
+                                                            55 × retrying click action
+                                                                 - waiting 500ms
+                                                                 - waiting for element to be visible, enabled and stable
+                                                                 - element is not visible
+                                                            - retrying click action
+                                                              - waiting 500ms
+2026-06-01 14:15:19.148 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-list
+2026-06-01 14:15:20.246 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:15:20.333 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-vm2-autotest-r68a
+2026-06-01 14:15:20.342 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-vm2-autotest-r68a
+2026-06-01 14:15:20.342 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-vm2-autotest-r68a
+2026-06-01 14:15:21.488 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-vm2-autotest-r68a -> 删除 (使用 id 选择器)
+2026-06-01 14:15:22.952 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm2-autotest-r68a
+2026-06-01 14:15:22.953 [INFO] sugon_web.utils.logger: VM er-vm2-autotest-r68a 已移入回收站
+2026-06-01 14:15:24.059 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:15:24.085 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+2026-06-01 14:15:25.171 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:15:25.262 [INFO] sugon_web.utils.logger: 点击平铺操作选项: er-vm2-autotest-r68a -> 删除
+2026-06-01 14:15:41.723 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm2-autotest-r68a
+2026-06-01 14:15:41.724 [INFO] sugon_web.utils.logger: VM er-vm2-autotest-r68a 已从回收站彻底删除
+2026-06-01 14:15:41.991 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:15:47.293 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:15:47.317 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-list
+2026-06-01 14:15:48.410 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:15:48.474 [INFO] sugon_web.utils.logger: 勾选资源 'er-vpc1-autotest-yp2z'
+2026-06-01 14:15:48.531 [INFO] sugon_web.utils.logger: 勾选资源 'er-vpc2-autotest-512h'
+2026-06-01 14:15:50.945 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vpc1-autotest-yp2z
+2026-06-01 14:15:50.956 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vpc2-autotest-512h
+2026-06-01 14:15:50.956 [INFO] sugon_web.utils.logger: VPC批量删除成功: ['er-vpc1-autotest-yp2z', 'er-vpc2-autotest-512h']
+2026-06-01 14:15:50.995 [ERROR] sugon_web.utils.logger: 测试失败: test_er_vpc_connectivity
+2026-06-01 14:15:50.995 [INFO] sugon_web.utils.logger: 开始生成失败截图
+2026-06-01 14:15:51.040 [INFO] sugon_web.utils.logger: 截图保存成功: /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/screenshots/test_er_vpc_connectivity_20260601_141550.png
+2026-06-01 14:15:51.040 [ERROR] sugon_web.utils.logger: 测试失败详情:
+                                                        测试失败时间: 2026-06-01 14:15:51
+                                                        测试用例名称: test_er_vpc_connectivity
+                                                        失败阶段: call
+                                                        当前页面URL: https://172.22.1.190:30000/vpc/#/vpc-network-list
+2026-06-01 14:15:51.040 [INFO] sugon_web.utils.logger: 失败截图已保存并添加到 Allure 报告: /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/screenshots/test_er_vpc_connectivity_20260601_141550.png
+FAILED                                                                   [ 50%]
+------------------------------ live log teardown -------------------------------
+2026-06-01 14:15:51.041 [INFO] sugon_web.utils.logger: === TEARDOWN START: test_er_vpc_connectivity ===
+2026-06-01 14:15:51.046 [INFO] sugon_web.utils.logger: 页面已关闭
+2026-06-01 14:15:51.069 [INFO] sugon_web.utils.logger: 浏览器上下文已关闭
+
+sugon_web/testcase/network/test_er_vpc_connectivity_non_ha.py::TestERVPCConnectivityNonHA::test_er_vpc_connectivity_non_ha 
+-------------------------------- live log setup --------------------------------
+2026-06-01 14:15:51.073 [INFO] sugon_web.utils.logger: === SETUP START: test_er_vpc_connectivity_non_ha ===
+2026-06-01 14:15:51.082 [INFO] sugon_web.utils.logger: 浏览器上下文创建成功
+2026-06-01 14:15:51.082 [INFO] sugon_web.utils.logger: 创建新页面...
+2026-06-01 14:15:51.207 [INFO] sugon_web.utils.logger: 页面创建成功
+2026-06-01 14:15:51.207 [INFO] sugon_web.utils.logger: 导航到目标URL: https://172.22.1.190:30000
+2026-06-01 14:15:51.611 [INFO] sugon_web.utils.logger: 页面导航完成，当前URL: https://172.22.1.190:30000/
+2026-06-01 14:15:55.353 [INFO] sugon_web.utils.logger: 页面导航完成，当前URL: https://172.22.1.190:30000/#/login
+2026-06-01 14:15:56.698 [INFO] sugon_web.utils.logger: 登录成功
+2026-06-01 14:15:56.708 [INFO] sugon_web.utils.logger: 发现未关闭的对话框，正在关闭...
+-------------------------------- live log call ---------------------------------
+2026-06-01 14:15:56.746 [INFO] sugon_web.utils.logger: === CALL START: test_er_vpc_connectivity_non_ha ===
+2026-06-01 14:15:57.138 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:15:57.149 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+2026-06-01 14:16:04.646 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:16:07.823 [INFO] sugon_web.utils.logger: 创建虚拟私有云成功, VPC: er-vpc1-autotest-rrj4, 子网: subnet1-autotest-ewos, acl: None
+2026-06-01 14:16:10.710 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+2026-06-01 14:16:10.744 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+2026-06-01 14:16:10.746 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vpc1-autotest-rrj4 -> 运行
+2026-06-01 14:16:10.746 [INFO] sugon_web.utils.logger: VPC1 er-vpc1-autotest-rrj4 创建成功
+2026-06-01 14:16:10.959 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:16:10.970 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:16:17.452 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:16:17.532 [INFO] sugon_web.utils.logger: basic信息: {'name': 'er-vm1-autotest-vbhk', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+2026-06-01 14:16:18.781 [INFO] sugon_web.utils.logger: 已选择集群: Autotest
+2026-06-01 14:16:18.781 [INFO] sugon_web.utils.logger: 规格: base
+2026-06-01 14:16:20.157 [INFO] sugon_web.utils.logger: 开始搜索: ecs.c6.Autotest
+2026-06-01 14:16:23.569 [INFO] sugon_web.utils.logger: 搜索操作完成: ecs.c6.Autotest
+2026-06-01 14:16:23.808 [INFO] sugon_web.utils.logger: 规格类型分类: 计算型
+2026-06-01 14:16:23.898 [INFO] sugon_web.utils.logger: 已选择规格类型: ecs.c6.Autotest
+2026-06-01 14:16:23.898 [INFO] sugon_web.utils.logger: storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+2026-06-01 14:16:24.568 [INFO] sugon_web.utils.logger: 已选择存储池: ceph-test
+2026-06-01 14:16:24.568 [INFO] sugon_web.utils.logger: 开始选择镜像: image_source=镜像, image_name=ceph-test
+2026-06-01 14:16:25.467 [INFO] sugon_web.utils.logger: 已选择镜像来源: 镜像
+2026-06-01 14:16:26.956 [INFO] sugon_web.utils.logger: network信息: {'networks': [{'network': 'er-vpc1-autotest-rrj4', 'subnet': 'subnet1-autotest-ewos'}]}
+2026-06-01 14:16:27.376 [INFO] sugon_web.utils.logger: 选择网络: er-vpc1-autotest-rrj4
+2026-06-01 14:16:28.292 [INFO] sugon_web.utils.logger: 选择子网: subnet1-autotest-ewos
+2026-06-01 14:16:28.292 [INFO] sugon_web.utils.logger: manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+2026-06-01 14:16:28.397 [INFO] sugon_web.utils.logger: 登录方式: 密码登录 设置成功
+2026-06-01 14:16:30.465 [INFO] sugon_web.utils.logger: 云服务器创建请求已提交: er-vm1-autotest-vbhk，数量: 1
+2026-06-01 14:16:33.351 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:17:06.336 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vm1-autotest-vbhk -> 运行
+2026-06-01 14:17:06.337 [INFO] sugon_web.utils.logger: 开始获取资源(er-vm1-autotest-vbhk)的数据
+2026-06-01 14:17:06.421 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', 'er-vm1-autotest-vbhk ID:b6d47435-e4a5-4a78-b708-3cb4ab639fa3', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 173.3.3.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:16:31'], 共12个
+2026-06-01 14:17:06.422 [INFO] sugon_web.utils.logger: 处理后的数据: {'名称/ID': 'er-vm1-autotest-vbhk ID:b6d47435-e4a5-4a78-b708-3cb4ab639fa3', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 173.3.3.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:16:31'}
+2026-06-01 14:17:06.429 [INFO] sugon_web.utils.logger: 服务 网络设施 未配置入口路径，继续使用菜单导航
+2026-06-01 14:17:06.481 [INFO] sugon_web.utils.logger: 成功悬停元素: 基础设施
+2026-06-01 14:17:06.553 [INFO] sugon_web.utils.logger: 成功点击元素: 网络设施
+2026-06-01 14:17:10.049 [INFO] sugon_web.utils.logger: 成功导航到服务: 基础设施 -> 网络设施
+2026-06-01 14:17:11.406 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:17:11.419 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:17:12.521 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:17:14.057 [INFO] sugon_web.utils.logger: 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+2026-06-01 14:17:15.614 [INFO] sugon_web.utils.logger: 选择 'er-vpc1-autotest-rrj4' 后已捕获接口: /ports
+2026-06-01 14:17:22.191 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:17:22.205 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:17:23.295 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:17:23.751 [INFO] sugon_web.utils.logger: 开始搜索: 173.3.3.3
+2026-06-01 14:17:30.153 [INFO] sugon_web.utils.logger: 搜索操作完成: 173.3.3.3
+2026-06-01 14:17:30.153 [INFO] sugon_web.utils.logger: 开始获取资源(173.3.3.3)的数据
+2026-06-01 14:17:30.187 [INFO] sugon_web.utils.logger: 通过遍历找到 '173.3.3.3' 的精确匹配行
+2026-06-01 14:17:30.211 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '默认项目', '100.126.0.3', 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '173.3.3.3', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', ''], 共8个
+2026-06-01 14:17:30.211 [INFO] sugon_web.utils.logger: 处理后的数据: {'ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '项目': '默认项目', '管理IP地址': '100.126.0.3', '管理IP端口ID': 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '固定IP地址': '173.3.3.3', '固定IP端口ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '描述': ''}
+2026-06-01 14:17:30.211 [INFO] sugon_web.utils.logger: VM1创建成功: name=er-vm1-autotest-vbhk, ip=173.3.3.3, mfip=100.126.0.3
+2026-06-01 14:17:30.511 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:17:30.521 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+2026-06-01 14:17:37.627 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:17:40.544 [INFO] sugon_web.utils.logger: 创建虚拟私有云成功, VPC: er-vpc2-autotest-n1zi, 子网: subnet2-autotest-jvxo, acl: None
+2026-06-01 14:17:43.424 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+2026-06-01 14:17:43.463 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+2026-06-01 14:17:43.465 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vpc2-autotest-n1zi -> 运行
+2026-06-01 14:17:43.465 [INFO] sugon_web.utils.logger: VPC2 er-vpc2-autotest-n1zi 创建成功
+2026-06-01 14:17:43.754 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:17:43.763 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:17:49.862 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:17:49.955 [INFO] sugon_web.utils.logger: basic信息: {'name': 'er-vm2-autotest-ol2o', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+2026-06-01 14:17:51.263 [INFO] sugon_web.utils.logger: 已选择集群: Autotest
+2026-06-01 14:17:51.264 [INFO] sugon_web.utils.logger: 规格: base
+2026-06-01 14:17:51.395 [INFO] sugon_web.utils.logger: 开始搜索: ecs.c6.Autotest
+2026-06-01 14:17:54.798 [INFO] sugon_web.utils.logger: 搜索操作完成: ecs.c6.Autotest
+2026-06-01 14:17:55.045 [INFO] sugon_web.utils.logger: 规格类型分类: 计算型
+2026-06-01 14:17:55.178 [INFO] sugon_web.utils.logger: 已选择规格类型: ecs.c6.Autotest
+2026-06-01 14:17:55.178 [INFO] sugon_web.utils.logger: storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+2026-06-01 14:17:56.006 [INFO] sugon_web.utils.logger: 已选择存储池: ceph-test
+2026-06-01 14:17:56.006 [INFO] sugon_web.utils.logger: 开始选择镜像: image_source=镜像, image_name=ceph-test
+2026-06-01 14:17:56.503 [INFO] sugon_web.utils.logger: 已选择镜像来源: 镜像
+2026-06-01 14:17:58.551 [INFO] sugon_web.utils.logger: network信息: {'networks': [{'network': 'er-vpc2-autotest-n1zi', 'subnet': 'subnet2-autotest-jvxo'}]}
+2026-06-01 14:17:59.055 [INFO] sugon_web.utils.logger: 选择网络: er-vpc2-autotest-n1zi
+2026-06-01 14:17:59.542 [INFO] sugon_web.utils.logger: 选择子网: subnet2-autotest-jvxo
+2026-06-01 14:17:59.542 [INFO] sugon_web.utils.logger: manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+2026-06-01 14:17:59.657 [INFO] sugon_web.utils.logger: 登录方式: 密码登录 设置成功
+2026-06-01 14:18:00.761 [INFO] sugon_web.utils.logger: 云服务器创建请求已提交: er-vm2-autotest-ol2o，数量: 1
+2026-06-01 14:18:04.654 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:18:37.113 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-vm2-autotest-ol2o -> 运行
+2026-06-01 14:18:37.114 [INFO] sugon_web.utils.logger: 开始获取资源(er-vm2-autotest-ol2o)的数据
+2026-06-01 14:18:37.211 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', 'er-vm2-autotest-ol2o ID:1941d327-50e1-4fcb-b0a9-79dc7f6f9f60', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 174.4.4.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:18:02'], 共12个
+2026-06-01 14:18:37.212 [INFO] sugon_web.utils.logger: 处理后的数据: {'名称/ID': 'er-vm2-autotest-ol2o ID:1941d327-50e1-4fcb-b0a9-79dc7f6f9f60', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 174.4.4.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:18:02'}
+2026-06-01 14:18:37.220 [INFO] sugon_web.utils.logger: 服务 网络设施 未配置入口路径，继续使用菜单导航
+2026-06-01 14:18:37.289 [INFO] sugon_web.utils.logger: 成功悬停元素: 基础设施
+2026-06-01 14:18:37.360 [INFO] sugon_web.utils.logger: 成功点击元素: 网络设施
+2026-06-01 14:18:40.029 [INFO] sugon_web.utils.logger: 成功导航到服务: 基础设施 -> 网络设施
+2026-06-01 14:18:41.647 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:18:41.660 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:18:42.764 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:18:44.323 [INFO] sugon_web.utils.logger: 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+2026-06-01 14:18:46.074 [INFO] sugon_web.utils.logger: 选择 'er-vpc2-autotest-n1zi' 后已捕获接口: /ports
+2026-06-01 14:18:50.672 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:18:50.691 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+2026-06-01 14:18:51.791 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 平台网络
+2026-06-01 14:18:52.247 [INFO] sugon_web.utils.logger: 开始搜索: 174.4.4.3
+2026-06-01 14:18:58.182 [INFO] sugon_web.utils.logger: 搜索操作完成: 174.4.4.3
+2026-06-01 14:18:58.183 [INFO] sugon_web.utils.logger: 开始获取资源(174.4.4.3)的数据
+2026-06-01 14:18:58.223 [INFO] sugon_web.utils.logger: 通过遍历找到 '174.4.4.3' 的精确匹配行
+2026-06-01 14:18:58.245 [INFO] sugon_web.utils.logger: 页面数据行信息: ['', '98b25537-f872-4f5e-b96f-3c99d11b88cd', '默认项目', '100.126.0.16', '8568fa1d-5020-4cc3-a697-1ccc54992123', '174.4.4.3', '98b25537-f872-4f5e-b96f-3c99d11b88cd', ''], 共8个
+2026-06-01 14:18:58.246 [INFO] sugon_web.utils.logger: 处理后的数据: {'ID': '98b25537-f872-4f5e-b96f-3c99d11b88cd', '项目': '默认项目', '管理IP地址': '100.126.0.16', '管理IP端口ID': '8568fa1d-5020-4cc3-a697-1ccc54992123', '固定IP地址': '174.4.4.3', '固定IP端口ID': '98b25537-f872-4f5e-b96f-3c99d11b88cd', '描述': ''}
+2026-06-01 14:18:58.246 [INFO] sugon_web.utils.logger: VM2创建成功: name=er-vm2-autotest-ol2o, ip=174.4.4.3, mfip=100.126.0.16
+2026-06-01 14:19:09.493 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:19:50.647 [INFO] sugon_web.utils.logger: 资源状态验证成功: er-non-ha-autotest-lepv -> 运行中
+2026-06-01 14:19:50.647 [INFO] sugon_web.utils.logger: 非HA ER er-non-ha-autotest-lepv 创建成功
+2026-06-01 14:19:51.966 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-non-ha-autotest-lepv
+2026-06-01 14:19:51.970 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-non-ha-autotest-lepv
+2026-06-01 14:19:51.970 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-non-ha-autotest-lepv
+2026-06-01 14:19:53.069 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-non-ha-autotest-lepv -> 管理连接 (使用 class 选择器)
+2026-06-01 14:20:05.459 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:20:25.852 [INFO] sugon_web.utils.logger: 资源状态验证成功: conn-vpc1-autotest-fj23 -> 运行中
+2026-06-01 14:20:25.852 [INFO] sugon_web.utils.logger: VPC1连接 conn-vpc1-autotest-fj23 添加成功
+2026-06-01 14:20:35.206 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:20:55.496 [INFO] sugon_web.utils.logger: 资源状态验证成功: conn-vpc2-autotest-ts4x -> 运行中
+2026-06-01 14:20:55.496 [INFO] sugon_web.utils.logger: VPC2连接 conn-vpc2-autotest-ts4x 添加成功
+2026-06-01 14:20:55.509 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0b75fbda54344b608f0e663b199025a0/er-non-ha-autotest-lepv/second/admin-inner-project?id=0b75fbda54344b608f0e663b199025a0&name=er-non-ha-autotest-lepv&activeName=second&ha_type=open&project_id=admin-inner-project
+2026-06-01 14:20:55.530 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0b75fbda54344b608f0e663b199025a0/er-non-ha-autotest-lepv/second/admin-inner-project?id=0b75fbda54344b608f0e663b199025a0&name=er-non-ha-autotest-lepv&activeName=second&ha_type=open&project_id=admin-inner-project
+2026-06-01 14:20:56.610 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:20:56.663 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+2026-06-01 14:21:04.116 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:21:04.117 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否包含关键字 '174.4.4.0/24'
+2026-06-01 14:21:04.135 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:21:04.139 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:21:04.140 [INFO] sugon_web.utils.logger: 获取到的数据行共5行
+2026-06-01 14:21:04.168 [INFO] sugon_web.utils.logger: 获取到的列数据共5条: ['174.4.4.0/24', '100.64.0.0/16', '169.254.169.253/32', '100.126.0.0/16', '173.3.3.0/24']
+2026-06-01 14:21:04.168 [INFO] sugon_web.utils.logger: 断言通过: 列表包含 '174.4.4.0/24' (列: 目的地址)
+2026-06-01 14:21:04.168 [INFO] sugon_web.utils.logger: VPC1路由规则添加并验证成功
+2026-06-01 14:21:04.182 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+2026-06-01 14:21:04.210 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+2026-06-01 14:21:05.327 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:21:05.349 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+2026-06-01 14:21:12.822 [INFO] sugon_web.utils.logger: 断言通过: 成功弹窗出现
+2026-06-01 14:21:12.822 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否包含关键字 '173.3.3.0/24'
+2026-06-01 14:21:12.840 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:21:12.843 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:21:12.843 [INFO] sugon_web.utils.logger: 获取到的数据行共5行
+2026-06-01 14:21:12.868 [INFO] sugon_web.utils.logger: 获取到的列数据共5条: ['173.3.3.0/24', '100.64.0.0/16', '100.126.0.0/16', '169.254.169.253/32', '174.4.4.0/24']
+2026-06-01 14:21:12.868 [INFO] sugon_web.utils.logger: 断言通过: 列表包含 '173.3.3.0/24' (列: 目的地址)
+2026-06-01 14:21:12.868 [INFO] sugon_web.utils.logger: VPC2路由规则添加并验证成功
+2026-06-01 14:21:12.957 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_7.4)
+2026-06-01 14:21:13.331 [INFO] paramiko.transport: Authentication (password) successful!
+2026-06-01 14:21:13.331 [INFO] sugon_web.utils.logger: Connected successfully to server 100.126.0.3
+2026-06-01 14:21:13.331 [INFO] sugon_web.utils.logger: Executing command: ping -c 4 174.4.4.3
+2026-06-01 14:21:26.505 [INFO] sugon_web.utils.logger: Command exited with return code 1
+2026-06-01 14:21:26.505 [INFO] sugon_web.utils.logger: Command output: 
+                                                       PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                       
+                                                       --- 174.4.4.3 ping statistics ---
+                                                       4 packets transmitted, 0 received, 100% packet loss, time 2999ms
+                                                       
+2026-06-01 14:21:26.505 [INFO] sugon_web.utils.logger: VM1 ping VM2结果:
+                                                       PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                       
+                                                       --- 174.4.4.3 ping statistics ---
+                                                       4 packets transmitted, 0 received, 100% packet loss, time 2999ms
+2026-06-01 14:21:26.506 [INFO] sugon_web.utils.logger: VM1到VM2连通性验证通过
+2026-06-01 14:21:26.656 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_7.4)
+2026-06-01 14:21:27.015 [INFO] paramiko.transport: Authentication (password) successful!
+2026-06-01 14:21:27.015 [INFO] sugon_web.utils.logger: Connected successfully to server 100.126.0.16
+2026-06-01 14:21:27.016 [INFO] sugon_web.utils.logger: Executing command: ping -c 4 173.3.3.3
+2026-06-01 14:21:30.369 [INFO] sugon_web.utils.logger: Command exited with return code 0
+2026-06-01 14:21:30.369 [INFO] sugon_web.utils.logger: Command output: 
+                                                       PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                       64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=3.72 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=2.43 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.762 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.629 ms
+                                                       
+                                                       --- 173.3.3.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+                                                       rtt min/avg/max/mdev = 0.629/1.886/3.725/1.278 ms
+2026-06-01 14:21:30.369 [INFO] sugon_web.utils.logger: VM2 ping VM1结果:
+                                                       PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                       64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=3.72 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=2.43 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.762 ms
+                                                       64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.629 ms
+                                                       
+                                                       --- 173.3.3.3 ping statistics ---
+                                                       4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+                                                       rtt min/avg/max/mdev = 0.629/1.886/3.725/1.278 ms
+2026-06-01 14:21:30.371 [INFO] sugon_web.utils.logger: VM2到VM1连通性验证通过
+2026-06-01 14:21:30.401 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/7e1627f2-1a28-4f1d-8359-c8ec4c2c661d?project_id=admin-inner-project
+2026-06-01 14:21:31.540 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:21:31.594 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+2026-06-01 14:21:33.371 [INFO] sugon_web.utils.logger: 通过遍历找到 '174.4.4.0/24' 的精确匹配行
+2026-06-01 14:21:33.434 [INFO] sugon_web.utils.logger: 点击平铺操作选项: 174.4.4.0/24 -> 删除
+2026-06-01 14:21:34.793 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否不包含关键字 '174.4.4.0/24'
+2026-06-01 14:21:34.810 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:21:34.814 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:21:34.815 [INFO] sugon_web.utils.logger: 获取到的数据行共4行
+2026-06-01 14:21:34.835 [INFO] sugon_web.utils.logger: 获取到的列数据共4条: ['100.64.0.0/16', '169.254.169.253/32', '100.126.0.0/16', '173.3.3.0/24']
+2026-06-01 14:21:34.836 [INFO] sugon_web.utils.logger: 断言通过: 列表不包含 '174.4.4.0/24' (列: 目的地址)
+2026-06-01 14:21:34.836 [INFO] sugon_web.utils.logger: VPC1路由规则删除成功
+2026-06-01 14:21:34.851 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+2026-06-01 14:21:35.986 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:21:36.025 [INFO] sugon_web.utils.logger: 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+2026-06-01 14:21:37.782 [INFO] sugon_web.utils.logger: 通过遍历找到 '173.3.3.0/24' 的精确匹配行
+2026-06-01 14:21:37.839 [INFO] sugon_web.utils.logger: 点击平铺操作选项: 173.3.3.0/24 -> 删除
+2026-06-01 14:21:39.194 [INFO] sugon_web.utils.logger: 检查列 '目的地址' 中是否不包含关键字 '173.3.3.0/24'
+2026-06-01 14:21:39.211 [INFO] sugon_web.utils.logger: 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+2026-06-01 14:21:39.214 [INFO] sugon_web.utils.logger: 表头 '目的地址' 的索引位置: 1
+2026-06-01 14:21:39.215 [INFO] sugon_web.utils.logger: 获取到的数据行共4行
+2026-06-01 14:21:39.236 [INFO] sugon_web.utils.logger: 获取到的列数据共4条: ['100.64.0.0/16', '100.126.0.0/16', '169.254.169.253/32', '174.4.4.0/24']
+2026-06-01 14:21:39.236 [INFO] sugon_web.utils.logger: 断言通过: 列表不包含 '173.3.3.0/24' (列: 目的地址)
+2026-06-01 14:21:39.237 [INFO] sugon_web.utils.logger: VPC2路由规则删除成功
+2026-06-01 14:21:44.138 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-non-ha-autotest-lepv
+2026-06-01 14:21:44.143 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-non-ha-autotest-lepv
+2026-06-01 14:21:44.143 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-non-ha-autotest-lepv
+2026-06-01 14:21:45.227 [WARNING] sugon_web.utils.logger: 选项 '管理连接' 不可见或不可用
+2026-06-01 14:21:45.241 [WARNING] sugon_web.utils.logger: 选项 '管理连接' 不可见或不可用
+2026-06-01 14:21:45.255 [WARNING] sugon_web.utils.logger: 选项 '管理连接' 不可见或不可用
+2026-06-01 14:21:45.267 [WARNING] sugon_web.utils.logger: 选项 '管理连接' 不可见或不可用
+2026-06-01 14:21:45.320 [ERROR] sugon_web.utils.logger: 点击资源操作选项失败: er-non-ha-autotest-lepv -> 管理连接, 错误: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+2026-06-01 14:21:45.322 [WARNING] sugon_web.utils.logger: 删除ER连接失败: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+2026-06-01 14:21:47.407 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-non-ha-autotest-lepv
+2026-06-01 14:21:47.411 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-non-ha-autotest-lepv
+2026-06-01 14:21:47.411 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-non-ha-autotest-lepv
+2026-06-01 14:21:48.495 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-non-ha-autotest-lepv -> 删除 (使用 class 选择器)
+2026-06-01 14:21:53.597 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-non-ha-autotest-lepv
+2026-06-01 14:21:53.597 [INFO] sugon_web.utils.logger: ER er-non-ha-autotest-lepv 删除成功
+2026-06-01 14:21:53.844 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+2026-06-01 14:21:53.863 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+2026-06-01 14:21:58.007 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:21:58.074 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-vm1-autotest-vbhk
+2026-06-01 14:21:58.097 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-vm1-autotest-vbhk
+2026-06-01 14:21:58.098 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-vm1-autotest-vbhk
+2026-06-01 14:21:59.211 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-vm1-autotest-vbhk -> 删除 (使用 id 选择器)
+2026-06-01 14:22:01.633 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm1-autotest-vbhk
+2026-06-01 14:22:01.633 [INFO] sugon_web.utils.logger: VM er-vm1-autotest-vbhk 已移入回收站
+2026-06-01 14:22:02.757 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:22:02.784 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+2026-06-01 14:22:03.856 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:22:03.935 [INFO] sugon_web.utils.logger: 点击平铺操作选项: er-vm1-autotest-vbhk -> 删除
+2026-06-01 14:22:20.420 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm1-autotest-vbhk
+2026-06-01 14:22:20.421 [INFO] sugon_web.utils.logger: VM er-vm1-autotest-vbhk 已从回收站彻底删除
+2026-06-01 14:22:20.451 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+2026-06-01 14:22:22.588 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 弹性云服务器
+2026-06-01 14:22:22.661 [INFO] sugon_web.utils.logger: 成功找到资源操作行: er-vm2-autotest-ol2o
+2026-06-01 14:22:22.669 [INFO] sugon_web.utils.logger: 定位资源的目标行: er-vm2-autotest-ol2o
+2026-06-01 14:22:22.669 [INFO] sugon_web.utils.logger: 定位资源的操作按钮: er-vm2-autotest-ol2o
+2026-06-01 14:22:23.784 [INFO] sugon_web.utils.logger: 点击下拉菜单操作选项: er-vm2-autotest-ol2o -> 删除 (使用 id 选择器)
+2026-06-01 14:22:25.181 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm2-autotest-ol2o
+2026-06-01 14:22:25.181 [INFO] sugon_web.utils.logger: VM er-vm2-autotest-ol2o 已移入回收站
+2026-06-01 14:22:27.156 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:22:27.183 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+2026-06-01 14:22:28.255 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 回收站
+2026-06-01 14:22:28.333 [INFO] sugon_web.utils.logger: 点击平铺操作选项: er-vm2-autotest-ol2o -> 删除
+2026-06-01 14:22:44.819 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vm2-autotest-ol2o
+2026-06-01 14:22:44.819 [INFO] sugon_web.utils.logger: VM er-vm2-autotest-ol2o 已从回收站彻底删除
+2026-06-01 14:22:44.942 [INFO] sugon_web.utils.logger: 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+2026-06-01 14:22:50.997 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:22:51.021 [INFO] sugon_web.utils.logger: 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-list
+2026-06-01 14:22:52.103 [INFO] sugon_web.utils.logger: 成功导航到子菜单: 虚拟私有云
+2026-06-01 14:22:52.168 [INFO] sugon_web.utils.logger: 勾选资源 'er-vpc1-autotest-rrj4'
+2026-06-01 14:22:52.222 [INFO] sugon_web.utils.logger: 勾选资源 'er-vpc2-autotest-n1zi'
+2026-06-01 14:22:54.672 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vpc1-autotest-rrj4
+2026-06-01 14:22:54.685 [INFO] sugon_web.utils.logger: 资源从列表中删除成功: er-vpc2-autotest-n1zi
+2026-06-01 14:22:54.686 [INFO] sugon_web.utils.logger: VPC批量删除成功: ['er-vpc1-autotest-rrj4', 'er-vpc2-autotest-n1zi']
+2026-06-01 14:22:54.692 [ERROR] sugon_web.utils.logger: 测试失败: test_er_vpc_connectivity_non_ha
+2026-06-01 14:22:54.692 [INFO] sugon_web.utils.logger: 开始生成失败截图
+2026-06-01 14:22:54.738 [INFO] sugon_web.utils.logger: 截图保存成功: /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/screenshots/test_er_vpc_connectivity_non_ha_20260601_142254.png
+2026-06-01 14:22:54.738 [ERROR] sugon_web.utils.logger: 测试失败详情:
+                                                        测试失败时间: 2026-06-01 14:22:54
+                                                        测试用例名称: test_er_vpc_connectivity_non_ha
+                                                        失败阶段: call
+                                                        当前页面URL: https://172.22.1.190:30000/vpc/#/vpc-network-list
+2026-06-01 14:22:54.739 [INFO] sugon_web.utils.logger: 失败截图已保存并添加到 Allure 报告: /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/screenshots/test_er_vpc_connectivity_non_ha_20260601_142254.png
+FAILED                                                                   [100%]
+------------------------------ live log teardown -------------------------------
+2026-06-01 14:22:54.739 [INFO] sugon_web.utils.logger: === TEARDOWN START: test_er_vpc_connectivity_non_ha ===
+2026-06-01 14:22:54.751 [INFO] sugon_web.utils.logger: 页面已关闭
+2026-06-01 14:22:54.771 [INFO] sugon_web.utils.logger: 浏览器上下文已关闭
+2026-06-01 14:22:54.772 [INFO] sugon_web.utils.logger: 浏览器关闭中...
+2026-06-01 14:22:54.863 [INFO] sugon_web.utils.logger: 浏览器已关闭
+---------------------------- live log sessionfinish ----------------------------
+2026-06-01 14:22:54.890 [INFO] sugon_web.utils.logger: 测试会话结束，统计: {'passed': 0, 'failed': 2, 'skipped': 0, 'error': 0, 'duration': '14分36秒', 'case_results': [{'name': 'test_er_vpc_connectivity', 'title': '企业路由器-HA-连接VPC-生效性验证', 'outcome': 'failed', 'duration': '7分12秒', 'steps': ['步骤1: 创建VPC1', '步骤2: 创建VM1并绑定MFIP', '步骤3: 创建VPC2', '步骤4: 创建VM2并绑定MFIP', '步骤5: 创建HA企业路由器', '步骤6: 添加VPC1连接到ER', '步骤7: 添加VPC2连接到ER', '步骤8: 在VPC1中添加自定义路由', '步骤9: 在VPC2中添加自定义路由', '步骤10: 验证vm1到vm2的连通性', '步骤11: 验证vm2到vm1的连通性', '清理: 删除VPC1路由规则', '清理: 删除VPC2路由规则', '清理: 删除ER连接', '清理: 删除ER实例', '清理: 删除VM', '清理: 删除VPC', '用例信息收集 -> call阶段']}, {'name': 'test_er_vpc_connectivity_non_ha', 'title': '企业路由器-非HA-连接VPC-生效性验证', 'outcome': 'failed', 'duration': '6分57秒', 'steps': ['步骤1: 创建VPC1', '步骤2: 创建VM1并绑定MFIP', '步骤3: 创建VPC2', '步骤4: 创建VM2并绑定MFIP', '步骤5: 创建非HA企业路由器', '步骤6: 添加VPC1连接到ER', '步骤7: 添加VPC2连接到ER', '步骤8: 在VPC1中添加自定义路由', '步骤9: 在VPC2中添加自定义路由', '步骤10: 验证vm1到vm2的连通性', '步骤11: 验证vm2到vm1的连通性', '清理: 删除VPC1路由规则', '清理: 删除VPC2路由规则', '清理: 删除ER连接', '清理: 删除ER实例', '清理: 删除VM', '清理: 删除VPC', '用例信息收集 -> call阶段']}]}
+
+
+=================================== FAILURES ===================================
+________________ TestERVPCConnectivity.test_er_vpc_connectivity ________________
+sugon_web/testcase/network/test_er_vpc_connectivity.py:305: in test_er_vpc_connectivity
+    raise AssertionError(f"清理失败 ({len(cleanup_errors)} 项): {'; '.join(cleanup_errors)}")
+E   AssertionError: 清理失败 (1 项): 删除VM er-vm1-autotest-md43: Locator.click: Timeout 30000ms exceeded.
+E   Call log:
+E     - waiting for get_by_role("button", name="Close")
+E       - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+E     - attempting click action
+E       2 × waiting for element to be visible, enabled and stable
+E         - element is not stable
+E       - retrying click action
+E       - waiting 20ms
+E       - waiting for element to be visible, enabled and stable
+E       - element is visible, enabled and stable
+E       - scrolling into view if needed
+E       - done scrolling
+E       - <div class="el-dialog__header">…</div> intercepts pointer events
+E     2 × retrying click action
+E         - waiting 100ms
+E         - waiting for element to be visible, enabled and stable
+E         - element is not visible
+E     55 × retrying click action
+E          - waiting 500ms
+E          - waiting for element to be visible, enabled and stable
+E          - element is not visible
+E     - retrying click action
+E       - waiting 500ms
+------------------------------ Captured log setup ------------------------------
+INFO     sugon_web.utils.logger:conftest.py:325 === SETUP START: test_er_vpc_connectivity ===
+INFO     sugon_web.utils.logger:config.py:51 读取环境 172.22.1.190 的特定配置
+INFO     sugon_web.utils.logger:config.py:64 生成 base_url: https://172.22.1.190:30000
+INFO     sugon_web.utils.logger:config.py:105 配置命令行参数 headless=False
+INFO     sugon_web.utils.logger:conftest.py:138 测试配置加载完成: {'browser': 'chromium', 'headless': False, 'timeout': 10000, 'slow_mo': 0, 'host': '172.22.1.190', 'stor': 'ceph', 'data': 'Autotest', 'username': 'admin', 'password': 'keystone_sugon', 'image_source': 'http://172.22.5.66:9090', 'image': 'centos7.9_test.raw', 'pkey': 'pkey_scloudadmin', 'network': 'public_net(基础版)', 'xstor': 'iscsi_helper=lioadm\nvolume_group=cinder-volumes\nthin_provision=1\nsrv_port=3260\nusername=optadmin\npassword=NzBfMTA1XzExNF8xMTBfMTE1XzY5XzU0XzU1XzU2\niscsi_restful_ip=172.22.1.61\niscsi_svip=172.22.88.60\nstorage_pool_id=5', 'public_net': {'segment_id': 202, 'cidr': '172.22.11.128/25', 'gateway_ip': '172.22.11.254'}, 'base_url': 'https://172.22.1.190:30000'}
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_9.8)
+INFO     paramiko.transport:transport.py:1909 Authentication (publickey) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:136 Connected successfully to server 172.22.1.190
+INFO     sugon_web.utils.logger:conftest.py:583 开始获取补丁版本信息...
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: sudo kubectl get no -owide
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  NAME                   STATUS   ROLES                         AGE   VERSION   INTERNAL-IP     EXTERNAL-IP   OS-IMAGE                                  KERNEL-VERSION                    CONTAINER-RUNTIME
+                                                  master01.cloud.local   Ready    control-plane,master,worker   16d   v1.20.4   100.126.240.1   <none>        Kylin Linux Advanced Server V10 (Lance)   4.19.90-89.19.v2401.ky10.x86_64   docker://20.10.12
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ssh -o StrictHostKeyChecking=no 100.126.240.1 cat /opt/extra/init-base/patch_release_version
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  TYPE: base
+                                                  VERSION: 8.0.6.0
+                                                  BUILD_TIME: 20260527_203046
+                                                  REQUIRE_VERSION: 8.0.5.630
+                                                  REQUIRE_BUILDVERSION: 20260309_192357
+INFO     sugon_web.utils.logger:cloud_ops.py:337 成功从 /opt/extra/init-base/patch_release_version 获取版本信息
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: arch
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  x86_64
+INFO     sugon_web.utils.logger:conftest.py:503 开始获取物理机节点信息...
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: scli aggregate list | grep Autotest | awk '{print $6}'
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  Autotest(1)
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: hostname
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  master01.cloud.local
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ssh -o StrictHostKeyChecking=no master01 "cat /opt/extra/init-base/env/env.yaml | grep deploy_mode"
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                    deploy_mode: stack
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_9.8)
+INFO     paramiko.transport:transport.py:1909 Authentication (publickey) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:99 Connected successfully to jumphost 172.22.1.190
+INFO     sugon_web.utils.logger:conftest.py:152 开始初始化浏览器: type=chromium, headless=False
+INFO     sugon_web.utils.logger:conftest.py:156 启动浏览器...
+INFO     sugon_web.utils.logger:conftest.py:163 浏览器 chromium 启动成功
+INFO     sugon_web.utils.logger:conftest.py:201 浏览器上下文创建成功
+INFO     sugon_web.utils.logger:conftest.py:219 创建新页面...
+INFO     sugon_web.utils.logger:conftest.py:221 页面创建成功
+INFO     sugon_web.utils.logger:conftest.py:223 导航到目标URL: https://172.22.1.190:30000
+INFO     sugon_web.utils.logger:conftest.py:225 页面导航完成，当前URL: https://172.22.1.190:30000/
+INFO     sugon_web.utils.logger:conftest.py:232 页面导航完成，当前URL: https://172.22.1.190:30000/#/login
+INFO     sugon_web.utils.logger:conftest.py:236 登录成功
+INFO     sugon_web.utils.logger:dialogs.py:50 发现未关闭的对话框，正在关闭...
+----------------------------- Captured stdout call -----------------------------
+
+============================================================
+[PING RESULT] VM1 (173.3.3.3) -> VM2 (174.4.4.3):
+============================================================
+PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+64 bytes from 174.4.4.3: icmp_seq=1 ttl=61 time=4.14 ms
+64 bytes from 174.4.4.3: icmp_seq=2 ttl=61 time=1.43 ms
+64 bytes from 174.4.4.3: icmp_seq=3 ttl=61 time=0.703 ms
+64 bytes from 174.4.4.3: icmp_seq=4 ttl=61 time=0.669 ms
+
+--- 174.4.4.3 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3002ms
+rtt min/avg/max/mdev = 0.669/1.738/4.147/1.423 ms
+============================================================
+
+
+============================================================
+[PING RESULT] VM2 (174.4.4.3) -> VM1 (173.3.3.3):
+============================================================
+PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=1.79 ms
+64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=0.633 ms
+64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.812 ms
+64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.654 ms
+
+--- 173.3.3.3 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3001ms
+rtt min/avg/max/mdev = 0.633/0.972/1.791/0.478 ms
+============================================================
+
+------------------------------ Captured log call -------------------------------
+INFO     sugon_web.utils.logger:conftest.py:331 === CALL START: test_er_vpc_connectivity ===
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:vpc.py:127 创建虚拟私有云成功, VPC: er-vpc1-autotest-yp2z, 子网: subnet1-autotest-8qus, acl: None
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+INFO     sugon_web.utils.logger:status.py:39 资源状态验证成功: er-vpc1-autotest-yp2z -> 运行
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:75 VPC1 er-vpc1-autotest-yp2z 创建成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:ecs.py:242 basic信息: {'name': 'er-vm1-autotest-md43', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+INFO     sugon_web.utils.logger:ecs.py:500 已选择集群: Autotest
+INFO     sugon_web.utils.logger:ecs.py:450 规格: base
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:483 规格类型分类: 计算型
+INFO     sugon_web.utils.logger:ecs.py:489 已选择规格类型: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:294 storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+INFO     sugon_web.utils.logger:ecs.py:537 已选择存储池: ceph-test
+INFO     sugon_web.utils.logger:ecs.py:572 开始选择镜像: image_source=镜像, image_name=ceph-test
+INFO     sugon_web.utils.logger:ecs.py:578 已选择镜像来源: 镜像
+INFO     sugon_web.utils.logger:ecs.py:328 network信息: {'networks': [{'network': 'er-vpc1-autotest-yp2z', 'subnet': 'subnet1-autotest-8qus'}]}
+INFO     sugon_web.utils.logger:ecs.py:739 选择网络: er-vpc1-autotest-yp2z
+INFO     sugon_web.utils.logger:ecs.py:744 选择子网: subnet1-autotest-8qus
+INFO     sugon_web.utils.logger:ecs.py:357 manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+INFO     sugon_web.utils.logger:ecs.py:383 登录方式: 密码登录 设置成功
+INFO     sugon_web.utils.logger:ecs.py:226 云服务器创建请求已提交: er-vm1-autotest-md43，数量: 1
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-vm1-autotest-md43 -> 运行
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(er-vm1-autotest-md43)的数据
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', 'er-vm1-autotest-md43 ID:bfe3f02b-2fc8-4766-83e1-bf916406fc85', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 173.3.3.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:09:15'], 共12个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'名称/ID': 'er-vm1-autotest-md43 ID:bfe3f02b-2fc8-4766-83e1-bf916406fc85', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 173.3.3.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:09:15'}
+INFO     sugon_web.utils.logger:navigation.py:135 服务 网络设施 未配置入口路径，继续使用菜单导航
+INFO     sugon_web.utils.logger:playwright.py:217 成功悬停元素: 基础设施
+INFO     sugon_web.utils.logger:playwright.py:178 成功点击元素: 网络设施
+INFO     sugon_web.utils.logger:navigation.py:88 成功导航到服务: 基础设施 -> 网络设施
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:ops.py:57 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+INFO     sugon_web.utils.logger:ops.py:57 选择 'er-vpc1-autotest-yp2z' 后已捕获接口: /ports
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: 173.3.3.3
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: 173.3.3.3
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(173.3.3.3)的数据
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '173.3.3.3' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '默认项目', '100.126.0.3', 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '173.3.3.3', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', ''], 共8个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '项目': '默认项目', '管理IP地址': '100.126.0.3', '管理IP端口ID': 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '固定IP地址': '173.3.3.3', '固定IP端口ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '描述': ''}
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:81 VM1创建成功: name=er-vm1-autotest-md43, ip=173.3.3.3, mfip=100.126.0.3
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:vpc.py:127 创建虚拟私有云成功, VPC: er-vpc2-autotest-512h, 子网: subnet2-autotest-muwy, acl: None
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+INFO     sugon_web.utils.logger:status.py:39 资源状态验证成功: er-vpc2-autotest-512h -> 运行
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:95 VPC2 er-vpc2-autotest-512h 创建成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:ecs.py:242 basic信息: {'name': 'er-vm2-autotest-r68a', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+INFO     sugon_web.utils.logger:ecs.py:500 已选择集群: Autotest
+INFO     sugon_web.utils.logger:ecs.py:450 规格: base
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:483 规格类型分类: 计算型
+INFO     sugon_web.utils.logger:ecs.py:489 已选择规格类型: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:294 storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+INFO     sugon_web.utils.logger:ecs.py:537 已选择存储池: ceph-test
+INFO     sugon_web.utils.logger:ecs.py:572 开始选择镜像: image_source=镜像, image_name=ceph-test
+INFO     sugon_web.utils.logger:ecs.py:578 已选择镜像来源: 镜像
+INFO     sugon_web.utils.logger:ecs.py:328 network信息: {'networks': [{'network': 'er-vpc2-autotest-512h', 'subnet': 'subnet2-autotest-muwy'}]}
+INFO     sugon_web.utils.logger:ecs.py:739 选择网络: er-vpc2-autotest-512h
+INFO     sugon_web.utils.logger:ecs.py:744 选择子网: subnet2-autotest-muwy
+INFO     sugon_web.utils.logger:ecs.py:357 manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+INFO     sugon_web.utils.logger:ecs.py:383 登录方式: 密码登录 设置成功
+INFO     sugon_web.utils.logger:ecs.py:226 云服务器创建请求已提交: er-vm2-autotest-r68a，数量: 1
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-vm2-autotest-r68a -> 运行
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(er-vm2-autotest-r68a)的数据
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', 'er-vm2-autotest-r68a ID:d3f9a993-f65b-4362-8735-b4aa15b4aef3', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 174.4.4.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:10:15'], 共12个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'名称/ID': 'er-vm2-autotest-r68a ID:d3f9a993-f65b-4362-8735-b4aa15b4aef3', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 174.4.4.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:10:15'}
+INFO     sugon_web.utils.logger:navigation.py:135 服务 网络设施 未配置入口路径，继续使用菜单导航
+INFO     sugon_web.utils.logger:playwright.py:217 成功悬停元素: 基础设施
+INFO     sugon_web.utils.logger:playwright.py:178 成功点击元素: 网络设施
+INFO     sugon_web.utils.logger:navigation.py:88 成功导航到服务: 基础设施 -> 网络设施
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:ops.py:57 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+INFO     sugon_web.utils.logger:ops.py:57 选择 'er-vpc2-autotest-512h' 后已捕获接口: /ports
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: 174.4.4.3
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: 174.4.4.3
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(174.4.4.3)的数据
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '174.4.4.3' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '默认项目', '100.126.0.15', '3c86fb5a-08b5-4219-b918-96a4ba4d1f42', '174.4.4.3', '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', ''], 共8个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'ID': '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '项目': '默认项目', '管理IP地址': '100.126.0.15', '管理IP端口ID': '3c86fb5a-08b5-4219-b918-96a4ba4d1f42', '固定IP地址': '174.4.4.3', '固定IP端口ID': '9b8d7d4d-a1a5-4159-b9d4-e468b96d938d', '描述': ''}
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:101 VM2创建成功: name=er-vm2-autotest-r68a, ip=174.4.4.3, mfip=100.126.0.15
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-ha-autotest-8rri -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:114 HA ER er-ha-autotest-8rri 创建成功
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-ha-autotest-8rri -> 管理连接 (使用 class 选择器)
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: conn-vpc1-autotest-pruc -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:131 VPC1连接 conn-vpc1-autotest-pruc 添加成功
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: conn-vpc2-autotest-k7im -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:142 VPC2连接 conn-vpc2-autotest-k7im 添加成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0d470b8db84d4d7fbd9ff8ad38c3b29b/er-ha-autotest-8rri/second/admin-inner-project?id=0d470b8db84d4d7fbd9ff8ad38c3b29b&name=er-ha-autotest-8rri&activeName=second&ha_type=open&project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0d470b8db84d4d7fbd9ff8ad38c3b29b/er-ha-autotest-8rri/second/admin-inner-project?id=0d470b8db84d4d7fbd9ff8ad38c3b29b&name=er-ha-autotest-8rri&activeName=second&ha_type=open&project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:list.py:24 检查列 '目的地址' 中是否包含关键字 '174.4.4.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共5行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共5条: ['174.4.4.0/24', '100.64.0.0/16', '169.254.169.253/32', '173.3.3.0/24', '100.126.0.0/16']
+INFO     sugon_web.utils.logger:list.py:46 断言通过: 列表包含 '174.4.4.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:157 VPC1路由规则添加并验证成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:list.py:24 检查列 '目的地址' 中是否包含关键字 '173.3.3.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共5行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共5条: ['173.3.3.0/24', '100.64.0.0/16', '174.4.4.0/24', '169.254.169.253/32', '100.126.0.0/16']
+INFO     sugon_web.utils.logger:list.py:46 断言通过: 列表包含 '173.3.3.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:172 VPC2路由规则添加并验证成功
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_7.4)
+INFO     paramiko.transport:transport.py:1909 Authentication (password) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:136 Connected successfully to server 100.126.0.3
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ping -c 4 174.4.4.3
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                  64 bytes from 174.4.4.3: icmp_seq=1 ttl=61 time=4.14 ms
+                                                  64 bytes from 174.4.4.3: icmp_seq=2 ttl=61 time=1.43 ms
+                                                  64 bytes from 174.4.4.3: icmp_seq=3 ttl=61 time=0.703 ms
+                                                  64 bytes from 174.4.4.3: icmp_seq=4 ttl=61 time=0.669 ms
+                                                  
+                                                  --- 174.4.4.3 ping statistics ---
+                                                  4 packets transmitted, 4 received, 0% packet loss, time 3002ms
+                                                  rtt min/avg/max/mdev = 0.669/1.738/4.147/1.423 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:182 VM1 ping VM2结果:
+                                                                PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                                64 bytes from 174.4.4.3: icmp_seq=1 ttl=61 time=4.14 ms
+                                                                64 bytes from 174.4.4.3: icmp_seq=2 ttl=61 time=1.43 ms
+                                                                64 bytes from 174.4.4.3: icmp_seq=3 ttl=61 time=0.703 ms
+                                                                64 bytes from 174.4.4.3: icmp_seq=4 ttl=61 time=0.669 ms
+                                                                
+                                                                --- 174.4.4.3 ping statistics ---
+                                                                4 packets transmitted, 4 received, 0% packet loss, time 3002ms
+                                                                rtt min/avg/max/mdev = 0.669/1.738/4.147/1.423 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:185 VM1到VM2连通性验证通过
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_7.4)
+INFO     paramiko.transport:transport.py:1909 Authentication (password) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:136 Connected successfully to server 100.126.0.15
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ping -c 4 173.3.3.3
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                  64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=1.79 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=0.633 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.812 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.654 ms
+                                                  
+                                                  --- 173.3.3.3 ping statistics ---
+                                                  4 packets transmitted, 4 received, 0% packet loss, time 3001ms
+                                                  rtt min/avg/max/mdev = 0.633/0.972/1.791/0.478 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:195 VM2 ping VM1结果:
+                                                                PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                                64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=1.79 ms
+                                                                64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=0.633 ms
+                                                                64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.812 ms
+                                                                64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.654 ms
+                                                                
+                                                                --- 173.3.3.3 ping statistics ---
+                                                                4 packets transmitted, 4 received, 0% packet loss, time 3001ms
+                                                                rtt min/avg/max/mdev = 0.633/0.972/1.791/0.478 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:198 VM2到VM1连通性验证通过
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2905b186-d2cb-4d0d-a443-c34ea7d44e36?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-yp2z' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '174.4.4.0/24' 的精确匹配行
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: 174.4.4.0/24 -> 删除
+INFO     sugon_web.utils.logger:list.py:59 检查列 '目的地址' 中是否不包含关键字 '174.4.4.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共4行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共4条: ['100.64.0.0/16', '169.254.169.253/32', '173.3.3.0/24', '100.126.0.0/16']
+INFO     sugon_web.utils.logger:list.py:82 断言通过: 列表不包含 '174.4.4.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:216 VPC1路由规则删除成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/c4ed4cff-bb6e-4def-ac6a-90678d49b13f?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-512h' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '173.3.3.0/24' 的精确匹配行
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: 173.3.3.0/24 -> 删除
+INFO     sugon_web.utils.logger:list.py:59 检查列 '目的地址' 中是否不包含关键字 '173.3.3.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共4行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共4条: ['100.64.0.0/16', '174.4.4.0/24', '169.254.169.253/32', '100.126.0.0/16']
+INFO     sugon_web.utils.logger:list.py:82 断言通过: 列表不包含 '173.3.3.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:233 VPC2路由规则删除成功
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-ha-autotest-8rri -> 管理连接 (使用 class 选择器)
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: conn-vpc1-autotest-pruc -> 删除
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: conn-vpc1-autotest-pruc
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: conn-vpc2-autotest-k7im -> 删除
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: conn-vpc2-autotest-k7im
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:248 ER连接删除成功
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-ha-autotest-8rri -> 删除 (使用 class 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-ha-autotest-8rri
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:260 ER er-ha-autotest-8rri 删除成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-vm1-autotest-md43
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-vm1-autotest-md43
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-vm1-autotest-md43
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-vm1-autotest-md43 -> 删除 (使用 id 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm1-autotest-md43
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:276 VM er-vm1-autotest-md43 已移入回收站
+INFO     sugon_web.utils.logger:dialogs.py:50 发现未关闭的对话框，正在关闭...
+ERROR    sugon_web.utils.logger:playwright.py:413 [CustomLocator.click] 点击失败: Locator.click: Timeout 30000ms exceeded.
+                                                  Call log:
+                                                    - waiting for get_by_role("button", name="Close")
+                                                      - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+                                                    - attempting click action
+                                                      2 × waiting for element to be visible, enabled and stable
+                                                        - element is not stable
+                                                      - retrying click action
+                                                      - waiting 20ms
+                                                      - waiting for element to be visible, enabled and stable
+                                                      - element is visible, enabled and stable
+                                                      - scrolling into view if needed
+                                                      - done scrolling
+                                                      - <div class="el-dialog__header">…</div> intercepts pointer events
+                                                    2 × retrying click action
+                                                        - waiting 100ms
+                                                        - waiting for element to be visible, enabled and stable
+                                                        - element is not visible
+                                                    55 × retrying click action
+                                                         - waiting 500ms
+                                                         - waiting for element to be visible, enabled and stable
+                                                         - element is not visible
+                                                    - retrying click action
+                                                      - waiting 500ms
+WARNING  sugon_web.utils.logger:test_er_vpc_connectivity.py:285 删除VM er-vm1-autotest-md43 失败: Locator.click: Timeout 30000ms exceeded.
+                                                                Call log:
+                                                                  - waiting for get_by_role("button", name="Close")
+                                                                    - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+                                                                  - attempting click action
+                                                                    2 × waiting for element to be visible, enabled and stable
+                                                                      - element is not stable
+                                                                    - retrying click action
+                                                                    - waiting 20ms
+                                                                    - waiting for element to be visible, enabled and stable
+                                                                    - element is visible, enabled and stable
+                                                                    - scrolling into view if needed
+                                                                    - done scrolling
+                                                                    - <div class="el-dialog__header">…</div> intercepts pointer events
+                                                                  2 × retrying click action
+                                                                      - waiting 100ms
+                                                                      - waiting for element to be visible, enabled and stable
+                                                                      - element is not visible
+                                                                  55 × retrying click action
+                                                                       - waiting 500ms
+                                                                       - waiting for element to be visible, enabled and stable
+                                                                       - element is not visible
+                                                                  - retrying click action
+                                                                    - waiting 500ms
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-vm2-autotest-r68a
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-vm2-autotest-r68a
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-vm2-autotest-r68a
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-vm2-autotest-r68a -> 删除 (使用 id 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm2-autotest-r68a
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:276 VM er-vm2-autotest-r68a 已移入回收站
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: er-vm2-autotest-r68a -> 删除
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm2-autotest-r68a
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:283 VM er-vm2-autotest-r68a 已从回收站彻底删除
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:296 勾选资源 'er-vpc1-autotest-yp2z'
+INFO     sugon_web.utils.logger:tables.py:296 勾选资源 'er-vpc2-autotest-512h'
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vpc1-autotest-yp2z
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vpc2-autotest-512h
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity.py:299 VPC批量删除成功: ['er-vpc1-autotest-yp2z', 'er-vpc2-autotest-512h']
+---------------------------- Captured log teardown -----------------------------
+INFO     sugon_web.utils.logger:conftest.py:337 === TEARDOWN START: test_er_vpc_connectivity ===
+INFO     sugon_web.utils.logger:conftest.py:273 页面已关闭
+INFO     sugon_web.utils.logger:conftest.py:210 浏览器上下文已关闭
+__________ TestERVPCConnectivityNonHA.test_er_vpc_connectivity_non_ha __________
+sugon_web/testcase/network/test_er_vpc_connectivity_non_ha.py:305: in test_er_vpc_connectivity_non_ha
+    raise AssertionError(f"清理失败 ({len(cleanup_errors)} 项): {'; '.join(cleanup_errors)}")
+E   AssertionError: 清理失败 (1 项): 删除ER连接: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+------------------------------ Captured log setup ------------------------------
+INFO     sugon_web.utils.logger:conftest.py:325 === SETUP START: test_er_vpc_connectivity_non_ha ===
+INFO     sugon_web.utils.logger:conftest.py:201 浏览器上下文创建成功
+INFO     sugon_web.utils.logger:conftest.py:219 创建新页面...
+INFO     sugon_web.utils.logger:conftest.py:221 页面创建成功
+INFO     sugon_web.utils.logger:conftest.py:223 导航到目标URL: https://172.22.1.190:30000
+INFO     sugon_web.utils.logger:conftest.py:225 页面导航完成，当前URL: https://172.22.1.190:30000/
+INFO     sugon_web.utils.logger:conftest.py:232 页面导航完成，当前URL: https://172.22.1.190:30000/#/login
+INFO     sugon_web.utils.logger:conftest.py:236 登录成功
+INFO     sugon_web.utils.logger:dialogs.py:50 发现未关闭的对话框，正在关闭...
+----------------------------- Captured stdout call -----------------------------
+
+============================================================
+[PING RESULT] VM1 (173.3.3.3) -> VM2 (174.4.4.3):
+============================================================
+PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+
+--- 174.4.4.3 ping statistics ---
+4 packets transmitted, 0 received, 100% packet loss, time 2999ms
+============================================================
+
+
+============================================================
+[PING RESULT] VM2 (174.4.4.3) -> VM1 (173.3.3.3):
+============================================================
+PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=3.72 ms
+64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=2.43 ms
+64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.762 ms
+64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.629 ms
+
+--- 173.3.3.3 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+rtt min/avg/max/mdev = 0.629/1.886/3.725/1.278 ms
+============================================================
+
+------------------------------ Captured log call -------------------------------
+INFO     sugon_web.utils.logger:conftest.py:331 === CALL START: test_er_vpc_connectivity_non_ha ===
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:vpc.py:127 创建虚拟私有云成功, VPC: er-vpc1-autotest-rrj4, 子网: subnet1-autotest-ewos, acl: None
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+INFO     sugon_web.utils.logger:status.py:39 资源状态验证成功: er-vpc1-autotest-rrj4 -> 运行
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:75 VPC1 er-vpc1-autotest-rrj4 创建成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:ecs.py:242 basic信息: {'name': 'er-vm1-autotest-vbhk', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+INFO     sugon_web.utils.logger:ecs.py:500 已选择集群: Autotest
+INFO     sugon_web.utils.logger:ecs.py:450 规格: base
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:483 规格类型分类: 计算型
+INFO     sugon_web.utils.logger:ecs.py:489 已选择规格类型: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:294 storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+INFO     sugon_web.utils.logger:ecs.py:537 已选择存储池: ceph-test
+INFO     sugon_web.utils.logger:ecs.py:572 开始选择镜像: image_source=镜像, image_name=ceph-test
+INFO     sugon_web.utils.logger:ecs.py:578 已选择镜像来源: 镜像
+INFO     sugon_web.utils.logger:ecs.py:328 network信息: {'networks': [{'network': 'er-vpc1-autotest-rrj4', 'subnet': 'subnet1-autotest-ewos'}]}
+INFO     sugon_web.utils.logger:ecs.py:739 选择网络: er-vpc1-autotest-rrj4
+INFO     sugon_web.utils.logger:ecs.py:744 选择子网: subnet1-autotest-ewos
+INFO     sugon_web.utils.logger:ecs.py:357 manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+INFO     sugon_web.utils.logger:ecs.py:383 登录方式: 密码登录 设置成功
+INFO     sugon_web.utils.logger:ecs.py:226 云服务器创建请求已提交: er-vm1-autotest-vbhk，数量: 1
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-vm1-autotest-vbhk -> 运行
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(er-vm1-autotest-vbhk)的数据
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', 'er-vm1-autotest-vbhk ID:b6d47435-e4a5-4a78-b708-3cb4ab639fa3', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 173.3.3.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:16:31'], 共12个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'名称/ID': 'er-vm1-autotest-vbhk ID:b6d47435-e4a5-4a78-b708-3cb4ab639fa3', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 173.3.3.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:16:31'}
+INFO     sugon_web.utils.logger:navigation.py:135 服务 网络设施 未配置入口路径，继续使用菜单导航
+INFO     sugon_web.utils.logger:playwright.py:217 成功悬停元素: 基础设施
+INFO     sugon_web.utils.logger:playwright.py:178 成功点击元素: 网络设施
+INFO     sugon_web.utils.logger:navigation.py:88 成功导航到服务: 基础设施 -> 网络设施
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:ops.py:57 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+INFO     sugon_web.utils.logger:ops.py:57 选择 'er-vpc1-autotest-rrj4' 后已捕获接口: /ports
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: 173.3.3.3
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: 173.3.3.3
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(173.3.3.3)的数据
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '173.3.3.3' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '默认项目', '100.126.0.3', 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '173.3.3.3', '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', ''], 共8个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '项目': '默认项目', '管理IP地址': '100.126.0.3', '管理IP端口ID': 'a667100a-cb3c-45aa-a0ea-c80093a918b1', '固定IP地址': '173.3.3.3', '固定IP端口ID': '97c9b0ac-9d54-4bd7-8cd6-3913c5e30e1e', '描述': ''}
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:81 VM1创建成功: name=er-vm1-autotest-vbhk, ip=173.3.3.3, mfip=100.126.0.3
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:vpc.py:127 创建虚拟私有云成功, VPC: er-vpc2-autotest-n1zi, 子网: subnet2-autotest-jvxo, acl: None
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现, 文案包含 '创建虚拟私有云成功'
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+INFO     sugon_web.utils.logger:status.py:39 资源状态验证成功: er-vpc2-autotest-n1zi -> 运行
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:95 VPC2 er-vpc2-autotest-n1zi 创建成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:ecs.py:242 basic信息: {'name': 'er-vm2-autotest-ol2o', 'count': 1, 'cluster': 'Autotest', 'flavor': {'base': 'ecs.c6.Autotest'}}
+INFO     sugon_web.utils.logger:ecs.py:500 已选择集群: Autotest
+INFO     sugon_web.utils.logger:ecs.py:450 规格: base
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:483 规格类型分类: 计算型
+INFO     sugon_web.utils.logger:ecs.py:489 已选择规格类型: ecs.c6.Autotest
+INFO     sugon_web.utils.logger:ecs.py:294 storage信息: {'storage_pool': 'ceph-test', 'image': {'source': '镜像', 'name': 'ceph-test'}, 'system_disk': 25}
+INFO     sugon_web.utils.logger:ecs.py:537 已选择存储池: ceph-test
+INFO     sugon_web.utils.logger:ecs.py:572 开始选择镜像: image_source=镜像, image_name=ceph-test
+INFO     sugon_web.utils.logger:ecs.py:578 已选择镜像来源: 镜像
+INFO     sugon_web.utils.logger:ecs.py:328 network信息: {'networks': [{'network': 'er-vpc2-autotest-n1zi', 'subnet': 'subnet2-autotest-jvxo'}]}
+INFO     sugon_web.utils.logger:ecs.py:739 选择网络: er-vpc2-autotest-n1zi
+INFO     sugon_web.utils.logger:ecs.py:744 选择子网: subnet2-autotest-jvxo
+INFO     sugon_web.utils.logger:ecs.py:357 manage信息: {'login_type': '密码登录', 'login_pwd': 'admin1234@sugon', 'vnc_pwd': 'sugon@20'}
+INFO     sugon_web.utils.logger:ecs.py:383 登录方式: 密码登录 设置成功
+INFO     sugon_web.utils.logger:ecs.py:226 云服务器创建请求已提交: er-vm2-autotest-ol2o，数量: 1
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-vm2-autotest-ol2o -> 运行
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(er-vm2-autotest-ol2o)的数据
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', 'er-vm2-autotest-ol2o ID:1941d327-50e1-4fcb-b0a9-79dc7f6f9f60', '运行', 'master01.cloud.local', '默认项目', 'ceph-test', '固定: 174.4.4.3', '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '--', 'ecs.c6.Autotest 2 核 2.00 GiB', '--', '2026-06-01 14:18:02'], 共12个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'名称/ID': 'er-vm2-autotest-ol2o ID:1941d327-50e1-4fcb-b0a9-79dc7f6f9f60', '状态运行错误关机挂起暂停 筛选 重置': '运行', '物理机': 'master01.cloud.local', '项目名称': '默认项目', '镜像名称': 'ceph-test', 'IP地址': '固定: 174.4.4.3', '系统盘关闭机密存储开启机密存储 筛选 重置': '机密存储: 关闭 存储池:ceph-test 容量(GiB):25', '挂载云硬盘': '--', '规格': 'ecs.c6.Autotest 2 核 2.00 GiB', '标签 筛选 重置': '--', '创建时间': '2026-06-01 14:18:02'}
+INFO     sugon_web.utils.logger:navigation.py:135 服务 网络设施 未配置入口路径，继续使用菜单导航
+INFO     sugon_web.utils.logger:playwright.py:217 成功悬停元素: 基础设施
+INFO     sugon_web.utils.logger:playwright.py:178 成功点击元素: 网络设施
+INFO     sugon_web.utils.logger:navigation.py:88 成功导航到服务: 基础设施 -> 网络设施
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:ops.py:57 选择 '默认项目' 后已捕获接口: /api/ops/vpc/networks
+INFO     sugon_web.utils.logger:ops.py:57 选择 'er-vpc2-autotest-n1zi' 后已捕获接口: /ports
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 基础设施 -> https://172.22.1.190:30000/ops/#/platform-network
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 平台网络
+INFO     sugon_web.utils.logger:actions.py:103 开始搜索: 174.4.4.3
+INFO     sugon_web.utils.logger:actions.py:108 搜索操作完成: 174.4.4.3
+INFO     sugon_web.utils.logger:tables.py:153 开始获取资源(174.4.4.3)的数据
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '174.4.4.3' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:137 页面数据行信息: ['', '98b25537-f872-4f5e-b96f-3c99d11b88cd', '默认项目', '100.126.0.16', '8568fa1d-5020-4cc3-a697-1ccc54992123', '174.4.4.3', '98b25537-f872-4f5e-b96f-3c99d11b88cd', ''], 共8个
+INFO     sugon_web.utils.logger:tables.py:187 处理后的数据: {'ID': '98b25537-f872-4f5e-b96f-3c99d11b88cd', '项目': '默认项目', '管理IP地址': '100.126.0.16', '管理IP端口ID': '8568fa1d-5020-4cc3-a697-1ccc54992123', '固定IP地址': '174.4.4.3', '固定IP端口ID': '98b25537-f872-4f5e-b96f-3c99d11b88cd', '描述': ''}
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:101 VM2创建成功: name=er-vm2-autotest-ol2o, ip=174.4.4.3, mfip=100.126.0.16
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: er-non-ha-autotest-lepv -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:114 非HA ER er-non-ha-autotest-lepv 创建成功
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-non-ha-autotest-lepv -> 管理连接 (使用 class 选择器)
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: conn-vpc1-autotest-fj23 -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:131 VPC1连接 conn-vpc1-autotest-fj23 添加成功
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:status.py:61 资源状态验证成功: conn-vpc2-autotest-ts4x -> 运行中
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:142 VPC2连接 conn-vpc2-autotest-ts4x 添加成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0b75fbda54344b608f0e663b199025a0/er-non-ha-autotest-lepv/second/admin-inner-project?id=0b75fbda54344b608f0e663b199025a0&name=er-non-ha-autotest-lepv&activeName=second&ha_type=open&project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-er-detail/0b75fbda54344b608f0e663b199025a0/er-non-ha-autotest-lepv/second/admin-inner-project?id=0b75fbda54344b608f0e663b199025a0&name=er-non-ha-autotest-lepv&activeName=second&ha_type=open&project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:list.py:24 检查列 '目的地址' 中是否包含关键字 '174.4.4.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共5行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共5条: ['174.4.4.0/24', '100.64.0.0/16', '169.254.169.253/32', '100.126.0.0/16', '173.3.3.0/24']
+INFO     sugon_web.utils.logger:list.py:46 断言通过: 列表包含 '174.4.4.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:157 VPC1路由规则添加并验证成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+INFO     sugon_web.utils.logger:popup.py:38 断言通过: 成功弹窗出现
+INFO     sugon_web.utils.logger:list.py:24 检查列 '目的地址' 中是否包含关键字 '173.3.3.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共5行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共5条: ['173.3.3.0/24', '100.64.0.0/16', '100.126.0.0/16', '169.254.169.253/32', '174.4.4.0/24']
+INFO     sugon_web.utils.logger:list.py:46 断言通过: 列表包含 '173.3.3.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:172 VPC2路由规则添加并验证成功
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_7.4)
+INFO     paramiko.transport:transport.py:1909 Authentication (password) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:136 Connected successfully to server 100.126.0.3
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ping -c 4 174.4.4.3
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 1
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                  
+                                                  --- 174.4.4.3 ping statistics ---
+                                                  4 packets transmitted, 0 received, 100% packet loss, time 2999ms
+                                                  
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:182 VM1 ping VM2结果:
+                                                                       PING 174.4.4.3 (174.4.4.3) 56(84) bytes of data.
+                                                                       
+                                                                       --- 174.4.4.3 ping statistics ---
+                                                                       4 packets transmitted, 0 received, 100% packet loss, time 2999ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:185 VM1到VM2连通性验证通过
+INFO     paramiko.transport:transport.py:1909 Connected (version 2.0, client OpenSSH_7.4)
+INFO     paramiko.transport:transport.py:1909 Authentication (password) successful!
+INFO     sugon_web.utils.logger:ssh_client.py:136 Connected successfully to server 100.126.0.16
+INFO     sugon_web.utils.logger:ssh_client.py:162 Executing command: ping -c 4 173.3.3.3
+INFO     sugon_web.utils.logger:ssh_client.py:218 Command exited with return code 0
+INFO     sugon_web.utils.logger:ssh_client.py:219 Command output: 
+                                                  PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                  64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=3.72 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=2.43 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.762 ms
+                                                  64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.629 ms
+                                                  
+                                                  --- 173.3.3.3 ping statistics ---
+                                                  4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+                                                  rtt min/avg/max/mdev = 0.629/1.886/3.725/1.278 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:195 VM2 ping VM1结果:
+                                                                       PING 173.3.3.3 (173.3.3.3) 56(84) bytes of data.
+                                                                       64 bytes from 173.3.3.3: icmp_seq=1 ttl=61 time=3.72 ms
+                                                                       64 bytes from 173.3.3.3: icmp_seq=2 ttl=61 time=2.43 ms
+                                                                       64 bytes from 173.3.3.3: icmp_seq=3 ttl=61 time=0.762 ms
+                                                                       64 bytes from 173.3.3.3: icmp_seq=4 ttl=61 time=0.629 ms
+                                                                       
+                                                                       --- 173.3.3.3 ping statistics ---
+                                                                       4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+                                                                       rtt min/avg/max/mdev = 0.629/1.886/3.725/1.278 ms
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:198 VM2到VM1连通性验证通过
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/7e1627f2-1a28-4f1d-8359-c8ec4c2c661d?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc1-autotest-rrj4' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '174.4.4.0/24' 的精确匹配行
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: 174.4.4.0/24 -> 删除
+INFO     sugon_web.utils.logger:list.py:59 检查列 '目的地址' 中是否不包含关键字 '174.4.4.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共4行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共4条: ['100.64.0.0/16', '169.254.169.253/32', '100.126.0.0/16', '173.3.3.0/24']
+INFO     sugon_web.utils.logger:list.py:82 断言通过: 列表不包含 '174.4.4.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:216 VPC1路由规则删除成功
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-detail/2ebdfbe7-7d40-4566-8dd4-a4f74bbf369b?project_id=admin-inner-project
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 'er-vpc2-autotest-n1zi' 的精确匹配行
+INFO     sugon_web.utils.logger:tables.py:99 通过遍历找到 '173.3.3.0/24' 的精确匹配行
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: 173.3.3.0/24 -> 删除
+INFO     sugon_web.utils.logger:list.py:59 检查列 '目的地址' 中是否不包含关键字 '173.3.3.0/24'
+INFO     sugon_web.utils.logger:tables.py:244 找到包含 '目的地址' 的可见表格，表头: ['', '目的地址', '下一跳类型', '下一跳', '类型', '描述', '操作', '']
+INFO     sugon_web.utils.logger:tables.py:263 表头 '目的地址' 的索引位置: 1
+INFO     sugon_web.utils.logger:tables.py:264 获取到的数据行共4行
+INFO     sugon_web.utils.logger:tables.py:283 获取到的列数据共4条: ['100.64.0.0/16', '100.126.0.0/16', '169.254.169.253/32', '174.4.4.0/24']
+INFO     sugon_web.utils.logger:list.py:82 断言通过: 列表不包含 '173.3.3.0/24' (列: 目的地址)
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:233 VPC2路由规则删除成功
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-non-ha-autotest-lepv
+WARNING  sugon_web.utils.logger:actions.py:286 选项 '管理连接' 不可见或不可用
+WARNING  sugon_web.utils.logger:actions.py:286 选项 '管理连接' 不可见或不可用
+WARNING  sugon_web.utils.logger:actions.py:286 选项 '管理连接' 不可见或不可用
+WARNING  sugon_web.utils.logger:actions.py:286 选项 '管理连接' 不可见或不可用
+ERROR    sugon_web.utils.logger:actions.py:299 点击资源操作选项失败: er-non-ha-autotest-lepv -> 管理连接, 错误: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+WARNING  sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:250 删除ER连接失败: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-non-ha-autotest-lepv -> 删除 (使用 class 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-non-ha-autotest-lepv
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:260 ER er-non-ha-autotest-lepv 删除成功
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 弹性云服务器 -> https://172.22.1.190:30000/ecs
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-vm1-autotest-vbhk
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-vm1-autotest-vbhk
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-vm1-autotest-vbhk
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-vm1-autotest-vbhk -> 删除 (使用 id 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm1-autotest-vbhk
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:276 VM er-vm1-autotest-vbhk 已移入回收站
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: er-vm1-autotest-vbhk -> 删除
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm1-autotest-vbhk
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:283 VM er-vm1-autotest-vbhk 已从回收站彻底删除
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 弹性云服务器
+INFO     sugon_web.utils.logger:actions.py:211 成功找到资源操作行: er-vm2-autotest-ol2o
+INFO     sugon_web.utils.logger:actions.py:223 定位资源的目标行: er-vm2-autotest-ol2o
+INFO     sugon_web.utils.logger:actions.py:224 定位资源的操作按钮: er-vm2-autotest-ol2o
+INFO     sugon_web.utils.logger:actions.py:282 点击下拉菜单操作选项: er-vm2-autotest-ol2o -> 删除 (使用 id 选择器)
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm2-autotest-ol2o
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:276 VM er-vm2-autotest-ol2o 已移入回收站
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 弹性云服务器 -> https://172.22.1.190:30000/ecs/#/ecs-instance-garbage-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 回收站
+INFO     sugon_web.utils.logger:actions.py:249 点击平铺操作选项: er-vm2-autotest-ol2o -> 删除
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vm2-autotest-ol2o
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:283 VM er-vm2-autotest-ol2o 已从回收站彻底删除
+INFO     sugon_web.utils.logger:navigation.py:69 通过 URL 直达服务成功: 虚拟私有云 -> https://172.22.1.190:30000/vpc
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:navigation.py:56 当前已在目标服务下，复用现有页面: 虚拟私有云 -> https://172.22.1.190:30000/vpc/#/vpc-network-list
+INFO     sugon_web.utils.logger:navigation.py:172 成功导航到子菜单: 虚拟私有云
+INFO     sugon_web.utils.logger:tables.py:296 勾选资源 'er-vpc1-autotest-rrj4'
+INFO     sugon_web.utils.logger:tables.py:296 勾选资源 'er-vpc2-autotest-n1zi'
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vpc1-autotest-rrj4
+INFO     sugon_web.utils.logger:list.py:107 资源从列表中删除成功: er-vpc2-autotest-n1zi
+INFO     sugon_web.utils.logger:test_er_vpc_connectivity_non_ha.py:299 VPC批量删除成功: ['er-vpc1-autotest-rrj4', 'er-vpc2-autotest-n1zi']
+---------------------------- Captured log teardown -----------------------------
+INFO     sugon_web.utils.logger:conftest.py:337 === TEARDOWN START: test_er_vpc_connectivity_non_ha ===
+INFO     sugon_web.utils.logger:conftest.py:273 页面已关闭
+INFO     sugon_web.utils.logger:conftest.py:210 浏览器上下文已关闭
+INFO     sugon_web.utils.logger:conftest.py:167 浏览器关闭中...
+INFO     sugon_web.utils.logger:conftest.py:169 浏览器已关闭
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/paramiko/pkey.py:100
+  /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/.venv/lib/python3.12/site-packages/paramiko/pkey.py:100: CryptographyDeprecationWarning: TripleDES has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.TripleDES and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    "cipher": algorithms.TripleDES,
+
+.venv/lib/python3.12/site-packages/paramiko/transport.py:259
+  /Users/qichh/py_workspaces/claude_code_0514/playwright-sugon/playwright-sugon/.venv/lib/python3.12/site-packages/paramiko/transport.py:259: CryptographyDeprecationWarning: TripleDES has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.TripleDES and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    "class": algorithms.TripleDES,
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED sugon_web/testcase/network/test_er_vpc_connectivity.py::TestERVPCConnectivity::test_er_vpc_connectivity - AssertionError: 清理失败 (1 项): 删除VM er-vm1-autotest-md43: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for get_by_role("button", name="Close")
+    - locator resolved to <button type="button" aria-label="Close" class="el-dialog__headerbtn">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not stable
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div class="el-dialog__header">…</div> intercepts pointer events
+  2 × retrying click action
+      - waiting 100ms
+      - waiting for element to be visible, enabled and stable
+      - element is not visible
+  55 × retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is not visible
+  - retrying click action
+    - waiting 500ms
+FAILED sugon_web/testcase/network/test_er_vpc_connectivity_non_ha.py::TestERVPCConnectivityNonHA::test_er_vpc_connectivity_non_ha - AssertionError: 清理失败 (1 项): 删除ER连接: 所有选择器都失败，既不是可用的平铺操作按钮，也没有在下拉菜单中找到: 管理连接
+================== 2 failed, 2 warnings in 876.09s (0:14:36) ===================

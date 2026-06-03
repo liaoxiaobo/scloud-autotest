@@ -172,20 +172,54 @@ class TestDCBgpValidation:
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
+                vpc_page.page.wait_for_timeout(2000)
+
+                # 下拉框选项选择（带多层降级）
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
-                option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
-                expect(option).to_be_visible(timeout=5000)
-                option.click()
+                try:
+                    dropdown.wait_for(state="visible", timeout=5000)
+                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
+                    expect(option).to_be_visible(timeout=5000)
+                    option.click(force=True)
+                    logger.info(f"下一跳选择成功: {dc_name} (通过 .el-select-dropdown__item)")
+                except Exception:
+                    # 降级方案1：限定在可见下拉框内搜索
+                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用可见下拉框内搜索: {dc_name}")
+                    try:
+                        vpc_page.page.locator(".el-select-dropdown:visible").get_by_text(dc_name, exact=False).first.click(force=True)
+                    except Exception:
+                        # 降级方案2：键盘选择（先聚焦input确保事件发送到正确元素）
+                        logger.warning(f"可见下拉框内搜索失败，使用键盘选择: {dc_name}")
+                        input_el = vpc_page.locator(".el-form-item").filter(
+                            has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
+                        ).locator(".el-input__inner").first
+                        input_el.click()
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("ArrowDown")
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("Enter")
 
                 vpc_page.get_by_label("新建路由表规则").get_by_text("确定").click()
 
             with allure_step_log("步骤3: 验证路由规则列表"):
-                vpc_page.page.reload()
-                vpc_page.wait_for_page_ready()
-                vpc_page.page.mouse.move(1, 1)
-                vpc_page.get_by_role("tab", name="路由表").click()
+                # 增加重试：页面刷新后数据可能未立即加载
+                row_data = None
+                for attempt in range(3):
+                    vpc_page.page.reload()
+                    vpc_page.wait_for_page_ready()
+                    vpc_page.page.mouse.move(1, 1)
+                    vpc_page.get_by_role("tab", name="路由表").click()
+                    vpc_page.page.wait_for_timeout(3000)
+                    try:
+                        row_data = vpc_page.get_row_data(dest_cidr)
+                        if row_data:
+                            break
+                    except AssertionError:
+                        logger.warning(f"第 {attempt + 1} 次查找路由规则 {dest_cidr} 失败，重试中...")
+                        if attempt == 2:
+                            raise
+                        vpc_page.page.wait_for_timeout(5000)
 
-                row_data = vpc_page.get_row_data(dest_cidr)
                 actual_dest = row_data.get("目的地址", "")
                 actual_type = row_data.get("下一跳类型", "")
                 actual_next_hop = row_data.get("下一跳", "")
@@ -239,16 +273,44 @@ class TestDCBgpValidation:
             # 清理数据（按正确顺序，清理失败收集后统一抛出）
             # ─────────────────────────────────────────────
 
+            # 关闭可能存在的弹窗/对话框，防止级联拦截
+            with allure_step_log("清理准备: 关闭可能存在的弹窗"):
+                try:
+                    dialogs = dc_page.page.locator(".el-dialog__wrapper:visible")
+                    if dialogs.count() > 0:
+                        for i in range(dialogs.count()):
+                            close_btn = dialogs.nth(i).locator(".el-dialog__close-btn, .el-dialog__headerbtn, .el-icon-close").first
+                            if close_btn.count() > 0 and close_btn.is_visible():
+                                close_btn.click()
+                                dc_page.page.wait_for_timeout(500)
+                except Exception:
+                    pass
+                try:
+                    notifications = dc_page.page.locator(".el-notification__closeBtn")
+                    for i in range(notifications.count()):
+                        notifications.nth(i).click()
+                        dc_page.page.wait_for_timeout(300)
+                except Exception:
+                    pass
+
             with allure_step_log("清理1: 删除自定义路由"):
                 try:
                     vpc_page.goto_service("虚拟私有云")
                     vpc_page.goto_submenu("虚拟私有云")
-                    vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-                    vpc_page.page.mouse.move(1, 1)
-                    vpc_page.get_by_role("tab", name="路由表").click()
-                    vpc_page.click_action(dest_cidr, "删除")
-                    vpc_page.dialog_confirm.click()
-                    vpc_page.assert_deleted(dest_cidr, timeout=30)
+                    try:
+                        row = vpc_page.get_row_by_name(vpc_name)
+                    except Exception:
+                        logger.warning(f"VPC {vpc_name} 未找到，可能已被自动清理，跳过路由规则删除")
+                    else:
+                        row.locator("a").first.click()
+                        vpc_page.page.mouse.move(1, 1)
+                        try:
+                            vpc_page.get_by_role("tab", name="路由表").click()
+                            vpc_page.click_action(dest_cidr, "删除")
+                            vpc_page.dialog_confirm.click()
+                            vpc_page.assert_deleted(dest_cidr, timeout=30)
+                        except Exception:
+                            logger.info(f"路由规则 {dest_cidr} 已不存在或已被自动清理，跳过删除")
                 except Exception as e:
                     cleanup_errors.append(f"删除路由规则: {e}")
 

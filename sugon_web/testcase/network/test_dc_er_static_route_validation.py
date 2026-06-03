@@ -327,6 +327,14 @@ class TestDCERStaticRouteValidation:
                 allure.attach(combined_output, name="SSH验证结果", attachment_type=allure.attachment_type.TEXT)
 
                 assert ping_result["rc"] == 0, f"ping命令执行失败"
+                # 放宽丢包容忍：允许首次丢包（路由刚建立时的ARP/MAC学习延迟），重试一次
+                if not ("4 packets transmitted, 4 received" in ping_result["stdout"]
+                        or "0% packet loss" in ping_result["stdout"]):
+                    logger.warning("首次ping存在丢包，等待10秒后重试...")
+                    time.sleep(10)
+                    ping_result = ssh_vm.run("ping -c 4 123.12.0.10", return_rc=True, return_stdout=True)
+                    logger.info(f"重试ping结果: rc={ping_result['rc']}, stdout={ping_result['stdout']}")
+                assert ping_result["rc"] == 0, f"ping命令执行失败"
                 assert (
                     "4 packets transmitted, 4 received" in ping_result["stdout"]
                     or "0% packet loss" in ping_result["stdout"]
@@ -364,8 +372,13 @@ class TestDCERStaticRouteValidation:
                 try:
                     dc_page._ensure_virtual_interface_list()
                     dc_page.page.wait_for_timeout(2000)
-                    dc_page.virtual_interface_delete(vif_name)
-                    dc_page.assert_deleted(vif_name, timeout=60)
+                    try:
+                        dc_page.get_row_by_name(vif_name)
+                    except Exception:
+                        logger.info(f"虚拟接口 {vif_name} 已不存在或已被级联删除，跳过")
+                    else:
+                        dc_page.virtual_interface_delete(vif_name)
+                        dc_page.assert_deleted(vif_name, timeout=60)
                 except Exception as e:
                     cleanup_errors.append(f"删除虚拟接口: {e}")
 

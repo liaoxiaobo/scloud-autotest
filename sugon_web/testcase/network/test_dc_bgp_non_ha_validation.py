@@ -155,7 +155,15 @@ class TestDCBgpNonHaValidation:
             with allure_step_log("步骤1: 进入VPC详情页路由表tab"):
                 vpc_page.goto_service("虚拟私有云")
                 vpc_page.goto_submenu("虚拟私有云")
-                vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
+                # 增加容错：若VPC行未加载，刷新后重试
+                try:
+                    row = vpc_page.get_row_by_name(vpc_name)
+                except AssertionError:
+                    logger.warning(f"首次定位VPC {vpc_name} 失败，刷新页面后重试")
+                    vpc_page.page.reload()
+                    vpc_page.wait_for_page_ready()
+                    row = vpc_page.get_row_by_name(vpc_name)
+                row.locator("a").first.click()
                 vpc_page.page.mouse.move(1, 1)
                 vpc_page.get_by_role("tab", name="路由表").click()
 
@@ -171,22 +179,21 @@ class TestDCBgpNonHaValidation:
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^云专线$")
                 ).first.click()
+                vpc_page.page.wait_for_timeout(500)
 
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
                 vpc_page.page.wait_for_timeout(2000)
 
-                # 精确定位下拉框内的选项（先找可见下拉框，再在其内部匹配选项）
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:
                     dropdown.wait_for(state="visible", timeout=5000)
                     option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
                     expect(option).to_be_visible(timeout=5000)
                     option.click()
-                    logger.info(f"下一跳选择成功: {dc_name} (通过 .el-select-dropdown__item)")
+                    logger.info(f"下一跳选择成功: {dc_name}")
                 except Exception:
-                    # 降级方案：直接用 get_by_text
                     logger.warning(f".el-select-dropdown__item 定位失败，降级使用 get_by_text 选择: {dc_name}")
                     vpc_page.page.get_by_text(dc_name, exact=False).first.click()
 
@@ -198,12 +205,24 @@ class TestDCBgpNonHaValidation:
                     pass
 
             with allure_step_log("步骤3: 验证路由规则列表"):
-                vpc_page.page.reload()
-                vpc_page.wait_for_page_ready()
-                vpc_page.page.mouse.move(1, 1)
-                vpc_page.get_by_role("tab", name="路由表").click()
+                # 增加重试：页面刷新后数据可能未立即加载
+                row_data = None
+                for attempt in range(3):
+                    vpc_page.page.reload()
+                    vpc_page.wait_for_page_ready()
+                    vpc_page.page.mouse.move(1, 1)
+                    vpc_page.get_by_role("tab", name="路由表").click()
+                    vpc_page.page.wait_for_timeout(3000)
+                    try:
+                        row_data = vpc_page.get_row_data(dest_cidr)
+                        if row_data:
+                            break
+                    except AssertionError:
+                        logger.warning(f"第 {attempt + 1} 次查找路由规则 {dest_cidr} 失败，重试中...")
+                        if attempt == 2:
+                            raise
+                        vpc_page.page.wait_for_timeout(5000)
 
-                row_data = vpc_page.get_row_data(dest_cidr)
                 actual_dest = row_data.get("目的地址", "")
                 actual_type = row_data.get("下一跳类型", "")
                 actual_next_hop = row_data.get("下一跳", "")
@@ -237,6 +256,14 @@ class TestDCBgpNonHaValidation:
                 combined_output = f"=== ip ad (来自 VM {vm_mfip}) ===\n{ip_result}\n\n=== ping -c 4 10.9.9.9 ===\n{ping_result['stdout']}\nrc={ping_result['rc']}"
                 allure.attach(combined_output, name="SSH验证结果", attachment_type=allure.attachment_type.TEXT)
 
+                assert ping_result["rc"] == 0, f"ping命令执行失败"
+                # 放宽丢包容忍：允许首次丢包（路由刚建立时的ARP/MAC学习延迟），重试一次
+                if not ("4 packets transmitted, 4 received" in ping_result["stdout"]
+                        or "0% packet loss" in ping_result["stdout"]):
+                    logger.warning("首次ping存在丢包，等待10秒后重试...")
+                    time.sleep(10)
+                    ping_result = ssh_vm.run("ping -c 4 10.9.9.9", return_rc=True, return_stdout=True)
+                    logger.info(f"重试ping结果: rc={ping_result['rc']}, stdout={ping_result['stdout']}")
                 assert ping_result["rc"] == 0, f"ping命令执行失败"
                 assert (
                     "4 packets transmitted, 4 received" in ping_result["stdout"]
@@ -292,8 +319,14 @@ class TestDCBgpNonHaValidation:
             with allure_step_log("清理2: 删除虚拟接口"):
                 try:
                     dc_page._ensure_virtual_interface_list()
-                    dc_page.virtual_interface_delete(vif_name)
-                    dc_page.assert_deleted(vif_name, timeout=60)
+                    dc_page.page.wait_for_timeout(2000)
+                    try:
+                        dc_page.get_row_by_name(vif_name)
+                    except Exception:
+                        logger.info(f"虚拟接口 {vif_name} 已不存在或已被级联删除，跳过")
+                    else:
+                        dc_page.virtual_interface_delete(vif_name)
+                        dc_page.assert_deleted(vif_name, timeout=60)
                 except Exception as e:
                     cleanup_errors.append(f"删除虚拟接口: {e}")
 

@@ -229,6 +229,12 @@ def _create_logged_in_page(browser_context, config):
         page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
     except Exception:
         logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
+        # 若 URL 仍在根路径（无 hash），可能是前端路由尚未完成，追加短暂等待
+        if "/#" not in page.url:
+            try:
+                page.wait_for_url(re.compile(r".*#/(index|login|console-page)$"), timeout=15000)
+            except Exception:
+                pass
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     if not _is_logged_in(page):
@@ -417,7 +423,18 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return ("/#/index" in current_url or "/#/console-page" in current_url or "/#" in current_url) and "login" not in current_url
+    # URL 明确指向首页或控制台页
+    if "/#/index" in current_url or "/#/console-page" in current_url:
+        return True
+    # URL 明确指向登录页
+    if "login" in current_url:
+        return False
+    # URL 是根路径或其他（前端路由尚未完成 hash 跳转），通过页面元素兜底判断
+    try:
+        login_input = page.locator("input[placeholder='请输入登录账号']")
+        return login_input.count() == 0 or not login_input.first.is_visible(timeout=3000)
+    except Exception:
+        return False
 
 
 def _login(page, config, max_retries=3):
@@ -466,10 +483,20 @@ def _login(page, config, max_retries=3):
                 page.get_by_placeholder("请输入登录密码").fill(password)
                 page.get_by_text("登 录").click()
 
-                # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
+                # 登录成功后应进入控制台首页或console-page（许可证提示页）
                 page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=10000)
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_load_state("load")
+
+                # 如果导航到console-page（许可证提示页），关闭弹窗后等待跳转到index
+                if "console-page" in page.url:
+                    try:
+                        license_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
+                        if license_btn.count() > 0 and license_btn.is_visible(timeout=5000):
+                            license_btn.click()
+                            page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+                    except Exception:
+                        pass
 
                 if _is_logged_in(page):
                     return True

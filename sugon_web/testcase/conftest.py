@@ -687,6 +687,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         return
     with allure_step_log(f"清理虚机资源"):
         ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_submenu("弹性云服务器")
         # 过滤掉已经被删除的虚机，避免重复删除报错
         existing_names = []
         for name in vm_names:
