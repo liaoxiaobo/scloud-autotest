@@ -269,7 +269,52 @@ class LbPoolMixin(LbDetailMixin):
         for vm_name in vm_names:
             self.click_action(vm_name, "删除")
             self.dialog_confirm.click()
+            self.wait_for_page_ready()
             self.logger.info(f"资源池成员删除成功: {vm_name}")
+
+    def lb_pool_disable_vm(self, vm_names, lb_name=None, pool_name=None):
+        """在资源池详情页禁用已添加的虚机成员。
+
+        Args:
+            vm_names: 待禁用的虚机名称，支持单个字符串或名称列表。
+            lb_name: 监听器名称；和 ``pool_name`` 一起传入时，会先自动进入资源池详情页。
+            pool_name: 资源池名称；和 ``lb_name`` 一起传入时，会先自动进入资源池详情页。
+        """
+        if isinstance(vm_names, str):
+            vm_names = [vm_names]
+
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        for vm_name in vm_names:
+            self.click_action(vm_name, "禁用")
+            self.dialog_confirm.click()
+            self.wait_for_page_ready()
+            self.logger.info(f"资源池成员禁用成功: {vm_name}")
+
+    def lb_pool_activate_vm(self, vm_names, lb_name=None, pool_name=None):
+        """在资源池详情页激活已禁用的虚机成员。
+
+        Args:
+            vm_names: 待激活的虚机名称，支持单个字符串或名称列表。
+            lb_name: 监听器名称；和 ``pool_name`` 一起传入时，会先自动进入资源池详情页。
+            pool_name: 资源池名称；和 ``lb_name`` 一起传入时，会先自动进入资源池详情页。
+        """
+        if isinstance(vm_names, str):
+            vm_names = [vm_names]
+
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        for vm_name in vm_names:
+            self.click_action(vm_name, "激活")
+            self.dialog_confirm.click()
+            self.wait_for_page_ready()
+            self.logger.info(f"资源池成员激活成功: {vm_name}")
 
     def lb_pool_config_health_check(self, lb_name, pool_name, enable=True,
                                     health_type=None, health_request=None,
@@ -374,7 +419,7 @@ class LbPoolMixin(LbDetailMixin):
             expected_status: 期望状态，默认"运行中"。
             timeout: 最大等待时间（秒），默认120。
             interval: 轮询间隔（秒），默认10。
-            refresh: 是否主动点击刷新按钮，默认True。（暂仅支持True）
+            refresh: 是否主动点击刷新按钮，默认True。
 
         Raises:
             AssertionError: 超时后状态仍未匹配。
@@ -391,8 +436,9 @@ class LbPoolMixin(LbDetailMixin):
                 try:
                     self.btn_refresh.click()
                     self.wait_for_page_ready()
-                except Exception as e:
-                    self.logger.warning(f"刷新页面失败: {e}")
+                except Exception:
+                    # 刷新按钮不可用时，降级为重新导航
+                    self.goto_lb_pool_detail(lb_name, pool_name, force=True)
 
             try:
                 row = self.get_row_by_name(vm_name)

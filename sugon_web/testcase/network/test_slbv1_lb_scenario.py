@@ -7,7 +7,9 @@ from sugon_web.testcase.network._lb_fixtures import clean_lb_listener
 from sugon_web.testcase.network._slb_helpers import (
     assert_lb_algorithm,
     collect_lb_http_responses,
+    is_http_reachable,
     prepare_http_backend,
+    stop_http_backend,
 )
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
@@ -24,6 +26,122 @@ PORT = 8080
 class TestSlbV1LbScenario:
     """负载均衡（基础版）V1场景验证"""
 
+
+
+    @allure.title("SLBV1-健康检查器成员离线禁用激活状态验证")
+    def test_slbv1_health_check_disable_activate(
+        self, vpc_page, slb, vm, ssh_vm, clean_lb_listener
+    ):
+        """用例405876：验证开启健康检查器时成员离线后再禁用，当成员上线后进行激活的状态"""
+        cleanup = clean_lb_listener
+        requester = vm[0]
+        backends = vm[1:4]
+        lb_name = f"lb-tcp-{random_data()}"
+        pool_name = f"pool-{random_data()}"
+        backend_markers = {
+            f"ecs{i + 1}": f"this is ecs{i + 1}" for i in range(len(backends))
+        }
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
+
+        with allure_step_log("步骤1: 后端虚机启动web服务"):
+            for i, backend in enumerate(backends):
+                prepare_http_backend(ssh_vm, backend, f"ecs{i + 1}", port=PORT)
+                cleanup.add_backend_server(backend, port=PORT)
+
+        with allure_step_log("步骤2: 创建监听器（开启健康检查）并添加资源池成员"):
+            vpc_page.slb_lb_create(
+                slb_name=slb["name"],
+                lb_name=lb_name,
+                protocol="TCP",
+                port=PORT,
+                pool_name=pool_name,
+                balance_method="轮询",
+                health_check=True,
+                health_type="TCP",
+            )
+            vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
+            vpc_page.assert_listener_exists(lb_name)
+            cleanup.add_listener(
+                {"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name}
+            )
+
+            vpc_page.lb_pool_add_vm(
+                vm_names=[b["name"] for b in backends],
+                lb_name=lb_name,
+                pool_name=pool_name,
+                ports=PORT,
+            )
+            vpc_page.assert_popup_success("提交成功")
+            for backend in backends:
+                vpc_page.assert_lb_pool_member_info(
+                    backend["name"], port=PORT, resource_status="运行中"
+                )
+
+        with allure_step_log("步骤3: 关闭ecs1、ecs2的web服务"):
+            for backend in backends[:2]:
+                stop_http_backend(ssh_vm, backend, port=PORT)
+                # 验证端口确实已关闭
+                ssh_vm.connect(backend["mfip"])
+                port_check = ssh_vm.run(
+                    f"ss -lntp | grep ':{PORT} '", check_rc=False, return_rc=True
+                )
+                assert port_check["rc"] != 0 or f":{PORT}" not in port_check["stdout"], (
+                    f"后端 {backend['name']} 端口 {PORT} 未成功关闭"
+                )
+
+        with allure_step_log("步骤4: 验证成员离线状态"):
+            for backend in backends[:2]:
+                vpc_page.wait_lb_pool_member_status(
+                    lb_name, pool_name, backend["name"],
+                    expected_status="离线", timeout=600
+                )
+            vpc_page.assert_lb_pool_member_info(
+                backends[2]["name"], resource_status="运行中"
+            )
+
+        with allure_step_log("步骤5: 禁用ecs1、ecs2"):
+            vpc_page.lb_pool_disable_vm(
+                [b["name"] for b in backends[:2]], lb_name=lb_name, pool_name=pool_name
+            )
+            for backend in backends[:2]:
+                vpc_page.assert_lb_pool_member_info(
+                    backend["name"], switch_status="禁用"
+                )
+            vpc_page.assert_lb_pool_member_info(
+                backends[2]["name"], switch_status="激活"
+            )
+
+        with allure_step_log("步骤6: 重新启动ecs1、ecs2的web服务"):
+            for i, backend in enumerate(backends[:2]):
+                prepare_http_backend(ssh_vm, backend, f"ecs{i + 1}", port=PORT)
+
+        with allure_step_log("步骤7: 激活ecs1、ecs2"):
+            vpc_page.lb_pool_activate_vm(
+                [b["name"] for b in backends[:2]], lb_name=lb_name, pool_name=pool_name
+            )
+            for backend in backends:
+                vpc_page.assert_lb_pool_member_info(
+                    backend["name"], switch_status="激活"
+                )
+
+        with allure_step_log("步骤8: 等待ecs1、ecs2恢复运行中并验证VIP轮询"):
+            for backend in backends[:2]:
+                vpc_page.wait_lb_pool_member_status(
+                    lb_name, pool_name, backend["name"],
+                    expected_status="运行中", timeout=120
+                )
+            ssh_vm.connect(requester["mfip"])
+            responses = collect_lb_http_responses(
+                ssh_vm, f"http://{lb_vip}:{PORT}/index.html"
+            )
+            assert_lb_algorithm(
+                "round_robin",
+                responses,
+                backend_markers,
+                "V1 TCP 健康检查恢复后 VIP 轮询验证",
+            )
+
+    @allure.title("SLBV1-绑定解绑公网IP功能验证")
     def test_slbv1_eip_bind_unbind(
         self, vpc_page, slb, vm, ssh_vm, ssh_host, clean_lb_listener
     ):
@@ -71,7 +189,6 @@ class TestSlbV1LbScenario:
 
         with allure_step_log("步骤3: 内网VIP访问测试"):
             ssh_vm.connect(requester["mfip"])
-            time.sleep(5)
             responses = collect_lb_http_responses(
                 ssh_vm, f"http://{lb_vip}:{PORT}/index.html"
             )
@@ -96,22 +213,10 @@ class TestSlbV1LbScenario:
             assert actual_eip == first_eip, f"绑定公网IP不一致: 期望{first_eip}, 实际{actual_eip}"
 
         with allure_step_log("步骤5: 通过第一个公网IP访问"):
-            # 轮询等待公网IP可达，最长60秒（环境网络收敛可能较慢）
-            reachable = False
-            for _ in range(6):
-                result = ssh_host.run(
-                    f"curl -s --connect-timeout 5 http://{first_eip}:{PORT}/index.html",
-                    check_rc=False, return_rc=True,
-                )
-                if result["rc"] == 0 and result["stdout"].strip():
-                    reachable = True
-                    break
-                time.sleep(10)
-            if not reachable:
-                pytest.skip(
-                    f"环境问题：第一个公网IP {first_eip} 在60秒内网络不可达，"
-                    f"跳过公网访问验证。用例核心功能（绑定/解绑/更换IP）已验证通过"
-                )
+            assert is_http_reachable(
+                ssh_host, f"http://{first_eip}:{PORT}/index.html",
+                timeout_sec=60, interval_sec=10, connect_timeout=5,
+            ), f"公网IP {first_eip} 绑定成功但60秒内仍不可达，请检查EIP绑定状态或网络连通性"
             responses = collect_lb_http_responses(
                 ssh_host,
                 f"http://{first_eip}:{PORT}/index.html",
@@ -134,7 +239,8 @@ class TestSlbV1LbScenario:
         with allure_step_log("步骤7: 验证解绑后无法访问"):
             result = ssh_host.run(
                 f"curl -s --connect-timeout 10 http://{first_eip}:{PORT}/index.html",
-                check_rc=False, return_rc=True,
+                check_rc=False,
+                return_rc=True,
             )
             assert result["rc"] != 0 or not result["stdout"].strip(), (
                 f"解绑后应无法访问，实际: {result['stdout']}"
@@ -151,22 +257,10 @@ class TestSlbV1LbScenario:
             )
 
         with allure_step_log("步骤9: 通过第二个公网IP访问"):
-            # 轮询等待第二个公网IP可达，最长60秒
-            reachable = False
-            for _ in range(12):
-                result = ssh_host.run(
-                    f"curl -s --connect-timeout 5 http://{second_eip}:{PORT}/index.html",
-                    check_rc=False, return_rc=True,
-                )
-                if result["rc"] == 0 and result["stdout"].strip():
-                    reachable = True
-                    break
-                time.sleep(5)
-            if not reachable:
-                pytest.skip(
-                    f"环境问题：第二个公网IP {second_eip} 在60秒内网络不可达，"
-                    f"跳过公网访问验证。用例核心功能（绑定/解绑/更换IP）已验证通过"
-                )
+            assert is_http_reachable(
+                ssh_host, f"http://{second_eip}:{PORT}/index.html",
+                timeout_sec=60, interval_sec=10, connect_timeout=5,
+            ), f"公网IP {second_eip} 绑定成功但60秒内仍不可达，请检查EIP绑定状态或网络连通性"
             responses = collect_lb_http_responses(
                 ssh_host,
                 f"http://{second_eip}:{PORT}/index.html",

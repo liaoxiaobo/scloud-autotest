@@ -221,7 +221,7 @@ def _safe_delete_listener(page, vpc_page, listener_info):
             page.wait_for_load_state("networkidle")
             vpc_page.slb_lb_delete(slb_name, lb_name)
             vpc_page.assert_popup_success()
-            time.sleep(3)
+            time.sleep(10)
         except Exception as exc:
             logger.warning(f"清理监听器失败: {listener_info}, error={exc}")
         finally:

@@ -105,8 +105,9 @@ def prepare_http_backend(ssh_vm, vm_info, backend_key, port=8080, content=None):
 def stop_http_backend(ssh_vm, vm_info, port=8080):
     """停止后端虚机上的 HTTP 服务。
 
-    该函数按端口匹配 `python3 -m http.server` 进程。
-    若目标进程不存在，不视为错误。
+    该函数按端口匹配 `python3 -m http.server` 进程，
+    先发送 SIGTERM，若端口仍未释放则追加 SIGKILL，
+    确保 TCP 健康检查能正确感知成员离线。
 
     Args:
         ssh_vm: 用于连接后端虚机的 SSH 客户端。
@@ -117,7 +118,39 @@ def stop_http_backend(ssh_vm, vm_info, port=8080):
         None.
     """
     ssh_vm.connect(_get_vm_mfip(vm_info))
+    # 1. 先尝试优雅终止
     ssh_vm.run(f"pkill -f 'python3 -m http.server {port}'", check_rc=False)
+
+    # 2. 轮询等待端口释放（最多 10 秒）
+    end_time = time.time() + 10
+    while time.time() < end_time:
+        result = ssh_vm.run(
+            f"ss -lntp | grep ':{port} '", check_rc=False, return_rc=True
+        )
+        if result["rc"] != 0 or f":{port}" not in result["stdout"]:
+            logger.info("后端服务已停止: %s port=%s", _get_vm_name(vm_info), port)
+            return
+        time.sleep(1)
+
+    # 3. 端口仍未释放，强制 SIGKILL
+    logger.warning(
+        "后端服务 SIGTERM 后端口仍未释放，执行 SIGKILL: %s port=%s",
+        _get_vm_name(vm_info), port
+    )
+    ssh_vm.run(f"pkill -9 -f 'python3 -m http.server {port}'", check_rc=False)
+    time.sleep(2)
+
+    # 4. 最终确认
+    result = ssh_vm.run(
+        f"ss -lntp | grep ':{port} '", check_rc=False, return_rc=True
+    )
+    if result["rc"] != 0 or f":{port}" not in result["stdout"]:
+        logger.info("后端服务已强制停止: %s port=%s", _get_vm_name(vm_info), port)
+    else:
+        logger.error(
+            "后端服务停止失败，端口仍被占用: %s port=%s",
+            _get_vm_name(vm_info), port
+        )
 
 
 def wait_for_ping_reachable(ssh_client, host, timeout_sec=180, interval_sec=10):
@@ -416,6 +449,41 @@ def collect_udp_recipients(ssh_vm, backends, port, messages):
 
 
 
+def wait_for_curl_match(ssh_client, curl_cmd, match_text, timeout_sec=60, interval_sec=5):
+    """轮询执行 curl 命令，直到响应包含匹配文本或超时。
+
+    适用于 ACL 规则同步、后端服务就绪等需要等待后端状态收敛的场景。
+
+    Args:
+        ssh_client: 用于执行远端命令的 SSH 客户端。
+        curl_cmd: curl 命令字符串。
+        match_text: 期望响应中包含的文本。
+        timeout_sec: 最大等待时间（秒），默认 60 秒。
+        interval_sec: 轮询间隔（秒），默认 5 秒。
+
+    Returns:
+        None
+
+    Raises:
+        AssertionError: 超时后仍未匹配到期望文本。
+    """
+    end_time = time.time() + timeout_sec
+    last_result = None
+    while time.time() < end_time:
+        last_result = ssh_client.run(curl_cmd, check_rc=False, return_rc=True)
+        stdout = (last_result.get("stdout") or "").strip()
+        if last_result["rc"] == 0 and match_text in stdout:
+            logger.info("curl 匹配成功: match_text=%s", match_text)
+            return
+        time.sleep(interval_sec)
+
+    raise AssertionError(
+        f"curl 命令在 {timeout_sec} 秒内未匹配到 '{match_text}'，"
+        f"最后结果: rc={last_result.get('rc') if last_result else None}, "
+        f"stdout={str(last_result.get('stdout', '')).strip()[:200] if last_result else ''}"
+    )
+
+
 def get_ssh_host_source_ip(ssh_host, target_ip):
     """识别 ssh_host 访问目标 IP 时实际使用的源 IP 候选集。
 
@@ -429,8 +497,6 @@ def get_ssh_host_source_ip(ssh_host, target_ip):
     """
     import re as _re
 
-    candidate_ips = []
-
     route_result = ssh_host.run(
         f"ip route get {shlex.quote(target_ip)} | grep -oP 'src \\K\\S+'",
         check_rc=False,
@@ -438,17 +504,39 @@ def get_ssh_host_source_ip(ssh_host, target_ip):
     )
     route_src_ip = (route_result.get("stdout") or "").strip()
     if route_src_ip:
-        candidate_ips.append(route_src_ip)
+        logger.info("ssh_host 访问 %s 的源 IP: %s", target_ip, route_src_ip)
+        return [route_src_ip]
 
-    fallback_result = ssh_host.run(
-        "hostname -I; ip -4 addr show scope global | awk '{print $2}'",
-        check_rc=False,
-        return_rc=True,
-    )
-    fallback_output = fallback_result.get("stdout") or ""
-    for ip in _re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", fallback_output):
-        if ip and ip not in candidate_ips:
-            candidate_ips.append(ip)
+    # 路由推导失败时，取 hostname -I 第一个公网IP作为兜底
+    fallback = ssh_host.run("hostname -I", check_rc=False, return_rc=True)
+    fallback_ip = (fallback.get("stdout") or "").strip().split()[0]
+    if fallback_ip:
+        logger.info("ssh_host 访问 %s 的源 IP(兜底): %s", target_ip, fallback_ip)
+        return [fallback_ip]
 
-    logger.info("ssh_host 访问 %s 的源 IP 候选: %s", target_ip, candidate_ips)
-    return candidate_ips
+    return []
+
+
+def is_http_reachable(ssh_client, url, timeout_sec=60, interval_sec=5, connect_timeout=5):
+    """轮询检查 HTTP 服务是否可达，返回布尔值。
+
+    适用于公网IP绑定后的网络收敛等待，避免在测试层使用 time.sleep。
+
+    Args:
+        ssh_client: 用于执行远端命令的 SSH 客户端。
+        url: 需要访问的 URL。
+        timeout_sec: 最大等待时间（秒），默认 60 秒。
+        interval_sec: 轮询间隔（秒），默认 5 秒。
+        connect_timeout: curl 连接超时时间（秒），默认 5 秒。
+
+    Returns:
+        bool: 可达返回 True，超时返回 False。
+    """
+    curl_cmd = f"curl -s --connect-timeout {connect_timeout} {shlex.quote(url)}"
+    end_time = time.time() + timeout_sec
+    while time.time() < end_time:
+        result = ssh_client.run(curl_cmd, check_rc=False, return_rc=True)
+        if result["rc"] == 0 and result["stdout"].strip():
+            return True
+        time.sleep(interval_sec)
+    return False
