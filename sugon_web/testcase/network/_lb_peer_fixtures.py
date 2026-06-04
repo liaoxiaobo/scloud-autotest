@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 import pytest
 
 from sugon_web.conftest import _create_logged_in_page
-from sugon_web.config.config import Config
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
@@ -75,7 +74,6 @@ def lb_peer_vms(browser_context, config, vpc, request):
 
     all_vm_names: list[str] = []
     grouped: dict[str, list[dict]] = {"vpc1": [], "vpc2": []}
-    stor = Config.get("stor")
 
     try:
         for group_key, vpc_info in zip(("vpc1", "vpc2"), vpc[:2]):
