@@ -238,7 +238,7 @@ def _modify_and_assert(iam_page, service_name, quotas, assertions):
         raise
     for metric_name, _expected in assertions:
         actual_val = _resolve_quota_value(metric_name, quotas, _expected)
-        iam_page.iam_assert_quota_value(service_name, metric_name, actual_val)
+        iam_page.assert_quota_value(service_name, metric_name, actual_val)
     logger.info(f"{service_name} 配额修改验证通过（{len(assertions)}项）")
 
 

@@ -25,7 +25,8 @@ class TestIamUserCreate:
             logger.info(f"已进入 IAM 页面: {iam_page.page.url}")
 
         with allure_step_log(f"步骤2: 验证用户 {username} 存在于用户列表中"):
-            user_list = iam_page.iam_get_user_list(target_org=child_org)
+            iam_page._navigate_to_user_management(target_org=iam_shared_child_org["child_name"])
+            user_list = iam_page.iam_get_user_list()
             assert any(username in user for user in user_list), \
                 f"用户 {username} 未在列表中找到，列表内容: {user_list[:5]}..."
             logger.info(f"用户 {username} 已在列表中找到")

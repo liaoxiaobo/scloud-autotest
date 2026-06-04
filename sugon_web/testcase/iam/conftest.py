@@ -23,9 +23,27 @@ def verify_ctx(browser):
 
 @pytest.fixture(scope="function")
 def iam_page(page):
-    """初始化统一身份认证IAM页对象"""
+    """初始化统一身份认证IAM页对象，确保页面状态干净"""
     page_object = IamPage(page)
     page_object.goto_service("统一身份认证IAM")
+    page_object.close_dialog_if_exists()
+    try:
+        page_object.page.locator(".el-input__clear, .search-clear").first.click(timeout=2000)
+    except Exception:
+        pass
+    return page_object
+
+
+@pytest.fixture(scope="function")
+def iam_tenant_page(page):
+    """初始化IAM页对象（运营-租户-用户管理列表页入口），扁平用户列表无组织树。"""
+    page_object = IamPage(page)
+    page_object.goto_iam_tenant_user_list()
+    page_object.close_dialog_if_exists()
+    try:
+        page_object.page.locator(".el-input__clear, .search-clear").first.click(timeout=2000)
+    except Exception:
+        pass
     return page_object
 
 
@@ -70,17 +88,20 @@ def iam_shared_child_org(_iam_shared_ctx, config, iam_shared_org):
 
 
 @pytest.fixture(scope="package")
-def iam_shared_user(_iam_shared_ctx, config, iam_shared_child_org):
+def iam_shared_user(_iam_shared_ctx, browser, config, iam_shared_child_org):
     """package级IAM测试用户，在共享子组织下创建，所有用户测试共享。"""
     page = _create_logged_in_page(_iam_shared_ctx, config)
     user_info = create_iam_user(page, target_org=iam_shared_child_org["child_name"])
     page.close()
     yield user_info
 
-    # 清理：删除用户
-    page = _create_logged_in_page(_iam_shared_ctx, config)
-    delete_iam_user(page, user_info["display_name"],
-                    target_org=iam_shared_child_org["child_name"])
+    # 清理：删除用户（忽略已删除或定位失败的情况）
+    ctx = browser.new_context(ignore_https_errors=True)
+    page = _create_logged_in_page(ctx, config)
+    try:
+        delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
+    except Exception as e:
+        logger.warning(f"清理共享用户 {user_info['display_name']} 失败: {e}")
     page.close()
 
 

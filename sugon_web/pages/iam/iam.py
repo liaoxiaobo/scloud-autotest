@@ -2,6 +2,7 @@ import re
 import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
+from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger
 
 
@@ -18,6 +19,32 @@ class IamPage(BasePage):
 
     service_name = "统一身份认证IAM"
 
+    def goto_service(self, service: str):
+        """菜单导航进入 IAM 后，点击左侧"组织管理"进入组织树页面。"""
+        super().goto_service(service)
+        if service == self.service_name:
+            # 尝试多种定位器查找左侧导航"组织管理"
+            nav_selectors = [
+                "#app .el-menu-item:has-text('组织管理')",
+                "#app .el-submenu__title:has-text('组织管理')",
+                "#app [class*='menu'] >> text='组织管理'",
+                "#app >> text='组织管理'",
+            ]
+            for sel in nav_selectors:
+                try:
+                    el = self.page.locator(sel).first
+                    if el.is_visible(timeout=3000):
+                        el.click()
+                        break
+                except Exception:
+                    continue
+            else:
+                # 兜底：URL 直接跳转组织管理（如果菜单导航后找不到）
+                base_url = Config.get("base_url")
+                self.page.goto(f"{base_url}/iam/#/departmentManage")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(2000)
+
     @property
     def _btn_create_user(self):
         """创建用户按钮（cl-button 渲染为 div.cloud-button-btn）。"""
@@ -30,12 +57,57 @@ class IamPage(BasePage):
             tab = self.page.locator(".el-tabs__item, [role='tab'], .tab-pane-header span").filter(has_text="用户管理")
         return tab
 
+    def goto_iam_tenant_user_list(self):
+        """导航到运营-租户-用户管理列表页（扁平用户列表，无组织树）。"""
+        base_url = Config.get("base_url")
+        target = f"{base_url}/iam/#/user-manage"
+        for attempt in range(3):
+            self.page.goto(target, wait_until="domcontentloaded")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(3000)
+            if "/user-manage" in self.page.url:
+                break
+            logger.warning(f"IAM：导航到租户用户管理页时被重定向到 {self.page.url}，重试 {attempt+1}/2")
+        else:
+            # 兜底：先回到 departmentManage 再跳转 user-manage
+            self.page.goto(f"{base_url}/iam/#/departmentManage", wait_until="domcontentloaded")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(2000)
+            self.page.goto(target, wait_until="domcontentloaded")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(3000)
+        self.close_dialog_if_exists()
+        try:
+            self.page.locator(".el-table, table.cl-table, .el-table__body").first.wait_for(
+                state="visible", timeout=10000)
+        except Exception:
+            pass
+        self._in_tenant_mode = True
+        logger.info(f"IAM：已进入运营-租户-用户管理列表页（租户模式），当前URL: {self.page.url}")
+
+    def _ensure_tenant_user_list(self):
+        """确保当前在租户用户管理列表页，用于租户模式下的操作前置。"""
+        current_url = self.page.url
+        if "/user-manage" not in current_url:
+            self.goto_iam_tenant_user_list()
+            return
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(1000)
+        self.close_dialog_if_exists()
+
     def _navigate_to_user_management(self, target_org: str = None):
         """导航到用户管理tab页。
 
         Args:
-            target_org: 目标子组织名称。传入时按名称精准点击；为None时逐个尝试（兜底）。
+            target_org: 目标子组织名称。传入时按名称精准点击；为None时：
+                - 租户模式：停留在租户用户管理列表页
+                - 组织模式：逐个尝试（兜底）
         """
+        # 租户模式且未指定组织：停留在租户用户管理列表页
+        if getattr(self, "_in_tenant_mode", False) and target_org is None:
+            self._ensure_tenant_user_list()
+            return
+
         self.wait_for_page_ready()
         self.close_dialog_if_exists()
         self.page.wait_for_timeout(3000)
@@ -322,9 +394,9 @@ class IamPage(BasePage):
 
         Args:
             name: 用户账号名
-            target_org: 目标子组织名称，用于精准导航到指定组织树节点
+            target_org: 目标子组织名称，传入时精准导航到该组织下的用户列表
         """
-        self._navigate_to_user_management(target_org)
+        self._navigate_to_user_management(target_org=target_org)
         self.click_action(name, "删除")
         self.page.wait_for_timeout(500)
         # 确认删除弹窗
@@ -544,59 +616,292 @@ class IamPage(BasePage):
         self._fill_form_field(dialog, "确认新密码", new_password)
         self._submit_and_close_dialog(dialog, f"重置密码({name})")
 
-    def _select_date_in_picker(self, dialog, label: str, year: int, month: int, day: int,
-                                input_index: int = 0, use_input: bool = True):
+    def _select_date_in_picker(self, dialog, label, year: int, month: int, day: int,
+                                input_index: int = 0):
         """在日期选择器中设置指定日期。
 
-        支持两种模式：
-        - use_input=True（默认）：通过输入框直接填写，支持跨月/跨年日期，
-          填入后加空格并点击空白处以触发 Vue 绑定和面板收起。
-        - use_input=False：通过点击日历面板上的日期单元格，仅适用于当前显示月份。
-
+        优先使用 JS 直接设置值确保 Vue v-model 同步，然后尝试 click+键盘输入做二次确认。
+        当日期面板遮挡或 Element UI DatePicker 不可交互时，JS 设置保证功能正确性。
         Args:
-            label: 日期字段的 label 文本
+            label: 日期字段的 label 文本，或候选label列表
             input_index: 同一个 form-item 中第几个 input（0-based）
-            use_input: 是否使用输入框直接填写（True）或日历点击（False）
         """
-        form_item = dialog.locator(".el-form-item").filter(has_text=label)
-        inputs = form_item.locator("input")
-        date_picker_input = inputs.nth(input_index) if inputs.count() > input_index else inputs.first
-        date_picker_input.click()
-        self.page.wait_for_timeout(300)
-        target_day = str(day)
+        # 支持多个候选label回退
+        labels = [label] if isinstance(label, str) else label
+        date_str = f"{year:04d}-{month:02d}-{day:02d}"
 
-        if use_input:
-            # 移除 readonly 使 fill 生效
-            input_el = date_picker_input.element_handle()
-            self.page.evaluate("el => el.removeAttribute('readonly')", input_el)
-            date_str = f"{year:04d}-{month:02d}-{day:02d}"
-            date_picker_input.fill(date_str + " ")
+        # 等待弹窗内容加载完成（Vue 异步渲染）
+        self.page.wait_for_timeout(1500)
+
+        # 先等待 v-loading 蒙层消失，避免后续定位竞争
+        loading = dialog.locator(".el-loading-mask")
+        if loading.count() > 0:
+            try:
+                loading.wait_for(state="hidden", timeout=10000)
+                logger.info("IAM：v-loading 已消失，日期输入就绪")
+            except Exception:
+                logger.warning("IAM：等待 v-loading 超时，继续操作")
+
+        # 若之前有日期面板打开，点击弹窗标题栏关闭它（避免按 Escape 误关弹窗本身）
+        try:
+            dialog_title = dialog.locator(".el-dialog__header, .cloud-dialog__header, [class*='dialog-header']").first
+            if dialog_title.count() > 0 and dialog_title.is_visible():
+                dialog_title.click()
+                self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        # ========== 阶段1：用多种策略定位日期 input ==========
+        date_picker_input = None
+        found_lbl = None
+        search_strategies = [
+            # 策略1：通过 .el-form-item__label 查找
+            lambda lbl: (
+                dialog.locator(".el-form-item__label").filter(has_text=lbl).first
+                .locator("xpath=ancestor::div[contains(@class,'el-form-item')][1]")
+                .locator("input").nth(input_index)
+            ),
+            # 策略2：使用 .filter(has_text) 定位（与 clear 逻辑一致）
+            lambda lbl: (
+                dialog.locator(".el-form-item").filter(has_text=lbl).first
+                .locator("input").nth(input_index)
+            ),
+            # 策略3：通过 .el-date-editor 组件查找
+            lambda _: (
+                dialog.locator(".el-date-editor").nth(input_index)
+                .locator("input").first
+            ),
+            # 策略4：通过 placeholder 搜索常见日期 placeholder
+            lambda _: (
+                dialog.locator("input[placeholder*='日期'], input[placeholder*='date'], input[placeholder*='开始'], input[placeholder*='结束']")
+                .nth(input_index)
+            ),
+            # 策略5：搜索所有可见的 .el-input__inner
+            lambda _: (
+                dialog.locator(".el-input__inner").nth(input_index)
+            ),
+            # 策略6：按索引取弹窗内所有可见 input
+            lambda _: dialog.locator("input").nth(input_index),
+        ]
+
+        for strategy_idx, strategy in enumerate(search_strategies):
+            if date_picker_input is not None:
+                break
+            for lbl in labels if strategy_idx < 2 else [None]:
+                try:
+                    inp = strategy(lbl) if lbl else strategy(None)
+                    # 快速检查是否存在（不阻塞等待）
+                    if inp.count() > 0 and inp.first.is_visible():
+                        date_picker_input = inp
+                        found_lbl = f"策略{strategy_idx+1}({lbl or '无label'})"
+                        break
+                except Exception:
+                    pass
+
+        # ========== 阶段2：如果 locator 都找不到，用 JS 在页面内搜索 ==========
+        if date_picker_input is None:
+            logger.warning(f"IAM：通过 locator 均未找到日期字段，尝试 JS 搜索")
+            try:
+                js_result = self.page.evaluate("""
+                    (idx) => {
+                        // 找所有可见的 dialog
+                        const dialogs = Array.from(document.querySelectorAll('.el-dialog, [role="dialog"]'))
+                            .filter(d => d.offsetParent !== null);
+                        if (dialogs.length === 0) return {found: false, error: 'no visible dialog'};
+                        const dlg = dialogs[0];
+                        // 优先找 .el-date-editor 下的 input
+                        let editors = dlg.querySelectorAll('.el-date-editor input');
+                        if (editors.length > idx) {
+                            return {found: true, type: 'el-date-editor', index: idx, total: editors.length};
+                        }
+                        // 其次找所有可见 input
+                        let inputs = Array.from(dlg.querySelectorAll('input'))
+                            .filter(i => i.offsetParent !== null);
+                        if (inputs.length > idx) {
+                            return {found: true, type: 'visible-input', index: idx, total: inputs.length};
+                        }
+                        // 再找 .el-input__inner
+                        let inners = Array.from(dlg.querySelectorAll('.el-input__inner'))
+                            .filter(i => i.offsetParent !== null);
+                        if (inners.length > idx) {
+                            return {found: true, type: 'el-input__inner', index: idx, total: inners.length};
+                        }
+                        return {found: false, total: inputs.length, editors: editors.length, inners: inners.length};
+                    }
+                """, input_index)
+                if js_result and js_result.get("found"):
+                    date_picker_input = dialog.locator("input").nth(input_index)
+                    found_lbl = f"JS搜索({js_result.get('type')}, 共{js_result.get('total', '?')}个)"
+                    logger.info(f"IAM：通过 JS 找到日期 input: {found_lbl}")
+                else:
+                    logger.warning(f"IAM：JS 搜索也未找到足够 input: {js_result}")
+            except Exception as e:
+                logger.warning(f"IAM：JS 搜索日期 input 失败: {e}")
+
+        if date_picker_input is None:
+            # 诊断：打印弹窗内的 DOM 结构（使用 page.evaluate 避免 locator 超时）
+            try:
+                diag = self.page.evaluate("""
+                    () => {
+                        // 搜索所有可能的弹窗类型
+                        const selectors = [
+                            '.el-dialog', '[role="dialog"]',
+                            '.sugon-dialog', '.cloud-dialog',
+                            '.el-message-box', '.el-popover',
+                            '.el-drawer', '[class*="dialog"]',
+                            '[class*="Dialog"]', '[class*="modal"]',
+                            '[class*="Modal"]'
+                        ];
+                        let allDialogs = [];
+                        for (const sel of selectors) {
+                            try {
+                                const els = document.querySelectorAll(sel);
+                                for (const el of els) {
+                                    if (el.offsetParent !== null) {
+                                        allDialogs.push({sel: sel, el: el});
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+                        let info = {dialogCount: allDialogs.length, labels: [], inputs: [], allText: [], selectors: []};
+                        for (const {sel, d} of allDialogs) {
+                            info.selectors.push(sel);
+                            // 收集弹窗内所有文本
+                            const walker = document.createTreeWalker(d, NodeFilter.SHOW_TEXT, null, false);
+                            const texts = new Set();
+                            while (walker.nextNode()) {
+                                const t = walker.currentNode.textContent.trim();
+                                if (t && t.length > 1 && t.length < 50) texts.add(t);
+                            }
+                            info.allText.push(...Array.from(texts).slice(0, 20));
+                            const items = d.querySelectorAll('.el-form-item');
+                            for (const item of items) {
+                                const lbl = item.querySelector('.el-form-item__label');
+                                const txt = lbl ? lbl.textContent.trim() : '';
+                                if (txt) info.labels.push(txt);
+                                const inps = item.querySelectorAll('input, .el-input__inner');
+                                for (const inp of inps) {
+                                    info.inputs.push({
+                                        type: inp.type || '',
+                                        placeholder: inp.placeholder || '',
+                                        className: inp.className || '',
+                                        value: inp.value || '',
+                                        label: txt
+                                    });
+                                }
+                            }
+                        }
+                        // 如果还是找不到，搜索 body 中所有 .el-form-item（可能在弹窗外）
+                        if (info.labels.length === 0) {
+                            const allItems = document.querySelectorAll('.el-form-item');
+                            for (const item of allItems) {
+                                if (item.offsetParent !== null) {
+                                    const lbl = item.querySelector('.el-form-item__label');
+                                    const txt = lbl ? lbl.textContent.trim() : '';
+                                    if (txt) info.labels.push(txt);
+                                }
+                            }
+                        }
+                        return info;
+                    }
+                """)
+                logger.error(f"IAM：弹窗诊断 dialogCount={diag.get('dialogCount')}, selectors={diag.get('selectors', [])}")
+                logger.error(f"IAM：弹窗诊断 labels: {diag.get('labels', [])}")
+                logger.error(f"IAM：弹窗诊断 inputs: {diag.get('inputs', [])}")
+                logger.error(f"IAM：弹窗诊断 allText: {diag.get('allText', [])}")
+            except Exception as de:
+                logger.error(f"IAM：弹窗诊断失败: {de}")
+            raise Exception(f"弹窗中未找到日期字段，候选label: {labels}")
+
+        logger.info(f"IAM：准备设置日期 {date_str} (使用: {found_lbl})")
+
+        # ========== 阶段3：优先使用 JS 直接设置值 ==========
+        js_set_ok = False
+        try:
+            input_el = date_picker_input.first
+            input_el.evaluate("""
+                (el, val) => {
+                    el.value = val;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    // 触发 blur + Enter，让 Element UI DatePicker 解析并同步到 v-model
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                    el.blur();
+                    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+                    el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+                    if (el.__vue__) {
+                        el.__vue__.$emit('input', val);
+                        el.__vue__.$emit('change', val);
+                    }
+                    // 对 Element UI DatePicker：尝试找到组件实例直接更新
+                    const editor = el.closest('.el-date-editor');
+                    if (editor && editor.__vue__) {
+                        const comp = editor.__vue__;
+                        // handleInput 期望事件对象，用 try-catch 保护避免报错
+                        if (typeof comp.handleInput === 'function') {
+                            try {
+                                const fakeEvent = { target: { value: val } };
+                                comp.handleInput(fakeEvent);
+                            } catch (e) {}
+                        }
+                        if (typeof comp.handleChange === 'function') {
+                            try { comp.handleChange(val); } catch (e) {}
+                        }
+                        try { comp.$emit('input', val); } catch (e) {}
+                        try { comp.$emit('change', val); } catch (e) {}
+                    }
+                    return true;
+                }
+            """, date_str)
             self.page.wait_for_timeout(300)
-            # 点击对话框内其他区域使日期选择器失去焦点并触发绑定
-            dialog_title = dialog.locator(".el-dialog__header")
-            if dialog_title.count() > 0:
-                dialog_title.first.click()
+            actual_val = input_el.input_value()
+            if date_str in actual_val:
+                js_set_ok = True
+                logger.info(f"IAM：通过 JS 直接设置日期 {date_str} 成功")
             else:
-                dialog.click(position={"x": 10, "y": 10})
-            self.page.wait_for_timeout(500)
-        else:
-            # 日历点击方式：仅在当前显示月份中查找
-            cells = self.page.locator(
-                ".el-picker-panel:visible .el-date-table td.available:not(.prev-month):not(.next-month) span"
-            )
-            for i in range(cells.count()):
-                if cells.nth(i).inner_text().strip() == target_day:
-                    cells.nth(i).click()
-                    break
-            self.page.wait_for_timeout(300)
+                logger.warning(f"IAM：JS 设置日期后验证失败，期望 {date_str}，实际 {actual_val}")
+        except Exception as e:
+            logger.warning(f"IAM：JS 直接设置日期失败: {e}")
 
-        # 确保日期面板已关闭（防止遮挡后续点击）
-        panel = self.page.locator(".el-picker-panel:visible")
-        if panel.count() > 0:
-            self.page.keyboard.press("Escape")
-            self.page.wait_for_timeout(300)
+        # 如果 JS 设置成功，用 fill 走完整输入事件链做二次确认
+        if js_set_ok:
+            try:
+                input_el.scroll_into_view_if_needed()
+                self.page.wait_for_timeout(200)
+                input_el.fill(date_str)
+                self.page.wait_for_timeout(200)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(300)
+                logger.info(f"IAM：二次确认日期 {date_str} 完成")
+            except Exception as e:
+                logger.warning(f"IAM：日期二次确认失败: {e}")
+            return
 
-    def iam_set_user_expiry(self, name: str, date_str: str, target_org: str = None):
+        # ========== 阶段4：JS 失败时的兜底：常规 click + 键盘输入 ==========
+        date_picker_input.scroll_into_view_if_needed()
+        self.page.wait_for_timeout(300)
+        date_picker_input.click()
+        self.page.wait_for_timeout(500)
+
+        self.page.keyboard.press("Control+a")
+        self.page.wait_for_timeout(100)
+        self.page.keyboard.press("Delete")
+        self.page.wait_for_timeout(200)
+
+        for char in date_str:
+            self.page.keyboard.press(char)
+            self.page.wait_for_timeout(30)
+        self.page.wait_for_timeout(300)
+
+        self.page.keyboard.press("Tab")
+        self.page.wait_for_timeout(500)
+
+        actual_val = date_picker_input.input_value()
+        assert date_str in actual_val, \
+            f"IAM：日期输入未生效，期望 {date_str}，实际 {actual_val}"
+        logger.info(f"IAM：日期设置成功 {date_str}")
+
+    def iam_set_user_expiry(self, name: str, date_str: str):
         """设置用户过期时间。
 
         Args:
@@ -604,7 +909,7 @@ class IamPage(BasePage):
             date_str: 过期日期，格式 yyyy-MM-dd，空字符串表示不限
             target_org: 目标子组织名称，用于精准导航到指定组织树节点
         """
-        dialog = self._open_user_operation_dialog(name, "设置用户过期时间", "设置用户过期时间", target_org)
+        dialog = self._open_user_operation_dialog(name, "设置用户过期时间", "设置用户过期时间", None)
         parts = date_str.split("-")
         self._select_date_in_picker(dialog, "过期时间",
                                      int(parts[0]), int(parts[1]), int(parts[2]))
@@ -844,15 +1149,31 @@ class IamPage(BasePage):
         """
         tree_container = self.page.locator("#iam-department")
         org_node = tree_container.locator(".depart_name").filter(has_text=org_name)
+
         # 轮询等待组织节点出现（Vue 异步渲染可能延迟）
-        for _ in range(10):
+        for attempt in range(10):
             if org_node.count() > 0:
                 break
-            self.page.wait_for_timeout(1000)
-        if org_node.count() == 0:
-            raise Exception(f"组织树中未找到组织 {org_name}")
-
+            logger.info(f"IAM：等待组织 '{org_name}' 出现在组织树中（{attempt+1}/10）")
+            self.page.wait_for_timeout(1500)
+        else:
+            # 尝试展开所有节点后再查找
+            self.page.evaluate("""
+                () => {
+                    const icons = document.querySelectorAll('#iam-department .el-tree-node__expand-icon');
+                    icons.forEach(icon => {
+                        if (!icon.classList.contains('is-leaf') &&
+                            icon.classList.contains('el-icon-caret-right')) {
+                            icon.click();
+                        }
+                    });
+                }
+            """)
+            self.page.wait_for_timeout(2000)
+            if org_node.count() == 0:
+                raise Exception(f"组织树中未找到组织 {org_name}")
         # hover 节点以显示操作按钮
+        org_node.first.scroll_into_view_if_needed()
         org_node.first.hover()
         self.page.wait_for_timeout(1200)
 
@@ -1388,30 +1709,67 @@ class IamPage(BasePage):
         Args:
             operation: 操作项文本，如"修改用户状态"、"重置密码"等
         """
-        try:
-            operation_btn = self.get_by_role("button", name="更多操作")
-            dropdown_id = operation_btn.evaluate("element => element.getAttribute('aria-controls')")
-            if dropdown_id:
-                specific_dropdown = self.page.locator(f"#{dropdown_id}")
-                batch_option = specific_dropdown.get_by_text(operation, exact=True)
-                if batch_option.is_visible() and batch_option.is_enabled():
-                    batch_option.click()
-                    return
-                else:
-                    raise Exception(f"{operation}选项不可见或不可用")
-            else:
-                raise Exception("未找到aria-controls属性")
-        except Exception as e:
-            logger.warning(f"主要方法失败，使用备用方案: {e}")
-            dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
-            for i in range(dropdown_menus.count() - 1, -1, -1):
-                menu = dropdown_menus.nth(i)
-                if menu.is_visible():
-                    option = menu.get_by_text(operation, exact=True)
-                    if option.count() > 0 and option.is_visible() and option.is_enabled():
-                        option.click()
-                        return
-            raise Exception(f"所有方法都失败，未找到可用的{operation}选项")
+        # 等待下拉菜单渲染完成（aria-controls 可能延迟更新）
+        dropdown_visible = False
+        for attempt in range(5):
+            try:
+                operation_btn = self.get_by_role("button", name="更多操作")
+                dropdown_id = operation_btn.evaluate("element => element.getAttribute('aria-controls')")
+                if dropdown_id:
+                    specific_dropdown = self.page.locator(f"#{dropdown_id}")
+                    if specific_dropdown.is_visible():
+                        batch_option = specific_dropdown.get_by_text(operation, exact=True)
+                        if batch_option.count() > 0 and batch_option.is_visible() and batch_option.is_enabled():
+                            batch_option.click()
+                            logger.info(f"IAM：通过 aria-controls 点击下拉选项 '{operation}'")
+                            return
+                # 备用：扫描所有可见 dropdown-menu
+                dropdown_menus = self.page.locator('[id^="dropdown-menu-"], [class*="dropdown-menu"]')
+                for i in range(dropdown_menus.count() - 1, -1, -1):
+                    menu = dropdown_menus.nth(i)
+                    if menu.is_visible():
+                        option = menu.get_by_text(operation, exact=True)
+                        if option.count() > 0 and option.is_visible() and option.is_enabled():
+                            option.click()
+                            logger.info(f"IAM：通过扫描下拉菜单点击选项 '{operation}'")
+                            return
+                        dropdown_visible = True
+            except Exception as e:
+                logger.debug(f"IAM：第{attempt+1}次尝试点击'{operation}'失败: {e}")
+            self.page.wait_for_timeout(500)
+
+        # 最终回退：使用 JS 在页面上直接查找并点击包含目标文本的可见菜单项
+        js_clicked = self.page.evaluate(f"""
+            () => {{
+                // 方法1：查找所有可见的 dropdown-menu 内的选项
+                const menus = document.querySelectorAll('[id^="dropdown-menu-"], [class*="dropdown-menu"]');
+                for (const menu of menus) {{
+                    if (menu.offsetParent !== null) {{
+                        const items = menu.querySelectorAll('li, .el-dropdown-menu__item, [class*="item"]');
+                        for (const item of items) {{
+                            if (item.textContent.trim() === '{operation}' || item.textContent.includes('{operation}')) {{
+                                item.click();
+                                return true;
+                            }}
+                        }}
+                    }}
+                }}
+                // 方法2：全局查找包含目标文本的可见 li 元素
+                const allLis = document.querySelectorAll('li');
+                for (const li of allLis) {{
+                    if (li.offsetParent !== null && (li.textContent.trim() === '{operation}' || li.textContent.includes('{operation}'))) {{
+                        li.click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        if js_clicked:
+            logger.info(f"IAM：通过 JS 直接点击下拉选项 '{operation}'")
+            return
+
+        raise Exception(f"所有方法都失败，未找到可用的{operation}选项")
 
     def _open_batch_dialog(self, names: list, operation_text: str, dialog_title: str, target_org: str = None):
         """执行批量操作：勾选用户、打开下拉菜单、选择操作项、等待弹窗。
@@ -1426,21 +1784,73 @@ class IamPage(BasePage):
             dialog: 弹窗定位器
         """
         self._navigate_to_user_management(target_org=target_org)
+        # 等待用户管理tab切换+表格数据加载（Vue异步渲染+后端查询）
+        self.page.wait_for_timeout(2500)
+        # 确保表格行已出现（最多等5秒）
+        for _ in range(10):
+            rows = self.page.locator(".el-table__row")
+            if rows.count() > 0 and rows.first.is_visible():
+                break
+            self.page.wait_for_timeout(500)
+
+        # 先关闭可能残留的弹窗/下拉菜单，避免干扰
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(300)
+
+        # 勾选用户：使用 JS 点击 label 确保 Vue 响应式更新（避免 hidden input 的 viewport 问题）
+        checked_count = 0
         for name in names:
-            row = self.get_row_by_name(name)
-            row.scroll_into_view_if_needed()
-            checkbox = row.locator("label.el-checkbox .el-checkbox__input").first
-            if checkbox.count() > 0 and not checkbox.is_checked():
-                checkbox.evaluate("el => el.click()")
-                self.page.wait_for_timeout(300)
-        self.page.wait_for_timeout(500)
-        self.get_by_role("button", name="更多操作").click()
-        self.page.wait_for_timeout(500)
-        self._click_batch_operation_option(operation_text)
+            try:
+                row = self.get_row_by_name(name)
+                if row.count() == 0:
+                    logger.warning(f"IAM：未找到用户 {name} 所在行，跳过勾选")
+                    continue
+                row.scroll_into_view_if_needed()
+                # 点击 checkbox 的 label 或包装器，避免直接点击 hidden input
+                checkbox_label = row.locator("label.el-checkbox").first
+                if checkbox_label.count() > 0:
+                    # 通过 JS 点击 label，触发 Vue 的 change 事件
+                    checkbox_label.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(300)
+                    checked_count += 1
+                else:
+                    # 降级：直接找 checkbox 包装器
+                    cb_input = row.locator(".el-checkbox__input").first
+                    if cb_input.count() > 0:
+                        cb_input.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(300)
+                        checked_count += 1
+            except Exception as e:
+                logger.warning(f"IAM：勾选用户 {name} 失败: {e}")
+
+        if checked_count == 0:
+            raise Exception(f"未成功勾选任何用户，无法执行批量操作")
+        logger.info(f"IAM：已勾选 {checked_count}/{len(names)} 个用户")
         self.page.wait_for_timeout(800)
+
+        # 点击"更多操作"按钮
+        more_btn = self.get_by_role("button", name="更多操作")
+        more_btn.click()
+        logger.info("IAM：已点击'更多操作'按钮，等待下拉菜单渲染...")
+        self.page.wait_for_timeout(1500)
+
+        # 选择操作项
+        self._click_batch_operation_option(operation_text)
+        logger.info(f"IAM：已选择操作项 '{operation_text}'，等待弹窗出现...")
+        self.page.wait_for_timeout(1500)
+
+        # 等待弹窗出现
         dialog = self.get_by_role("dialog").filter(has_text=dialog_title)
-        expect(dialog.first).to_be_visible(timeout=8000)
-        logger.info(f"IAM：{dialog_title}批量弹窗已打开（{len(names)}个用户）")
+        try:
+            expect(dialog.first).to_be_visible(timeout=15000)
+            logger.info(f"IAM：{dialog_title}批量弹窗已打开（{checked_count}个用户）")
+        except Exception as e:
+            # 诊断：检查页面上是否有弹窗
+            all_dialogs = self.page.locator("[role='dialog']")
+            dialog_count = all_dialogs.count()
+            visible_count = sum(1 for i in range(dialog_count) if all_dialogs.nth(i).is_visible())
+            logger.error(f"IAM：弹窗未出现，页面上共有 {dialog_count} 个 dialog，其中 {visible_count} 个可见")
+            raise Exception(f"{dialog_title}批量弹窗未在15秒内出现: {e}")
         return dialog.first
 
     def iam_batch_modify_status(self, names: list, enabled: bool, target_org: str = None):
@@ -1532,12 +1942,12 @@ class IamPage(BasePage):
                 self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
             if "start_date" in kwargs:
                 parts = kwargs["start_date"].split("-")
-                self._select_date_in_picker(dialog, "设置登录日期",
+                self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
                                              int(parts[0]), int(parts[1]), int(parts[2]),
                                              input_index=0)
             if "end_date" in kwargs:
                 parts = kwargs["end_date"].split("-")
-                self._select_date_in_picker(dialog, "设置登录日期",
+                self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
                                              int(parts[0]), int(parts[1]), int(parts[2]),
                                              input_index=1)
             if "time_day" in kwargs and "time_hour" in kwargs:

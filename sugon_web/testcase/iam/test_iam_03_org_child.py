@@ -41,7 +41,8 @@ class TestIamOrgChild:
             logger.info(f"验证成功：子组织 {child_name} 存在于组织树中")
 
     @allure.title("IAM-组织管理-修改子组织")
-    def test_iam_modify_child_org(self, iam_page, iam_shared_org, iam_shared_child_org):
+    def test_iam_modify_child_org(self, iam_page, iam_shared_org, iam_shared_child_org,
+                                   iam_shared_user):
         """修改共享子组织名称，更新fixture dict以便后续测试和清理使用新名称。"""
         parent_name = iam_shared_org["org_name"]
         old_name = iam_shared_child_org["child_name"]
@@ -63,6 +64,7 @@ class TestIamOrgChild:
             iam_page.iam_modify_organization(old_name, new_name)
             # 更新fixture dict，后续测试和清理均使用新名称
             iam_shared_child_org["child_name"] = new_name
+            iam_shared_user["target_org"] = new_name
             logger.info(f"子组织名称已修改，fixture dict已更新为 {new_name}")
 
         with allure_step_log("步骤4: 验证子组织名称已修改"):

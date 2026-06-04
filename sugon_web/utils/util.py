@@ -13,13 +13,37 @@ from functools import wraps
 from pathlib import Path
 from jinja2 import Template
 from typing import List, Dict, Any
-from faker import Faker
 from pathlib import Path
 from functools import wraps
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger
 
-fake = Faker(locale="zh_CN")
+_fake = None
+
+def _get_fake():
+    global _fake
+    if _fake is None:
+        try:
+            from faker import Faker
+            _fake = Faker(locale="zh_CN")
+        except Exception:
+            # faker 包损坏时的兜底：用标准库生成假数据
+            class _FakeFaker:
+                @staticmethod
+                def phone_number():
+                    return "138" + "".join(str(random.randint(0, 9)) for _ in range(8))
+                @staticmethod
+                def email():
+                    return f"autotest-{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}@example.com"
+                @staticmethod
+                def ipv4():
+                    return f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
+                @staticmethod
+                def ipv6(network=False):
+                    base = f"2001:db8::{random.randint(0, 65535):x}"
+                    return f"{base}/128" if network else base
+            _fake = _FakeFaker()
+    return _fake
 
 def get_file_abspath(name):
     """
@@ -42,16 +66,16 @@ def random_data(data_type='string', length=5, cidr=None, version=4):
         return f'autotest-{random_suffix}'
 
     elif data_type == 'phone':
-        return fake.phone_number()
+        return _get_fake().phone_number()
 
     elif data_type == 'email':
-        return fake.email()
+        return _get_fake().email()
 
     elif data_type == 'cidr':
         if version == 4:
             return str(ipaddress.IPv4Network((random.randint(0x0a000000, 0x0affffff), 24), strict=False))
         elif version == 6:
-            ipv6 = str(fake.ipv6(network=True)).split('/')
+            ipv6 = str(_get_fake().ipv6(network=True)).split('/')
             ipv6[1] = '128'
             return '/'.join(ipv6)
         return None
@@ -65,7 +89,7 @@ def random_data(data_type='string', length=5, cidr=None, version=4):
                     return ip_addr
         else:
             while True:
-                ipv4 = fake.ipv4()
+                ipv4 = _get_fake().ipv4()
                 if not ipv4.split('.')[-1] in {'1', '2', '255'}:
                     return ipv4
     else:

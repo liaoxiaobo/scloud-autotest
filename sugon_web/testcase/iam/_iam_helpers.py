@@ -21,8 +21,9 @@ def verify_login(page, username: str, password: str, expect_success: bool) -> bo
     base_url = Config.get("base_url")
     login = LoginPage(page)
 
-    # 清除 cookie 后直接前往登录页（比点击下拉菜单更稳定）
+    # 清除 cookie 和存储后直接前往登录页（比点击下拉菜单更稳定）
     page.context.clear_cookies()
+    page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
     page.goto(f"{base_url}/#/login")
     page.wait_for_timeout(3000)
 
@@ -50,77 +51,83 @@ def verify_login(page, username: str, password: str, expect_success: bool) -> bo
         if page.locator(".el-message-box__wrapper").is_visible():
             break
 
-    # 如果期望成功但实际失败，关闭弹窗后重试一次（应对后端状态同步延迟）
-    if expect_success and not success:
-        logger.warning(f"verify_login: user={username} 首次登录失败，关闭弹窗后重试...")
-        # 先关闭可能存在的登录失败提示弹窗（多重策略）
-        for attempt in range(3):
+    def _close_any_popup(p):
+        """关闭页面上可能存在的 el-message-box 弹窗。"""
+        for _ in range(3):
             try:
-                wrapper = page.locator(".el-message-box__wrapper")
+                wrapper = p.locator(".el-message-box__wrapper")
                 if not wrapper.is_visible():
-                    break
-                # 策略1: 尝试点击确定/确认按钮
+                    return True
                 clicked = False
                 for btn_text in ["确定", "确认"]:
                     for btn in wrapper.locator("button").filter(has_text=btn_text).all():
                         if btn.is_visible():
                             btn.click()
-                            page.wait_for_timeout(1000)
+                            p.wait_for_timeout(800)
                             clicked = True
-                            logger.info(f"verify_login: 尝试{attempt+1} 点击'{btn_text}'关闭弹窗")
                             break
                     if clicked:
                         break
-                # 策略2: 点击弹窗内第一个可见按钮
                 if not clicked:
                     for btn in wrapper.locator("button").all():
                         if btn.is_visible():
                             btn.click()
-                            page.wait_for_timeout(1000)
-                            logger.info(f"verify_login: 尝试{attempt+1} 点击弹窗内可见按钮")
+                            p.wait_for_timeout(800)
                             break
-                # 策略3: ESC 键关闭
-                page.keyboard.press("Escape")
+                p.keyboard.press("Escape")
+                p.wait_for_timeout(300)
+            except Exception:
+                pass
+            if not p.locator(".el-message-box__wrapper").is_visible():
+                return True
+            p.wait_for_timeout(500)
+        return not p.locator(".el-message-box__wrapper").is_visible()
+
+    # 如果期望成功但实际失败，关闭弹窗后重试一次（应对后端状态同步延迟）
+    if expect_success and not success:
+        logger.warning(f"verify_login: user={username} 首次登录失败，关闭弹窗后重试...")
+        _close_any_popup(page)
+        page.wait_for_timeout(1500)
+        # 确保仍在登录页，若已跳转则重新导航
+        if "login" not in page.url.lower():
+            page.goto(f"{base_url}/#/login")
+            page.wait_for_timeout(2000)
+        try:
+            login.login(username, password)
+        except Exception as e:
+            logger.warning(f"verify_login: 重试登录时异常: {e}")
+            success = False
+        else:
+            for _ in range(20):
                 page.wait_for_timeout(500)
-            except Exception as e:
-                logger.debug(f"verify_login: 关闭弹窗尝试 {attempt+1} 异常: {e}")
-            # 检查弹窗是否已消失
-            if not page.locator(".el-message-box__wrapper").is_visible():
-                break
-            page.wait_for_timeout(500)
-        page.wait_for_timeout(2000)
-        login.login(username, password)
-        for i in range(20):
-            page.wait_for_timeout(500)
-            if "login" not in page.url.lower():
-                success = True
-                break
-            if page.locator(".el-message-box__wrapper").is_visible():
-                break
+                if "login" not in page.url.lower():
+                    success = True
+                    break
+                if page.locator(".el-message-box__wrapper").is_visible():
+                    break
 
     result = success == expect_success
     logger.info(f"verify_login: user={username}, expect={expect_success}, actual_success={success}, result={result}")
 
-    # 关闭可能存在的登录失败提示弹窗
-    try:
-        for btn in page.locator(".el-message-box__wrapper button").filter(has_text="确定").all():
-            if btn.is_visible():
-                btn.click()
-                page.wait_for_timeout(500)
-                break
-    except Exception:
-        pass
+    # 关闭可能存在的登录失败提示弹窗（使用多重策略）
+    _close_any_popup(page)
 
     # 恢复 admin 登录状态
     page.context.clear_cookies()
     page.goto(f"{base_url}/#/login")
     page.wait_for_timeout(3000)
-    login.login("admin", "keystone_sugon")
+    try:
+        login.login("admin", "keystone_sugon")
+    except Exception as e:
+        logger.warning(f"verify_login: 恢复 admin 登录异常: {e}")
     page.wait_for_timeout(3000)
 
     # 回到 IAM 页面以便后续操作
-    page.goto(f"{base_url}/iam/#/departmentManage")
-    page.wait_for_timeout(3000)
+    try:
+        page.goto(f"{base_url}/iam/#/departmentManage")
+        page.wait_for_timeout(3000)
+    except Exception:
+        pass
 
     return result
 
@@ -162,6 +169,7 @@ def create_iam_user(page, name: str = None, password: str = None, email: str = N
         "phone": phone,
         "password": password,
         "role": "默认角色",
+        "target_org": target_org,
     }
 
 
@@ -240,8 +248,7 @@ def delete_iam_user(page, name: str, target_org: str = None):
     Args:
         page: Playwright page 对象（需已登录 admin）
         name: 用户显示名称（用于列表搜索）
-        target_org: 目标子组织名称，用于精准导航到指定组织树节点
-    """
+        target_org: 目标子组织名称，用于精准导航到用户所在的组织树节点    """
     iam = IamPage(page)
     iam.goto_service("统一身份认证IAM")
     iam.iam_delete_user(name, target_org=target_org)

@@ -13,10 +13,10 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-修改用户名称")
     def test_iam_modify_user_alias(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.1：修改用户名称为新值，验证列表页字段更新。"""
-        new_alias = random_data().replace("autotest-", "autotest-iam-mod-")
-        current_display = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
-
+        new_alias = random_data().replace("autotest-", "autotest-iam-mod-")
+        current_display = iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         with allure_step_log(f"步骤1: 修改用户 {current_display} 的用户名为 {new_alias}"):
             iam_page.iam_modify_user(current_display, target_org=child_org, alias=new_alias)
             iam_shared_user["display_name"] = new_alias
@@ -31,8 +31,9 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-修改手机号")
     def test_iam_modify_user_phone(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.2：修改手机号，验证列表页手机号字段更新。"""
-        disp = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         new_phone = "138" + "".join(str(random.randint(0, 9)) for _ in range(8))
 
         with allure_step_log(f"步骤1: 修改用户 {disp} 的手机号为 {new_phone}"):
@@ -48,8 +49,9 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-修改邮箱")
     def test_iam_modify_user_email(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.3：修改邮箱，验证列表页邮箱字段更新。"""
-        disp = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         new_email = f"{random_data().replace('autotest-', 'autotest-iam-')}@sugon.com"
 
         with allure_step_log(f"步骤1: 修改用户 {disp} 的邮箱为 {new_email}"):
@@ -65,8 +67,9 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-修改描述信息")
     def test_iam_modify_user_extra(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.4：修改描述信息为随机内容，验证列表页描述字段更新。"""
-        disp = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         new_extra = f"autotest-desc-{random_data()}"
 
         with allure_step_log(f"步骤1: 修改用户 {disp} 的描述信息"):
@@ -82,8 +85,9 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-修改角色绑定")
     def test_iam_modify_user_role(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.5：修改角色绑定为非默认角色，验证弹窗关闭提示成功。"""
-        disp = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         with allure_step_log(f"步骤1: 修改用户 {disp} 的角色绑定"):
             result = iam_page.iam_modify_user(disp, target_org=child_org, role="__non_default__")
             if result.get("role"):
@@ -97,8 +101,9 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-验证角色详情")
     def test_iam_verify_role_detail(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.6：进入用户详情页角色列表tab，验证角色名称与场景5一致。"""
-        disp = iam_shared_user["display_name"]
         child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         with allure_step_log(f"步骤1: 进入用户 {disp} 详情页，点击角色列表tab"):
             iam_page.iam_open_user_detail(disp, target_org=child_org)
             role_list = iam_page.iam_get_role_list_from_detail()
@@ -112,12 +117,13 @@ class TestIamUserModify:
     @allure.title("IAM-用户管理-组合修改多个字段")
     def test_iam_modify_user_combined(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.7+场景8：同时修改用户名、邮箱、手机号，并用账号登录验证。"""
+        child_org = iam_shared_child_org["child_name"]
         new_alias = random_data().replace("autotest-", "autotest-iam-cmb-")
         new_email = f"{new_alias}@sugon.com"
         new_phone = "138" + "".join(str(random.randint(0, 9)) for _ in range(8))
 
-        disp = iam_shared_user["display_name"]
-        child_org = iam_shared_child_org["child_name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         with allure_step_log(f"步骤1: 组合修改用户 {disp}"):
             iam_page.iam_modify_user(
                 disp,

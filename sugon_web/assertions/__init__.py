@@ -12,6 +12,7 @@ from sugon_web.assertions.base import (
 from sugon_web.assertions.backup import BackupAssertionMixin
 from sugon_web.assertions.compute import EcsAssertionMixin
 from sugon_web.assertions.database import DorisAssertionMixin
+from sugon_web.assertions.iam import IamAssertionMixin
 from sugon_web.assertions.network import (
     IpGroupAssertionMixin,
     MonitorAssertionMixin,
@@ -29,6 +30,7 @@ __all__ = [
     "BackupAssertionMixin",
     "DorisAssertionMixin",
     "EcsAssertionMixin",
+    "IamAssertionMixin",
     "IpGroupAssertionMixin",
     "ListAssertionMixin",
     "MonitorAssertionMixin",

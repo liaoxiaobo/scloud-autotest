@@ -32,9 +32,8 @@ class TestIamOrgCreate:
         with allure_step_log(f"步骤2: 验证组织 {org_name} 存在于组织树中"):
             iam_page.page.reload()
             iam_page.wait_for_page_ready()
+            iam_page.page.wait_for_timeout(3000)
             iam_page.iam_assert_org_in_tree(org_name)
-            logger.info(f"组织 {org_name} 已在组织树中")
-
         with allure_step_log(f"步骤3: 使用组织管理员 {username} 登录云平台"):
             login = LoginPage(iam_page.page)
             login.logout()
