@@ -4,6 +4,7 @@ import logging
 import time
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 
 def setup_logger():
@@ -67,6 +68,9 @@ class StepLogCollector:
         # 获取并附加日志内容到allure
         log_content = self.log_buffer.getvalue()
         if log_content.strip():
+            allure_report_dir = os.environ.get("_ALLURE_REPORT_DIR")
+            if allure_report_dir:
+                Path(allure_report_dir).mkdir(parents=True, exist_ok=True)
             allure.attach(
                 log_content,
                 name="步骤日志",

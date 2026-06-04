@@ -155,13 +155,13 @@ def prometheus(browser_context, config):
     page = _create_logged_in_page(browser_context, config)
     prometheus_page = PrometheusPage(page)
     prometheus_page.goto_service('监控服务')
-    name = f"prometheus-{random_data()}"
+    name = f"prom-{random_data()}"
     data = {"name": name}
     logger.info(f"为测试类创建共享 Prometheus 集群: {name}")
 
     with allure_step_log(f"前置操作：创建共享集群 {name}"):
         prometheus_page.create_instance(name=name)
-        prometheus_page.assert_popup_success("创建Prometheus资源成功")
+        prometheus_page.assert_popup_success("创建prom成功")
         prometheus_page.assert_status(name, status="运行中", timeout=2400, refresh=True)
 
     yield data

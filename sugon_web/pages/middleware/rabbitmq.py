@@ -2,7 +2,6 @@ import re
 from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 
 
 class RabbitMQPage(BasePage):
@@ -14,15 +13,26 @@ class RabbitMQPage(BasePage):
         dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
         dropdown.wait_for(state="visible", timeout=5000)
         items = dropdown.locator("li.el-select-dropdown__item:not(.is-disabled)")
+        target = None
         if option_text:
             if exact:
-                target = items.filter(has_text=re.compile(rf"^{re.escape(option_text)}$"))
+                option = items.filter(has_text=re.compile(rf"^{re.escape(option_text)}$"))
             else:
-                target = items.filter(has_text=option_text)
-            if target.count() > 0:
-                target.first.click()
-                return
-        items.first.click()
+                option = items.filter(has_text=option_text)
+            if option.count() > 0:
+                target = option.first
+        if target is None:
+            target = items.first
+
+        target.scroll_into_view_if_needed()
+        try:
+            target.click(timeout=3000)
+        except Exception:
+            target.click(force=True, timeout=3000)
+        try:
+            dropdown.wait_for(state="hidden", timeout=3000)
+        except Exception:
+            self.page.keyboard.press("Escape")
 
     def ensure_instance_tab(self, name: str, tab_name: str = "详情"):
         """进入 RabbitMQ 实例详情页并切换到指定页签。"""
@@ -48,7 +58,7 @@ class RabbitMQPage(BasePage):
         subnet: str = "Autotest:10.",
         disk_type: str = None,
         disk_size: int = 10,
-        specification_name: str = "rbs.d6.xlarge",
+        specification_name: str = "rbs.d6.large",
     ):
         """创建 RabbitMQ 实例。"""
         self.btn_create.click()
@@ -57,20 +67,22 @@ class RabbitMQPage(BasePage):
         self.get_by_role("radio", name=instance_type).click()
         self.get_by_placeholder("请输入名称").fill(name)
 
-        self.locator("div").filter(has_text=re.compile(r"^版本")).locator("input").first.click()
+        version_dropdown = self.select_labeled_dropdown("版本")
+        version_dropdown.click()
         self._select_visible_option(version)
 
-        self.locator("div").filter(has_text=re.compile(r"^集群")).locator("input").first.click()
+        cluster_dropdown = self.select_labeled_dropdown("集群")
+        cluster_dropdown.click()
         self._select_visible_option(cluster)
 
         self.get_by_placeholder("请输入admin管理员用户密码").fill(password)
         self.get_by_placeholder("请输入确认密码").fill(password)
 
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         selected_disk_type = disk_type if disk_type and disk_type != "default" else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["数据盘类型"])
+        self.select_disk_type_like_doris(selected_disk_type, label_texts=["数据盘类型"])
         self.locator("div").filter(has_text=re.compile(r"^数据盘大小\(GiB\)$")).get_by_role("spinbutton").fill(
             str(disk_size)
         )

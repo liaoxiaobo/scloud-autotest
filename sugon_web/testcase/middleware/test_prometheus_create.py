@@ -1,7 +1,6 @@
 import allure
 import pytest
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import load_data, random_data
 
@@ -14,7 +13,7 @@ class TestPrometheusCreate:
     @pytest.mark.parametrize("params", load_data("test_create_and_delete_prometheus", data_file='test_cdb.yaml'))
     def test_create_and_delete_instance(self, prometheus_page, params, ssh_host):
         """测试按云硬盘类型和大小组合创建并删除 Prometheus 集群"""
-        instance_name = f"prometheus-{random_data()}"
+        instance_name = f"prom-{random_data()}"
 
         with allure_step_log(
             f"步骤一：创建 Prometheus 集群: {instance_name} "
@@ -27,7 +26,7 @@ class TestPrometheusCreate:
             )
 
         with allure_step_log("步骤二：验证创建结果"):
-            prometheus_page.assert_popup_success("创建Prometheus资源成功")
+            prometheus_page.assert_popup_success("创建prom成功")
             prometheus_page.assert_list_contain(instance_name)
             prometheus_page.assert_status(instance_name, status="运行中", timeout=2400, refresh=True)
 
@@ -36,4 +35,5 @@ class TestPrometheusCreate:
 
         with allure_step_log("步骤四：验证删除结果"):
             prometheus_page.assert_deleted(instance_name, timeout=1800, refresh=True)
-            db_util.assert_backend_deleted(prometheus_page, ssh_host, instance_name)
+            ssh_host.wait_vm_deleted(instance_name)
+            ssh_host.wait_volume_deleted(instance_name)
