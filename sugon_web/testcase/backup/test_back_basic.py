@@ -278,7 +278,7 @@ class TestResumeCreate:
             ecs_page.set_table_header("架构")
             row_data = ecs_page.get_row_data(re_vm)
             assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
-            assert row_data.get("架构x86_64aarch64   筛选   重置 ") == backup_task.get("source_arch"), "架构与原始虚机不一致"
+            assert row_data.get("架构") == backup_task.get("source_arch"), "架构与原始虚机不一致"
 
             # 获取新虚机的 IP 并建立 SSH 连接
             new_vm_ip = ecs_page.get_row_data(re_vm).get("IP地址").split('固定:')[1].strip()
@@ -420,7 +420,7 @@ class TestResumeCreate:
                 ecs_page.set_table_header("架构")
                 row_data = ecs_page.get_row_data(re_vm)
                 assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
-                assert row_data.get("架构x86_64aarch64   筛选   重置 ") == original_arch, "架构与原始虚机不一致"
+                assert row_data.get("架构") == original_arch, "架构与原始虚机不一致"
 
                 new_vm_ip = row_data.get("IP地址").split('固定:')[1].strip()
                 new_mfip = ops_page.bind_mfip(new_vm_ip.strip())

@@ -280,8 +280,9 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
         """)
 
         if table_index != -1:
-            headers = self.locator(".el-table").nth(table_index).locator(
-                ".el-table__header-wrapper th").all_text_contents()
+            header_wrapper = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper")
+            th_elements = header_wrapper.locator("th").all()
+            headers = [self._extract_header_text(th) for th in th_elements]
         else:
             headers = self.table_headers
 

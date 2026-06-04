@@ -1,3 +1,19 @@
+"""
+跨测试模块共享 Fixture 定义（vm、eip、volume、ops_page 等）。
+
+职责范围:
+- 页面与资源 fixture（login_page、ecs_page、vm、eip、volume 等）
+- vm fixture 的参数解析、依赖注入、创建与清理
+- 弹性公网 IP 的分配与释放
+- 飞书测试报告通知 (pytest_sessionfinish)
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import re
 import time
 import pytest
@@ -685,6 +701,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         return
     with allure_step_log(f"清理虚机资源"):
         ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_submenu("弹性云服务器")
         # 过滤掉已经被删除的虚机，避免重复删除报错
         existing_names = []
         for name in vm_names:
