@@ -6,19 +6,25 @@
 
 **在开始本次任务之前，你必须先全文阅读以下关联文件**
 
-1. `sugon_web/case_specs/prompts/test_case_codegen_prompt.md`
+1. 阶段一产出的需求 MD 文件
+   - 作用：阶段一从 CSV 转换并校验完善的结构化需求文档，是本次编码的目标与依据。
+   - 用法：从对话上下文中定位并读取该文件，先明确本次要测什么（测试步骤、测试数据、边界条件、清理顺序），再带着这个目标去读后续规范文件，编码必须按其中定义的测试需求实现。
+2. `sugon_web/case_specs/prompts/test_case_codegen_prompt.md`
    - 作用：UI 自动化测试脚本的开发规范，指导你基于项目现有框架结构编写标准、统一、可复用的测试代码。
    - 用法：编码过程中必须严格遵守本文件规范，用例骨架务必参考本文件的推荐骨架章节。
-2. `sugon_web/case_specs/fixtures_index.md`
+3. `sugon_web/case_specs/prompts/page_func_spec.md`
+   - 作用：Playwright Page 层方法封装规范，定义定位策略优先级、反模式、方法粒度决策（Page vs Helper）、BasePage 通用组件下沉标准、Scoped 链式定位、等待策略等。
+   - 用法：封装 Page Object 方法时必须遵守本文件规范；定位策略优先 `get_by_role`/`get_by_text`/`get_by_placeholder`，避免 CSS 类名；BasePage 已封装通用组件交互时禁止在 Page 子类中重复写 CSS 定位。
+4. `sugon_web/case_specs/fixtures_index.md`
    - 作用：fixture 强制约束和速查表，开头"编写用例前必读"章节规定了 fixture 强制要求并列出所有可复用 fixture。
    - 用法：编写用例前必须先阅读，优先复用现有 fixture，禁止对已有 fixture 重复封装。
-3. `sugon_web/case_specs/prompts/assertion_guidelines.md`
+5. `sugon_web/case_specs/prompts/fixture_spec.md`
+   - 作用：fixture 封装规范，定义各类 fixture（资源创建/清理、class-scoped 共享、count 批量参数、纯计算型、clean_ 清理型等）的标准封装方法与适用场景。
+   - 用法：当需要新增或封装 fixture 时必须先阅读，严格按其规范实现，确保 fixture 的创建、回写、teardown 清理逻辑与项目既有约定保持一致。
+6. `sugon_web/case_specs/prompts/assertion_guidelines.md`
    - 作用：断言编写规范，第一部分定义断言四层模型（P0/P1/P2/P3）和决策树，第二部分定义断言编写、复用和新增方法的规范。
    - 用法：编写断言时按决策树判定每个步骤的断言层级；先搜索已有方法优先复用，无可复用方法时按规范自行编写。
-4. 阶段一产出的需求 MD 文件
-   - 作用：阶段一从 CSV 转换并校验完善的结构化需求文档。
-   - 用法：从对话上下文中定位并读取该文件，编码必须按其中定义的测试需求实现。
-5. `sugon_web/refrence/module_index.yaml`
+7. `sugon_web/refrence/module_index.yaml`
    - 作用：前端工程代码的模块索引与搜索策略文档，"模块匹配策略"章节定义被测模块与前端目录的映射规则，"前端代码搜索工具约束"章节规定查阅前端代码的搜索策略与工具限制。
    - 用法：严格遵照其匹配策略和搜索约束，定位并读取匹配到的前端工程代码——
      - **若匹配成功**：基于该前端工程代码中的实际元素文案、组件结构和交互逻辑编写页面对象，严禁脱离前端代码凭空构造定位方式。
@@ -67,6 +73,9 @@
 
 3. **定位规范**
    - 规则：测试层严禁直接使用 `locator()` / `expect()` / XPath，所有页面交互必须通过 Page Object 封装方法调用；定位优先 `get_by_role()` / `get_by_text(exact=True)` / `get_by_placeholder()`，并限定在 dialog / tab / 表格 / 行范围内，`first()` / `nth()` 仅作兜底。
+   - **运行时侦察(按需,无法仅凭前端代码确定唯一定位时)**：当某交互的定位**无法仅凭前端工程代码确定唯一、稳定的选择器**（典型：操作项默认隐藏需 JS 触发、同名菜单多个需 nth、复杂表单组件内部多 input、自定义组件如 cl-table/SugonDeleteDialog），**应先用运行时侦察脚本(黑盒,先 `--help`)** 从真实渲染态枚举候选元素再写定位，不要凭空构造或仅靠静态代码猜测：
+     `python .claude/skills/test-script-workflow/scripts/recon_page.py --service "<服务名>" [--submenu "<子菜单>"] [--grep "<关键词>"]`
+     侦察脚本**只读不改**(复用项目登录态/`goto_service`、整页截图、枚举 button/a/input/tab/列头)，只用于发现定位，定位写回 Page Object。简单用例能直接确定定位的**不必触发**，避免拖慢。
    - 自检：`Grep` 搜索 `\.locator\(` 或 `from.*playwright import expect`，确认测试层未出现底层 API 调用。
 
 4. **等待规范**
@@ -100,6 +109,18 @@
 **循环规则：** 按上述各项检查规范逐项检查 → 发现不符合 → 修改脚本 → 重新检查 → 直至全部符合。
 - **遵循通用循环约定，严禁停下来询问用户**，因为循环中断会浪费已执行的进度，所有检查发现的问题自主修改
 - 直至全部检查项均通过，方可进入下一阶段
+
+**三、静态门禁闸门（对齐检查全部通过后、进入阶段三前必跑）**
+
+> 上述对齐检查是 AI"自证式"逐项检查；为兜底"可机器判定"的机械违规（防止它们被带到阶段三长时执行才暴露），在对齐检查全部通过后，再跑一次静态门禁脚本（黑盒，先 `--help`），形成 validator→fix→repeat 反馈环：
+
+```
+python .claude/skills/test-script-workflow/scripts/precheck.py <本次测试文件或目录> --expected-tests <CSV/MD 场景数>
+```
+
+- 门禁客观检出：测试层 `.locator(`/`expect`/XPath、`wait_for_timeout`/`time.sleep` 固定等待、测试方法体 `try/except|finally` 包裹、SSH `|| true`、`def test_` 数 ≠ 场景数、未在 pytest.ini 登记的 marker、触碰禁区文件。
+- **退出码非 0 → 必须先修复违规再重跑门禁，直至通过方可进入阶段三**。
+- **门禁是兜底，不是替代**：断言分层是否合理、是否对齐需求语义，仍由上面"一、需求对齐检查 / 二、编码规范检查"负责；门禁通过不代表语义正确。
 
 ## 阶段二完成时立即输出（必须，不得延迟到 SKILL 总收尾）
 
