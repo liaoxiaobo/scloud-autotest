@@ -122,6 +122,15 @@ class PrometheusPage(BasePage):
         self.dialog_confirm.click()
 
     @submenu("集群管理")
+    def batch_delete_instances(self, names: list[str]):
+        """批量删除 Prometheus 集群。"""
+        for name in names:
+            self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
+
+        self.get_by_text("批量删除").click()
+        self.dialog_confirm.click()
+
+    @submenu("集群管理")
     def rename_instance(self, old_name: str, new_name: str):
         """修改 Prometheus 集群名称。"""
         self.click_action(old_name, "修改实例名称")

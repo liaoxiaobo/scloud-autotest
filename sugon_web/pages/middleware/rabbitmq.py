@@ -106,9 +106,9 @@ class RabbitMQPage(BasePage):
         """批量删除 RabbitMQ 实例。"""
         for name in names:
             self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
-        self.locator("div.cloud-button-btn").filter(has_text=re.compile(r"批量删除|删除")).first.click()
-        self.dialog_confirm.click()
 
+        self.get_by_text("批量删除").click()
+        self.dialog_confirm.click()
     @submenu("实例管理")
     def rename_instance(self, old_name: str, new_name: str):
         """修改 RabbitMQ 实例名称。"""

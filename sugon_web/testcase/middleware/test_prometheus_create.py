@@ -2,7 +2,7 @@ import allure
 import pytest
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import load_data, random_data
+from sugon_web.utils.util import load_data, random_data, random_string
 
 
 @allure.epic('数据库服务')
@@ -37,3 +37,24 @@ class TestPrometheusCreate:
             prometheus_page.assert_deleted(instance_name, timeout=1800, refresh=True)
             ssh_host.wait_vm_deleted(instance_name)
             ssh_host.wait_volume_deleted(instance_name)
+
+    @allure.title("Prometheus-批量删除集群")
+    def test_batch_delete_instances(self, prometheus_page, ssh_host):
+        """测试批量创建并删除 Prometheus 集群"""
+        instance_names = [f"prom-batch-{random_string(5)}", f"prom-batch-{random_string(5)}"]
+
+        for instance_name in instance_names:
+            with allure_step_log(f"步骤一：创建 Prometheus 集群: {instance_name}"):
+                prometheus_page.create_instance(name=instance_name)
+                prometheus_page.assert_popup_success("创建prom成功")
+                prometheus_page.assert_list_contain(instance_name)
+                prometheus_page.assert_status(instance_name, status="运行中", timeout=2400, refresh=True)
+
+        with allure_step_log("步骤二：批量删除集群"):
+            prometheus_page.batch_delete_instances(instance_names)
+
+        with allure_step_log("步骤三：验证批量删除结果"):
+            for instance_name in instance_names:
+                prometheus_page.assert_deleted(instance_name, timeout=1800, refresh=True)
+                ssh_host.wait_vm_deleted(instance_name)
+                ssh_host.wait_volume_deleted(instance_name)
