@@ -25,7 +25,7 @@ class TestCCEStorageClassAndVolume:
         with allure_step_log(f"步骤2: 创建云硬盘存储类型(fstype={fstype})"):
             cce_page.storage_class_create(
                 name=sc_name,
-                volume_type="xbd-type",
+                volume_type=cce_page.volume_type,
                 fstype=fstype,
                 encrypt=False,
                 access_mode="ReadWriteOnce"
@@ -70,7 +70,7 @@ class TestCCEStorageClassAndVolume:
                 sc_names.append(sc_name)
                 cce_page.storage_class_create(
                     name=sc_name,
-                    volume_type="xbd-type",
+                    volume_type=cce_page.volume_type,
                     fstype="ext4",
                     encrypt=False,
                     access_mode="ReadWriteOnce"

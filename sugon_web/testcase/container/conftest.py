@@ -86,8 +86,11 @@ def cce_cluster(browser_context, config, ssh_host, request):
             - volume_size (int): 云硬盘大小
             - flavor (str): 节点规格
             - node_data (list): UI 节点列表数据
-            - fixed_ip (str): 集群内网IP
+            - master_node_ip (str): 控制节点内网IP
+            - worker_node_ip (str): 计算节点内网IP
             - mfip (str): SSH 连接用的 MFIP
+            - master_node (str): 控制节点名称
+            - worker_node (str): 计算节点名称
     """
     from sugon_web.conftest import _create_logged_in_page
 
@@ -107,15 +110,23 @@ def cce_cluster(browser_context, config, ssh_host, request):
 
     with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
         node_data = cce_page.get_cluster_node_data(cluster_name)
-        node_name = node_data[0].get("名称") if node_data else ""
-        fixed_ip = node_data[0].get("内网IP") if node_data else ""
-        mfip = ssh_host.find_mfip(fixed_ip) if fixed_ip else ""
+
+        # 按节点类型分类，供不同用例选择
+        master_nodes = [n for n in node_data if n.get("类型") == "控制节点"]
+        worker_nodes = [n for n in node_data if n.get("类型") == "计算节点"]
+        master_node = master_nodes[0].get("名称") if master_nodes else ""
+        worker_node = worker_nodes[0].get("名称") if worker_nodes else ""
+        master_node_ip = master_nodes[0].get("内网IP") if master_nodes else ""
+        worker_node_ip = worker_nodes[0].get("内网IP") if worker_nodes else ""
+        mfip = ssh_host.find_mfip(master_node_ip) if master_node_ip else ""
 
     yield {
         "name": cluster_name,
-        "node_name": node_name,
-        "node_ip": fixed_ip,
+        "master_node_ip": master_node_ip,
+        "worker_node_ip": worker_node_ip,
         "mfip": mfip,
+        "master_node": master_node,
+        "worker_node": worker_node,
     }
 
     # with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
@@ -146,7 +157,7 @@ def storage_class(browser_context, config, cce_cluster):
         cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
         cce_page.storage_class_create(
             name=sc_name,
-            volume_type="xbd-type",
+            volume_type=cce_page.volume_type,
             fstype="ext4",
             encrypt=False,
             access_mode="ReadWriteOnce"
