@@ -3,7 +3,6 @@ import pytest
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, load_data, random_string
-from sugon_web.utils import db_util
 
 
 @allure.epic('数据库服务')
@@ -34,12 +33,13 @@ class TestRedisCreate:
 
         with allure_step_log("步骤四：验证删除结果"):
             redis_page.assert_deleted(instance_name, timeout=1200)
-            db_util.assert_backend_deleted(redis_page, ssh_host, instance_name)
+            ssh_host.wait_vm_deleted(instance_name)
+            ssh_host.wait_volume_deleted(instance_name)
 
     @allure.title("Redis-批量删除实例")
     def test_batch_delete_instances(self, redis_page, ssh_host):
         """测试批量删除Redis实例"""
-        instance_names = [f"redis-batch-delete-{random_string(5)}", f"redis-batch-delete-{random_string(5)}"]
+        instance_names = [f"redis-batch-delete-{random_data()}", f"redis-batch-delete-{random_data()}"]
         for instance_name in instance_names:
             with allure_step_log(f"步骤一：创建实例: {instance_name}"):
                 redis_page.create_instance(name=instance_name)
@@ -53,4 +53,5 @@ class TestRedisCreate:
         with allure_step_log("步骤三：验证批量删除结果"):
             for instance_name in instance_names:
                 redis_page.assert_deleted(instance_name, timeout=1200)
-                db_util.assert_backend_deleted(redis_page, ssh_host, instance_name)
+                ssh_host.wait_vm_deleted(instance_name)
+                ssh_host.wait_volume_deleted(instance_name)

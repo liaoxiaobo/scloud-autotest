@@ -1,9 +1,27 @@
+"""
+跨测试模块共享 Fixture 定义（vm、eip、volume、ops_page 等）。
+
+职责范围:
+- 页面与资源 fixture（login_page、ecs_page、vm、eip、volume 等）
+- vm fixture 的参数解析、依赖注入、创建与清理
+- 弹性公网 IP 的分配与释放
+- 飞书测试报告通知 (pytest_sessionfinish)
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import re
+import time
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.storage import EvsPage
-from sugon_web.pages.compute import EcsPage
+from sugon_web.pages.storage.obs import ObsPage
+from sugon_web.pages.compute import EcsPage, BmsPage
 from sugon_web.pages.compute.ecs import (
     EcsCreateRequest,
     EcsBasicConfig,
@@ -305,12 +323,26 @@ def ecs_page(page):
     """初始化弹性云服务器页对象"""
     return EcsPage(page)
 
+
+@pytest.fixture(scope="function")
+def obs_page(page):
+    """初始化对象存储专业版页对象并导航到服务页"""
+    obs = ObsPage(page)
+    obs.goto_service("对象存储专业版")
+    return obs
+
+
 @pytest.fixture(scope="function")
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    ops_page.goto_service('网络设施')
     return ops_page
+
+
+@pytest.fixture(scope="function")
+def bms_page(page):
+    """初始化裸金属BMS页对象"""
+    return BmsPage(page)
 
 def _get_vm_fixture_params(request: pytest.FixtureRequest) -> VmFixtureParams:
     """返回 vm fixture 的显式参数。
@@ -656,7 +688,6 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
@@ -670,9 +701,24 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         return
     with allure_step_log(f"清理虚机资源"):
         ecs_page.goto_service("弹性云服务器")
-        ecs_page.ecs_remove(vm_names)
-        ecs_page.ecs_delete(vm_names)
-        ecs_page.assert_deleted(vm_names, timeout=600)
+        ecs_page.goto_submenu("弹性云服务器")
+        # 过滤掉已经被删除的虚机，避免重复删除报错
+        existing_names = []
+        for name in vm_names:
+            try:
+                ecs_page.search(name)
+                ecs_page.get_row_by_name(name)
+                existing_names.append(name)
+            except Exception:
+                logger.info(f"虚机 {name} 已不存在，跳过清理")
+                continue
+        if not existing_names:
+            logger.info("所有虚机已清理，无需操作")
+            return
+        ecs_page.btn_reset.click()
+        ecs_page.ecs_remove(existing_names)
+        ecs_page.ecs_delete(existing_names)
+        ecs_page.assert_deleted(existing_names, timeout=600)
 
 
 @pytest.fixture(scope="class")
@@ -780,16 +826,16 @@ def vm(
     try:
         metadata_list: list[VmMetadata] = []
 
+        name_prefix = params.get('name_prefix', '')
+
         if instance_params_list:
             shared_params = {key: value for key, value in params.items() if key != "instances"}
             for instance_params in instance_params_list:
                 instance_config = _build_vm_instance_params(shared_params, instance_params)
-                base_name = random_data()
+                base_name = f"{name_prefix}{random_data()}"
                 create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
-                if count != 1:
-                    raise ValueError("'vm.instances' items do not support basic.count > 1")
 
-                current_vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+                current_vm_names = _build_vm_fixture_names(base_name, count)
                 _create_vm_resources(
                     ecs_page=ecs_page,
                     create_request=create_request,
@@ -803,7 +849,7 @@ def vm(
                 metadata_list.extend(current_metadata)
         else:
             bind_mfip = params.get("bind_mfip", True)
-            base_name = random_data()
+            base_name = f"{name_prefix}{random_data()}"
             create_request, count, network, subnet = _build_vm_create_request(request, params, base_name)
             vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
 
@@ -845,6 +891,7 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+        vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []
@@ -911,3 +958,130 @@ def eip(page: Any, request: pytest.FixtureRequest) -> Iterator[str | list[str]]:
         yield result
     finally:
         _release_eips(vpc_page, created_ips)
+
+
+# ── 飞书测试报告通知 ──────────────────────────────────────────
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """记录测试会话开始时间，用于后续计算总耗时。"""
+    session._feishu_start_time = time.time()  # type: ignore[attr-defined]
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """测试会话结束后，自动发送统计报告到飞书。"""
+    import json
+    import glob
+    import os
+    from sugon_web.utils.feishu_notifier import send_feishu_report
+
+    passed = 0
+    failed = 0
+    skipped = 0
+    error = 0
+    case_results = []
+
+    # 通过 terminal reporter 获取准确的测试结果统计
+    terminalreporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminalreporter and hasattr(terminalreporter, "stats"):
+        passed = len(terminalreporter.stats.get("passed", []))
+        failed = len(terminalreporter.stats.get("failed", []))
+        skipped = len(terminalreporter.stats.get("skipped", []))
+        error = len(terminalreporter.stats.get("error", []))
+
+    # 从 allure-result 读取测试详情（标题、耗时、步骤）
+    allure_details: dict[str, dict] = {}
+    rootdir = str(
+        session.config.rootpath if hasattr(session.config, "rootpath") else session.config.rootdir
+    )
+    allure_dir = getattr(session.config.option, "allure_report_dir", None) or os.path.join(
+        rootdir, "allure-result"
+    )
+    for result_file in glob.glob(os.path.join(allure_dir, "*-result.json")):
+        try:
+            with open(result_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            full_name = data.get("fullName", "")
+            start = data.get("start", 0)
+            stop = data.get("stop", 0)
+            duration_sec = (stop - start) / 1000.0 if stop > start else 0
+            if duration_sec < 60:
+                duration_str = f"{duration_sec:.1f}秒"
+            else:
+                duration_str = f"{int(duration_sec // 60)}分{int(duration_sec % 60)}秒"
+            allure_details[full_name] = {
+                "title": data.get("name", ""),
+                "outcome": data.get("status", "unknown"),
+                "duration": duration_str,
+                "steps": [s.get("name", "") for s in data.get("steps", [])],
+            }
+        except Exception:
+            pass
+
+    # 收集每个用例的结果明细，匹配 allure 详情
+    if terminalreporter and hasattr(terminalreporter, "stats"):
+        for outcome in ["passed", "failed", "skipped", "error"]:
+            for rep in terminalreporter.stats.get(outcome, []):
+                nodeid = getattr(rep, "nodeid", "unknown")
+                case_name = nodeid.split("::")[-1]
+                if "::" not in nodeid:
+                    continue
+                # 转换 nodeid 为 allure fullName 格式
+                parts = nodeid.split("::")
+                file_part = parts[0].replace("/", ".").replace("\\", ".")
+                if file_part.endswith(".py"):
+                    file_part = file_part[:-3]
+                if len(parts) == 3:
+                    full_name = f"{file_part}.{parts[1]}#{parts[2]}"
+                elif len(parts) == 2:
+                    full_name = f"{file_part}#{parts[1]}"
+                else:
+                    full_name = file_part
+
+                detail = allure_details.get(full_name, {})
+                case_results.append(
+                    {
+                        "name": case_name,
+                        "title": detail.get("title", case_name),
+                        "outcome": outcome,
+                        "duration": detail.get("duration", "未知"),
+                        "steps": detail.get("steps", []),
+                    }
+                )
+    else:
+        # fallback：通过 _pytest 内部状态统计
+        for item in session.items:
+            for key in item.stash:
+                rep = item.stash[key]
+                if hasattr(rep, "when") and hasattr(rep, "outcome"):
+                    if rep.when == "call":
+                        if rep.outcome == "passed":
+                            passed += 1
+                        elif rep.outcome == "failed":
+                            failed += 1
+                        elif rep.outcome == "skipped":
+                            skipped += 1
+                    elif rep.when in ("setup", "teardown") and rep.outcome == "failed":
+                        error += 1
+
+    start_time = getattr(session, "_feishu_start_time", None)
+    if start_time:
+        duration = time.time() - start_time
+    else:
+        duration = 0
+
+    if duration < 60:
+        duration_str = f"{duration:.1f}秒"
+    else:
+        duration_str = f"{int(duration // 60)}分{int(duration % 60)}秒"
+
+    stats = {
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "error": error,
+        "duration": duration_str,
+        "case_results": case_results,
+    }
+
+    logger.info(f"测试会话结束，统计: {stats}")
+    send_feishu_report(stats)

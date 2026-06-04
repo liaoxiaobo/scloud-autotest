@@ -7,11 +7,11 @@ from sugon_web.utils.logger import logger
 
 
 class OpsPage(BasePage):
-    service_name = "网络设施"
+    service_name = "基础设施"
 
     def bind_mfip(self, ip: str, network="Autotest", project="默认项目"):
         """绑定 MFIP 并返回管理 IP。"""
-        self.goto_service("网络设施")
+        self.goto_service("基础设施")
         self.mfip_create(project, network, ip)
         self.assert_popup_success("执行成功")
         self.mfip_search(ip)
@@ -78,7 +78,10 @@ class OpsPage(BasePage):
 
         # 选择端口
         self.get_by_placeholder("请选择端口").click()
-        self.get_by_text(ip, exact=exact).click()
+        self.page.wait_for_timeout(500)
+        dropdown = self.page.locator(".el-select-dropdown:visible")
+        option = dropdown.get_by_text(ip, exact=exact).first
+        option.click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()
 
     @submenu("平台网络")
@@ -272,3 +275,217 @@ class OpsPage(BasePage):
         self.dialog_confirm.click()
 
         logger.info(f"{name}存储池删除请求已提交")
+
+    # ---- switch group ----
+
+    def _goto_switch_group(self):
+        base = self.page.url.split("#")[0].rstrip("/")
+        self.page.goto(base + "/#/index")
+        self.page.wait_for_load_state("networkidle")
+        self.page.wait_for_timeout(2000)
+        try:
+            self.page.locator("text=基础设施").first.click()
+        except Exception:
+            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
+        self.page.wait_for_timeout(1500)
+        try:
+            self.page.locator("text=区域资源").first.click()
+        except Exception:
+            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
+        self.page.wait_for_timeout(1500)
+        try:
+            self.page.locator("text=交换机组").first.click()
+        except Exception:
+            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
+        self.page.wait_for_load_state("networkidle")
+        self.page.wait_for_timeout(2000)
+
+    def _sg_dropdown_action(self, name, action):
+        self.page.wait_for_timeout(1000)
+        row = None
+        for r in self.page.locator("tbody tr").all():
+            try:
+                txt = r.text_content(timeout=3000)
+                if txt and name in txt:
+                    row = r
+                    break
+            except Exception:
+                continue
+        if not row:
+            raise Exception(f"未找到资源行: {name}")
+        # 点击"更多"展开下拉菜单
+        more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text=re.compile(r"更多|⋯|⋮"))
+        if more_btn.count() == 0:
+            more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text="更多")
+        if more_btn.count() > 0:
+            try:
+                more_btn.first.click()
+                self.page.wait_for_timeout(800)
+            except Exception:
+                pass
+        # 尝试标准点击（要求元素可见可交互）
+        items = row.locator(".cloud-table-dropdown-item").filter(has_text=action)
+        if items.count() > 0:
+            try:
+                items.first.wait_for(state="visible", timeout=3000)
+                items.first.click()
+                return
+            except Exception:
+                pass
+        # 回退：JavaScript 移除隐藏类并点击
+        result = self.page.evaluate(
+            """([rowText, actionText]) => {
+                for (const r of document.querySelectorAll('tbody tr')) {
+                    if (r.textContent.includes(rowText)) {
+                        for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
+                            i.classList.remove('cloud-table-dropdown-item-btn-hide');
+                            i.style.display = 'block';
+                            i.style.visibility = 'visible';
+                        }
+                        for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
+                            if (i.textContent.trim() === actionText) {
+                                i.click();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }""", [name, action])
+        if not result:
+            raise Exception(f"未找到操作 '{action}' 的入口，资源: {name}")
+
+    def _confirm_sugon_dialog(self):
+        for dlg in self.page.locator(".sugon-dialog").all():
+            if dlg.is_visible():
+                dlg.locator("button, .cloud-button-btn").filter(has_text="确定").first.click()
+                return
+        try:
+            self.dialog_confirm.click()
+        except Exception:
+            self.page.locator("button, .cloud-button-btn").filter(has_text="确定").last.click()
+
+    def switch_group_create(self, name):
+        self._goto_switch_group()
+        self.page.locator(".cloud-button--primary, .cloud-button-btn").filter(has_text="新建").first.click()
+        self.page.locator('[role="dialog"]').filter(has_text="新建交换机组").last.locator("input").first.fill(name)
+        self._confirm_sugon_dialog()
+
+    def switch_group_bind_node(self, name, node_name):
+        self._goto_switch_group()
+        self._sg_dropdown_action(name, "绑定物理机")
+        d = self.page.locator('[role="dialog"]').filter(has_text="绑定物理机").last
+        for attempt in range(5):
+            d.locator("input").first.click()
+            self.page.wait_for_timeout(800)
+            opts = self.page.locator(".el-select-dropdown:visible li")
+            if opts.count() == 0:
+                self.page.keyboard.press("Escape")
+                if attempt < 4:
+                    wait_sec = 30 if attempt < 2 else 60
+                    logger.info(f"无可用节点，等待 {wait_sec}s 后重试 (attempt {attempt + 1}/5)...")
+                    time.sleep(wait_sec)
+                    self._goto_switch_group()
+                    self._sg_dropdown_action(name, "绑定物理机")
+                    d = self.page.locator('[role="dialog"]').filter(has_text="绑定物理机").last
+                    continue
+                raise Exception("无可用节点")
+            opt = opts.filter(has_text=node_name)
+            if opt.count() > 0:
+                opt.first.click()
+            else:
+                first_opt = opts.first
+                first_text = first_opt.text_content().strip()
+                logger.info(f"首选节点 '{node_name}' 不可用，使用第一个可用节点: {first_text}")
+                first_opt.click()
+            break
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(300)
+        self._confirm_sugon_dialog()
+
+    def switch_group_unbind_node(self, name, node_name):
+        self._goto_switch_group()
+        self._sg_dropdown_action(name, "解绑物理机")
+        d = self.page.locator('[role="dialog"]').filter(has_text="解绑物理机").last
+        d.locator("input").first.click()
+        self.page.wait_for_timeout(500)
+        opts = self.page.locator(".el-select-dropdown:visible li")
+        matched = opts.filter(has_text=node_name)
+        if matched.count() > 0:
+            matched.first.click()
+        else:
+            # 物理机列可能是多个节点名拼接（如 master02.cloud.localmaster01.cloud.local）
+            # 提取第一个有效节点名进行匹配，否则回退到第一个可用选项
+            extracted = None
+            for opt in opts.all():
+                txt = opt.text_content(timeout=3000).strip()
+                if txt and txt in node_name:
+                    extracted = txt
+                    break
+            if extracted:
+                opts.filter(has_text=extracted).first.click()
+            elif opts.count() > 0:
+                first_text = opts.first.text_content(timeout=3000).strip()
+                logger.info(f"未找到匹配 '{node_name}' 的选项，回退选择第一个: {first_text}")
+                opts.first.click()
+            else:
+                raise Exception(f"解绑对话框无可用节点选项")
+        # 多选下拉框点击选项后不会自动关闭，需要按 Escape 关闭后再点确定
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(500)
+        d.locator("button, .cloud-button-btn").filter(has_text="确定").first.click()
+
+    def switch_group_delete(self, name):
+        self._goto_switch_group()
+        self._sg_dropdown_action(name, "删除")
+        self._confirm_sugon_dialog()
+        self.page.wait_for_timeout(2000)
+
+    def clean_all_switch_groups(self):
+        self._goto_switch_group()
+        self.page.wait_for_timeout(1000)
+        names = []
+        for r in self.page.locator("tbody tr").all():
+            cells = r.locator("td")
+            if cells.count() > 1:
+                try:
+                    n = cells.nth(1).text_content(timeout=3000).strip()
+                except Exception:
+                    continue
+                # 只清理测试创建的交换机组，避免误删环境资源
+                if n and n.startswith("test-") and len(n) < 100 and n not in names:
+                    names.append(n)
+        for n in names:
+            # 循环解绑，直到物理机列为空（可能绑定多个节点）
+            for unbind_attempt in range(5):
+                self._goto_switch_group()
+                try:
+                    rd = self.get_row_data(n)
+                    pm = rd.get("物理机", "")
+                except Exception:
+                    pm = ""
+                if not pm or pm == "--" or pm == "—":
+                    break
+                try:
+                    self.switch_group_unbind_node(n, pm)
+                    logger.info(f"等待120s解绑完成... (attempt {unbind_attempt + 1})")
+                    time.sleep(120)
+                except Exception as e:
+                    logger.warning(f"解绑失败: {e}")
+                    break
+            # 验证解绑结果
+            self._goto_switch_group()
+            try:
+                rd = self.get_row_data(n)
+                pm_after = rd.get("物理机", "")
+                if pm_after and pm_after != "--" and pm_after != "—":
+                    logger.warning(f"解绑后物理机仍为 {pm_after}，可能解绑未生效")
+                else:
+                    logger.info(f"解绑验证成功，物理机变为: {pm_after}")
+            except Exception:
+                pass
+            try:
+                self.switch_group_delete(n)
+                self.page.wait_for_timeout(1500)
+            except Exception as e:
+                logger.warning(f"删除交换机组失败: {e}")

@@ -20,7 +20,7 @@ class TestSGBasic:
 
         with allure_step_log(f"步骤2: 列表页，点击安全组名称进入详情，查看安全组规则。默认自带两条出方向的规则"):
             vpc_page.goto_sg_detail(sg_name)
-            directions = vpc_page.get_column_data("方向入口出口   筛选   重置 ")
+            directions = vpc_page.get_column_data("方向")
             assert len(directions) == 2, "安全组详情页默认出方向规则数非2"
 
         with allure_step_log(f"步骤3: 清理测试资源-安全组"):

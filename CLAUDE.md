@@ -62,7 +62,7 @@ pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headles
 
 ## 服务导航
 
-页面使用 `goto_service("服务名")` 导航，通过 `SERVICE_PATH_MAP`（URL 快捷方式）或回退到 `SERVICE_MAP`（菜单导航）解析。**测试中禁止直接写 URL。**
+页面使用 `goto_service("服务名")` 导航，通过内部 URL 路径映射直达服务根页面。**测试中禁止直接写 URL。**
 
 在子菜单内操作的方法必须加 `@submenu("子菜单名")` 装饰器。
 

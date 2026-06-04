@@ -1,7 +1,6 @@
 import allure
 import pytest
 
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import load_data, random_data, random_string
 
@@ -33,12 +32,13 @@ class TestKafkaCreate:
 
         with allure_step_log("步骤四：验证删除结果"):
             kafka_page.assert_deleted(instance_name, timeout=1200, refresh=True)
-            db_util.assert_backend_deleted(kafka_page, ssh_host, instance_name)
+            ssh_host.wait_vm_deleted(instance_name)
+            ssh_host.wait_volume_deleted(instance_name)
 
     @allure.title("Kafka-批量删除实例")
     def test_batch_delete_instances(self, kafka_page, ssh_host):
         """测试批量删除Kafka实例"""
-        instance_names = [f"kafka-batch-{random_string(5)}", f"kafka-batch-{random_string(5)}"]
+        instance_names = [f"kafka-batch-{random_data()}", f"kafka-batch-{random_data()}"]
 
         for instance_name in instance_names:
             with allure_step_log(f"步骤一：创建实例: {instance_name}"):
@@ -53,4 +53,5 @@ class TestKafkaCreate:
         with allure_step_log("步骤三：验证批量删除结果"):
             for instance_name in instance_names:
                 kafka_page.assert_deleted(instance_name, timeout=1200, refresh=True)
-                db_util.assert_backend_deleted(kafka_page, ssh_host, instance_name)
+                ssh_host.wait_vm_deleted(instance_name)
+                ssh_host.wait_volume_deleted(instance_name)

@@ -3,7 +3,7 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import VpcPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -32,10 +32,52 @@ def vpc_page(page):
     return VpcPage(page)
 
 
+@pytest.fixture(scope="function")
+def dc_page(page):
+    """初始化云专线DC页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        DcPage: 云专线DC页面对象实例。
+    """
+    return DcPage(page)
+
+
+@pytest.fixture(scope="function")
+def er_page(page):
+    """初始化企业路由器页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        ErPage: 企业路由器页面对象实例。
+    """
+    return ErPage(page)
+
+
+@pytest.fixture(scope="function")
+def tm_page(page):
+    """初始化流量镜像页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        TmPage: 流量镜像页面对象实例。
+    """
+    return TmPage(page)
+
+
 def _build_vpc_create_kwargs(params=None):
     """根据参数构建VPC创建入参。"""
     params = params or {}
+    name_prefix = params.get('name_prefix', '')
     name = params.get('name', random_data(length=3))
+    if name_prefix:
+        name = f"{name_prefix}{name}"
 
     return {
         "name": name,
@@ -278,6 +320,7 @@ def eip(vpc_page, request):
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+        vpc_page.assert_popup_success("执行成功")
 
     yield created_ips[0] if count == 1 else created_ips
 
@@ -637,15 +680,14 @@ def _unbind_security_groups_from_vms(ecs_page, vm_data, sg_names):
 
 
 @pytest.fixture(scope="function")
-def sg(browser_context, config, request):
+def sg(vpc_page, request):
     """创建并返回安全组名称，测试结束后自动清理。
 
     本 fixture 支持创建单个或多个安全组，安全组名称自动生成。
     资源在测试结束后自动删除，确保测试环境干净。
 
     Args:
-        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
-        config: 测试配置对象，由 pytest fixture 提供。
+        vpc_page: VpcPage 实例，由 pytest fixture 提供。
         request: pytest 请求对象，用于获取参数化配置。
 
     request.param:
@@ -668,23 +710,17 @@ def sg(browser_context, config, request):
             for name in sg:
                 print(f"安全组: {name}")
     """
-    page = _create_logged_in_page(browser_context, config)
-    vpc_page = VpcPage(page)
 
     count = getattr(request, "param", 1)
     if count <= 0:
         yield []
-        page.close()
         return
 
     names = _create_security_groups(vpc_page, count)
 
     yield names[0] if count == 1 else names
 
-    try:
-        _cleanup_security_groups(vpc_page, names)
-    finally:
-        page.close()
+    _cleanup_security_groups(vpc_page, names)
 
 
 @pytest.fixture(scope="function")
@@ -769,7 +805,18 @@ def slb(browser_context, config, vpc, request):
         vpc_page.search(slb_name)
         vpc_page.assert_status(slb_name, status="运行中")
 
-    yield slb_name
+    # 进入详情页获取完整信息（列表页信息不全）
+    with allure_step_log(f"Setup: 获取负载均衡 {slb_name} 详情信息"):
+        detail_info = vpc_page.get_slb_detail_info(slb_name)
+
+    yield {
+        "name": slb_name,
+        "vip": detail_info.get("vip"),
+        "id": detail_info.get("id"),
+        "status": detail_info.get("status"),
+        "version": detail_info.get("version"),
+        "ha": detail_info.get("ha"),
+    }
 
     with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):
         try:
@@ -790,7 +837,7 @@ def lb(browser_context, config, slb, request):
     vpc_page = VpcPage(page)
     params = getattr(request, "param", {})
 
-    params.setdefault("slb_name", slb)
+    params.setdefault("slb_name", slb["name"])
     params.setdefault("protocol", "TCP")
     params.setdefault("port", 80)
 
@@ -854,6 +901,9 @@ def ip_group(browser_context, config, request):
         "enable_ipv6": False,
     }
     group_info.update(params)
+    # 空 IP 列表可能导致表单验证失败，回退为默认 IP
+    if not group_info.get("ip_addresses"):
+        group_info["ip_addresses"] = ["10.10.10.10"]
 
     with allure_step_log(f"Setup: 创建 IP 地址组 {group_info['name']}"):
         vpc_page.ip_group_create(
@@ -862,7 +912,11 @@ def ip_group(browser_context, config, request):
             desc=group_info["desc"],
             enable_ipv6=group_info["enable_ipv6"],
         )
-        vpc_page.assert_popup_success()
+        # 验证创建成功：在列表中搜索并确认存在
+        vpc_page.ip_group_search(group_info["name"])
+        names = vpc_page.get_column_data("名称")
+        if group_info["name"] not in names:
+            raise AssertionError(f"IP地址组 {group_info['name']} 创建后在列表中未找到")
 
     yield group_info
 

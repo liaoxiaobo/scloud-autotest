@@ -22,7 +22,7 @@ class TestECSS:
                 desc="系统盘快照测试"
             )
             ecs_page.assert_popup_success("创建实例快照成功")
-            # ecs_page.wait_for_source_complete(vm['name'])
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证快照创建成功"):
@@ -32,7 +32,7 @@ class TestECSS:
 
             # 验证快照属性
             snapshot_data = ecs_page.get_row_data(snapshot_name)
-            assert snapshot_data["是否快照数据卷是否   筛选   重置 "] == "否"
+            assert snapshot_data["是否快照数据卷"] == "否"
             # assert snapshot_data["是否启动源"] == "是"
 
         with allure_step_log("步骤3: 删除系统盘快照"):
@@ -88,7 +88,7 @@ class TestECSS:
             ecs_page.assert_popup_success("修改快照成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.ecss_el_setting("描述")
+            ecs_page.set_table_header("描述")
             ecs_page.assert_list_contain(new_name)
             # 获取修改后的快照数据并验证
             snapshot_data = ecs_page.get_row_data(new_name)

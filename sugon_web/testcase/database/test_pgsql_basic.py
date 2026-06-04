@@ -4,7 +4,6 @@ import pytest
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
-from sugon_web.utils import db_util
 
 
 @allure.epic('数据库服务')
@@ -31,7 +30,7 @@ class TestPgSQLBasic:
             sleep(3)
             pgsql_page.assert_status(f"{instance_name}-1", status="运行中", timeout=1200, refresh=True)
             # 后端验证：检查新节点是否已创建
-            db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-1")
+            ssh_host.assert_resource_created(f"{instance_name}-1")
 
         # --- 第二阶段：高可用 -> 集群 ---
         with allure_step_log("步骤三：执行升级操作（高可用 -> 集群）"):
@@ -49,7 +48,7 @@ class TestPgSQLBasic:
             pgsql_page.assert_status(f"{instance_name}-2", status="运行中", timeout=1200, refresh=True)
 
             # 后端验证：检查新节点是否已创建
-            db_util.assert_backend_created(pgsql_page, ssh_host, f"{instance_name}-2")
+            ssh_host.assert_resource_created(f"{instance_name}-2")
 
     @allure.title("PostgreSQL-重命名实例")
     def test_rename_instance(self, pgsql_page, pgsql):
@@ -85,7 +84,7 @@ class TestPgSQLBasic:
 
         with allure_step_log("步骤三：验证新密码生效"):
             node_name = f"{instance_name}-0"
-            ip_from_db = db_util.get_node_mfip_from_db(pgsql_page, ssh_host, "sugoncloud_pgsql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_pgsql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd="admin1234@sugon")
             # 验证新密码可以成功登录
             cmd_new = f"PGPASSWORD='{new_password}' psql -U postgres -h127.0.0.1 -c 'SELECT 1;'"
@@ -107,7 +106,7 @@ class TestPgSQLBasic:
             pgsql_page.assert_popup_success("执行成功")
             pgsql_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
             pgsql_page.assert_status(node_name, status="运行中", timeout=500, refresh=True)
-            assert db_util.get_disk_size(pgsql_page, node_name, ssh_host) == new_disk_size
+            assert ssh_host.get_volume_size(node_name) == new_disk_size
 
     @allure.title("PostgreSQL-修改实例规格")
     def test_change_specification(self, pgsql_page, pgsql, ssh_host):
@@ -124,7 +123,7 @@ class TestPgSQLBasic:
             pgsql_page.assert_popup_success("执行成功")
             pgsql_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
             pgsql_page.assert_status(node_name, status="运行中", timeout=5000, refresh=True)
-            assert db_util.get_specification(pgsql_page, node_name, ssh_host) == real_specification
+            assert ssh_host.guest_show(node_name).get("flavor_name") == real_specification
 
     @allure.title("PostgreSQL-实例绑定和解绑公网IP")
     def test_instance_bind_and_unbind_ip(self, pgsql_page, pgsql, ssh_host):
@@ -181,7 +180,7 @@ class TestPgSQLBasic:
             pgsql_page.assert_status(new_node_name, status="运行中", timeout=1800, refresh=True)
 
         with allure_step_log("步骤三：后端验证节点存在"):
-            db_util.assert_backend_created(pgsql_page, ssh_host, new_node_name)
+            ssh_host.assert_resource_created(new_node_name)
 
     @allure.title("PostgreSQL-创建用户")
     def test_create_user(self, pgsql_page, pgsql):
@@ -355,7 +354,7 @@ class TestPgSQLBasic:
         admin_password = pgsql["admin_password"]
 
         # 记录迁移前的物理机 (后端校验)
-        old_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
         allure.attach(f"迁移前物理机 (后端): {old_host}", name="迁移前状态")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
@@ -368,7 +367,7 @@ class TestPgSQLBasic:
 
         with allure_step_log("步骤三：验证物理机节点变更 (后端校验)"):
             # 热迁移后，通过后端 gova list 命令验证节点是否真正切换
-            new_host = db_util.get_backend_host(pgsql_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             allure.attach(f"迁移后物理机 (后端): {new_host}", name="迁移后状态")
 
             assert new_host != old_host, f"热迁移失败，后端查询迁移前后物理机节点未变更: {old_host}"
@@ -377,7 +376,7 @@ class TestPgSQLBasic:
                 assert selected_host in new_host, f"热迁移失败，期望迁移至节点:{selected_host},实际迁移至节点:{new_host}"
 
         with allure_step_log("步骤四：验证迁移后数据库连接"):
-            ip_from_db = db_util.get_node_mfip_from_db(pgsql_page, ssh_host, "sugoncloud_pgsql", node_name)
+            ip_from_db = ssh_host.get_node_mfip("sugoncloud_pgsql", node_name)
             ssh_vm.connect(ip_from_db, port=22022, pwd=password)
             cmd_check = f"PGPASSWORD='{admin_password}' psql -U postgres -h127.0.0.1 -c 'SELECT 1;'"
             result = ssh_vm.run(cmd_check)

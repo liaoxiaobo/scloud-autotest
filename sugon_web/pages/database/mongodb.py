@@ -3,7 +3,6 @@ import pytest
 from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
 
 
@@ -37,20 +36,20 @@ class MongoDBPage(BasePage):
         self.locator("div").filter(has_text=re.compile(r"^名称$")).get_by_role("textbox").fill(name)
 
         # 项目选择
-        db_util.project_dropdown(self).click()
-        db_util.project_autotest(self).click()
+        self.project_dropdown().click()
+        self.project_autotest().click()
 
         # 密码
         self.get_by_placeholder("请输入root管理员用户密码").fill(password)
-        db_util.input_confirm_password(self).fill(password)
+        self.input_confirm_password().fill(password)
 
         # --- 网络设置 ---
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         # --- 存储设置 ---
         selected_disk_type = disk_type if disk_type else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type)
+        self.select_disk_type_like_doris(selected_disk_type)
 
         # 磁盘大小 
         # 不同的集群类型和录制场景下定位可能不同

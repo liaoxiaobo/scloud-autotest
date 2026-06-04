@@ -1,3 +1,21 @@
+"""
+全局 Pytest 配置与 Session/Class/Function 级 Fixture 定义。
+
+职责范围:
+- 命令行参数注册 (pytest_addoption)
+- 运行产物目录隔离与 Allure 配置 (pytest_configure)
+- 浏览器/上下文/页面生命周期管理
+- 登录态维护与自动重试登录
+- SSH 连接、节点信息探测、部署模式与补丁版本初始化
+- 测试失败自动截图并附加到 Allure
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import datetime
 import os
 import re
@@ -9,7 +27,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
-from sugon_web.common.ssh import SSH
+from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
 
@@ -21,6 +39,7 @@ def pytest_addoption(parser):
     parser.addoption("--stor", action="store", help="指定存储类型")
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
+    parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -156,7 +175,8 @@ def browser(config):
             # 动态选择浏览器类型
             browser = getattr(p, browser_type).launch(
                 headless=headless,
-                slow_mo=slow_mo
+                slow_mo=slow_mo,
+                args=["--ignore-certificate-errors", "--ignore-certificate-errors-spki-list"],
             )
             logger.info(f"浏览器 {browser_type} 启动成功")
 
@@ -184,11 +204,26 @@ def browser_context(browser, request):
         permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
     )
 
+    # 根据 --tracing 参数决定是否开启 Playwright tracing
+    trace_enabled = request.config.getoption("--tracing")
+    trace_path = None
+    if trace_enabled:
+        trace_dir = Path(__file__).resolve().parent.parent / "traces"
+        trace_dir.mkdir(exist_ok=True)
+        trace_path = trace_dir / f"trace_{request.node.name}.zip"
+        # screenshots=False + sources=False 大幅减小 trace 体积（约90%），
+        # 保留 snapshots=True 以获取 DOM 结构用于失败分析（弹窗内容、数据量等）
+        context.tracing.start(screenshots=False, snapshots=True, sources=False)
+        logger.info(f"tracing 已开启，trace 文件将保存至: {trace_path}")
+
     logger.info("浏览器上下文创建成功")
     request.node._browser_context = context
 
     yield context
 
+    if trace_enabled and trace_path:
+        context.tracing.stop(path=str(trace_path))
+        logger.info(f"tracing 已停止，trace 文件: {trace_path}")
     context.close()
     logger.info("浏览器上下文已关闭")
 
@@ -400,7 +435,7 @@ def ssh_vm(jump_host):
 def _is_logged_in(page):
     """检查是否已登录"""
     current_url = page.url or ""
-    return ("/#/index" in current_url or "/#" in current_url) and "login" not in current_url
+    return ("/#/index" in current_url or "/#/console-page" in current_url or "/#" in current_url) and "login" not in current_url
 
 
 def _login(page, config, max_retries=3):
@@ -432,13 +467,25 @@ def _login(page, config, max_retries=3):
                 logger.info(f"{'=' * 40}")
 
             try:
+                # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
+                for _close_attempt in range(3):
+                    try:
+                        dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
+                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
+                            dialog_btn.click()
+                            page.wait_for_timeout(500)
+                            continue
+                    except Exception:
+                        pass
+                    break
+
                 # 填写登录信息
                 page.get_by_placeholder("请输入登录账号").fill(username)
                 page.get_by_placeholder("请输入登录密码").fill(password)
                 page.get_by_text("登 录").click()
 
                 # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
-                page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
+                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=10000)
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_load_state("load")
 

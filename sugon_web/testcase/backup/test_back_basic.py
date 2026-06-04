@@ -167,7 +167,7 @@ class TestBackupBasic:
             backup_page.backup_search(task_name)
             backup_page.assert_status(task_name, "已启动", timeout=900)
             backup_page.assert_status(task_name, "成功", timeout=5)
-            backup_page.assert_backup_data(server_name, "备份成功")
+            backup_page.assert_backup_data_status(server_name, "备份成功")
             backup_page.get_backup_data(server_name)
             backup_page.goto_submenu('任务')
             backup_page.assert_backup_policy_details(task_name, {"状态": "备份成功"}, "周期性任务")
@@ -278,7 +278,7 @@ class TestResumeCreate:
             ecs_page.set_table_header("架构")
             row_data = ecs_page.get_row_data(re_vm)
             assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
-            assert row_data.get("架构x86_64aarch64   筛选   重置 ") == backup_task.get("source_arch"), "架构与原始虚机不一致"
+            assert row_data.get("架构") == backup_task.get("source_arch"), "架构与原始虚机不一致"
 
             # 获取新虚机的 IP 并建立 SSH 连接
             new_vm_ip = ecs_page.get_row_data(re_vm).get("IP地址").split('固定:')[1].strip()
@@ -420,7 +420,7 @@ class TestResumeCreate:
                 ecs_page.set_table_header("架构")
                 row_data = ecs_page.get_row_data(re_vm)
                 assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
-                assert row_data.get("架构x86_64aarch64   筛选   重置 ") == original_arch, "架构与原始虚机不一致"
+                assert row_data.get("架构") == original_arch, "架构与原始虚机不一致"
 
                 new_vm_ip = row_data.get("IP地址").split('固定:')[1].strip()
                 new_mfip = ops_page.bind_mfip(new_vm_ip.strip())
