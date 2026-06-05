@@ -6,8 +6,7 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'KEY', defaultValue: '', description: '云服务模块、用例过滤关键字（如ecs、evs、vpc）')
-        string(name: 'MARK', defaultValue: '', description: '标签筛选用例（如smoke、not slow）')
+        string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
@@ -53,10 +52,6 @@ pipeline {
                     // 构建 pytest 命令（核心测试逻辑）
                     def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n ${params.PARALLEL_COUNT} --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
 
-                    // 用例筛选逻辑
-                    if (params.KEY) {
-                        pytestCommand += " -k '${params.KEY}'"
-                    }
                     // 标签筛选逻辑（-m 参数）
                     if (params.MARK) {
                         pytestCommand += " -m '${params.MARK}'"

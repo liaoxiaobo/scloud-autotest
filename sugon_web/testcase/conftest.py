@@ -1085,3 +1085,108 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
     logger.info(f"测试会话结束，统计: {stats}")
     send_feishu_report(stats)
+
+
+def pytest_collection_modifyitems(config, items):
+    """根据测试文件路径自动添加模块级和服务级 pytest mark。
+
+    模块级 mark：按文件所在目录划分（backup/compute/container/...）。
+    服务级 mark：按文件名前缀划分（test_ecs_/test_bms_/test_cce_/...）。
+    新增测试文件时，只要遵循 test_<服务>_*.py 的命名约定，无需修改本函数即可自动识别。
+    """
+    for item in items:
+        fspath = str(item.fspath).replace("\\", "/")
+
+        # ── 模块级 mark（按目录） ──
+        if "/backup/" in fspath:
+            item.add_marker(pytest.mark.backup)
+        elif "/compute/" in fspath:
+            item.add_marker(pytest.mark.compute)
+        elif "/container/" in fspath:
+            item.add_marker(pytest.mark.container)
+        elif "/database/" in fspath:
+            item.add_marker(pytest.mark.database)
+        elif "/iam/" in fspath:
+            item.add_marker(pytest.mark.iam)
+        elif "/middleware/" in fspath:
+            item.add_marker(pytest.mark.middleware)
+        elif "/network/" in fspath:
+            item.add_marker(pytest.mark.network)
+        elif "/security/" in fspath:
+            item.add_marker(pytest.mark.security)
+        elif "/storage/" in fspath:
+            item.add_marker(pytest.mark.storage)
+
+        # ── 服务级 mark（按文件名前缀） ──
+        if "test_back_" in fspath:
+            item.add_marker(pytest.mark.back)
+        elif "test_bms_" in fspath:
+            item.add_marker(pytest.mark.bms)
+        elif "test_ecs_" in fspath:
+            item.add_marker(pytest.mark.ecs)
+        elif "test_cce_" in fspath:
+            item.add_marker(pytest.mark.cce)
+        elif "test_doris_" in fspath:
+            item.add_marker(pytest.mark.doris)
+        elif "test_kingbase_" in fspath:
+            item.add_marker(pytest.mark.kingbase)
+        elif "test_mongodb_" in fspath:
+            item.add_marker(pytest.mark.mongodb)
+        elif "test_mysql_" in fspath:
+            item.add_marker(pytest.mark.mysql)
+        elif "test_pgsql_" in fspath:
+            item.add_marker(pytest.mark.pgsql)
+        elif "test_xscale_" in fspath:
+            item.add_marker(pytest.mark.xscale)
+        elif "test_iam_" in fspath:
+            item.add_marker(pytest.mark.iam)
+        elif "test_es_" in fspath:
+            item.add_marker(pytest.mark.es)
+        elif "test_kafka_" in fspath:
+            item.add_marker(pytest.mark.kafka)
+        elif "test_redis_" in fspath:
+            item.add_marker(pytest.mark.redis)
+        elif "test_acl_" in fspath:
+            item.add_marker(pytest.mark.acl)
+        elif "test_ca_" in fspath:
+            item.add_marker(pytest.mark.ca)
+        elif "test_dc_" in fspath:
+            item.add_marker(pytest.mark.dc)
+        elif "test_eip_" in fspath:
+            item.add_marker(pytest.mark.eip)
+        elif "test_er_" in fspath:
+            item.add_marker(pytest.mark.er)
+        elif "test_internal_dns_" in fspath:
+            item.add_marker(pytest.mark.internal_dns)
+        elif "test_ip_group_" in fspath:
+            item.add_marker(pytest.mark.ip_group)
+        elif "test_lb_" in fspath:
+            item.add_marker(pytest.mark.lb)
+        elif "test_nat_" in fspath:
+            item.add_marker(pytest.mark.nat)
+        elif "test_peer_connect_" in fspath:
+            item.add_marker(pytest.mark.peer_connect)
+        elif "test_qos_" in fspath:
+            item.add_marker(pytest.mark.qos)
+        elif "test_sg_" in fspath:
+            item.add_marker(pytest.mark.sg)
+        elif "test_slb_" in fspath:
+            item.add_marker(pytest.mark.slb)
+        elif "test_slbv1_" in fspath:
+            item.add_marker(pytest.mark.slbv1)
+        elif "test_slbv2_" in fspath:
+            item.add_marker(pytest.mark.slbv2)
+        elif "test_tm_" in fspath:
+            item.add_marker(pytest.mark.tm)
+        elif "test_vpc_" in fspath:
+            item.add_marker(pytest.mark.vpc)
+        elif "test_apt_" in fspath:
+            item.add_marker(pytest.mark.apt)
+        elif "test_usm_" in fspath:
+            item.add_marker(pytest.mark.usm)
+        elif "test_ver_" in fspath:
+            item.add_marker(pytest.mark.ver)
+        elif "test_evs_" in fspath:
+            item.add_marker(pytest.mark.evs)
+        elif "test_obs_" in fspath:
+            item.add_marker(pytest.mark.obs)
