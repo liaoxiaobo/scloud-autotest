@@ -3,7 +3,7 @@ import pytest
 from time import sleep
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.data import random_data, random_string
 
 
 @allure.epic("数据库服务")

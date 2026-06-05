@@ -2,7 +2,7 @@ import allure
 import pytest
 from sugon_web.testcase.network._acl_helpers import build_acl_pair_env
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 
 ACL_VM_PAIR_PARAMS = {
