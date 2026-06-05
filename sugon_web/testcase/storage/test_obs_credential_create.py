@@ -8,7 +8,7 @@ from playwright.sync_api import expect
 
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 def _aws_sign_request(method, uri, access_key, secret_key, region, service, host):

@@ -3,7 +3,7 @@ import pytest
 
 from sugon_web.testcase.network._lb_fixtures import clean_lb_listener
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @allure.epic("网络服务")

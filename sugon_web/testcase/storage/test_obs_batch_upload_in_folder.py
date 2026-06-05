@@ -4,7 +4,7 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @allure.epic('存储服务')

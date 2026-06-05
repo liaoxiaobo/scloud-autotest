@@ -2,7 +2,7 @@ import allure
 import pytest
 from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQLPage, PgSQLPage, XScalePage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.data import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
 
 
