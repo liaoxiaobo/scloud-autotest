@@ -5,7 +5,7 @@ from playwright.sync_api import expect
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 # ECS 创建流程的结构化配置定义，用于约束 basic/storage/network/manage/advanced

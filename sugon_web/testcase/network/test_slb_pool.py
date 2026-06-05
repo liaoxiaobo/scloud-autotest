@@ -2,7 +2,7 @@ import allure
 import pytest
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import load_data
+from sugon_web.utils.data import load_data
 
 
 @allure.epic("网络服务")

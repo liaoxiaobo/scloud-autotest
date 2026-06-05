@@ -5,7 +5,7 @@ import allure
 from sugon_web.config.config import Config
 from sugon_web.testcase.backup._backup_helpers import _execute_full_backup_and_collect_data
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 
 @allure.epic('云备份')

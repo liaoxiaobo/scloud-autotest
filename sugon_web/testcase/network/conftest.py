@@ -5,7 +5,7 @@ import re
 from sugon_web.common.playwright import expect
 from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 
 
@@ -528,7 +528,7 @@ def nat(vpc_page, vpc, request):
         def test_nat_with_eip(nat):
             print(f"NAT 网关: {nat['name']}")
     """
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
 
     params = getattr(request, 'param', {})
     eip = params.get('eip', None)

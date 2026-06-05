@@ -26,7 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
+from sugon_web.utils.data import get_file_abspath
+from sugon_web.utils.hooks import capture_failure_screenshot, get_page_from_item
 from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
@@ -412,9 +413,31 @@ def ssh_host(config):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def load_deploy_mode(ssh_host, config):
-    """会话初始化时读取部署模式并写入 Config。"""
-    Config.load_deploy_mode(ssh_host)
+def load_deploy_mode(ssh_host):
+    """会话初始化时读取部署模式并写入 Config。
+
+    通过 SSH 读取远端 env.yaml 中的 deploy_mode，剥离自 Config 类
+    （配置管理器不应包含 SSH 业务逻辑）。
+    """
+    env_file = "/opt/extra/init-base/env/env.yaml"
+    read_cmd = f"cat {env_file} | grep deploy_mode"
+    deploy_mode = None
+
+    try:
+        current_node = ssh_host.run("hostname", check_rc=True).strip()
+        if current_node == "master01":
+            output = ssh_host.run(read_cmd, check_rc=True)
+        else:
+            output = ssh_host.run(
+                f'ssh -o StrictHostKeyChecking=no master01 "{read_cmd}"', check_rc=True
+            )
+        match = re.search(r"^\s*deploy_mode\s*:\s*(\S+)", output, re.MULTILINE)
+        deploy_mode = match.group(1).strip() if match else None
+    except Exception as exc:
+        logger.warning(f"读取 deploy_mode 失败: {exc}")
+
+    Config.set("deploy_mode", deploy_mode)
+    return deploy_mode
 
 
 @pytest.fixture(scope="session")
@@ -551,7 +574,7 @@ def check_compute_nodes(ssh_host, config):
         _node_count = _output.split('(')[1].split(')')[0]
 
         # 将节点信息更新到 config 中
-        Config._config['_node_count'] = _node_count
+        Config.set('_node_count', _node_count)
 
         # 返回节点信息
         return {
@@ -635,13 +658,13 @@ def _get_patch_version(ssh_host, config):
     version_info = ssh_host._get_release_version(first_host)
     env_dic.update(version_info)
 
-    Config._config['patch'] = env_dic
+    Config.set('patch', env_dic)
 
     try:
         architecture = ssh_host.run(r"arch", check_rc=True)
     except Exception as e:
         architecture = None
         logger.warning(f"无法获取节点架构信息: {e}")
-    Config._config['architecture'] = architecture
+    Config.set('architecture', architecture)
 
     _write_allure_environment()

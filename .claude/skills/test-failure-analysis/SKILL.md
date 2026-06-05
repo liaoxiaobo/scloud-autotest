@@ -40,8 +40,17 @@ user-invocable: true
 - 代码定位：`sugon_web/testcase/**/*.py`（测试）、`sugon_web/pages/**/*.py`（Page Object）、`sugon_web/common/base.py`（公共断言方法）
 - 常见异步场景：ECS/EVS 创建删除、快照还原、备份任务等存在中间态，断言前需确认异步是否收敛
 
+## 历史案例库
+
+`references/case_library.md` 按失败模式分类沉淀了典型 case。执行分析前，**必须先读取该文件**速览是否存在匹配模式，可辅助快速定位同类问题。
+
+当前已收录模式：
+- **动态表格行定位漂移**：`assert_status` 超时，但截图显示目标资源状态正常 → 监控到了错误的表格行（`nth(i)` locator 在动态表格中不稳定）
+- **Playwright fill 静默失效**：弹窗/表单操作后断言超时，但截图显示弹窗仍打开且输入框为空 → `fill()` 未真正写入值（Playwright 不抛异常），前端校验拦截导致无成功消息
+
 ## 分析流程（按序执行，用 [x] 跟踪进度）
 
+- [ ] 0. **读取案例库**：使用 `Read` 读取 `references/case_library.md`，判断当前失败是否匹配已收录模式
 - [ ] 1. 定位失败材料（按触发方式分支）：
   - **用户未提供用例名**（仅触发 `/test-failure-analysis`）：使用 `Bash: ls -lt allure-result/*.json | head -5` 找到最近的失败结果，读取 `result.json` 确认 `status == "failed"`
   - **用户提供了用例名**（如 `test_ecs_create`）：使用 `Grep` 在 `allure-result/` 下搜索该用例名，定位对应的 `result.json`

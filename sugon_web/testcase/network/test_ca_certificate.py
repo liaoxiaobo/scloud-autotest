@@ -12,7 +12,7 @@ from sugon_web.testcase.network._slb_helpers import (
     collect_lb_responses,
 )
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 LISTENER_DESC = "1234567890edwqWDWQ中文~"
