@@ -16,7 +16,7 @@ from sugon_web.testcase.conftest import (
     _create_vm_resources,
 )
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import load_data, random_data
+from sugon_web.utils.data import load_data, random_data
 
 
 RequestParams = Dict[str, Any]
