@@ -5,7 +5,7 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
-from sugon_web.framework.decorators import only_stor
+from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('安全合规')

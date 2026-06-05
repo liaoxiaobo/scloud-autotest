@@ -4,7 +4,7 @@ import allure
 import pytest
 from sugon_web.pages.security.usm import UsmPage
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.framework.decorators import skip_if_nodes_less_than
+from sugon_web.utils.decorators import skip_if_nodes_less_than
 
 
 @allure.epic('安全合规')

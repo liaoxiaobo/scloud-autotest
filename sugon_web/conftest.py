@@ -27,7 +27,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import get_file_abspath
-from sugon_web.framework.hooks import capture_failure_screenshot, get_page_from_item
+from sugon_web.utils.hooks import capture_failure_screenshot, get_page_from_item
 from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
