@@ -289,6 +289,11 @@ class VpcMixin(BasePage):
         self.get_by_role("row", name=vpc_name).locator("a").click()
         self.get_by_role("tab", name="虚拟IP管理").click()
 
+        # GUI模式下：点击VPC名称后鼠标停留在链接上，会触发Element UI tooltip遮挡按钮
+        # 按Escape关闭可能存在的tooltip，同时确保鼠标不在触发tooltip的元素上
+        self.page.keyboard.press("Escape")
+        self.page.mouse.move(0, 0)
+        self.page.wait_for_timeout(500)
         self.get_by_text("申请虚拟IP地址").first.click()
         self.get_by_label("申请虚拟IP地址").get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=subnet_name).click()
@@ -309,14 +314,239 @@ class VpcMixin(BasePage):
         else:
             self.click_action(names, "删除")
 
-        self.dialog_confirm.click()
+        # 等待可能的确认对话框出现，然后点击确认
+        # VIP删除有时有确认对话框，有时直接删除（取决于是否绑定资源）
+        self.page.wait_for_timeout(2500)
+        from playwright.sync_api import expect
 
-    def vip_bind_eip(self, vip_address, network_type="public_net(基础版)"):
-        """绑定公网IP"""
+        # GUI模式下：鼠标可能停留在操作按钮上触发tooltip，遮挡确认弹窗内的按钮
+        # 先按Escape关闭可能存在的tooltip，同时确保鼠标不在触发tooltip的元素上
+        self.page.keyboard.press("Escape")
+        self.page.mouse.move(0, 0)
+        self.page.wait_for_timeout(500)
+
+        # 产品使用了多种对话框组件：
+        # 1. el-dialog（有role="dialog"）
+        # 2. el-message-box（class="el-message-box"）
+        # 3. sugon-dialog（class="sugon-dialog"）
+        # 同时查找这三种对话框
+        dialog = None
+
+        # 1. 查找 role="dialog" 的对话框（el-dialog）
+        all_dialogs = self.page.get_by_role("dialog").all()
+        if all_dialogs:
+            dialog = all_dialogs[-1]
+            self.logger.info(f"VIP删除：找到 el-dialog 对话框")
+
+        # 2. 查找 el-message-box（Element UI MessageBox组件）
+        if not dialog:
+            msg_box = self.page.locator(".el-message-box").first
+            try:
+                msg_box.wait_for(state="visible", timeout=3000)
+                dialog = msg_box
+                self.logger.info(f"VIP删除：找到 el-message-box 对话框")
+            except Exception:
+                pass
+
+        # 3. 查找 sugon-dialog（产品自定义对话框组件）
+        # 注意：sugon-dialog 可能有动画过渡，is_visible 在动画期间可能返回 false
+        # 使用 wait_for(state="visible") 更可靠
+        if not dialog:
+            sugon_dialog = self.page.locator(".sugon-dialog").first
+            try:
+                sugon_dialog.wait_for(state="visible", timeout=5000)
+                dialog = sugon_dialog
+                self.logger.info(f"VIP删除：找到 sugon-dialog 对话框")
+            except Exception:
+                pass
+
+        # 4. 如果对话框存在，二次确认其可见
+        if dialog:
+            try:
+                expect(dialog).to_be_visible(timeout=3000)
+            except AssertionError:
+                self.logger.warning("VIP删除：对话框未在3秒内变为可见，视为无对话框")
+                dialog = None
+
+        if dialog:
+            # 有确认对话框，尝试多种方式定位确认按钮
+            # 覆盖 el-dialog 和 el-message-box 两种结构的按钮
+            confirm_locators = [
+                # 通过 role + name 匹配（el-dialog 方式）
+                dialog.get_by_role("button", name=re.compile(r"确定|删除|确认")),
+                # 在对话框内部查找 button 元素，filter 过滤文本
+                dialog.locator("button").filter(has_text=re.compile(r"确定|删除|确认")),
+                # 精确匹配 "确定" 文本
+                dialog.get_by_text("确定", exact=True),
+                # 精确匹配 "删除" 文本
+                dialog.get_by_text("删除", exact=True),
+                # 通过 span 过滤文本（按钮内部可能是 span 包裹文本）
+                dialog.locator("span").filter(has_text=re.compile(r"确定|删除|确认")),
+                # el-message-box 的按钮结构：.el-message-box__btns > button
+                dialog.locator(".el-message-box__btns button"),
+                # el-dialog 的按钮结构：.el-dialog__footer button
+                dialog.locator(".el-dialog__footer button"),
+                # cloud-button-btn 类名
+                dialog.locator(".cloud-button-btn"),
+            ]
+            clicked = False
+            for confirm_btn in confirm_locators:
+                try:
+                    count = confirm_btn.count()
+                    if count > 0:
+                        for i in range(count):
+                            btn = confirm_btn.nth(i)
+                            if btn.is_visible():
+                                btn.click()
+                                clicked = True
+                                self.logger.info(f"VIP删除：通过选择器 {i} 点击确认按钮成功")
+                                break
+                        if clicked:
+                            break
+                except Exception as e:
+                    self.logger.debug(f"VIP删除：选择器尝试失败: {e}")
+                    continue
+
+            if not clicked:
+                # 最后尝试：遍历对话框内所有可见的 button 元素，点击最后一个（通常是确认）
+                try:
+                    buttons = dialog.locator("button").all()
+                    self.logger.info(f"VIP删除：对话框内共找到 {len(buttons)} 个 button 元素")
+                    for btn in reversed(buttons):
+                        if btn.is_visible():
+                            btn.click()
+                            clicked = True
+                            self.logger.info("VIP删除：点击对话框内最后一个可见button成功")
+                            break
+                except Exception as e:
+                    self.logger.warning(f"VIP删除：fallback按钮点击失败: {e}")
+
+            if not clicked:
+                # 终极fallback：通过JavaScript点击对话框内的确认按钮
+                try:
+                    self.page.evaluate("""
+                        () => {
+                            // 尝试找到确认按钮并点击
+                            const dialog = document.querySelector('.el-message-box, [role="dialog"]');
+                            if (dialog) {
+                                const buttons = dialog.querySelectorAll('button');
+                                for (let i = buttons.length - 1; i >= 0; i--) {
+                                    const text = buttons[i].textContent || buttons[i].innerText || '';
+                                    if (text.includes('确定') || text.includes('删除') || text.includes('确认')) {
+                                        buttons[i].click();
+                                        return true;
+                                    }
+                                }
+                                // 如果没找到文本匹配的，点击最后一个按钮
+                                if (buttons.length > 0) {
+                                    buttons[buttons.length - 1].click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+                    """)
+                    clicked = True
+                    self.logger.info("VIP删除：通过JavaScript点击确认按钮成功")
+                except Exception as e:
+                    self.logger.warning(f"VIP删除：JavaScript点击失败: {e}")
+
+            if not clicked:
+                raise AssertionError("VIP删除确认对话框出现，但未能定位到确认按钮")
+            # 等待对话框关闭
+            expect(dialog).not_to_be_visible(timeout=5000)
+        else:
+            self.logger.info("VIP删除：未检测到确认对话框，尝试直接验证删除结果")
+
+        # 验证VIP已从列表中删除（最多等待5秒）
+        for _ in range(10):
+            self.page.wait_for_timeout(500)
+            try:
+                self.get_row_by_name(names)
+            except Exception:
+                self.logger.info(f"VIP {names} 删除成功")
+                return
+        raise AssertionError(f"VIP删除未生效，{names}仍在列表中")
+
+    def vip_bind_eip(self, vip_address, network_type="public_net(基础版)", eip_ip=None):
+        """绑定公网IP。
+
+        Args:
+            vip_address: 虚拟IP地址。
+            network_type: 资源池名称，默认public_net(基础版)。
+            eip_ip: 指定要绑定的弹性公网IP地址。为None时随机选择可用IP。
+
+        Returns:
+            str: 绑定的弹性公网IP地址。
+        """
         self.click_action(vip_address, "绑定公网IP")
         dialog = self.get_by_role("dialog", name="绑定公网IP")
         dialog.get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=network_type).click()
+
+        if eip_ip:
+            # 在表格中查找指定IP地址的行，支持分页/滚动
+            for page_attempt in range(10):
+                rows = dialog.get_by_role("row").all()
+                for row in rows:
+                    cells = row.get_by_role("cell").all_text_contents()
+                    if any(eip_ip in cell for cell in cells):
+                        row.get_by_role("radio").click()
+                        self.dialog_confirm.click()
+                        self.logger.info(f"VIP {vip_address} 绑定公网IP: {eip_ip}")
+                        return eip_ip
+                # 尝试多种方式翻页/加载更多
+                clicked = False
+                # 策略1: 标准 Element UI 分页下一页按钮
+                for selector in [
+                    ".el-pagination .btn-next:not([disabled])",
+                    ".el-pagination__next:not([disabled])",
+                    ".pagination .next:not([disabled])",
+                    ".btn-next:not(.is-disabled)",
+                    "button[class*='next']:not([disabled])",
+                ]:
+                    try:
+                        btns = dialog.locator(selector).all()
+                        for btn in btns:
+                            if btn.is_visible() and btn.is_enabled():
+                                btn.click()
+                                self.page.wait_for_timeout(1500)
+                                clicked = True
+                                break
+                        if clicked:
+                            break
+                    except Exception:
+                        continue
+                # 策略2: 尝试点击页码数字（当前页+1）
+                if not clicked:
+                    try:
+                        current_page = dialog.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
+                        if current_page.count() > 0:
+                            current_text = current_page.text_content() or "1"
+                            next_page_num = str(int(current_text) + 1)
+                            next_page = dialog.locator(".el-pager li, .pagination .page-item").filter(
+                                has_text=re.compile(rf"^{re.escape(next_page_num)}$")
+                            ).first
+                            if next_page.count() > 0 and next_page.is_visible():
+                                next_page.click()
+                                self.page.wait_for_timeout(1500)
+                                clicked = True
+                    except Exception:
+                        pass
+                # 策略3: 尝试滚动表格主体加载更多
+                if not clicked:
+                    try:
+                        body = dialog.locator(".el-table__body-wrapper, .table-body").first
+                        if body.count() > 0:
+                            body.evaluate("el => el.scrollTop = el.scrollHeight")
+                            self.page.wait_for_timeout(1500)
+                            clicked = True
+                    except Exception:
+                        pass
+                if not clicked:
+                    break
+            raise AssertionError(f"[FieldAssertion] 未在绑定公网IP弹窗中找到指定FIP: {eip_ip}")
+
         available_rows = dialog.get_by_role("row").filter(has_text="关闭").all()
         if not available_rows:
             raise AssertionError("当前环境无可用的弹性公网IP（状态为'关闭'）")

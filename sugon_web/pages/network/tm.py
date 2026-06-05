@@ -575,6 +575,111 @@ class TmMixin(BasePage):
 
         return name
 
+    def tm_session_edit(self, name, new_name=None, new_desc=None, enabled=None, direction=None):
+        """修改指定镜像会话的名称、描述、是否开启和方向。
+
+        在镜像会话Tab页打开修改弹窗，可选修改各字段，点击确定提交。
+        修改弹窗中可编辑字段：名称、是否开启、方向、描述。
+
+        Args:
+            name: 镜像会话当前名称，用于列表页定位。
+            new_name: 新名称，为None时不修改名称。
+            new_desc: 新描述，为None时不修改描述。
+            enabled: 是否开启，True为开启，False为关闭，为None时不修改。
+            direction: 新方向，"全部流量"、"出向流量"或"入向流量"，为None时不修改。
+
+        Returns:
+            dict: 包含修改前数据的字典，键为 "name"、"enabled"、"direction"、"description"。
+        """
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(3000)
+
+        # 搜索并点击修改
+        self.search(name)
+        self.page.wait_for_timeout(1000)
+        self.click_action(name, "修改")
+
+        # 等待弹窗出现
+        dialog = self.page.locator(".el-dialog:visible").first
+        dialog.wait_for(state="visible", timeout=15000)
+        self.page.wait_for_timeout(2000)
+
+        # 获取修改前的值
+        original_data = {}
+
+        # 名称
+        name_input = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^名称$")
+        ).locator("input").first
+        name_input.wait_for(state="visible", timeout=10000)
+        original_data["name"] = name_input.input_value()
+
+        # 描述
+        try:
+            desc_input = dialog.locator(".el-form-item").filter(
+                has_text=re.compile(r"描述")
+            ).locator("textarea").first
+            desc_input.wait_for(state="visible", timeout=5000)
+            original_data["description"] = desc_input.input_value()
+        except Exception:
+            original_data["description"] = ""
+
+        # 是否开启
+        switch_item = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^是否开启$")
+        )
+        switch = switch_item.locator(".el-switch").first
+        if switch.count() > 0 and switch.is_visible():
+            is_checked = switch.evaluate("el => el.classList.contains('is-checked')")
+            original_data["enabled"] = is_checked
+        else:
+            original_data["enabled"] = True
+
+        # 方向
+        direction_item = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^方向$")
+        )
+        direction_select = direction_item.locator(".el-select").first
+        if direction_select.count() > 0 and direction_select.is_visible():
+            direction_text = direction_select.inner_text(timeout=2000).strip()
+            original_data["direction"] = direction_text
+        else:
+            original_data["direction"] = "全部流量"
+
+        # 修改名称
+        if new_name is not None:
+            name_input.fill("")
+            name_input.fill(new_name)
+
+        # 修改是否开启
+        if enabled is not None:
+            current_enabled = original_data.get("enabled", True)
+            if enabled != current_enabled:
+                switch.click()
+                self.page.wait_for_timeout(1000)
+
+        # 修改方向
+        if direction is not None:
+            current_direction = original_data.get("direction", "")
+            if direction != current_direction:
+                direction_select.click()
+                self.page.wait_for_timeout(2000)
+                self.page.locator(".el-select-dropdown__item").filter(
+                    has_text=re.compile(re.escape(direction))
+                ).first.click()
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(1000)
+
+        # 修改描述
+        if new_desc is not None:
+            desc_input.fill("")
+            desc_input.fill(new_desc)
+
+        # 点击确定
+        dialog.get_by_text("确定", exact=True).click()
+
+        return original_data
+
     def tm_session_delete(self, name):
         """删除指定名称的镜像会话。
 

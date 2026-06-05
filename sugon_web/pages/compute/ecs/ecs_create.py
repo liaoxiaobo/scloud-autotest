@@ -534,6 +534,7 @@ class EcsCreateMixin(BasePage):
         self.get_by_role("textbox", name="请选择", exact=True).nth(2).click()
         # self.page.wait_for_load_state("networkidle")
         self.get_by_text(storage_pool_name, exact=True).click()
+        self.storage_pool = storage_pool_name
         logger.info(f"已选择存储池: {storage_pool_name}")
 
 
