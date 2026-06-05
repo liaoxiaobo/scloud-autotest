@@ -1,5 +1,6 @@
 from .acl import AclMixin
 from .dc import DcMixin
+from .cms_monitor import MonitorMixin
 from .eip import EipMixin
 from .er import ErMixin
 from .internal_dns import InternalDnsMixin
@@ -8,8 +9,8 @@ from .nat import NatMixin
 from .peer_connect import PeerConnectMixin
 from .qos import QosMixin
 from .sg import SgMixin
-from .slb import SlbMixin
 from .tm import TmMixin
+from .slb import SlbMixin, SlbPage
 from .vpc import VpcMixin
 
 
@@ -24,6 +25,7 @@ class VpcPage(
     EipMixin,
     NatMixin,
     QosMixin,
+    MonitorMixin
 ):
     """网络服务页面聚合类。"""
 
@@ -48,4 +50,4 @@ class TmPage(TmMixin):
     service_name = "流量镜像"
 
 
-__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage"]
+__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage", "SlbPage", "SlbMixin"]

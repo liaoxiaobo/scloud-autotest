@@ -1,3 +1,19 @@
+"""
+跨测试模块共享 Fixture 定义（vm、eip、volume、ops_page 等）。
+
+职责范围:
+- 页面与资源 fixture（login_page、ecs_page、vm、eip、volume 等）
+- vm fixture 的参数解析、依赖注入、创建与清理
+- 弹性公网 IP 的分配与释放
+- 飞书测试报告通知 (pytest_sessionfinish)
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import re
 import time
 import pytest
@@ -320,7 +336,6 @@ def obs_page(page):
 def ops_page(page):
     """初始化运维管理页对象"""
     ops_page = OpsPage(page)
-    ops_page.goto_service('网络设施')
     return ops_page
 
 
@@ -523,7 +538,7 @@ def _build_vm_create_request(
     storage = _merge_vm_section(
         {
             "storage_pool": f"{Config.get('stor')}-test",
-            "image": {"source": "镜像", "name": Config.get("image", f"{Config.get('stor')}-test")},
+            "image": {"source": "镜像", "name": f"{Config.get('stor')}-test"},
             "system_disk": 25,
         },
         dependency_overrides.get("storage"),
@@ -673,7 +688,6 @@ def _bind_vm_fixture_mfips(
     """为虚机绑定 MFIP，并回填到元数据。"""
     with allure_step_log(f"为虚机绑定 MFIP"):
         for vm_data in metadata_list:
-            ops_page.goto_service("网络设施")
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
@@ -687,6 +701,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         return
     with allure_step_log(f"清理虚机资源"):
         ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_submenu("弹性云服务器")
         # 过滤掉已经被删除的虚机，避免重复删除报错
         existing_names = []
         for name in vm_names:
@@ -700,6 +715,7 @@ def _cleanup_vm_resources(ecs_page: EcsPage, vm_names: list[str]) -> None:
         if not existing_names:
             logger.info("所有虚机已清理，无需操作")
             return
+        ecs_page.btn_reset.click()
         ecs_page.ecs_remove(existing_names)
         ecs_page.ecs_delete(existing_names)
         ecs_page.assert_deleted(existing_names, timeout=600)
@@ -818,10 +834,8 @@ def vm(
                 instance_config = _build_vm_instance_params(shared_params, instance_params)
                 base_name = f"{name_prefix}{random_data()}"
                 create_request, count, network, subnet = _build_vm_create_request(request, instance_config, base_name)
-                if count != 1:
-                    raise ValueError("'vm.instances' items do not support basic.count > 1")
 
-                current_vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
+                current_vm_names = _build_vm_fixture_names(base_name, count)
                 _create_vm_resources(
                     ecs_page=ecs_page,
                     create_request=create_request,
@@ -877,6 +891,7 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
+        vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []

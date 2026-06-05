@@ -61,6 +61,8 @@ class AclMixin(BasePage):
         if tab_name:
             self.get_by_role("tab", name=tab_name).click()
 
+        self.wait_for_page_ready()
+
         self.logger.info(f"进入网络ACL {acl_name} 详情页" + (f"，并切换至 {tab_name} 页签" if tab_name else ""))
 
     @submenu("网络ACL")
@@ -123,6 +125,7 @@ class AclMixin(BasePage):
             subnets = [subnets]
 
         self.click_action(acl_name, "关联子网")
+        self.page.wait_for_timeout(500)
 
         self.get_by_text("新建", exact=True).click()
 

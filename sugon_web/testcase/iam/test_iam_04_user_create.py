@@ -10,10 +10,11 @@ from sugon_web.config.config import Config
 class TestIamUserCreate:
 
     @allure.title("IAM-用户管理-创建普通用户")
-    def test_iam_create_user(self, iam_page, iam_shared_user):
+    def test_iam_create_user(self, iam_page, iam_shared_user, iam_shared_child_org):
         """验证共享IAM用户可登录。"""
         username = iam_shared_user["name"]
         user_password = iam_shared_user["password"]
+        child_org = iam_shared_child_org["child_name"]
         login = LoginPage(iam_page.page)
         admin_password = "keystone_sugon"
 
@@ -24,7 +25,7 @@ class TestIamUserCreate:
             logger.info(f"已进入 IAM 页面: {iam_page.page.url}")
 
         with allure_step_log(f"步骤2: 验证用户 {username} 存在于用户列表中"):
-            user_list = iam_page.iam_get_user_list()
+            user_list = iam_page.iam_get_user_list(target_org=child_org)
             assert any(username in user for user in user_list), \
                 f"用户 {username} 未在列表中找到，列表内容: {user_list[:5]}..."
             logger.info(f"用户 {username} 已在列表中找到")

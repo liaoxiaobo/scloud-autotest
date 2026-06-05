@@ -4,7 +4,6 @@ from time import sleep
 import pytest
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
 
 
@@ -41,20 +40,20 @@ class PgSQLPage(BasePage):
             self.locator("li").filter(has_text=re.compile(rf"^{re.escape(version)}$")).click()
 
         # 项目选择
-        db_util.project_dropdown(self).click()
-        db_util.project_autotest(self).click()
+        self.project_dropdown().click()
+        self.project_autotest().click()
 
         # 密码
         self.get_by_placeholder("请输入postgres管理员用户密码").fill(password)
-        db_util.input_confirm_password(self).fill(password)
+        self.input_confirm_password().fill(password)
 
         # --- 网络设置 ---
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         # --- 存储设置 ---
         selected_disk_type = disk_type if disk_type else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type)
+        self.select_disk_type_like_doris(selected_disk_type)
 
         # 数据盘大小
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))

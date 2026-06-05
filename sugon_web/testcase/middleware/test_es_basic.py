@@ -1,5 +1,4 @@
 import allure
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data, random_string
 
@@ -118,13 +117,13 @@ class TestESBasic:
             es_page.assert_popup_success("修改规格中，请耐心等待")
             es_page.assert_status(node_name, status="调整规格中", timeout=1200, refresh=True)
             es_page.assert_status(node_name, status="运行中", timeout=3000, refresh=True)
-            assert db_util.get_specification(es_page, node_name, ssh_host) == real_specification
+            assert ssh_host.guest_show(node_name).get("flavor_name") == real_specification
 
     @allure.title("CSS-修改云硬盘大小")
     def test_change_disk_size(self, es_page, css, ssh_host):
         instance_name = css["name"]
         node_name = f"{instance_name}-data-0"
-        current_size = db_util.get_disk_size(es_page, node_name, ssh_host)
+        current_size = ssh_host.get_volume_size(node_name)
         new_size = current_size + 10
 
         with allure_step_log("步骤一：修改云硬盘大小"):
@@ -134,13 +133,13 @@ class TestESBasic:
             es_page.assert_popup_success("扩容硬盘中，请耐心等待")
             es_page.assert_status(node_name, status="调整云硬盘中", timeout=1200, refresh=True)
             es_page.assert_status(node_name, status="运行中", timeout=3000, refresh=True)
-            assert db_util.get_disk_size(es_page, node_name, ssh_host) == new_size
+            assert ssh_host.get_volume_size(node_name) == new_size
 
     @allure.title("CSS-节点热迁移")
     def test_es_node_hot_migration(self, es_page, css, ssh_host):
         instance_name = css["name"]
         node_name = f"{instance_name}-data-0"
-        old_host = db_util.get_backend_host(es_page, ssh_host, node_name)
+        old_host = ssh_host.guest_show(node_name).get("node")
         allure.attach(f"迁移前物理机: {old_host}", name="迁移前状态")
 
         with allure_step_log(f"步骤一：对节点 {node_name} 执行热迁移"):
@@ -152,7 +151,7 @@ class TestESBasic:
             es_page.assert_status(node_name, status="运行中", timeout=1200, refresh=True)
 
         with allure_step_log("步骤三：后端验证物理机变更"):
-            new_host = db_util.get_backend_host(es_page, ssh_host, node_name)
+            new_host = ssh_host.guest_show(node_name).get("node")
             allure.attach(f"迁移后物理机: {new_host}", name="迁移后状态")
             assert new_host != old_host, f"热迁移失败，迁移前后物理机未变化: {old_host}"
             if selected_host:
@@ -184,7 +183,7 @@ class TestESBasic:
         with allure_step_log("步骤二：验证新增节点状态"):
             es_page.assert_status(new_node_name, status="创建中", timeout=1200, refresh=True)
             es_page.assert_status(new_node_name, status="运行中", timeout=2400, refresh=True)
-            db_util.assert_backend_created(es_page, ssh_host, new_node_name)
+            ssh_host.assert_resource_created(new_node_name)
 
     @allure.title("CSS-白名单管理")
     def test_whitelist_management(self, es_page, css):

@@ -4,7 +4,6 @@ from time import sleep
 import pytest
 
 from sugon_web.common.base import BasePage, submenu
-from sugon_web.utils import db_util
 from sugon_web.utils.logger import logger
 
 
@@ -69,12 +68,12 @@ class KafkaPage(BasePage):
                     self.locator("input[type='password']").nth(1).fill(password)
 
         # 网络设置
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         # 存储设置
         selected_disk_type = disk_type if disk_type else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type, label_texts=["云硬盘类型"])
+        self.select_disk_type_like_doris(selected_disk_type, label_texts=["云硬盘类型"])
         self.locator("div").filter(has_text=re.compile(r"^云硬盘大小\(GiB\)$")).get_by_role("spinbutton").fill(str(disk_size))
 
         # 规格

@@ -26,7 +26,7 @@ class TestSGScenario:
 
         with allure_step_log(f"步骤2: 列表页，点击安全组名称进入详情，查看安全组规则。默认自带两条出方向的规则"):
             vpc_page.goto_sg_detail(sg_name)
-            directions = vpc_page.get_column_data("方向入口出口   筛选   重置 ")
+            directions = vpc_page.get_column_data("方向")
             assert len(directions) == 2, "安全组详情页默认出方向规则数非2"
 
             # 检查是否都是出口方向
@@ -201,6 +201,7 @@ class TestSGScenario:
 
             with allure_step_log(f"步骤2: {sg1}、{sg2}下添加入方向放行所有IPv4的规则，出方向保持默认"):
                 vpc_page.goto_submenu("安全组")
+                vpc_page.btn_reset.click()
                 for sg_name in [sg1, sg2]:
                     vpc_page.sg_rule_create(
                         sg_name=sg_name,
@@ -280,6 +281,7 @@ class TestSGScenario:
 
             with allure_step_log(f"步骤3: sg2({sg2})放行所有IPv4；进入sg1({sg1})详情页验证默认规则列表显示"):
                 vpc_page.goto_submenu("安全组")
+                vpc_page.btn_reset.click()
                 vpc_page.sg_rule_create(
                     sg_name=sg2,
                     protocol="所有",
@@ -359,6 +361,7 @@ class TestSGScenario:
 
         with allure_step_log(f"步骤1: sg1({sg1})下添加入方向放行所有ipv4的规则"):
             vpc_page.goto_submenu("安全组")
+            vpc_page.btn_reset.click()
             vpc_page.sg_rule_create(
                 sg_name=sg1,
                 protocol="所有",
@@ -663,6 +666,7 @@ class TestSGScenario:
         try:
             with allure_step_log(f"步骤1: sg1({sg1})放行所有IPv4"):
                 vpc_page.goto_submenu("安全组")
+                vpc_page.btn_reset.click()
                 vpc_page.sg_rule_create(
                     sg_name=sg1,
                     protocol="所有",

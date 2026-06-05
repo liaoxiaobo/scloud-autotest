@@ -23,10 +23,8 @@ ACL_VM_PAIR_PARAMS = {
 ACL_VM_4_INSTANCE_PARAMS = {
     "inject_dependencies": False,
     "instances": [
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
-        {"network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
+        {"basic": {"count": 2}, "network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.subnet_name"}]}},
+        {"basic": {"count": 2}, "network": {"networks": [{"network": "@vpc.name", "subnet": "@vpc.extra_subnets[0].name"}]}},
     ],
 }
 @allure.epic('网络服务')
@@ -36,7 +34,7 @@ class TestAclAssociateSubnetAcl:
     @allure.title("网络ACL关联子网: 网络ACL列表关联子网")
     @pytest.mark.parametrize(
         "vpc",
-        [{"cidr": "10.242.1.0/24", "extra_subnets": [{"cidr": "10.242.2.0/24"}]}],
+        [{"cidr": f"10.{random.randint(10, 100)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(10, 100)}.2.0/24"}]}],
         indirect=True,
     )
     @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -75,7 +73,7 @@ class TestAclAssociateVpcAcl:
     @allure.title("网络ACL关联子网: VPC页面关联ACL策略")
     @pytest.mark.parametrize(
         "vpc",
-        [{"cidr": "10.243.1.0/24", "acl_policy": "@acl", "extra_subnets": [{"cidr": "10.243.2.0/24"}]}],
+        [{"cidr": f"10.{random.randint(101, 150)}.1.0/24", "acl_policy": "@acl", "extra_subnets": [{"cidr": f"10.{random.randint(101, 150)}.2.0/24"}]}],
         indirect=True,
     )
     @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -109,7 +107,7 @@ class TestAclAssociateVpcAcl:
 @allure.story('基本功能验证')
 @pytest.mark.parametrize(
     "vpc",
-    [{"cidr": "10.244.1.0/24", "extra_subnets": [{"cidr": "10.244.2.0/24", "acl_policy": "@acl"}]}],
+    [{"cidr": f"10.{random.randint(151, 200)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(151, 200)}.2.0/24", "acl_policy": "@acl"}]}],
     indirect=True,
 )
 @pytest.mark.parametrize("vm", [ACL_VM_PAIR_PARAMS], indirect=True)
@@ -172,7 +170,7 @@ class TestAclSubnetAclReuse:
 @allure.story('基本功能验证')
 @pytest.mark.parametrize(
     "vpc",
-    [{"cidr": "10.246.1.0/24", "extra_subnets": [{"cidr": "10.246.2.0/24", "acl_policy": "@acl"}]}],
+    [{"cidr": f"10.{random.randint(201, 254)}.1.0/24", "extra_subnets": [{"cidr": f"10.{random.randint(201, 254)}.2.0/24", "acl_policy": "@acl"}]}],
     indirect=True,
 )
 @pytest.mark.parametrize("vm", [ACL_VM_4_INSTANCE_PARAMS], indirect=True)

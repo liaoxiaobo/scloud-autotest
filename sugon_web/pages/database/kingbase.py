@@ -5,7 +5,6 @@ import pytest
 
 from sugon_web.common.base import submenu
 from sugon_web.pages.database.pgsql import PgSQLPage
-from sugon_web.utils import db_util
 
 
 class KingbasePage(PgSQLPage):
@@ -87,39 +86,39 @@ class KingbasePage(PgSQLPage):
         self.btn_create.click()
 
         self.get_by_role("radio", name=instance_type).click()
-        db_util.input_name(self).fill(name)
+        self.input_name().fill(name)
 
         if instance_type == "集群":
             self.locator("div").filter(has_text=re.compile(r"^恢复方式")).get_by_text("等待", exact=True).click()
             self.locator("div").filter(has_text=re.compile(r"^节点数量")).get_by_role("spinbutton").fill(str(node_count))
 
-        version_dropdown = db_util.select_labeled_dropdown(self, "版本")
+        version_dropdown = self.select_labeled_dropdown("版本")
         version_dropdown.click()
         self._select_visible_option(version)
 
-        cluster_dropdown = db_util.select_labeled_dropdown(self, "集群")
+        cluster_dropdown = self.select_labeled_dropdown("集群")
         cluster_dropdown.click()
         self._select_visible_option(cluster_name)
 
         self.get_by_role("radio", name=db_mode, exact=True).click()
         self.get_by_role("radio", name=auth_method, exact=True).click()
 
-        charset_dropdown = db_util.select_labeled_dropdown(self, "编码")
+        charset_dropdown = self.select_labeled_dropdown("编码")
         charset_dropdown.click()
         self._select_visible_option(charset)
 
-        locale_dropdown = db_util.select_labeled_dropdown(self, "编码区域")
+        locale_dropdown = self.select_labeled_dropdown("编码区域")
         locale_dropdown.click()
         self._select_visible_option(collation)
 
         self.get_by_placeholder("请输入root管理员用户密码").fill(password)
-        db_util.input_confirm_password(self).fill(password)
+        self.input_confirm_password().fill(password)
 
-        db_util.select_network(self, "请选择网络", network)
-        db_util.select_network(self, "请选择子网", subnet)
+        self.select_network("请选择网络", network)
+        self.select_network("请选择子网", subnet)
 
         selected_disk_type = disk_type if disk_type else self.volume_type
-        db_util.select_disk_type_like_doris(self, selected_disk_type)
+        self.select_disk_type_like_doris(selected_disk_type)
         self.locator("form").filter(has_text="数据盘大小").get_by_role("spinbutton").fill(str(disk_size))
 
         self.locator(".el-table__body-wrapper").get_by_role("radio").first.click()
