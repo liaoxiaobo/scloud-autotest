@@ -18,7 +18,7 @@ class TestIamOrgModify:
             iam_page.iam_modify_organization(old_name, new_name)
 
         with allure_step_log("步骤2: 验证组织结构树显示新名称"):
-            iam_page.assert_org_in_tree(new_name)
+            iam_page.iam_assert_org_in_tree(new_name)
 
         # 更新共享组织名称，确保后续操作和 teardown 使用最新名称
         iam_shared_org["org_name"] = new_name

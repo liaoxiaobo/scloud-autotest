@@ -82,6 +82,8 @@ class TestIamUserBatchOps:
             for name in names:
                 row = iam_page.get_row_by_name(name)
                 assert row.count() > 0
+                row_text = row.first.inner_text()
+                assert yesterday in row_text, f"用户 {name} 列表未显示过期时间 {yesterday}，实际: {row_text}"
 
         with allure_step_log("步骤3: 依次验证5个过期用户登录失败"):
             for username in username_list:
@@ -90,10 +92,13 @@ class TestIamUserBatchOps:
         with allure_step_log("步骤4: 批量清除过期时间"):
             iam_page.iam_batch_set_expiry(names, "", target_org=target_org)
 
-        with allure_step_log("步骤5: 验证列表用户行存在"):
+        with allure_step_log("步骤5: 验证列表过期时间已清除"):
             for name in names:
                 row = iam_page.get_row_by_name(name)
                 assert row.count() > 0
+                row_text = row.first.inner_text()
+                assert "无限制" in row_text or yesterday not in row_text, \
+                    f"用户 {name} 过期时间未清除，实际: {row_text}"
 
         with allure_step_log("步骤6: 依次验证5个用户登录成功"):
             for username in username_list:

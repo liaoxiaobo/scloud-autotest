@@ -35,15 +35,34 @@ def iam_page(page):
 
 
 @pytest.fixture(scope="function")
-def iam_tenant_page(page):
+def iam_tenant_page(page, iam_shared_tenant_user):
     """初始化IAM页对象（运营-租户-用户管理列表页入口），扁平用户列表无组织树。"""
     page_object = IamPage(page)
     page_object.goto_iam_tenant_user_list()
     page_object.close_dialog_if_exists()
+    # 清理搜索框
     try:
         page_object.page.locator(".el-input__clear, .search-clear").first.click(timeout=2000)
     except Exception:
         pass
+    # 主动搜索租户测试用户确保其在租户列表中可见
+    search_name = iam_shared_tenant_user.get("display_name") or iam_shared_tenant_user["name"]
+    try:
+        search_input = page_object.page.locator("input[placeholder*='搜索']").first
+        if search_input.count() > 0:
+            search_input.fill(search_name)
+            page_object.page.wait_for_timeout(2000)
+            rows = page_object.page.locator(".el-table__row")
+            if rows.count() > 0:
+                logger.info(f"租户列表中已找到用户 {search_name}")
+            else:
+                # 改用账户名重试
+                search_input.fill(iam_shared_tenant_user["name"])
+                page_object.page.wait_for_timeout(2000)
+            search_input.clear()
+            page_object.page.wait_for_timeout(1000)
+    except Exception as e:
+        logger.warning(f"租户列表搜索失败: {e}")
     return page_object
 
 
@@ -102,6 +121,26 @@ def iam_shared_user(_iam_shared_ctx, browser, config, iam_shared_child_org):
         delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
     except Exception as e:
         logger.warning(f"清理共享用户 {user_info['display_name']} 失败: {e}")
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def iam_shared_tenant_user(_iam_shared_ctx, config, iam_shared_child_org):
+    """class级IAM租户测试专用用户，在共享子组织下创建，租户测试类结束后自动删除。
+
+    与 iam_shared_user 隔离：避免 test_iam_06/07 的密码/访问控制修改污染租户测试。
+    """
+    page = _create_logged_in_page(_iam_shared_ctx, config)
+    user_info = create_iam_user(page, target_org=iam_shared_child_org["child_name"])
+    page.close()
+    yield user_info
+
+    # 清理：删除用户
+    page = _create_logged_in_page(_iam_shared_ctx, config)
+    try:
+        delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
+    except Exception as e:
+        logger.warning(f"清理租户测试用户 {user_info['display_name']} 失败: {e}")
     page.close()
 
 

@@ -399,15 +399,8 @@ class UsmPage(UsmAssertionMixin, BasePage):
             name: 实例名称
             action: 操作名称，如"开机"、"关机"、"删除"
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
-        # 等待列表表格数据加载完成，避免 goto_service 后表格为空导致定位失败
-        for _ in range(10):
-            if self.page.locator(".el-table__row").count() > 0:
-                break
-            self.page.wait_for_timeout(2000)
-        else:
-            self.page.wait_for_selector(".el-table__row", timeout=30000)
         self.page.wait_for_timeout(2000)
         try:
             self.click_action(name, action)
@@ -592,14 +585,26 @@ class UsmPage(UsmAssertionMixin, BasePage):
             raise Exception("未找到绑定公网IP弹窗")
         dialog = bind_dialog.first
 
-        # 步骤1: 选择资源池（第一个下拉框）
+        # 步骤1: 选择资源池（优先选 public_net，否则选第一个）
         pool_selects = dialog.locator(".el-select").all()
         if len(pool_selects) > 0:
             pool_selects[0].click()
             self.page.wait_for_timeout(500)
             pool_options = self.locator(".el-select-dropdown:visible li")
             expect(pool_options.first).to_be_visible(timeout=5000)
-            pool_options.first.click()
+            # 优先选择包含"public_net"或"基础版"的资源池
+            selected = False
+            for keyword in ("public_net", "基础版", "public"):
+                for i in range(pool_options.count()):
+                    text = pool_options.nth(i).inner_text()
+                    if keyword in text.lower():
+                        pool_options.nth(i).click()
+                        selected = True
+                        break
+                if selected:
+                    break
+            if not selected:
+                pool_options.first.click()
             logger.info("USM 绑定公网IP：已选择资源池")
             # 等待下方IP列表加载
             self.page.wait_for_timeout(1500)
@@ -633,7 +638,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.click_action(name, "解绑公网IP")
         self.page.wait_for_timeout(1000)
         unbind_dialog = self.locator(".sugon-dialog").filter(has_text="解除绑定公网IP")
@@ -1125,8 +1130,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         # 方法1: 点击操作列的"详情"按钮（最可靠）
         try:
-            self.goto_service(self.service_name)
-            self.wait_for_page_ready()
+            self.goto_list_page()
             row = self.get_row_by_name(name)
             # 查找操作列中的"详情"按钮/链接
             detail_btn = row.locator("button, a").filter(has_text="详情").first

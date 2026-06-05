@@ -18,6 +18,35 @@ class AptPage(AptAssertionMixin, BasePage):
 
     service_name = "攻击预警"
 
+    def goto_list_page(self):
+        """导航到 APT 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
+        from sugon_web.config.config import Config
+        base_url = Config.get("base_url").rstrip("/")
+        target_url = f"{base_url}/das/#/apt"
+        self.page.goto(target_url)
+        self.wait_for_page_ready()
+        for attempt in range(1, 10):
+            self.page.wait_for_timeout(2000)
+            if "/no-permission" in self.page.url:
+                logger.warning(f"APT 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
+                self.page.goto(target_url)
+                self.wait_for_page_ready()
+                continue
+            loading_mask = self.page.locator(".el-loading-mask:visible, .el-loading-spinner:visible").first
+            if loading_mask.count() > 0:
+                logger.info(f"APT 列表页数据加载中，继续等待 (第{attempt}次)...")
+                continue
+            has_rows = self.page.locator(".el-table__row").count() > 0
+            has_empty = self.page.locator(".el-table__empty-block").count() > 0
+            if has_rows or has_empty:
+                logger.info(f"APT 回到列表页（第{attempt}次检查）: {self.page.url}")
+                return
+            logger.info(f"APT 列表页仍为空，等待数据加载中(第{attempt}次)...")
+            if attempt >= 3 and not has_rows and not has_empty:
+                self.page.reload()
+                self.wait_for_page_ready()
+        logger.info(f"APT 回到列表页: {self.page.url}")
+
     @property
     def _input_name(self):
         """APT 创建表单：名称输入框"""
@@ -277,8 +306,7 @@ class AptPage(AptAssertionMixin, BasePage):
             name: 实例名称
             action: 操作名称，如"开机"、"关机"、"删除"、"启动"
         """
-        self.goto_service(self.service_name)
-        self.wait_for_page_ready()
+        self.goto_list_page()
         # 等待表格固定列（含操作按钮）渲染完成
         self.page.wait_for_timeout(2000)
         try:
@@ -310,8 +338,7 @@ class AptPage(AptAssertionMixin, BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
-        self.wait_for_page_ready()
+        self.goto_list_page()
         self.page.wait_for_timeout(2000)
         try:
             self.page.wait_for_selector(".el-table__fixed-right", timeout=5000)
@@ -335,7 +362,7 @@ class AptPage(AptAssertionMixin, BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.page.wait_for_timeout(2000)
         row = self.get_row_by_name(name)
 
@@ -599,7 +626,7 @@ class AptPage(AptAssertionMixin, BasePage):
         Returns:
             bool: True 表示可点击（蓝色链接），False 表示不可点击（黑色文本）
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         row = self.get_row_by_name(name)
         name_cell = row.get_by_text(name, exact=True).first
         try:
@@ -617,7 +644,7 @@ class AptPage(AptAssertionMixin, BasePage):
         Args:
             timeout: 删除后等待确认的超时时间（秒），默认 300
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
 
         # 等待表格数据加载完成（最多等10秒）
