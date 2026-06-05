@@ -1,0 +1,75 @@
+# =============================================================================
+# pytest mark 描述映射表
+# =============================================================================
+# 作用：
+#   1. pytest_configure 动态注册 mark 时使用中文描述
+#   2. _resolve_service_mark 按最长前缀匹配文件名，确保多词服务名
+#      （如 internal_dns / ip_group / peer_connect）能被正确识别为服务 mark
+#
+# 维护方式：
+#   新增单段服务名（如 ecs / evs / cce）时，无需修改本文件，conftest.py
+#   会自动推导并 fallback 使用服务名本身作为描述。
+#
+#   新增多词服务名（含下划线，如 internal_dns）时，必须在本文件添加
+#   对应条目，否则 test_internal_dns_xxx.py 会被错误识别为 internal。
+# =============================================================================
+
+# ── 计算服务 ──
+bms: 裸金属服务器
+ecs: 弹性云服务器
+
+# ── 容器服务 ──
+cce: 云容器引擎
+
+# ── 存储服务 ──
+back: 备份
+evs: 云硬盘
+obs: 对象存储
+
+# ── 数据库 ──
+doris: 数据仓库Doris
+kingbase: 人大金仓KingbaseES
+mongodb: MongoDB
+mysql: MySQL
+pgsql: PostgreSQL
+xscale: XScale
+
+# ── 中间件 ──
+es: 云搜索服务CSS
+kafka: 分布式消息服务Kafka
+redis: Redis
+
+# ── 网络服务 ──
+acl: 网络ACL
+ca: CA证书
+dc: 云专线
+eip: 弹性公网IP
+er: 企业路由器
+internal_dns: 内网解析
+ip_group: IP地址组
+lb: 监听器
+nat: NAT网关
+peer_connect: 对等连接
+qos: 网络QoS
+sg: 安全组
+slb: 负载均衡
+slbv1: 负载均衡V1
+slbv2: 负载均衡V2
+tm: 流量镜像
+vpc: 虚拟私有云
+
+# ── 安全服务 ──
+apt: 攻击预警
+usm: 云堡垒机
+ver: 日志审计
+
+# ── 模块级 mark（对应 testcase/<module>/ 目录名） ──
+backup: 备份测试
+compute: 计算服务测试
+container: 容器服务测试
+database: 数据库测试
+iam: 身份认证测试
+middleware: 中间件测试
+network: 网络服务测试
+security: 安全服务测试
+storage: 存储服务测试
