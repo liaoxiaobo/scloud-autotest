@@ -17,6 +17,7 @@ from sugon_web.assertions.network import (
     MonitorAssertionMixin,
     SlbAssertionMixin,
 )
+from sugon_web.assertions.storage import ObsAssertionMixin
 
 __all__ = [
     "AssertionsMixin",
@@ -26,6 +27,7 @@ __all__ = [
     "IpGroupAssertionMixin",
     "ListAssertionMixin",
     "MonitorAssertionMixin",
+    "ObsAssertionMixin",
     "PopupAssertionMixin",
     "SlbAssertionMixin",
     "StatusAssertionMixin",

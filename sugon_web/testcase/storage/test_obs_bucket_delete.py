@@ -98,6 +98,8 @@ class TestOBSBucketDelete:
 
             # 4.2 返回桶列表，勾选三个桶，点击更多操作-批量删除
             obs_page.goto_submenu("桶列表")
+            obs_page.wait_for_page_ready()
+            obs_page.page.wait_for_timeout(2000)
             obs_page.obs_bucket_batch_delete([bucket01, bucket02, bucket03])
 
             # 4.3 验证桶已被删除

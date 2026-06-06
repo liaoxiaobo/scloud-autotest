@@ -109,6 +109,19 @@ class NavigationMixin:
         if service_name and service_path and not self._is_current_service_path(service_path):
             self.goto_service(service_name)
 
+        # 若当前页面无左侧菜单（如配置子页面），强制回到服务根页面
+        try:
+            expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=3000)
+        except Exception:
+            if service_name:
+                self.logger.info("当前页面无左侧菜单，强制回到服务根页面")
+                base_url = Config.get("base_url").rstrip("/")
+                path = service_path.lstrip("/") if service_path else ""
+                self.page.goto(f"{base_url}/{path}")
+                self.page.wait_for_load_state("networkidle")
+                self.page.wait_for_timeout(2000)
+                self.wait_for_page_ready()
+
         expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)
         menu_left = self.locator("#cloud-menu-left")
         parent_nodes = menu_left.locator(".one-tree-parent-node")

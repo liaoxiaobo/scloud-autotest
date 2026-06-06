@@ -59,6 +59,7 @@ class TestOBSMirrorBacksource:
 
         # ------------------ 步骤4：开启 bucket02 公共读权限 ------------------
         with allure_step_log("步骤4: 开启 bucket02 桶ACLs公共访问权限"):
+            obs_page.goto_service("对象存储专业版")
             obs_page.goto_submenu("桶列表")
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_acl_config_click()
@@ -69,6 +70,7 @@ class TestOBSMirrorBacksource:
 
         # ------------------ 步骤5：为 bucket02 配置镜像回源规则 ------------------
         with allure_step_log("步骤5: 为 bucket02 配置镜像回源规则"):
+            obs_page.goto_service("对象存储专业版")
             obs_page.goto_submenu("桶列表")
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_datasource_config_click()
@@ -81,22 +83,93 @@ class TestOBSMirrorBacksource:
                 rule_type="镜像回源", source_type="公有类型"
             )
 
-        # ------------------ 步骤6：测试镜像回源规则生效 ------------------
-        with allure_step_log("步骤6: 通过 URL 访问触发镜像回源"):
+        # ------------------ 步骤6：诊断源站公共读权限 ------------------
+        with allure_step_log("步骤6-诊断: 验证源站 bucket01 公共读权限是否生效"):
+            source_direct_url = f"{endpoint_text}/{bucket01['name']}/{test_file_name}"
+            # 诊断A：使用无状态浏览器上下文验证真正的匿名公共读权限
+            anonymous_status = 0
+            try:
+                anon_context = page.context.browser.new_context()
+                anon_page = anon_context.new_page()
+                try:
+                    anon_resp = anon_page.goto(source_direct_url, wait_until="networkidle")
+                    anonymous_status = anon_resp.status if anon_resp else 0
+                except Exception as e:
+                    if "ERR_ABORTED" in str(e):
+                        anonymous_status = 200
+                    else:
+                        raise
+                finally:
+                    anon_page.close()
+                    anon_context.close()
+            except Exception as e:
+                obs_page.logger.warning(f"匿名访问验证异常: {e}")
+            obs_page.logger.info(
+                f"匿名访问源站 {bucket01['name']}/{test_file_name} 状态码: {anonymous_status}"
+            )
+            # 诊断B：使用当前登录态浏览器验证（兼容下载触发ERR_ABORTED）
+            source_page = page.context.new_page()
+            auth_status = 0
+            try:
+                auth_resp = source_page.goto(source_direct_url, wait_until="networkidle")
+                auth_status = auth_resp.status if auth_resp else 0
+            except Exception as e:
+                if "ERR_ABORTED" in str(e):
+                    auth_status = 200
+                else:
+                    raise
+            finally:
+                source_page.close()
+            obs_page.logger.info(
+                f"登录态访问源站 {bucket01['name']}/{test_file_name} 状态码: {auth_status}"
+            )
+
+        # ------------------ 步骤7：测试镜像回源规则生效 ------------------
+        with allure_step_log("步骤7: 通过浏览器新页面访问触发镜像回源"):
             # 构造访问 URL: https://步骤1记录的URL/bucket02桶名称/bucket01桶内对象test1名称
             # endpoint_text 格式如 https://obs.xxx.com:20480
             mirror_url = (
                 f"{endpoint_text}/{bucket02['name']}/{test_file_name}"
             )
-            # 使用 API 请求访问（避免浏览器下载触发导航中止）
-            response = obs_page.page.request.get(mirror_url)
+            # 镜像回源规则配置后需等待一定时间才能生效
+            # 首次等待 30 秒，之后每次重试等待 15 秒
+            obs_page.page.wait_for_timeout(30000)
+            # 严格按需求文档：浏览器打开新页面访问，带重试
+            mirror_status = 0
+            for attempt in range(5):
+                mirror_page = page.context.new_page()
+                try:
+                    resp = mirror_page.goto(mirror_url, wait_until="networkidle")
+                    if resp:
+                        mirror_status = resp.status
+                    else:
+                        # goto 返回 None 通常表示触发下载，视为成功
+                        mirror_status = 200
+                except Exception as e:
+                    # 文件下载触发导航中止(ERR_ABORTED)视为成功
+                    if "ERR_ABORTED" in str(e):
+                        mirror_status = 200
+                    else:
+                        raise
+                finally:
+                    mirror_page.close()
+                if mirror_status in [200, 204, 206]:
+                    break
+                obs_page.logger.info(
+                    f"镜像回源访问尝试 {attempt + 1}/5 状态码: {mirror_status}，"
+                    f"等待 15 秒后重试..."
+                )
+                obs_page.page.wait_for_timeout(15000)
             # 验证响应状态为 200 或触发下载
-            assert response.status in [200, 204, 206], (
-                f"镜像回源访问失败，状态码: {response.status}"
+            assert mirror_status in [200, 204, 206], (
+                f"镜像回源访问失败，状态码: {mirror_status}"
+                f"(匿名访问源站状态码: {anonymous_status}, "
+                f"登录态访问源站状态码: {auth_status})"
             )
 
-        # ------------------ 步骤7：验证 bucket02 对象列表存在回源对象 ------------------
-        with allure_step_log("步骤7: 验证 bucket02 对象列表中存在回源对象"):
+        # ------------------ 步骤8：验证 bucket02 对象列表存在回源对象 ------------------
+        with allure_step_log("步骤8: 验证 bucket02 对象列表中存在回源对象"):
+            obs_page.goto_service("对象存储专业版")
             obs_page.goto_submenu("桶列表")
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_object_tab_click()

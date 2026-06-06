@@ -37,15 +37,16 @@ def bucket(obs_page, request):
     capacity = params.get('capacity', '10')
 
     # 过滤控制参数，只保留业务参数传给 helper
-    create_params = {k: v for k, v in params.items() if k not in ('count', 'name')}
+    create_params = {k: v for k, v in params.items() if k not in ('count', 'name', 'capacity')}
 
     bucket_items = []
 
     with allure_step_log(f"创建/复用对象存储桶 (count={count})"):
         existing_buckets = prepare_bucket_list_page(obs_page)
 
-        # 优先复用已有的 autotest-* 桶（先清空对象）
-        autotest_buckets = [n for n in existing_buckets if n.startswith("autotest-")]
+        # 优先复用已有的 autotest-* / bucket-autotest-* 桶（先清空对象）
+        autotest_buckets = [n for n in existing_buckets
+                           if n.startswith("autotest-") or n.startswith("bucket-autotest-")]
         for old_name in autotest_buckets:
             if len(bucket_items) >= count:
                 break

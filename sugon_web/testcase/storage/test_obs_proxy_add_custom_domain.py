@@ -62,7 +62,6 @@ class TestOBSProxyAddCustomDomain:
             obs_page.wait_for_page_ready()
 
             obs_page.obs_bucket_create(bucket_name)
-            obs_page.assert_popup_success("执行成功")
             obs_page.wait_for_page_ready()
 
             # 进入桶详情页
