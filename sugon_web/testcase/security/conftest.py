@@ -138,7 +138,7 @@ def vdb_instance(browser, config):
     """
     from sugon_web.conftest import _create_logged_in_page
     from sugon_web.testcase.security._vdb_helpers import create_vdb_instance, delete_vdb_instance
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
 
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
