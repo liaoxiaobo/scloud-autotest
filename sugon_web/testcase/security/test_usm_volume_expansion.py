@@ -21,8 +21,8 @@ class TestUsmVolumeExpansion:
 
         with allure_step_log("步骤2: 进入详情页查看当前云硬盘大小"):
             usm_page.usm_to_details(name)
-            usm_page._wait_for_detail_page_ready()
-            body_text = usm_page.page.inner_text("body")
+            usm_page.wait_for_detail_page_ready()
+            body_text = usm_page.get_detail_body_text()
             vol_match = re.search(r"(\d+)\s*GiB", body_text)
             current_size = int(vol_match.group(1)) if vol_match else None
             logger.info(f"USM 实例 {name} 当前云硬盘大小: {current_size}GiB")

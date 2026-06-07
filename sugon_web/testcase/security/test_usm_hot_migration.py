@@ -15,12 +15,12 @@ class TestUsmHotMigration:
     @allure.title("USM-热迁移-手动指定")
     @skip_if_nodes_less_than(2)
     def test_usm_hot_migration_manual(self, usm_instance, page, ssh_host):
-        usm_page = UsmPage(page)
-        usm_page.goto_list_page()
         """验证 USM 实例热迁移（手动指定目标物理机）功能。
 
         通过 fixture 获取 USM 实例，执行热迁移后验证页面状态和后台 virsh。
         """
+        usm_page = UsmPage(page)
+        usm_page.goto_list_page()
         name = usm_instance["name"]
         logger.info(f"USM 实例 {name} 已就绪")
 

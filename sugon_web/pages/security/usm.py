@@ -28,6 +28,10 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
     service_name = "云堡垒机高级版"
 
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
     def goto_list_page(self):
         """导航到 USM 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
         from sugon_web.config.config import Config
@@ -1035,7 +1039,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         return None
 
-    def _wait_for_detail_page_ready(self, timeout: int = 60):
+    def wait_for_detail_page_ready(self, timeout: int = 60):
         """等待 USM 详情页加载完成，兼容较慢的后端数据加载。
 
         详情页在实例刚创建/状态变更后可能需要较长时间加载，
