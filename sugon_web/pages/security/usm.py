@@ -390,9 +390,9 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                                 except Exception:
                                                                     pass
                                                                 if btn.is_visible():
-                                                                btn.click()
-                                                                self.page.wait_for_timeout(300)
-                                                                break
+                                                                    btn.click()
+                                                                    self.page.wait_for_timeout(300)
+                                                                    break
                     except Exception:
                         continue
             except Exception:
@@ -445,11 +445,11 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                         except Exception:
                                                             pass
                                                         if menu.is_visible():
-                                                        opt = menu.get_by_text(action, exact=False).first
-                                                        if opt.count() > 0:
-                                                            opt.click()
-                                                            logger.info(f"USM 操作 fallback: 点击'{more_text}'下拉菜单中的 '{action}'")
-                                                            break
+                                                            opt = menu.get_by_text(action, exact=False).first
+                                                            if opt.count() > 0:
+                                                                opt.click()
+                                                                logger.info(f"USM 操作 fallback: 点击'{more_text}'下拉菜单中的 '{action}'")
+                                                                break
                                                 else:
                                                     continue
                                                 break
@@ -541,10 +541,10 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                         except Exception:
                                                             pass
                                                         if menu.is_visible():
-                                                        opt = menu.get_by_text("删除", exact=False).first
-                                                        if opt.count() > 0:
-                                                            opt.click()
-                                                            break
+                                                            opt = menu.get_by_text("删除", exact=False).first
+                                                            if opt.count() > 0:
+                                                                opt.click()
+                                                                break
                                                 else:
                                                     continue
                                                 break
@@ -1673,10 +1673,10 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                         except Exception:
                                             pass
                                         if btn.is_visible():
-                                        btn.click()
-                                        page.wait_for_timeout(3000)
-                                        logger.info(f"USM 跳转页面：点击项目选择弹窗 '{confirm_text}'")
-                                        break
+                                            btn.click()
+                                            page.wait_for_timeout(3000)
+                                            logger.info(f"USM 跳转页面：点击项目选择弹窗 '{confirm_text}'")
+                                            break
         except Exception:
             pass
 

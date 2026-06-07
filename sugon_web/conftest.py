@@ -511,9 +511,9 @@ def _login(page, config, max_retries=3):
                             except Exception:
                                 pass
                             if dialog_btn.is_visible():
-                            dialog_btn.click()
-                            page.wait_for_timeout(500)
-                            continue
+                                dialog_btn.click()
+                                page.wait_for_timeout(500)
+                                continue
                     except Exception:
                         pass
                     break

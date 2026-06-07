@@ -363,9 +363,9 @@ class VerPage(VerAssertionMixin, BasePage):
                                                                 except Exception:
                                                                     pass
                                                                 if btn.is_visible():
-                                                                btn.click()
-                                                                self.page.wait_for_timeout(300)
-                                                                break
+                                                                    btn.click()
+                                                                    self.page.wait_for_timeout(300)
+                                                                    break
                     except Exception:
                         continue
             except Exception:
