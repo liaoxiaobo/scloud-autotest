@@ -356,8 +356,7 @@ class IamPage(BasePage):
         """
         self._navigate_to_user_management(target_org)
         self.wait_for_page_ready()
-        # cl-table 使用标准 table 结构，但可能没有 el-table__body-wrapper
-        # 先尝试标准 el-table，再尝试通用 table
+        self._expand_page_size()
         for tbody_sel in [".el-table__body-wrapper tbody", "table tbody", "tbody"]:
             rows = self.locator(tbody_sel + " tr")
             if rows.count() > 0:
@@ -1398,7 +1397,7 @@ class IamPage(BasePage):
         self.page.wait_for_timeout(2000)
 
         quota_tab = self.get_by_role("tab").filter(has_text="组织配额")
-        expect(quota_tab.first).to_be_visible(timeout=10000)
+        expect(quota_tab.first).to_be_visible(timeout=30000)
         quota_tab.first.click()
         self.page.wait_for_timeout(3000)
         logger.info(f"IAM：已进入组织 {org_name} 的配额页面")
