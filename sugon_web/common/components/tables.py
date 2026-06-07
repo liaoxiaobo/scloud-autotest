@@ -148,6 +148,7 @@ class TablesMixin:
 
     def get_row_by_name(self, name: str) -> Locator:
         """公共方法: 根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
+        self._expand_page_size()
         t_body = self.locator(".el-table__body-wrapper")
         if t_body.count() == 0:
             t_body = self
