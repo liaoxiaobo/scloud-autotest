@@ -214,6 +214,7 @@ class TestERVPCConnectivity:
                     vpc_page.get_row_by_name(vpc1_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("174.4.4.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("174.4.4.0/24", column_name="目的地址")
                     logger.info("VPC1路由规则删除成功")
                 except Exception as e:
@@ -231,6 +232,7 @@ class TestERVPCConnectivity:
                     vpc_page.get_row_by_name(vpc2_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("173.3.3.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("173.3.3.0/24", column_name="目的地址")
                     logger.info("VPC2路由规则删除成功")
                 except Exception as e:
