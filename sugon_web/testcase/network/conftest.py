@@ -399,7 +399,42 @@ def vip(vpc_page, vpc):
     vpc_page.get_by_role("tab", name="虚拟IP管理").click()
 
     logger.info(f"清理虚拟IP {vip_address}")
-    vpc_page.vip_delete(vip_address)
+
+    # 先获取一次行数据，检查是否仍有绑定关系
+    # 避免对已解绑的VIP重复点击禁用状态的按钮浪费时间
+    try:
+        row_data = vpc_page.get_row_data(vip_address)
+    except Exception:
+        logger.info(f"VIP {vip_address} 已从列表中消失，无需清理")
+        return
+
+    bound_instance = row_data.get("绑定的实例") or ""
+    bound_eip = row_data.get("绑定的公网IP") or ""
+
+    # 仅在有实际绑定值时才执行解绑（按钮可用状态）
+    if bound_instance and bound_instance != "--":
+        instance_name = bound_instance.split("(")[0] if "(" in bound_instance else bound_instance
+        logger.info(f"VIP {vip_address} 仍绑定实例 {instance_name}，先解绑")
+        try:
+            vpc_page.vip_unbind_instance(vip_address, instance_name)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑实例时出错: {e}")
+
+    if bound_eip and bound_eip != "--":
+        logger.info(f"VIP {vip_address} 仍绑定公网IP {bound_eip}，先解绑")
+        try:
+            vpc_page.vip_unbind_eip(vip_address)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑公网IP时出错: {e}")
+
+    try:
+        vpc_page.vip_delete(vip_address)
+    except Exception as e:
+        logger.warning(f"清理虚拟IP失败: {e}")
 
 
 @pytest.fixture(scope="function")

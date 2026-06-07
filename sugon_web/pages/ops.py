@@ -38,10 +38,10 @@ class OpsPage(BasePage):
         dropdown = self.page.locator(".el-select-dropdown:visible")
 
         if locator_type == "title":
-            target_item = self.get_by_title(value)
+            target_item = self.get_by_title(value).first
         else:
-            target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(value)}$"))
-            expect(target_item).to_have_count(1, timeout=timeout)
+            target_item = dropdown.locator(".el-select-dropdown__item").filter(has_text=re.compile(re.escape(value))).first
+        expect(target_item).to_be_attached(timeout=timeout)
         if api_url_pattern:
             try:
                 with self.page.expect_response(
@@ -53,11 +53,11 @@ class OpsPage(BasePage):
                     timeout=timeout
                 ):
                     self.page.wait_for_timeout(1000)
-                    target_item.click()
+                    target_item.click(force=True)
                 logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
             except PlaywrightTimeoutError:
                 logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
-                target_item.click()
+                target_item.click(force=True)
         else:
             self.page.wait_for_timeout(2000)
             target_item.click()

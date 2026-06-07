@@ -164,8 +164,15 @@ class EipMixin(BasePage):
         if selected_ips:
             return selected_ips
 
-        current_ips = self._get_eip_list()
-        created_ips = [current_ip for current_ip in current_ips if current_ip not in set(previous_ips)]
+        # 分配后等待列表刷新，使用轮询获取新IP（慢环境兼容）
+        created_ips = []
+        for _ in range(30):
+            self.page.wait_for_timeout(1000)
+            current_ips = self._get_eip_list()
+            created_ips = [current_ip for current_ip in current_ips if current_ip not in set(previous_ips)]
+            if len(created_ips) >= count:
+                break
+
         return created_ips[:count]
 
     def _eip_click_action(self, fip_ip: str, action_name: str):

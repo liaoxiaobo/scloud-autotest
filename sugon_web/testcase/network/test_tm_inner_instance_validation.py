@@ -6,7 +6,7 @@ import allure
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 def _create_vpc(vpc_page):
@@ -41,12 +41,14 @@ def _create_vm(ecs_page, vpc_name, subnet_name, vm_name_prefix="tm-"):
 
 def _bind_mfip(ops_page, project, network, vm_ip):
     """为指定VM绑定MFIP，返回MFIP地址。"""
-    ops_page.goto_service("网络设施")
+    ops_page.goto_service("基础设施")
     ops_page.goto_submenu("平台网络")
     ops_page.mfip_create(project=project, network=network, ip=vm_ip)
     ops_page.assert_popup_success(timeout=30000)
     ops_page.mfip_search(vm_ip)
-    row_data = ops_page.get_row_data(vm_ip)
+    rows = ops_page.get_rows_by_text(vm_ip)
+    last_row = rows.last
+    row_data = ops_page.get_row_data_by_locator(last_row)
     return row_data.get("管理IP地址")
 
 
@@ -199,7 +201,7 @@ class TestTMInnerInstanceValidation:
                 try:
                     if vm3_info and vm3_info.get("ip"):
                         ops_page = OpsPage(tm_page.page)
-                        ops_page.goto_service("网络设施")
+                        ops_page.goto_service("基础设施")
                         ops_page.goto_submenu("平台网络")
                         ops_page.mfip_delete(vm3_info["ip"])
                         ops_page.assert_deleted(vm3_info["ip"], timeout=30000)

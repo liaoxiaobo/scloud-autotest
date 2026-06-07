@@ -241,6 +241,11 @@ def _create_logged_in_page(browser_context, config):
 
     logger.info(f"导航到目标URL: {base_url}")
     page.goto(base_url, wait_until="domcontentloaded")
+    # 等待 SPA JS 资源加载完成，确保前端路由可以正常执行
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     logger.info(f"页面导航完成，当前URL: {page.url}")
 
     try:
@@ -260,8 +265,22 @@ def _create_logged_in_page(browser_context, config):
         _login(page, {"username": username, "password": password})
         logger.info("登录成功")
 
-        base_page_obj = BasePage(page)
-        base_page_obj.close_dialog_if_exists()
+    # 安全网：若URL异常（如 no-permission），重新加载以恢复
+    if "no-permission" in page.url:
+        logger.info(f"页面在 no-permission，尝试重新加载恢复...")
+        try:
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+        except Exception as e:
+            logger.warning(f"重新加载失败: {e}")
+
+    base_page_obj = BasePage(page)
+    base_page_obj.close_dialog_if_exists()
+
+    # 慢环境兼容：短暂等待 SPA 初始化，后续 goto_service 会直接导航到目标页面
+    page.wait_for_timeout(2000)
 
     # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
     _orig_close = page.close
@@ -470,12 +489,55 @@ def _is_logged_in(page):
     # URL 明确指向登录页
     if "login" in current_url:
         return False
-    # URL 是根路径或其他（前端路由尚未完成 hash 跳转），通过页面元素兜底判断
+    # URL 没有 hash 路由，前端 SPA 可能尚未加载完成，保守返回未登录以触发登录流程
+    if "/#" not in current_url:
+        return False
+    # URL 包含 hash 但不是已知页面，通过页面元素兜底判断
     try:
         login_input = page.locator("input[placeholder='请输入登录账号']")
-        return login_input.count() == 0 or not login_input.first.is_visible(timeout=3000)
+        return login_input.count() == 0 or not login_input.first.is_visible()
     except Exception:
         return False
+
+
+def _dismiss_license_dialog(page):
+    """处理 console-page 的许可证提示弹窗。
+
+    SugonCloud 8.0.6.0 登录后若存在许可证到期弹窗，所有自动化点击方式均无法关闭。
+    实测发现：直接刷新页面后弹窗不再出现。因此核心策略为 reload。
+    """
+    if "console-page" not in page.url:
+        return True
+
+    # 核心策略：刷新页面（弹窗通常在首次加载后出现，刷新后不再显示）
+    try:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_timeout(8000)
+        has_dialog = page.locator(".el-message-box").count() > 0
+        if not has_dialog:
+            logger.info(f"[license] 刷新后弹窗已消失，URL: {page.url}")
+            return True
+        logger.info(f"[license] 刷新后弹窗仍存在，URL: {page.url}")
+    except Exception as e:
+        logger.warning(f"[license] 刷新失败: {e}")
+
+    # 降级策略：移除弹窗 DOM
+    if page.locator(".el-message-box").count() > 0:
+        try:
+            page.evaluate("""
+                (function() {
+                    document.querySelectorAll('.el-message-box__wrapper, .el-message-box, .v-modal, .el-popup-parent--hidden').forEach(function(el) { el.remove(); });
+                    document.body.classList.remove('el-popup-parent--hidden');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                })();
+            """)
+            page.wait_for_timeout(1000)
+            logger.info("[license] 已移除弹窗 DOM")
+        except Exception as e:
+            logger.warning(f"[license] DOM 移除失败: {e}")
+
+    return "console-page" not in page.url
 
 
 def _login(page, config, max_retries=3):
@@ -511,7 +573,7 @@ def _login(page, config, max_retries=3):
                 for _close_attempt in range(3):
                     try:
                         dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
+                        if dialog_btn.count() > 0 and dialog_btn.is_visible():
                             dialog_btn.click()
                             page.wait_for_timeout(500)
                             continue
@@ -525,19 +587,9 @@ def _login(page, config, max_retries=3):
                 page.get_by_text("登 录").click()
 
                 # 登录成功后应进入控制台首页或console-page（许可证提示页）
-                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=10000)
+                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=20000)
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_load_state("load")
-
-                # 如果导航到console-page（许可证提示页），关闭弹窗后等待跳转到index
-                if "console-page" in page.url:
-                    try:
-                        license_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if license_btn.count() > 0 and license_btn.is_visible(timeout=5000):
-                            license_btn.click()
-                            page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
-                    except Exception:
-                        pass
 
                 if _is_logged_in(page):
                     return True
@@ -548,6 +600,12 @@ def _login(page, config, max_retries=3):
                 logger.info(f"第{attempt}次登录未成功: {e}")
                 if attempt == max_retries:
                     raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
+                # 重试前刷新页面，清除可能残留的弹窗或异常状态
+                try:
+                    page.reload(wait_until="domcontentloaded")
+                    page.wait_for_timeout(2000)
+                except Exception:
+                    pass
                 continue
 
         return False

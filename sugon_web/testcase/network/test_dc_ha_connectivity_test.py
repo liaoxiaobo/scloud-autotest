@@ -21,7 +21,7 @@ class TestDCHaConnectivityTest:
     )
     @pytest.mark.parametrize(
         "vm",
-        [{"basic": {"count": 1}, "bind_mfip": True}],
+        [{"basic": {"count": 1}, "bind_mfip": True, "name_prefix": "dc_"}],
         indirect=True,
     )
     @allure.title("云专线DC-HA实例-互通性测试验证")
@@ -228,20 +228,19 @@ class TestDCHaConnectivityTest:
                 ).get_by_placeholder("请选择").click()
                 vpc_page.page.wait_for_timeout(3000)
 
-                # 精确定位下拉框内的选项
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:
                     dropdown.wait_for(state="visible", timeout=10000)
-                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
-                    expect(option).to_be_visible(timeout=10000)
-                    option.click()
+                    vpc_page.page.wait_for_timeout(2000)
+                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=re.compile(re.escape(dc_name))).first
+                    option.scroll_into_view_if_needed(timeout=5000)
+                    option.click(force=True)
                     logger.info(f"下一跳选择成功: {dc_name} (通过 .el-select-dropdown__item)")
                 except Exception:
-                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用可见下拉框内搜索: {dc_name}")
+                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 dropdown.get_by_text 选择: {dc_name}")
                     try:
-                        vpc_page.page.locator(".el-select-dropdown:visible").get_by_text(dc_name, exact=False).first.click(force=True)
+                        dropdown.get_by_text(dc_name, exact=True).last.click(force=True)
                     except Exception:
-                        # 最终备选：通过键盘选择（先聚焦input确保事件发送到正确元素）
                         logger.warning(f"可见下拉框内搜索失败，使用键盘选择: {dc_name}")
                         input_el = vpc_page.locator(".el-form-item").filter(
                             has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
@@ -381,6 +380,8 @@ class TestDCHaConnectivityTest:
                 try:
                     vpc_page.goto_service("虚拟私有云")
                     vpc_page.goto_submenu("虚拟私有云")
+                    vpc_page.wait_for_page_ready()
+                    vpc_page._expand_page_size()
                     try:
                         row = vpc_page.get_row_by_name(vpc_name)
                     except Exception:

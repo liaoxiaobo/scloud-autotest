@@ -33,7 +33,9 @@ def _create_vm_and_bind_mfip(ecs_page, ops_page, vm_name, vpc_name, subnet_name,
     ops_page.mfip_create("默认项目", vpc_name, vm_ip)
     ops_page.assert_popup_success()
     ops_page.mfip_search(vm_ip)
-    vm_mfip = ops_page.get_row_data(vm_ip).get("管理IP地址")
+    rows = ops_page.get_rows_by_text(vm_ip)
+    last_row = rows.last
+    vm_mfip = ops_page.get_row_data_by_locator(last_row).get("管理IP地址")
 
     return {"name": vm_name, "ip": vm_ip, "mfip": vm_mfip}
 
@@ -267,9 +269,12 @@ class TestERVPCConnectivityNonHA:
                 try:
                     ecs_page.goto_service("弹性云服务器")
                     ecs_page.wait_for_page_ready()
+                    ecs_page._expand_page_size()
                     for vm_name in [vm1_name, vm2_name]:
                         try:
+                            ecs_page.goto_submenu("弹性云服务器")
                             ecs_page.wait_for_page_ready()
+                            ecs_page._expand_page_size()
                             ecs_page.ecs_remove(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)
                             logger.info(f"VM {vm_name} 已移入回收站")

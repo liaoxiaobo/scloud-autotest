@@ -6,7 +6,7 @@ import allure
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 def _create_vpc(vpc_page):
@@ -46,7 +46,9 @@ def _bind_mfip(ops_page, project, network, vm_ip):
     ops_page.mfip_create(project=project, network=network, ip=vm_ip)
     ops_page.assert_popup_success(timeout=30000)
     ops_page.mfip_search(vm_ip)
-    row_data = ops_page.get_row_data(vm_ip)
+    rows = ops_page.get_rows_by_text(vm_ip)
+    last_row = rows.last
+    row_data = ops_page.get_row_data_by_locator(last_row)
     return row_data.get("管理IP地址")
 
 
