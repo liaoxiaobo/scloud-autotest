@@ -384,7 +384,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                         # 尝试点击关闭按钮或取消按钮
                                                         for btn_text in ["关闭", "取消", "确定"]:
                                                             btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                                            if btn.count() > 0 and btn.is_visible(timeout=500):
+                                                            if btn.count() > 0:
+                                                                try:
+                                                                    btn.wait_for(timeout=500)
+                                                                except Exception:
+                                                                    pass
+                                                                if btn.is_visible():
                                                                 btn.click()
                                                                 self.page.wait_for_timeout(300)
                                                                 break
@@ -434,7 +439,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                 # 在下拉菜单中查找 action
                                                 for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
                                                     menu = self.page.locator(selector).last
-                                                    if menu.count() > 0 and menu.is_visible(timeout=1000):
+                                                    if menu.count() > 0:
+                                                        try:
+                                                            menu.wait_for(timeout=1000)
+                                                        except Exception:
+                                                            pass
+                                                        if menu.is_visible():
                                                         opt = menu.get_by_text(action, exact=False).first
                                                         if opt.count() > 0:
                                                             opt.click()
@@ -525,7 +535,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
                                                 self.page.wait_for_timeout(800)
                                                 for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
                                                     menu = self.page.locator(selector).last
-                                                    if menu.count() > 0 and menu.is_visible(timeout=1000):
+                                                    if menu.count() > 0:
+                                                        try:
+                                                            menu.wait_for(timeout=1000)
+                                                        except Exception:
+                                                            pass
+                                                        if menu.is_visible():
                                                         opt = menu.get_by_text("删除", exact=False).first
                                                         if opt.count() > 0:
                                                             opt.click()
@@ -1652,7 +1667,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 if project_dialog.is_visible():
                                 for confirm_text in ["确定", "确认", "进入"]:
                                     btn = page.get_by_text(confirm_text, exact=True).first
-                                    if btn.count() > 0 and btn.is_visible(timeout=1000):
+                                    if btn.count() > 0:
+                                        try:
+                                            btn.wait_for(timeout=1000)
+                                        except Exception:
+                                            pass
+                                        if btn.is_visible():
                                         btn.click()
                                         page.wait_for_timeout(3000)
                                         logger.info(f"USM 跳转页面：点击项目选择弹窗 '{confirm_text}'")

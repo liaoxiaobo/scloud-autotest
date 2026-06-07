@@ -209,11 +209,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
-        current_url = self.page.url
-        if "/vdb" not in current_url or "create-vdb" in current_url or "detail" in current_url:
-            self.goto_service(self.service_name)
-        self.wait_for_page_ready()
-        self.page.wait_for_timeout(3000)
+        self.goto_list_page()
         btn = self.btn_create
         btn.click()
         self.wait_for_page_ready()
@@ -352,7 +348,12 @@ class VdbPage(VdbAssertionMixin, BasePage):
                         if dialog.is_visible():
                                                         for btn_text in ["关闭", "取消", "确定"]:
                                                             btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                                            if btn.count() > 0 and btn.is_visible(timeout=500):
+                                                            if btn.count() > 0:
+                                                                try:
+                                                                    btn.wait_for(timeout=500)
+                                                                except Exception:
+                                                                    pass
+                                                                if btn.is_visible():
                                                                 btn.click()
                                                                 self.page.wait_for_timeout(300)
                                                                 break

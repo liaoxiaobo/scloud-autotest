@@ -505,7 +505,12 @@ def _login(page, config, max_retries=3):
                 for _close_attempt in range(3):
                     try:
                         dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
+                        if dialog_btn.count() > 0:
+                            try:
+                                dialog_btn.wait_for(timeout=1000)
+                            except Exception:
+                                pass
+                            if dialog_btn.is_visible():
                             dialog_btn.click()
                             page.wait_for_timeout(500)
                             continue
