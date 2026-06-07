@@ -32,11 +32,7 @@ class TestUsmCreateLifecycle:
             usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤3: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=120)
-            # 开机后等待 2 分钟让 USM 服务完全就绪，确保跳转地址 token 有效
-            logger.info(f"开机后等待 2 分钟让 USM 服务就绪...")
-            time.sleep(120)
+            usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤4: 再次验证实例 {name} 跳转地址"):
             usm_page.usm_to_details(name)

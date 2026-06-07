@@ -25,7 +25,7 @@ class VerPage(VerAssertionMixin, BasePage):
         target_url = f"{base_url}/das/#/ver"
         self.page.goto(target_url)
         self.wait_for_page_ready()
-        for attempt in range(1, 10):
+        for attempt in range(1, 16):
             self.page.wait_for_timeout(2000)
             if "/no-permission" in self.page.url:
                 logger.warning(f"VER 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
@@ -37,7 +37,7 @@ class VerPage(VerAssertionMixin, BasePage):
                 logger.info(f"VER 列表页数据加载中，继续等待 (第{attempt}次)...")
                 continue
             has_rows = self.page.locator(".el-table__row").count() > 0
-            has_empty = self.page.locator(".el-table__empty-block").count() > 0
+            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
             if has_rows:
                 logger.info(f"VER 回到列表页（第{attempt}次检查）: {self.page.url}")
                 return
@@ -46,8 +46,7 @@ class VerPage(VerAssertionMixin, BasePage):
                 return
             logger.info(f"VER 列表页仍为空，等待数据加载中(第{attempt}次)...")
             if attempt >= 3 and not has_rows and not has_empty:
-                self.page.reload()
-                self.wait_for_page_ready()
+                logger.warning(f"VER 列表页数据未就绪，继续等待 (第{attempt}次)...")
         logger.info(f"VER 回到列表页: {self.page.url}")
 
     @property
@@ -217,8 +216,7 @@ class VerPage(VerAssertionMixin, BasePage):
             self.goto_service(self.service_name)
         self.wait_for_page_ready()
         self.page.wait_for_timeout(3000)
-        btn = self.get_by_text("新建").first
-        expect(btn).to_be_visible(timeout=10000)
+        btn = self.btn_create
         btn.click()
         self.wait_for_page_ready()
         expect(self._input_name).to_be_visible(timeout=10000)
@@ -284,8 +282,12 @@ class VerPage(VerAssertionMixin, BasePage):
             # 检查 toast 错误
             error_toast = self.page.locator(".el-message--error, .el-message.el-message--error").first
             try:
-                if error_toast.is_visible(timeout=2000):
-                    error_msgs.append(error_toast.inner_text())
+                try:
+                    error_toast.wait_for(timeout=2000)
+                except Exception:
+                    pass
+                if error_toast.is_visible():
+                                        error_msgs.append(error_toast.inner_text())
             except Exception:
                 pass
             if error_msgs:
@@ -295,9 +297,13 @@ class VerPage(VerAssertionMixin, BasePage):
         # 检查是否有错误 toast（跳转后的错误）
         error_toast = self.page.locator(".el-message--error, .el-message.el-message--error").first
         try:
-            if error_toast.is_visible(timeout=3000):
-                toast_text = error_toast.inner_text()
-                raise Exception(f"VER 创建失败: {toast_text}")
+            try:
+                error_toast.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if error_toast.is_visible():
+                                toast_text = error_toast.inner_text()
+                                raise Exception(f"VER 创建失败: {toast_text}")
         except Exception as e:
             if "VER 创建失败" in str(e):
                 raise
@@ -306,9 +312,13 @@ class VerPage(VerAssertionMixin, BasePage):
         # 检查是否有确认弹窗
         try:
             popup = self.page.locator(".el-message-box__wrapper:visible, .sugon-dialog:visible, .el-dialog:visible").first
-            if popup.is_visible(timeout=3000):
-                self._click_dialog_confirm()
-                self.page.wait_for_timeout(2000)
+            try:
+                popup.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if popup.is_visible():
+                                self._click_dialog_confirm()
+                                self.page.wait_for_timeout(2000)
         except Exception:
             logger.debug("VER 创建：未检测到确认弹窗")
 
@@ -345,13 +355,17 @@ class VerPage(VerAssertionMixin, BasePage):
                 for i in range(count - 1, -1, -1):
                     dialog = dialogs.nth(i)
                     try:
-                        if dialog.is_visible(timeout=1000):
-                            for btn_text in ["关闭", "取消", "确定"]:
-                                btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                if btn.count() > 0 and btn.is_visible(timeout=500):
-                                    btn.click()
-                                    self.page.wait_for_timeout(300)
-                                    break
+                        try:
+                            dialog.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if dialog.is_visible():
+                                                        for btn_text in ["关闭", "取消", "确定"]:
+                                                            btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
+                                                            if btn.count() > 0 and btn.is_visible(timeout=500):
+                                                                btn.click()
+                                                                self.page.wait_for_timeout(300)
+                                                                break
                     except Exception:
                         continue
             except Exception:
@@ -407,8 +421,12 @@ class VerPage(VerAssertionMixin, BasePage):
         try:
             dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
             checkbox = dialog.locator(".el-checkbox").first
-            if checkbox.is_visible(timeout=2000):
-                checkbox.click()
+            try:
+                checkbox.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if checkbox.is_visible():
+                                checkbox.click()
         except Exception:
             logger.debug("VER 删除：无需勾选确认框")
         self._click_dialog_confirm()
@@ -534,25 +552,30 @@ class VerPage(VerAssertionMixin, BasePage):
                     break
                 try:
                     label = self.get_by_text(keyword, exact=False).first
-                    if label.count() > 0 and label.is_visible(timeout=3000):
-                        for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
-                            parent = label.locator(ancestor).first
-                            if parent.count() > 0:
-                                link = parent.locator("a[href^='http']").first
-                                if link.count() > 0 and link.is_visible():
-                                    jump_url = link.get_attribute("href")
-                                    if jump_url and jump_url != "--":
-                                        logger.info(f"VER 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
-                                        break
-                                try:
-                                    text = parent.inner_text()
-                                except Exception:
-                                    text = parent.text_content() or ""
-                                url_match = re.search(r"https?://[^\s\n]+", text)
-                                if url_match:
-                                    jump_url = url_match.group(0)
-                                    logger.info(f"VER 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
-                                    break
+                    if label.count() > 0:
+                        try:
+                            label.wait_for(timeout=3000)
+                        except Exception:
+                            pass
+                        if label.is_visible():
+                                                for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
+                                                    parent = label.locator(ancestor).first
+                                                    if parent.count() > 0:
+                                                        link = parent.locator("a[href^='http']").first
+                                                        if link.count() > 0 and link.is_visible():
+                                                            jump_url = link.get_attribute("href")
+                                                            if jump_url and jump_url != "--":
+                                                                logger.info(f"VER 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
+                                                                break
+                                                        try:
+                                                            text = parent.inner_text()
+                                                        except Exception:
+                                                            text = parent.text_content() or ""
+                                                        url_match = re.search(r"https?://[^\s\n]+", text)
+                                                        if url_match:
+                                                            jump_url = url_match.group(0)
+                                                            logger.info(f"VER 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
+                                                            break
                 except Exception:
                     continue
 
@@ -792,15 +815,25 @@ class VerPage(VerAssertionMixin, BasePage):
         self.click_action(name, action)
         self.page.wait_for_timeout(1500)
         dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
-        if dialog.count() == 0 or not dialog.is_visible(timeout=3000):
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
             logger.warning(f"VER {action}：未找到弹窗，可能已自动完成")
             return
 
         radio_btn = dialog.locator(".el-radio-button").filter(has_text=duration).first
-        if radio_btn.count() > 0 and radio_btn.is_visible(timeout=2000):
-            radio_btn.click()
-            logger.info(f"VER {action}：已选择 {duration} 购买时长")
-            self.page.wait_for_timeout(500)
+        if radio_btn.count() > 0:
+            try:
+                radio_btn.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if radio_btn.is_visible():
+                        radio_btn.click()
+                        logger.info(f"VER {action}：已选择 {duration} 购买时长")
+                        self.page.wait_for_timeout(500)
         else:
             active_btn = dialog.locator(".el-radio-button.is-active").first
             if active_btn.count() > 0:
@@ -835,13 +868,18 @@ class VerPage(VerAssertionMixin, BasePage):
         logger.info("VER 规格升级：弹窗已打开")
 
         alert = dialog.locator(".sugon-alert, .el-alert").first
-        if alert.count() > 0 and alert.is_visible(timeout=3000):
-            alert_text = alert.inner_text()
-            assert "关机" in alert_text and "再启动" in alert_text, \
-                f"提示信息缺少关机和再启动提醒: {alert_text}"
-            assert "云硬盘" in alert_text, \
-                f"提示信息缺少云硬盘大小提示: {alert_text}"
-            logger.info("VER 规格升级：提示信息验证通过")
+        if alert.count() > 0:
+            try:
+                alert.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if alert.is_visible():
+                        alert_text = alert.inner_text()
+                        assert "关机" in alert_text and "再启动" in alert_text, \
+                            f"提示信息缺少关机和再启动提醒: {alert_text}"
+                        assert "云硬盘" in alert_text, \
+                            f"提示信息缺少云硬盘大小提示: {alert_text}"
+                        logger.info("VER 规格升级：提示信息验证通过")
         else:
             logger.warning("VER 规格升级：未找到 alert 提示信息，跳过验证")
 
@@ -878,7 +916,12 @@ class VerPage(VerAssertionMixin, BasePage):
             raise Exception("未找到可选的更高规格")
 
         confirm_btn = dialog.locator(".cloud-button-btn").filter(has_text="确定").first
-        if confirm_btn.count() == 0 or not confirm_btn.is_visible(timeout=3000):
+        if confirm_btn.count() == 0:
+            try:
+                confirm_btn.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到规格升级弹窗的确定按钮")
         confirm_btn.click()
         logger.info(f"VER 实例 {name} 规格升级请求已提交")

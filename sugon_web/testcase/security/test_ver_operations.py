@@ -24,7 +24,6 @@ class TestVerOperations:
         with allure_step_log(f"步骤1: 进入日志审计列表页并验证跳转地址"):
             ver_page.goto_list_page()
             ver_page.ver_to_details(name)
-            page.wait_for_timeout(30000)
             new_page = ver_page.ver_open_jump_address()
             if new_page is None:
                 logger.warning(f"VER 实例 {name} 跳转地址验证跳过：目标服务器网络不可达")
@@ -49,10 +48,7 @@ class TestVerOperations:
             ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤4: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=120)
-            logger.info(f"开机后等待 2 分钟让 VER 服务就绪...")
-            time.sleep(120)
+            ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤5: 再次验证实例 {name} 跳转地址"):
             ver_page.ver_to_details(name)

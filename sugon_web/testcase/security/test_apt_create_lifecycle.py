@@ -59,8 +59,7 @@ class TestAptCreateLifecycle:
             apt_page.assert_apt_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤7: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            apt_page.assert_apt_status(name, service_status="运行", vm_status="运行", timeout=120)
+            apt_page.assert_apt_status(name, service_status="运行", vm_status="运行", timeout=180)
 
         with allure_step_log(f"步骤8: 再次验证实例 {name} 跳转地址"):
             apt_page.apt_to_details(name)

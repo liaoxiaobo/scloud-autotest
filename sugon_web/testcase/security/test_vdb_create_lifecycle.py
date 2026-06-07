@@ -51,8 +51,7 @@ class TestVdbCreateLifecycle:
             vdb_page.assert_vdb_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤6: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            vdb_page.assert_vdb_status(name, service_status="运行", vm_status="运行", timeout=120)
+            vdb_page.assert_vdb_status(name, service_status="运行", vm_status="运行", timeout=180)
 
         with allure_step_log(f"步骤7: 再次验证实例 {name} 跳转地址"):
             vdb_page.vdb_to_details(name)

@@ -177,7 +177,10 @@ def browser(config):
             browser = getattr(p, browser_type).launch(
                 headless=headless,
                 slow_mo=slow_mo,
-                args=["--ignore-certificate-errors", "--ignore-certificate-errors-spki-list"],
+                args=[
+                    "--ignore-certificate-errors",
+                    "--ignore-certificate-errors-spki-list",
+                ],
             )
             logger.info(f"浏览器 {browser_type} 启动成功")
 
@@ -245,7 +248,7 @@ def _create_logged_in_page(browser_context, config):
 
     try:
         # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
+        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=60000)
     except Exception:
         logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
     logger.info(f"页面导航完成，当前URL: {page.url}")
@@ -490,6 +493,14 @@ def _login(page, config, max_retries=3):
                 logger.info(f"{'=' * 40}")
 
             try:
+                # 等待页面渲染完成（门户较慢时 body 可能长时间为空）
+                try:
+                    page.wait_for_selector("body > *", state="attached", timeout=60000)
+                except Exception:
+                    logger.info("等待页面渲染超时，尝试重新加载...")
+                    page.reload()
+                    page.wait_for_selector("body > *", state="attached", timeout=60000)
+
                 # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
                 for _close_attempt in range(3):
                     try:

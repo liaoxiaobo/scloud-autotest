@@ -26,16 +26,7 @@ class VerAssertionMixin:
         while time.time() - start_time < timeout:
             iteration += 1
             try:
-                current_url = self.page.url
-                if "/ver" not in current_url or "create-ver" in current_url or "detail" in current_url:
-                    self.goto_service(self.service_name)
-                else:
-                    self.page.reload()
-                self.wait_for_page_ready()
-                try:
-                    self.page.wait_for_selector(".el-table__body-wrapper table tbody tr td:nth-child(2)", timeout=10000)
-                except Exception:
-                    pass
+                self.goto_list_page()
                 row_data = self.get_row_data(name)
                 last_data = row_data
 

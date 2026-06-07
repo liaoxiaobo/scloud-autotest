@@ -36,7 +36,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         self.page.goto(target_url)
         self.wait_for_page_ready()
         # 等待列表数据加载完成（先等 loading 消失，再检查行数据）
-        for attempt in range(1, 10):
+        for attempt in range(1, 16):
             self.page.wait_for_timeout(2000)
             # 若被重定向到无权限页，重新导航
             if "/no-permission" in self.page.url:
@@ -50,7 +50,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 logger.info(f"USM 列表页数据加载中，继续等待 (第{attempt}次)...")
                 continue
             has_rows = self.page.locator(".el-table__row").count() > 0
-            has_empty = self.page.locator(".el-table__empty-block").count() > 0
+            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
             if has_rows:
                 logger.info(f"USM 回到列表页（第{attempt}次检查）: {self.page.url}")
                 return
@@ -59,8 +59,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 return
             logger.info(f"USM 列表页仍为空，等待数据加载中(第{attempt}次)...")
             if attempt >= 3 and not has_rows and not has_empty:
-                self.page.reload()
-                self.wait_for_page_ready()
+                logger.warning(f"USM 列表页数据未就绪，继续等待 (第{attempt}次)...")
         logger.info(f"USM 回到列表页: {self.page.url}")
 
     def get_first_usm_name(self) -> str:
@@ -261,9 +260,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         """
         # 导航到列表页，点击"新建"进入创建页面
         self.goto_list_page()
-        # "新建"可能不是标准 button 元素，用文本匹配
-        btn = self.get_by_text("新建").first
-        expect(btn).to_be_visible(timeout=10000)
+        btn = self.btn_create
         btn.click()
         self.wait_for_page_ready()
         expect(self._input_name).to_be_visible(timeout=10000)
@@ -379,14 +376,18 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 for i in range(count - 1, -1, -1):
                     dialog = dialogs.nth(i)
                     try:
-                        if dialog.is_visible(timeout=1000):
-                            # 尝试点击关闭按钮或取消按钮
-                            for btn_text in ["关闭", "取消", "确定"]:
-                                btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                if btn.count() > 0 and btn.is_visible(timeout=500):
-                                    btn.click()
-                                    self.page.wait_for_timeout(300)
-                                    break
+                        try:
+                            dialog.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if dialog.is_visible():
+                                                        # 尝试点击关闭按钮或取消按钮
+                                                        for btn_text in ["关闭", "取消", "确定"]:
+                                                            btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
+                                                            if btn.count() > 0 and btn.is_visible(timeout=500):
+                                                                btn.click()
+                                                                self.page.wait_for_timeout(300)
+                                                                break
                     except Exception:
                         continue
             except Exception:
@@ -410,28 +411,38 @@ class UsmPage(UsmAssertionMixin, BasePage):
             row = self.get_row_by_name(name)
             # 先尝试平铺按钮（不限制 interactive_row，直接在行内查找）
             btn = row.get_by_text(action, exact=False).first
-            if btn.count() > 0 and btn.is_visible(timeout=2000):
-                btn.click()
-                logger.info(f"USM 操作 fallback: 直接点击行内 '{action}' 按钮")
+            if btn.count() > 0:
+                try:
+                    btn.wait_for(timeout=2000)
+                except Exception:
+                    pass
+                if btn.is_visible():
+                                btn.click()
+                                logger.info(f"USM 操作 fallback: 直接点击行内 '{action}' 按钮")
             else:
                 # Fallback2: 尝试点击"更多"或"操作"按钮展开下拉菜单
                 for more_text in ["更多", "操作", "..."]:
                     more_btn = row.get_by_text(more_text, exact=False).first
-                    if more_btn.count() > 0 and more_btn.is_visible(timeout=1000):
-                        more_btn.click()
-                        self.page.wait_for_timeout(800)
-                        # 在下拉菜单中查找 action
-                        for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
-                            menu = self.page.locator(selector).last
-                            if menu.count() > 0 and menu.is_visible(timeout=1000):
-                                opt = menu.get_by_text(action, exact=False).first
-                                if opt.count() > 0:
-                                    opt.click()
-                                    logger.info(f"USM 操作 fallback: 点击'{more_text}'下拉菜单中的 '{action}'")
-                                    break
-                        else:
-                            continue
-                        break
+                    if more_btn.count() > 0:
+                        try:
+                            more_btn.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if more_btn.is_visible():
+                                                more_btn.click()
+                                                self.page.wait_for_timeout(800)
+                                                # 在下拉菜单中查找 action
+                                                for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
+                                                    menu = self.page.locator(selector).last
+                                                    if menu.count() > 0 and menu.is_visible(timeout=1000):
+                                                        opt = menu.get_by_text(action, exact=False).first
+                                                        if opt.count() > 0:
+                                                            opt.click()
+                                                            logger.info(f"USM 操作 fallback: 点击'{more_text}'下拉菜单中的 '{action}'")
+                                                            break
+                                                else:
+                                                    continue
+                                                break
                 else:
                     raise Exception(f"USM 操作 {action} 的 fallback 定位也失败了")
         try:
@@ -494,24 +505,34 @@ class UsmPage(UsmAssertionMixin, BasePage):
             logger.warning(f"USM 标准 click_action 删除失败: {e}，尝试 fallback 定位")
             row = self.get_row_by_name(name)
             btn = row.get_by_text("删除", exact=False).first
-            if btn.count() > 0 and btn.is_visible(timeout=2000):
-                btn.click()
+            if btn.count() > 0:
+                try:
+                    btn.wait_for(timeout=2000)
+                except Exception:
+                    pass
+                if btn.is_visible():
+                                btn.click()
             else:
                 for more_text in ["更多", "操作", "..."]:
                     more_btn = row.get_by_text(more_text, exact=False).first
-                    if more_btn.count() > 0 and more_btn.is_visible(timeout=1000):
-                        more_btn.click()
-                        self.page.wait_for_timeout(800)
-                        for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
-                            menu = self.page.locator(selector).last
-                            if menu.count() > 0 and menu.is_visible(timeout=1000):
-                                opt = menu.get_by_text("删除", exact=False).first
-                                if opt.count() > 0:
-                                    opt.click()
-                                    break
-                        else:
-                            continue
-                        break
+                    if more_btn.count() > 0:
+                        try:
+                            more_btn.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if more_btn.is_visible():
+                                                more_btn.click()
+                                                self.page.wait_for_timeout(800)
+                                                for selector in ['.el-dropdown-menu', '[class*="dropdown"]']:
+                                                    menu = self.page.locator(selector).last
+                                                    if menu.count() > 0 and menu.is_visible(timeout=1000):
+                                                        opt = menu.get_by_text("删除", exact=False).first
+                                                        if opt.count() > 0:
+                                                            opt.click()
+                                                            break
+                                                else:
+                                                    continue
+                                                break
                 else:
                     raise Exception(f"USM 删除 {name} 的 fallback 定位也失败了")
 
@@ -519,8 +540,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
             # 兼容 sugon-dialog 和 el-dialog
             dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
             checkbox = dialog.locator(".el-checkbox").first
-            if checkbox.is_visible(timeout=2000):
-                checkbox.click()
+            try:
+                checkbox.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if checkbox.is_visible():
+                                checkbox.click()
         except Exception:
             logger.debug("USM 删除：无需勾选确认框")
         self._click_dialog_confirm()
@@ -541,10 +566,15 @@ class UsmPage(UsmAssertionMixin, BasePage):
         for btn_text in ["确定", "确认", "进入"]:
             try:
                 btn = self.page.get_by_text(btn_text, exact=True).first
-                if btn.count() > 0 and btn.is_visible(timeout=2000):
-                    btn.click()
-                    self.page.wait_for_timeout(3000)
-                    break
+                if btn.count() > 0:
+                    try:
+                        btn.wait_for(timeout=2000)
+                    except Exception:
+                        pass
+                    if btn.is_visible():
+                                        btn.click()
+                                        self.page.wait_for_timeout(3000)
+                                        break
             except Exception:
                 continue
 
@@ -558,10 +588,15 @@ class UsmPage(UsmAssertionMixin, BasePage):
             for btn_text in ["确定", "确认", "进入"]:
                 try:
                     btn = self.page.get_by_text(btn_text, exact=True).first
-                    if btn.count() > 0 and btn.is_visible(timeout=2000):
-                        btn.click()
-                        self.page.wait_for_timeout(3000)
-                        break
+                    if btn.count() > 0:
+                        try:
+                            btn.wait_for(timeout=2000)
+                        except Exception:
+                            pass
+                        if btn.is_visible():
+                                                btn.click()
+                                                self.page.wait_for_timeout(3000)
+                                                break
                 except Exception:
                     continue
 
@@ -617,7 +652,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         # 步骤3: 点击确认
         confirm_btn = dialog.locator(".cloud-button-btn").filter(has_text="确定").first
-        if confirm_btn.count() == 0 or not confirm_btn.is_visible(timeout=3000):
+        if confirm_btn.count() == 0:
+            try:
+                confirm_btn.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到绑定公网IP弹窗的确定按钮")
         confirm_btn.click()
         logger.info(f"USM 实例 {name} 公网IP绑定请求已提交，IP={eip_address}")
@@ -650,7 +690,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
         self.page.wait_for_timeout(1500)
 
         confirm_btn = dialog.locator(".cloud-button-btn").filter(has_text="确定").first
-        if confirm_btn.count() == 0 or not confirm_btn.is_visible(timeout=3000):
+        if confirm_btn.count() == 0:
+            try:
+                confirm_btn.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到解除绑定公网IP弹窗的确定按钮")
         confirm_btn.click()
         logger.info(f"USM 实例 {name} 公网IP解绑请求已提交")
@@ -815,16 +860,26 @@ class UsmPage(UsmAssertionMixin, BasePage):
         self.click_action(name, action)
         self.page.wait_for_timeout(1500)
         dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
-        if dialog.count() == 0 or not dialog.is_visible(timeout=3000):
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
             logger.warning(f"USM {action}：未找到弹窗，可能已自动完成")
             return
 
         # 前端使用 el-radio-button，匹配包含指定时长的按钮
         radio_btn = dialog.locator(".el-radio-button").filter(has_text=duration).first
-        if radio_btn.count() > 0 and radio_btn.is_visible(timeout=2000):
-            radio_btn.click()
-            logger.info(f"USM {action}：已选择 {duration} 购买时长（el-radio-button）")
-            self.page.wait_for_timeout(500)
+        if radio_btn.count() > 0:
+            try:
+                radio_btn.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if radio_btn.is_visible():
+                        radio_btn.click()
+                        logger.info(f"USM {action}：已选择 {duration} 购买时长（el-radio-button）")
+                        self.page.wait_for_timeout(500)
         else:
             # 兜底：通过 is-active 类验证是否已默认选中
             active_btn = dialog.locator(".el-radio-button.is-active").first
@@ -858,17 +913,22 @@ class UsmPage(UsmAssertionMixin, BasePage):
                         "平台地址", "USM地址", "系统地址", "外链", "外部链接", "打开", "进入"]:
             try:
                 label = self.get_by_text(keyword, exact=False).first
-                if label.count() > 0 and label.is_visible(timeout=2000):
-                    for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
-                        parent = label.locator(ancestor).first
-                        if parent.count() > 0:
-                            link = parent.locator("a[href^='http']").first
-                            if link.count() > 0 and link.is_visible():
-                                return link.get_attribute("href")
-                            text = parent.inner_text()
-                            url_match = re.search(r"https?://[^\s\n]+", text)
-                            if url_match:
-                                return url_match.group(0)
+                if label.count() > 0:
+                    try:
+                        label.wait_for(timeout=2000)
+                    except Exception:
+                        pass
+                    if label.is_visible():
+                                        for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
+                                            parent = label.locator(ancestor).first
+                                            if parent.count() > 0:
+                                                link = parent.locator("a[href^='http']").first
+                                                if link.count() > 0 and link.is_visible():
+                                                    return link.get_attribute("href")
+                                                text = parent.inner_text()
+                                                url_match = re.search(r"https?://[^\s\n]+", text)
+                                                if url_match:
+                                                    return url_match.group(0)
             except Exception:
                 continue
 
@@ -921,26 +981,31 @@ class UsmPage(UsmAssertionMixin, BasePage):
                          "打开", "进入平台", "获取链接", "更新链接", "平台入口"]:
             try:
                 btn = self.get_by_text(btn_text, exact=False).first
-                if btn.count() > 0 and btn.is_visible(timeout=2000):
-                    logger.info(f"USM 发现可能生成跳转地址的按钮: '{btn_text}'，尝试点击")
-                    btn.click()
-                    self.page.wait_for_timeout(3000)
-                    # 点击后重新搜索URL
-                    body_text = self.page.inner_text("body")
-                    urls = re.findall(r'https?://[^\s\n<>"]+', body_text)
-                    for url in urls:
-                        if "172.22" in url or ":30000" in url or "usm" in url.lower() or "openapiOAuth" in url:
-                            logger.info(f"USM 点击按钮后发现跳转地址: {url}")
-                            return url
-                    # 也搜索input
-                    for selector in ["input[readonly]", ".el-input__inner"]:
-                        inputs = self.page.locator(selector).all()
-                        for inp in inputs:
-                            if inp.is_visible():
-                                val = inp.input_value() or inp.get_attribute("value") or ""
-                                if val and (val.startswith("http") or "openapiOAuth" in val):
-                                    logger.info(f"USM 点击按钮后从input发现跳转地址: {val}")
-                                    return val
+                if btn.count() > 0:
+                    try:
+                        btn.wait_for(timeout=2000)
+                    except Exception:
+                        pass
+                    if btn.is_visible():
+                                        logger.info(f"USM 发现可能生成跳转地址的按钮: '{btn_text}'，尝试点击")
+                                        btn.click()
+                                        self.page.wait_for_timeout(3000)
+                                        # 点击后重新搜索URL
+                                        body_text = self.page.inner_text("body")
+                                        urls = re.findall(r'https?://[^\s\n<>"]+', body_text)
+                                        for url in urls:
+                                            if "172.22" in url or ":30000" in url or "usm" in url.lower() or "openapiOAuth" in url:
+                                                logger.info(f"USM 点击按钮后发现跳转地址: {url}")
+                                                return url
+                                        # 也搜索input
+                                        for selector in ["input[readonly]", ".el-input__inner"]:
+                                            inputs = self.page.locator(selector).all()
+                                            for inp in inputs:
+                                                if inp.is_visible():
+                                                    val = inp.input_value() or inp.get_attribute("value") or ""
+                                                    if val and (val.startswith("http") or "openapiOAuth" in val):
+                                                        logger.info(f"USM 点击按钮后从input发现跳转地址: {val}")
+                                                        return val
             except Exception:
                 continue
 
@@ -1356,15 +1421,20 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 new_page.wait_for_timeout(2000)
                 # 检查是否是证书警告页
                 adv_btn = new_page.get_by_text("高级", exact=False).first
-                if adv_btn.count() > 0 and adv_btn.is_visible(timeout=3000):
-                    logger.info("USM 跳转地址：检测到证书警告页，点击高级按钮")
-                    adv_btn.click()
-                    new_page.wait_for_timeout(2000)
-                    proceed = new_page.get_by_text(re.compile(r"继续前往|继续访问|Proceed"), exact=False).first
-                    if proceed.count() > 0:
-                        proceed.click()
-                        logger.info("USM 跳转地址：已点击继续前往，等待页面加载")
-                        new_page.wait_for_timeout(10000)
+                if adv_btn.count() > 0:
+                    try:
+                        adv_btn.wait_for(timeout=3000)
+                    except Exception:
+                        pass
+                    if adv_btn.is_visible():
+                                        logger.info("USM 跳转地址：检测到证书警告页，点击高级按钮")
+                                        adv_btn.click()
+                                        new_page.wait_for_timeout(2000)
+                                        proceed = new_page.get_by_text(re.compile(r"继续前往|继续访问|Proceed"), exact=False).first
+                                        if proceed.count() > 0:
+                                            proceed.click()
+                                            logger.info("USM 跳转地址：已点击继续前往，等待页面加载")
+                                            new_page.wait_for_timeout(10000)
             except Exception:
                 pass
 
@@ -1415,9 +1485,14 @@ class UsmPage(UsmAssertionMixin, BasePage):
             has_dasusm = False
             try:
                 das_label = new_page.get_by_text("DASUSM", exact=False).first
-                if das_label.count() > 0 and das_label.is_visible(timeout=5000):
-                    has_dasusm = True
-                    logger.info("USM 跳转地址：页面验证通过，包含 DASUSM")
+                if das_label.count() > 0:
+                    try:
+                        das_label.wait_for(timeout=5000)
+                    except Exception:
+                        pass
+                    if das_label.is_visible():
+                                        has_dasusm = True
+                                        logger.info("USM 跳转地址：页面验证通过，包含 DASUSM")
             except Exception:
                 pass
 
@@ -1569,14 +1644,19 @@ class UsmPage(UsmAssertionMixin, BasePage):
         # 处理项目选择弹窗（若跳转后先弹出"可选项目"）
         try:
             project_dialog = page.locator("text=可选项目, text=项目选择").first
-            if project_dialog.count() > 0 and project_dialog.is_visible(timeout=3000):
-                for confirm_text in ["确定", "确认", "进入"]:
-                    btn = page.get_by_text(confirm_text, exact=True).first
-                    if btn.count() > 0 and btn.is_visible(timeout=1000):
-                        btn.click()
-                        page.wait_for_timeout(3000)
-                        logger.info(f"USM 跳转页面：点击项目选择弹窗 '{confirm_text}'")
-                        break
+            if project_dialog.count() > 0:
+                try:
+                    project_dialog.wait_for(timeout=3000)
+                except Exception:
+                    pass
+                if project_dialog.is_visible():
+                                for confirm_text in ["确定", "确认", "进入"]:
+                                    btn = page.get_by_text(confirm_text, exact=True).first
+                                    if btn.count() > 0 and btn.is_visible(timeout=1000):
+                                        btn.click()
+                                        page.wait_for_timeout(3000)
+                                        logger.info(f"USM 跳转页面：点击项目选择弹窗 '{confirm_text}'")
+                                        break
         except Exception:
             pass
 
@@ -1779,13 +1859,18 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         # 验证顶部提示信息
         alert = dialog.locator(".sugon-alert, .el-alert").first
-        if alert.count() > 0 and alert.is_visible(timeout=3000):
-            alert_text = alert.inner_text()
-            assert "关机" in alert_text and "再启动" in alert_text, \
-                f"提示信息缺少关机和再启动提醒: {alert_text}"
-            assert "云硬盘" in alert_text, \
-                f"提示信息缺少云硬盘大小提示: {alert_text}"
-            logger.info(f"USM 规格升级：提示信息验证通过")
+        if alert.count() > 0:
+            try:
+                alert.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if alert.is_visible():
+                        alert_text = alert.inner_text()
+                        assert "关机" in alert_text and "再启动" in alert_text, \
+                            f"提示信息缺少关机和再启动提醒: {alert_text}"
+                        assert "云硬盘" in alert_text, \
+                            f"提示信息缺少云硬盘大小提示: {alert_text}"
+                        logger.info(f"USM 规格升级：提示信息验证通过")
         else:
             logger.warning("USM 规格升级：未找到 alert 提示信息，跳过验证")
 
@@ -1827,7 +1912,12 @@ class UsmPage(UsmAssertionMixin, BasePage):
             raise Exception("未找到可选的更高规格")
 
         confirm_btn = dialog.locator(".cloud-button-btn").filter(has_text="确定").first
-        if confirm_btn.count() == 0 or not confirm_btn.is_visible(timeout=3000):
+        if confirm_btn.count() == 0:
+            try:
+                confirm_btn.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到规格升级弹窗的确定按钮")
         confirm_btn.click()
         logger.info(f"USM 实例 {name} 规格升级请求已提交")
