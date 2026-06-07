@@ -3,7 +3,6 @@
 按照 fixture_spec.md 规范：helper 负责组装创建/删除的完整流程，
 封装多步 Page Object 调用，不包含 yield 和 fixture 依赖注入。
 """
-import time
 from typing import Any
 
 from sugon_web.utils.logger import logger
@@ -38,16 +37,7 @@ def create_vdb_instance(page, vdb_page, name: str) -> dict[str, Any]:
             raise
 
     vdb_page.vdb_to_details(name)
-    vdb_page.wait_for_page_ready()
-    start = time.time()
-    while time.time() - start < 30:
-        try:
-            body = vdb_page.get_detail_body_text()
-            if "跳转地址" in body and len(body) > 500:
-                break
-        except Exception:
-            pass
-        time.sleep(2)
+    page.wait_for_timeout(30000)
     new_page = vdb_page.vdb_open_jump_address()
     jump_ok = False
     if new_page and new_page.url:

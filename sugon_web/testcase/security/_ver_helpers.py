@@ -3,7 +3,6 @@
 按照 fixture_spec.md 规范：helper 负责组装创建/删除的完整流程，
 封装多步 Page Object 调用，不包含 yield 和 fixture 依赖注入。
 """
-import time
 from typing import Any
 
 from sugon_web.utils.logger import logger
@@ -37,18 +36,9 @@ def create_ver_instance(page, ver_page, name: str) -> dict[str, Any]:
                 continue
             raise
 
-    # 验证跳转地址——进入详情页后等待详情页渲染就绪
+    # 验证跳转地址——进入详情页获取 token 后等待渲染
     ver_page.ver_to_details(name)
-    ver_page.wait_for_page_ready()
-    start = time.time()
-    while time.time() - start < 30:
-        try:
-            body = ver_page.get_detail_body_text()
-            if "跳转地址" in body and len(body) > 500:
-                break
-        except Exception:
-            pass
-        time.sleep(2)
+    page.wait_for_timeout(30000)
     new_page = ver_page.ver_open_jump_address()
     jump_ok = False
     if new_page and new_page.url:

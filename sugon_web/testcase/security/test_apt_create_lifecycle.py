@@ -1,3 +1,4 @@
+import time
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger

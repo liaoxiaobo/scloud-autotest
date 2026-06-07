@@ -1,4 +1,5 @@
 import re
+import time
 
 import allure
 import pytest
@@ -23,7 +24,7 @@ class TestVdbOperations:
 
         with allure_step_log(f"步骤1: 进入实例详情页查看信息"):
             vdb_page.vdb_to_details(name)
-            body_text = vdb_page.get_detail_body_text()
+            body_text = vdb_page.page.inner_text("body")
             logger.info("详情页信息已获取")
             vdb_page.goto_list_page()
 
@@ -58,7 +59,7 @@ class TestVdbOperations:
 
         with allure_step_log(f"步骤4: 验证退订后详情页信息"):
             vdb_page.vdb_to_details(name)
-            body_text = vdb_page.get_detail_body_text()
+            body_text = vdb_page.page.inner_text("body")
             assert "--" in body_text, "退订后详情页未显示'--'（跳转地址或到期时间）"
             logger.info("退订后详情页验证通过：跳转地址和到期时间显示为'--'")
             vdb_page.goto_list_page()
@@ -217,7 +218,7 @@ class TestVdbOperations:
         with allure_step_log(f"步骤1: 进入详情页查看云硬盘大小"):
             vdb_page.goto_list_page()
             vdb_page.vdb_to_details(name)
-            body_text = vdb_page.get_detail_body_text()
+            body_text = vdb_page.page.inner_text("body")
             vol_match = re.search(r"(\d+)\s*GiB", body_text)
             current_size = int(vol_match.group(1)) if vol_match else None
             logger.info(f"VDB 实例 {name} 当前云硬盘大小: {current_size}GiB")
@@ -296,6 +297,6 @@ class TestVdbOperations:
 
         with allure_step_log("步骤3: 验证详情页名称一致"):
             vdb_page.vdb_to_details(new_name)
-            body_text = vdb_page.get_detail_body_text()
+            body_text = vdb_page.page.inner_text("body")
             assert new_name in body_text, f"详情页未显示修改后的名称: {new_name}"
             logger.info("详情页验证通过: 名称与修改后一致")
