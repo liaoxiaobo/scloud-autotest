@@ -51,10 +51,11 @@ class TestBmsBindEip:
             with allure_step_log("步骤4: 公网IP连通性验证"):
                 ssh_host.ping(bound_ip, connected=True, count=10, retries=5)
 
-            # 步骤5：SSH登录验证
+            # 步骤5：SSH登录验证（通过跳板机 172.22.3.160 连接 BMS FIP）
             with allure_step_log("步骤5: SSH登录验证"):
                 bms_ssh = SSH()
-                bms_ssh.connect(bound_ip, username="root", pwd=bms_password, use_jumphost=False)
+                bms_ssh.jumphost_client = ssh_host.ssh_client
+                bms_ssh.connect(bound_ip, username="root", pwd=bms_password, use_jumphost=True)
                 logger.info(f"SSH连接裸金属实例 {bound_ip} 成功")
 
                 # 步骤6：系统信息验证
