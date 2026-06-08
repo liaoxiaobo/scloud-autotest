@@ -2,7 +2,7 @@ import random
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.iam.iam import IamPage
 from sugon_web.config.config import Config
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.utils.logger import logger
 
 
