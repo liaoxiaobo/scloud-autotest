@@ -171,6 +171,15 @@ class IamPage(BasePage):
         except Exception:
             pass
 
+        # 等待表格数据加载完成（Jenkins 环境渲染较慢）
+        try:
+            self.page.wait_for_selector(
+                ".el-table__row, .el-table__empty-text, .el-table__empty-block",
+                timeout=30000
+            )
+        except Exception:
+            pass
+
     def _open_create_user_dialog(self, target_org: str = None):
         """点击创建用户按钮，等待弹窗出现。"""
         self._navigate_to_user_management(target_org=target_org)
