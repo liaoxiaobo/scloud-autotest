@@ -111,7 +111,7 @@ class TestAclTime:
             iam_page.iam_set_access_control(disp, target_org=child_org, ip="",
                                             start_date=today, end_date=tomorrow,
                                             time_day=now.weekday(), time_hour=now.hour)
-            iam_page.page.wait_for_timeout(3000)
+            iam_page.wait_for_page_ready()
         with allure_step_log("步骤2: 验证登录成功"):
             assert verify_login(iam_page.page, u, p, expect_success=True)
 
@@ -131,7 +131,7 @@ class TestAclTime:
             iam_page.iam_set_access_control(disp, target_org=child_org, ip="",
                                             start_date=today, end_date=tomorrow,
                                             time_day=mismatch_day, time_hour=mismatch_hour)
-            iam_page.page.wait_for_timeout(3000)
+            iam_page.wait_for_page_ready()
         with allure_step_log("步骤2: 验证登录失败"):
             assert verify_login(iam_page.page, u, p, expect_success=False)
 

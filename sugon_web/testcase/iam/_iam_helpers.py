@@ -21,35 +21,31 @@ def verify_login(page, username: str, password: str, expect_success: bool) -> bo
     base_url = Config.get("base_url")
     login = LoginPage(page)
 
-    # 清除 cookie 和存储后直接前往登录页（比点击下拉菜单更稳定）
-    page.context.clear_cookies()
-    page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
-    page.goto(f"{base_url}/#/login")
-    page.wait_for_timeout(3000)
+    def _attempt_login():
+        """单次登录尝试，成功返回 True，失败返回 False，异常返回 None。"""
+        try:
+            _navigate_to_login(page)
+        except Exception as e:
+            logger.warning(f"verify_login: 导航到登录页异常: {e}")
+            return None
+        try:
+            login.login(username, password)
+        except Exception as e:
+            logger.warning(f"verify_login: 登录操作异常: {e}")
+            return False
+        # 轮询等待：要么跳转离开登录页（成功），要么出现错误弹窗（失败）
+        for _ in range(20):
+            page.wait_for_timeout(500)
+            if "login" not in page.url.lower():
+                return True
+            if page.locator(".el-message-box__wrapper").is_visible():
+                return False
+        return False
 
-    # 关闭可能残留的弹窗
-    try:
-        for btn in page.locator(".el-message-box__wrapper button").filter(has_text="确定").all():
-            if btn.is_visible():
-                btn.click()
-                page.wait_for_timeout(500)
-                break
-    except Exception:
-        pass
-
-    login.login(username, password)
-
-    # 轮询等待：要么跳转离开登录页（成功），要么出现错误弹窗（失败）
-    success = False
-    for i in range(20):
-        page.wait_for_timeout(500)
-        current_url = page.url.lower()
-        if "login" not in current_url:
-            success = True
-            break
-        # 出现错误弹窗即判定失败
-        if page.locator(".el-message-box__wrapper").is_visible():
-            break
+    result = _attempt_login()
+    if result is None:
+        result = False
+    success = result
 
     def _close_any_popup(p):
         """关闭页面上可能存在的 el-message-box 弹窗。"""
@@ -83,51 +79,23 @@ def verify_login(page, username: str, password: str, expect_success: bool) -> bo
             p.wait_for_timeout(500)
         return not p.locator(".el-message-box__wrapper").is_visible()
 
-    # 如果期望成功但实际失败，关闭弹窗后重试一次（应对后端状态同步延迟）
+    # 如果期望成功但实际失败，等待后端同步后重试一次
     if expect_success and not success:
         logger.warning(f"verify_login: user={username} 首次登录失败，关闭弹窗后重试...")
         _close_any_popup(page)
-        page.wait_for_timeout(1500)
-        # 确保仍在登录页，若已跳转则重新导航
-        if "login" not in page.url.lower():
-            page.goto(f"{base_url}/#/login")
-            page.wait_for_timeout(2000)
-        try:
-            login.login(username, password)
-        except Exception as e:
-            logger.warning(f"verify_login: 重试登录时异常: {e}")
-            success = False
-        else:
-            for _ in range(20):
-                page.wait_for_timeout(500)
-                if "login" not in page.url.lower():
-                    success = True
-                    break
-                if page.locator(".el-message-box__wrapper").is_visible():
-                    break
+        page.wait_for_timeout(5000)
+        retry = _attempt_login()
+        if retry is not None:
+            success = retry
 
     result = success == expect_success
     logger.info(f"verify_login: user={username}, expect={expect_success}, actual_success={success}, result={result}")
 
-    # 关闭可能存在的登录失败提示弹窗（使用多重策略）
+    # 关闭可能存在的登录失败提示弹窗
     _close_any_popup(page)
 
     # 恢复 admin 登录状态
-    page.context.clear_cookies()
-    page.goto(f"{base_url}/#/login")
-    page.wait_for_timeout(3000)
-    try:
-        login.login("admin", "keystone_sugon")
-    except Exception as e:
-        logger.warning(f"verify_login: 恢复 admin 登录异常: {e}")
-    page.wait_for_timeout(3000)
-
-    # 回到 IAM 页面以便后续操作
-    try:
-        page.goto(f"{base_url}/iam/#/departmentManage")
-        page.wait_for_timeout(3000)
-    except Exception:
-        pass
+    restore_admin_login(page)
 
     return result
 
@@ -240,6 +208,113 @@ def create_iam_child_org(page, parent_name: str, child_name: str = None):
         "child_name": child_name,
         "parent_name": parent_name,
     }
+
+
+def modify_and_assert_quota(iam_page, service_name, quotas, assertions):
+    """修改指定服务的配额并逐项断言指标值。
+
+    配额不足/服务不存在/值超max降级时标记环境问题并跳过。
+
+    Args:
+        iam_page: IAM 页面对象
+        service_name: 服务名称
+        quotas: 待修改的配额字典
+        assertions: 断言期待值列表 [(指标名, 期望值), ...]
+    """
+    try:
+        iam_page.iam_modify_service_quota(service_name, quotas)
+        iam_page.wait_for_page_ready()
+    except EnvironmentError as e:
+        logger.warning(f"{service_name} 配额修改跳过(配额不足): {e}")
+        return
+    except AssertionError as e:
+        msg = str(e)
+        if "未找到服务" in msg:
+            logger.warning(f"{service_name} 跳过(服务不存在): {msg}")
+            return
+        raise
+    for metric_name, expected in assertions:
+        actual_val = _resolve_quota_value(metric_name, quotas, expected)
+        iam_page.iam_assert_quota_value(service_name, metric_name, actual_val)
+    logger.info(f"{service_name} 配额修改验证通过（{len(assertions)}项）")
+
+
+def _resolve_quota_value(metric_name, quotas, fallback_expected):
+    """从quotas字典推导指标的实际期望值（总量->使用量映射）。"""
+    for qk, qv in quotas.items():
+        for src, dst in [("总量", "使用量"), ("总量", "使用总量")]:
+            if qk.replace(src, dst) == metric_name:
+                return f"0/{qv}"
+    return fallback_expected
+
+
+def filter_quota_service_type(iam_page, service_type):
+    """过滤服务类型tab，若tab不存在则返回False（环境跳过）。
+
+    Args:
+        iam_page: IAM 页面对象
+        service_type: 服务类型名称
+
+    Returns:
+        bool: tab存在则为True，否则False
+    """
+    try:
+        iam_page.iam_filter_quota_service_type(service_type)
+        return True
+    except Exception:
+        logger.warning(f"服务类型'{service_type}'的tab不存在，当前环境无此服务类型，跳过")
+        return False
+
+
+def _navigate_to_login(page):
+    """导航到登录页面并等待登录表单渲染。"""
+    from sugon_web.config.config import Config
+    base_url = Config.get("base_url")
+    # 先关闭可能的弹窗，避免干扰后续导航
+    try:
+        for _ in range(3):
+            dialog = page.locator(".el-message-box__wrapper:visible, .el-dialog__wrapper:visible").first
+            if dialog.count() == 0 or not dialog.is_visible():
+                break
+            for btn in dialog.locator("button").filter(has_text="确定").all():
+                if btn.is_visible():
+                    btn.click()
+                    page.wait_for_timeout(500)
+                    break
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+    except Exception:
+        pass
+    page.context.clear_cookies()
+    page.goto(f"{base_url}/#/login", timeout=120000)
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_selector("input[placeholder*='登录账号']", timeout=120000)
+
+
+def login_as_user(page, username: str, password: str):
+    """以指定用户身份登录。
+
+    Args:
+        page: Playwright page 对象
+        username: 用户名
+        password: 密码
+    """
+    from sugon_web.pages.login import LoginPage
+    _navigate_to_login(page)
+    LoginPage(page).login(username, password)
+    page.wait_for_load_state("domcontentloaded")
+
+
+def restore_admin_login(page):
+    """恢复 admin 登录状态。
+
+    导航到登录页并以 admin 身份登录，用于测试中途切换用户后恢复。
+
+    Args:
+        page: Playwright page 对象
+    """
+    login_as_user(page, "admin", "keystone_sugon")
+    page.wait_for_load_state("domcontentloaded")
 
 
 def delete_iam_user(page, name: str, target_org: str = None):

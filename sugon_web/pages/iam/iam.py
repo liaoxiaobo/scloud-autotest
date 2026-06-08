@@ -421,6 +421,7 @@ class IamPage(BasePage):
             dict: 若 role="__non_default__"，返回 {"role": <选中的角色名>}，否则返回 {}
         """
         self._navigate_to_user_management(target_org)
+        self.wait_for_page_ready()
         self.click_action(name, "修改用户")
         self.page.wait_for_timeout(500)
 
@@ -482,7 +483,11 @@ class IamPage(BasePage):
         """在弹窗角色下拉中选择角色。返回实际选中的角色名。"""
         form_item = dialog.locator(".el-form-item").filter(has_text="角色绑定")
         form_item.locator(".el-select").first.click()
-        self.page.wait_for_timeout(500)
+        # 等待下拉选项渲染完成
+        try:
+            self.page.wait_for_selector(".el-select-dropdown:visible li", timeout=10000)
+        except Exception:
+            pass
         all_roles = self.locator(".el-select-dropdown:visible li")
         if role_name == "__non_default__":
             selected = None
@@ -1349,6 +1354,70 @@ class IamPage(BasePage):
                 return
             self.page.wait_for_timeout(1000)
         assert node.count() > 0, f"组织结构树中未找到组织 {org_name}"
+
+    def assert_page_content_contains(self, texts: list, timeout: int = 60):
+        """断言页面内容包含指定关键词之一，支持轮询等待子应用渲染。
+
+        Args:
+            texts: 期望出现的关键词列表（任一匹配即通过）
+            timeout: 最长等待时间（秒）
+        """
+        import time as _time
+        deadline = _time.time() + timeout
+        last_content = ""
+        while _time.time() < deadline:
+            content = self.page.content()
+            for text in texts:
+                if text in content:
+                    self.logger.info(f"页面内容验证通过: 找到 '{text}'")
+                    return
+            last_content = content
+            _time.sleep(1)
+        raise AssertionError(
+            f"页面内容轮询超时({timeout}s)，未找到 {texts}，"
+            f"当前内容前500字符: {last_content[:500]}"
+        )
+
+    def iam_assert_page_title(self):
+        """断言当前页面为 IAM 页面（通过标题或 URL 判断）。"""
+        title_el = self.page.locator(".cloud-page-header-title, .page-title, h1").first
+        if title_el.count() > 0:
+            title_text = title_el.inner_text()
+            if "统一身份认证" in title_text or "IAM" in title_text:
+                return
+        assert "iam" in self.page.url.lower(), \
+            f"未进入IAM页面，当前 URL: {self.page.url}"
+
+    def iam_click_org_in_tree(self, org_name: str):
+        """在组织结构树中点击指定组织节点以展开其子节点。
+
+        Args:
+            org_name: 要点击的组织名称
+        """
+        tree = self.page.locator("#iam-department")
+        node = tree.locator(".depart_name").filter(has_text=org_name)
+        self.page.wait_for_timeout(1000)
+        assert node.count() > 0, f"组织树中未找到节点 {org_name}"
+        node.first.click()
+        self.page.wait_for_timeout(1500)
+
+    def iam_assert_org_node_exists(self, org_name: str, visible_after_expand: bool = False):
+        """断言组织节点在树中存在。若 visible_after_expand=True，最多轮询 5 次。
+
+        Args:
+            org_name: 组织名称
+            visible_after_expand: 是否需要在展开父节点后等待可见
+        """
+        tree = self.page.locator("#iam-department")
+        node = tree.locator(".depart_name").filter(has_text=org_name)
+        if not visible_after_expand:
+            assert node.count() > 0, f"组织树中未找到 {org_name}"
+            return
+        for _ in range(5):
+            if node.count() > 0:
+                return
+            self.page.wait_for_timeout(1500)
+        assert node.count() > 0, f"组织树中未找到 {org_name}"
 
     def iam_modify_organization(self, org_name: str, new_name: str):
         """修改指定组织的名称。

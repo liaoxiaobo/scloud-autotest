@@ -48,7 +48,7 @@ class TestIamUserBasicOps:
 
         with allure_step_log(f"步骤1: 重置用户 {disp} 的密码"):
             iam_page.iam_reset_password(disp, new_password)
-            iam_page.page.wait_for_timeout(5000)
+            iam_page.wait_for_page_ready()
         # 先更新密码记录，确保即使后续验证失败，fixture 也知道新密码
         iam_shared_user["password"] = new_password
 
