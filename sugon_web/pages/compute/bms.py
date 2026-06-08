@@ -1390,6 +1390,22 @@ class BmsPage(BasePage):
         if not row:
             raise Exception(f"未找到实例 '{instance_name}'")
 
+        # 预安装 echarts.init 拦截器，记录弹窗中创建的实例
+        self.page.evaluate("""() => {
+            if (!window._echartsHookInstalled && window.echarts && window.echarts.init) {
+                window._echarts_instances = [];
+                const origInit = window.echarts.init;
+                window.echarts.init = function(dom, theme, opts) {
+                    const inst = origInit.apply(this, arguments);
+                    if (inst && dom) {
+                        window._echarts_instances.push({id: inst.id, domTag: dom.tagName, domClass: dom.className});
+                    }
+                    return inst;
+                };
+                window._echartsHookInstalled = true;
+            }
+        }""")
+
         self._js_click_action(row, "查看监控")
         # 监控图表加载需要时间，给予充足等待
         self.page.wait_for_timeout(5000)
@@ -1413,68 +1429,108 @@ class BmsPage(BasePage):
         mem_value = ""
 
         # 策略1：通过 echarts API 直接读取图表数据
+        # 1a. 先尝试从拦截器记录的实例 ID 读取
+        # 1b. 再尝试标准 getInstanceByDom
         chart_data = self.page.evaluate("""() => {
             const results = [];
-            if (!window.echarts) return results;
-            document.querySelectorAll('canvas').forEach(c => {
-                try {
-                    const ec = window.echarts.getInstanceByDom(c);
-                    if (ec) {
-                        const opt = ec.getOption();
-                        const title = opt.title?.[0]?.text || '';
-                        const seriesData = (opt.series || []).map(s => {
-                            const data = s.data || [];
-                            const last = data[data.length - 1];
-                            return {
-                                name: s.name || '',
-                                lastValue: Array.isArray(last) ? last[1] : last,
-                                dataCount: data.length
-                            };
-                        });
-                        results.push({title, seriesData});
-                    }
-                } catch(e) {}
-            });
-            document.querySelectorAll('[_echarts_instance]').forEach(el => {
-                try {
-                    const id = el.getAttribute('_echarts_instance');
-                    if (id && window.echarts.getInstanceById) {
-                        const ec = window.echarts.getInstanceById(id);
+            if (!window.echarts) return {results, diagnostics: {reason: 'no_echarts'}};
+            const diagnostics = {hookCount: 0, byDomCount: 0, byIdCount: 0, byHookCount: 0, canvasCount: 0, attrCount: 0};
+
+            // 1a. 从拦截器记录的实例 ID 读取
+            if (window._echarts_instances && window._echarts_instances.length > 0) {
+                diagnostics.hookCount = window._echarts_instances.length;
+                for (const rec of window._echarts_instances) {
+                    try {
+                        const ec = window.echarts.getInstanceById(rec.id);
                         if (ec) {
+                            diagnostics.byHookCount++;
                             const opt = ec.getOption();
                             const title = opt.title?.[0]?.text || '';
                             const seriesData = (opt.series || []).map(s => {
                                 const data = s.data || [];
                                 const last = data[data.length - 1];
-                                return {
-                                    name: s.name || '',
-                                    lastValue: Array.isArray(last) ? last[1] : last,
-                                    dataCount: data.length
-                                };
+                                return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                             });
-                            results.push({title, seriesData});
+                            results.push({title, seriesData, source: 'hook'});
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            // 1b. 标准 getInstanceByDom
+            document.querySelectorAll('canvas').forEach(c => {
+                diagnostics.canvasCount++;
+                try {
+                    const ec = window.echarts.getInstanceByDom(c);
+                    if (ec) {
+                        diagnostics.byDomCount++;
+                        const opt = ec.getOption();
+                        const title = opt.title?.[0]?.text || '';
+                        const seriesData = (opt.series || []).map(s => {
+                            const data = s.data || [];
+                            const last = data[data.length - 1];
+                            return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
+                        });
+                        results.push({title, seriesData, source: 'dom'});
+                    }
+                } catch(e) {}
+            });
+
+            // 1c. _echarts_instance 属性
+            document.querySelectorAll('[_echarts_instance]').forEach(el => {
+                diagnostics.attrCount++;
+                try {
+                    const id = el.getAttribute('_echarts_instance');
+                    if (id && window.echarts.getInstanceById) {
+                        const ec = window.echarts.getInstanceById(id);
+                        if (ec) {
+                            diagnostics.byIdCount++;
+                            const opt = ec.getOption();
+                            const title = opt.title?.[0]?.text || '';
+                            const seriesData = (opt.series || []).map(s => {
+                                const data = s.data || [];
+                                const last = data[data.length - 1];
+                                return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
+                            });
+                            results.push({title, seriesData, source: 'attr'});
                         }
                     }
                 } catch(e) {}
             });
-            return results;
+
+            return {results, diagnostics};
         }""")
-        logger.info(f"echarts API 读取图表数据: {chart_data}")
+        logger.info(f"echarts 诊断信息: {chart_data.get('diagnostics')}")
+        logger.info(f"echarts API 读取图表数据: {chart_data.get('results')}")
+        chart_data = chart_data.get('results', [])
 
         for chart in chart_data:
             title = chart.get("title", "")
             for s in chart.get("seriesData", []):
                 val = s.get("lastValue")
+                series_name = s.get("name", "")
                 if val is not None and str(val) != "":
                     val_str = str(val)
-                    if "CPU使用率" in title or ("CPU" in title and "使用率" in title):
-                        if not cpu_value:
-                            cpu_value = val_str + "%" if "%" not in val_str else val_str
-                            logger.info(f"从echarts获取CPU [{title}]: {cpu_value}")
-                    elif "内存使用率" in title or ("内存" in title and "使用率" in title):
-                        if not mem_value:
-                            mem_value = val_str + "%" if "%" not in val_str else val_str
-                            logger.info(f"从echarts获取内存 [{title}]: {mem_value}")
+                    # 通过 title 或 series name 匹配 CPU 使用率
+                    is_cpu = (
+                        "CPU使用率" in title
+                        or ("CPU" in title and "使用率" in title)
+                        or "cpu使用率" in series_name.lower()
+                        or series_name.lower() == "cpu"
+                    )
+                    # 通过 title 或 series name 匹配内存使用率
+                    is_mem = (
+                        "内存使用率" in title
+                        or ("内存" in title and "使用率" in title)
+                        or "内存使用率" in series_name
+                        or series_name.lower() == "memory"
+                    )
+                    if is_cpu and not cpu_value:
+                        cpu_value = val_str + "%" if "%" not in val_str else val_str
+                        logger.info(f"从echarts获取CPU [title={title}, series={series_name}]: {cpu_value}")
+                    elif is_mem and not mem_value:
+                        mem_value = val_str + "%" if "%" not in val_str else val_str
+                        logger.info(f"从echarts获取内存 [title={title}, series={series_name}]: {mem_value}")
 
         # 策略2：悬浮到各个 canvas 图表的多个位置，读取 tooltip
         if not cpu_value or not mem_value:
