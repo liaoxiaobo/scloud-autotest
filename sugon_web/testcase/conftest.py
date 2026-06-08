@@ -945,7 +945,7 @@ def eip(page: Any, request: pytest.FixtureRequest) -> Iterator[str | list[str]]:
         )
 
     count = params.get('count', 1)
-    pool = params.get('pool', 'public_net(基础版)')
+    pool = params.get('pool', Config.get('network'))
     method = params.get('method', '快速选择')
     ip = params.get('ip')
 

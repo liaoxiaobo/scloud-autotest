@@ -1163,17 +1163,20 @@ class BmsPage(BasePage):
 
     # ---- bind / unbind EIP ----
 
-    def bms_instance_bind_eip(self, instance_name: str, pool_name: str = "public_net(基础版)", eip_ip: str = "") -> str:
+    def bms_instance_bind_eip(self, instance_name: str, pool_name: str = None, eip_ip: str = "") -> str:
         """为裸金属实例绑定公网IP。
 
         Args:
             instance_name: 裸金属实例名称
-            pool_name: 资源池名称，默认 "public_net(基础版)"
+            pool_name: 资源池名称，默认从 Config 读取
             eip_ip: 指定要绑定的弹性公网IP，为空则自动选择第一个可用IP
 
         Returns:
             str: 绑定的公网IP地址
         """
+        if pool_name is None:
+            from sugon_web.config.config import Config
+            pool_name = Config.get("network") or "public_net(基础版)"
         self._goto_submenu_safe("裸金属实例")
         row = self._get_row_by_name(instance_name)
         if not row:
