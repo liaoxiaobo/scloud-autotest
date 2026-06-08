@@ -631,7 +631,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         Returns:
             str: 绑定的公网IP地址
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.click_action(name, "绑定公网IP")
         self.page.wait_for_timeout(1000)
         bind_dialog = self.locator(".sugon-dialog").filter(has_text="绑定公网IP")
@@ -733,7 +733,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                self.goto_service(self.service_name)
+                self.goto_list_page()
                 row_data = self.get_row_data(name)
                 network = row_data.get("网络", "")
                 # 解绑后网络列不应包含FIP格式的公网IP地址
@@ -805,7 +805,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                self.goto_service(self.service_name)
+                self.goto_list_page()
                 row_data = self.get_row_data(name)
                 network = row_data.get("网络", "")
                 if eip in network:
@@ -1185,7 +1185,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         self.page.on("response", handle_response)
         try:
-            self.goto_service(self.service_name)
+            self.goto_list_page()
             for _ in range(10):
                 if self.page.locator(".el-table__row").count() > 0:
                     break
@@ -1847,7 +1847,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         Returns:
             bool: True 表示可点击（蓝色链接），False 表示不可点击（黑色文本）
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         row = self.get_row_by_name(name)
         name_cell = row.get_by_text(name, exact=True).first
         try:

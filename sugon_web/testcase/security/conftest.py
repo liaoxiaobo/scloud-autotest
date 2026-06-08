@@ -23,7 +23,7 @@ def usm_instance(browser, config):
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
     usm_page_obj = UsmPage(page)
-    usm_page_obj.goto_service("云堡垒机高级版")
+    usm_page_obj.goto_list_page()  # 原 goto_service("云堡垒机高级版")
 
     name = random_data().replace("autotest-", "autotest-usm-")
     result = None
@@ -58,7 +58,7 @@ def usm_instance(browser, config):
 def apt_page(page):
     """初始化攻击预警APT页对象"""
     page_object = AptPage(page)
-    page_object.goto_service("攻击预警")
+    page_object.goto_list_page()  # 原 goto_service("攻击预警")
     return page_object
 
 
@@ -87,7 +87,7 @@ def ver_instance(browser, config):
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
     ver_page_obj = VerPage(page)
-    ver_page_obj.goto_service("日志审计")
+    ver_page_obj.goto_list_page()  # 原 goto_service("日志审计")
 
     name = random_data().replace("autotest-", "autotest-ver-")
     result = None
@@ -135,7 +135,7 @@ def vdb_instance(browser, config):
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
     vdb_page_obj = VdbPage(page)
-    vdb_page_obj.goto_service("数据库审计")
+    vdb_page_obj.goto_list_page()  # 原 goto_service("数据库审计")
 
     name = random_data().replace("autotest-", "autotest-vdb-")
     result = None
@@ -170,7 +170,7 @@ def vdb_instance(browser, config):
 def ver_page(page):
     """初始化日志审计VER页对象"""
     page_object = VerPage(page)
-    page_object.goto_service("日志审计")
+    page_object.goto_list_page()  # 原 goto_service("日志审计")
     return page_object
 
 
@@ -178,6 +178,6 @@ def ver_page(page):
 def vdb_page(page):
     """初始化数据库审计VDB页对象"""
     page_object = VdbPage(page)
-    page_object.goto_service("数据库审计")
+    page_object.goto_list_page()  # 原 goto_service("数据库审计")
     return page_object
 

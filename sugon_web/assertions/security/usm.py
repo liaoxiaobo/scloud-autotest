@@ -29,7 +29,7 @@ class UsmAssertionMixin:
         authorized = False
         while time.time() - start_time < timeout:
             try:
-                self.goto_service(self.service_name)
+                self.goto_list_page()
                 row_data = self.get_row_data(name)
                 last_data = row_data
                 svc = row_data.get("服务状态", "")

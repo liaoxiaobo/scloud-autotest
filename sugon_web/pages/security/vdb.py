@@ -318,7 +318,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
             logger.info("VDB 创建：页面已自动跳转到列表页")
         except Exception:
             logger.warning("VDB 创建：页面未自动跳转，手动导航到列表页")
-            self.goto_service(self.service_name)
+            self.goto_list_page()
         self.wait_for_page_ready()
 
     def _click_dialog_confirm(self):

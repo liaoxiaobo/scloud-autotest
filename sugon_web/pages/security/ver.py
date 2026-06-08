@@ -327,7 +327,7 @@ class VerPage(VerAssertionMixin, BasePage):
             logger.info("VER 创建：页面已自动跳转到列表页")
         except Exception:
             logger.warning("VER 创建：页面未自动跳转，手动导航到列表页")
-            self.goto_service(self.service_name)
+            self.goto_list_page()
         self.wait_for_page_ready()
 
     def _click_dialog_confirm(self):
@@ -382,7 +382,7 @@ class VerPage(VerAssertionMixin, BasePage):
             name: 实例名称
             action: 操作名称，如"开机"、"关机"、"删除"
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
         try:
@@ -413,7 +413,7 @@ class VerPage(VerAssertionMixin, BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
         try:
@@ -703,7 +703,7 @@ class VerPage(VerAssertionMixin, BasePage):
         Returns:
             bool: True 表示可点击，False 表示不可点击
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         row = self.get_row_by_name(name)
         name_cell = row.get_by_text(name, exact=True).first
         try:
