@@ -331,9 +331,18 @@ class TestBmsSoftCreate:
             bms_page.search(bmc_ip)
             rd = bms_page.get_row_data(bmc_ip)
             reg_status = str(rd.get("状态", "")) if rd else ""
-            if "已使用" in reg_status or "注册完成" in reg_status:
+            cpu = str(rd.get("CPU", "")) if rd else ""
+            mem = str(rd.get("内存", "")) if rd else ""
+            arch = str(rd.get("架构", "")) if rd else ""
+            # 即使状态为"注册完成"，如果关键信息缺失也需重新注册
+            info_complete = cpu and cpu != "--" and mem and mem != "--" and arch and arch != "--"
+            if "已使用" in reg_status:
                 logger.info(f"BMC {bmc_ip} 状态已为 '{reg_status}'，跳过重新注册")
+            elif "注册完成" in reg_status and info_complete:
+                logger.info(f"BMC {bmc_ip} 状态为'{reg_status}'且信息完整(CPU={cpu},内存={mem},架构={arch})，跳过重新注册")
             else:
+                if "注册完成" in reg_status and not info_complete:
+                    logger.info(f"BMC {bmc_ip} 状态为'{reg_status}'但信息不完整(CPU={cpu},内存={mem},架构={arch})，重新注册")
                 bms_page.bms_register_action(bmc_ip)
                 bms_page.page.wait_for_timeout(3000)
                 if not bms_page.bms_register_wait_status(bmc_ip, "就绪", poll_interval=30, max_wait=2400):

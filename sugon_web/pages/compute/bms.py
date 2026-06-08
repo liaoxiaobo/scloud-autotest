@@ -663,6 +663,50 @@ class BmsPage(BasePage):
         logger.info(f"创建实例: {name}")
         self.page.wait_for_timeout(2000)
 
+        # 前置检查：镜像列表和服务器列表必须非空
+        image_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"^镜像$"))
+        try:
+            image_section.locator("table tbody tr").first.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
+        image_rows = image_section.locator("table tbody tr").all()
+        if not image_rows:
+            # 再次尝试 JS 检查
+            has_images = self.page.evaluate("""() => {
+                const items = document.querySelectorAll('.el-form-item');
+                for (const item of items) {
+                    const label = item.querySelector('label');
+                    if (label && label.textContent.trim() === '镜像') {
+                        return item.querySelectorAll('table tbody tr').length > 0;
+                    }
+                }
+                return false;
+            }""")
+            if not has_images:
+                raise RuntimeError("环境缺少裸金属镜像，无法创建实例")
+
+        server_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"服务器"))
+        if server_section.count() == 0:
+            server_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"server", re.IGNORECASE))
+        server_rows = server_section.locator("table tbody tr").all() if server_section.count() > 0 else []
+        if not server_rows:
+            has_servers = self.page.evaluate("""() => {
+                const items = document.querySelectorAll('.el-form-item');
+                for (const item of items) {
+                    const label = item.querySelector('label');
+                    if (label && label.textContent.includes('服务器')) {
+                        const rows = item.querySelectorAll('table tbody tr');
+                        for (const row of rows) {
+                            if (!row.textContent.includes('暂无数据')) return true;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            }""")
+            if not has_servers:
+                raise RuntimeError("环境没有可用的裸金属服务器，无法创建实例")
+
         # 1. 填写名称
         try:
             name_inputs = self.page.locator(".el-form-item").filter(has_text=re.compile(r"^名称$")).locator("input")

@@ -124,15 +124,18 @@ def bms_instance(bms_page):
         network_name="guanyy-vpc",
     ):
         with allure_step_log("步骤13: 创建裸金属实例"):
-            bms_page.bms_instance_create(
-                name=name,
-                image_name=image_name,
-                system_disk=system_disk,
-                password=password,
-                security_group=security_group,
-                server_name=server_name,
-                network_name=network_name,
-            )
+            try:
+                bms_page.bms_instance_create(
+                    name=name,
+                    image_name=image_name,
+                    system_disk=system_disk,
+                    password=password,
+                    security_group=security_group,
+                    server_name=server_name,
+                    network_name=network_name,
+                )
+            except RuntimeError as e:
+                pytest.skip(str(e))
             bms_page.page.wait_for_timeout(3000)
             bms_page._goto_submenu_safe("裸金属实例")
             bms_page.search(name)
