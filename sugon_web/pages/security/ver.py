@@ -18,6 +18,10 @@ class VerPage(VerAssertionMixin, BasePage):
 
     service_name = "日志审计"
 
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
     def goto_list_page(self):
         """导航到 VER 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
         from sugon_web.config.config import Config

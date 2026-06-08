@@ -43,8 +43,7 @@ def create_usm_instance(page, usm_page, name: str) -> dict[str, Any]:
 
     # 验证跳转地址——重新进入详情页获取新 token，避免绑定EIP期间旧token过期
     usm_page.usm_to_details(name)
-    # 进入详情页后等1分钟让跳转地址完全渲染
-    page.wait_for_timeout(60000)
+    usm_page.wait_for_detail_page_ready(timeout=60)
     new_page = usm_page.usm_open_jump_address()
     jump_ok = False
     if new_page and new_page.url:

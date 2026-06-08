@@ -28,6 +28,10 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
     service_name = "云堡垒机高级版"
 
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
     def goto_list_page(self):
         """导航到 USM 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
         from sugon_web.config.config import Config
@@ -597,7 +601,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         body_text = self.page.inner_text("body")
         if name not in body_text:
             self.page.reload()
-            self._wait_for_detail_page_ready()
+            self.wait_for_detail_page_ready()
             self.page.wait_for_timeout(5000)
             # 再次处理弹窗
             for btn_text in ["确定", "确认", "进入"]:
@@ -910,7 +914,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
     def _extract_jump_url(self) -> str | None:
         """从当前详情页提取跳转地址 URL。"""
-        self._wait_for_detail_page_ready()
+        self.wait_for_detail_page_ready()
         self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         self.page.wait_for_timeout(500)
 
@@ -919,7 +923,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         if "未绑定公网IP" in body_text or "暂不可使用" in body_text:
             logger.warning("USM 详情页显示'未绑定公网IP暂不可使用'，刷新页面重试...")
             self.page.reload()
-            self._wait_for_detail_page_ready()
+            self.wait_for_detail_page_ready()
             self.page.wait_for_timeout(3000)
             body_text = self.page.inner_text("body")
 
@@ -1035,7 +1039,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
 
         return None
 
-    def _wait_for_detail_page_ready(self, timeout: int = 60):
+    def wait_for_detail_page_ready(self, timeout: int = 60):
         """等待 USM 详情页加载完成，兼容较慢的后端数据加载。
 
         详情页在实例刚创建/状态变更后可能需要较长时间加载，
@@ -1224,7 +1228,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
             if detail_btn.count() > 0:
                 with self.page.expect_navigation(timeout=30000):
                     detail_btn.click()
-                self._wait_for_detail_page_ready()
+                self.wait_for_detail_page_ready()
                 logger.info(f"USM 实例 {name} 进入详情页（操作按钮），URL: {self.page.url}")
                 return
         except Exception as e:
@@ -1255,7 +1259,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         if server_info and server_info.get("id"):
             params = _build_detail_url(server_info)
             self.page.goto(f"{base}#/usm-version-detail?{params}")
-            self._wait_for_detail_page_ready()
+            self.wait_for_detail_page_ready()
             logger.info(f"USM 实例 {name} 进入详情页（Vue id={server_info.get('id')}），URL: {self.page.url}")
             return
 
@@ -1264,7 +1268,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         if server_info and server_info.get("id"):
             params = _build_detail_url(server_info)
             self.page.goto(f"{base}#/usm-version-detail?{params}")
-            self._wait_for_detail_page_ready()
+            self.wait_for_detail_page_ready()
             logger.info(f"USM 实例 {name} 进入详情页（API id={server_info.get('id')}），URL: {self.page.url}")
             return
 
@@ -1277,7 +1281,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 if href and ("http" in href or "/usm-version-detail" in href):
                     target = href if href.startswith("http") else f"{base}{href}"
                     self.page.goto(target)
-                    self._wait_for_detail_page_ready()
+                    self.wait_for_detail_page_ready()
                     logger.info(f"USM 实例 {name} 进入详情页（href），URL: {self.page.url}")
                     return
         except Exception as e:
@@ -1286,7 +1290,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         # 方法5: 兜底，使用无参详情页
         logger.warning(f"USM 实例 {name} 未找到 server_id，尝试无参详情页")
         self.page.goto(f"{base}#/usm-version-detail")
-        self._wait_for_detail_page_ready()
+        self.wait_for_detail_page_ready()
         logger.info(f"USM 实例 {name} 进入详情页（无参），URL: {self.page.url}")
 
     def usm_get_jump_address_text(self, name: str) -> str:
@@ -1332,7 +1336,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                         params += f"&server_name={quote(server_info['server_name'])}"
                     self.page.goto(f"{base}#/usm-version-detail?{params}")
 
-            self._wait_for_detail_page_ready()
+            self.wait_for_detail_page_ready()
             self._dismiss_visible_dialogs()
             self.page.wait_for_timeout(2000)
 
@@ -1405,7 +1409,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                     self.page.wait_for_timeout(5000)
                 else:
                     self.page.reload()
-                    self._wait_for_detail_page_ready()
+                    self.wait_for_detail_page_ready()
                     self.page.wait_for_timeout(3000)
                 continue
 
@@ -1586,7 +1590,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
                 self.page.reload(wait_until="networkidle", timeout=60000)
             except Exception:
                 pass
-        self._wait_for_detail_page_ready()
+        self.wait_for_detail_page_ready()
 
         # 详情页重新加载后等待跳转地址渲染
         for wait_sec in [10, 15, 20]:
@@ -1976,7 +1980,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
             str: server_id（UUID格式），用于后续 SSH 后端验证
         """
         self.usm_to_details(name)
-        self._wait_for_detail_page_ready()
+        self.wait_for_detail_page_ready()
         # 等待详情页所有异步数据加载完成（云硬盘字段可能靠后渲染）
         self.page.wait_for_timeout(10000)
         try:

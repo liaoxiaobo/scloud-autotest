@@ -66,15 +66,7 @@ def apt_page(page):
 def usm_page(page):
     """初始化云堡垒机高级版USM页对象"""
     page_object = UsmPage(page)
-    page_object.goto_service("云堡垒机高级版")
-    # 等待列表数据加载完成，避免刚进入页面时表格为空导致查找失败
-    for _ in range(10):
-        if page.locator(".el-table__row").count() > 0:
-            break
-        page.wait_for_timeout(2000)
-    else:
-        page.wait_for_selector(".el-table__row", timeout=30000)
-    page.wait_for_timeout(2000)
+    page_object.goto_list_page()
     return page_object
 
 

@@ -18,6 +18,10 @@ class AptPage(AptAssertionMixin, BasePage):
 
     service_name = "攻击预警"
 
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
     def goto_list_page(self):
         """导航到 APT 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
         from sugon_web.config.config import Config
