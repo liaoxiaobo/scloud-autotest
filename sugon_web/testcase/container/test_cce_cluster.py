@@ -155,7 +155,7 @@ class TestCCEClusterList:
             cce_page.assert_popup_success("设置CCE集群时间同步器成功")
 
         with allure_step_log("步骤3: SSH验证新配置生效"):
-            ssh_vm.connect(cce_cluster["mfip"], port=22022, pwd="admin1234@sugon")
+            ssh_vm.connect(cce_cluster["master_mfip"], port=22022, pwd="admin1234@sugon")
             for _ in range(5):
                 result = ssh_vm.run("chronyc sources", return_rc=True)
                 if result["rc"] == 0 and sync_server in result["stdout"]:
@@ -195,8 +195,6 @@ class TestCCEClusterList:
                 cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
         with allure_step_log("步骤3: 批量删除集群"):
-            cce_page.goto_service(cce_page.service_name)
-            cce_page.goto_submenu("集群管理")
             cce_page.cce_batch_delete(cluster_names)
 
         with allure_step_log("步骤4: 验证集群已删除"):
