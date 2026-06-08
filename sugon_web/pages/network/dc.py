@@ -50,26 +50,8 @@ class DcMixin(BasePage):
             return False
 
     def _navigate_to_create_page(self):
-        """导航到物理连接创建页面。兼容列表页弹窗和 viewDc 独立页面两种方式。"""
-        # 先尝试列表页的"新建"按钮（弹窗方式）
-        if self._is_list_page():
-            self.logger.info("检测到列表页，使用弹窗方式创建")
-            create_btn = self.page.locator("#cloud-container-content").get_by_text("新建", exact=True)
-            create_btn.first.click()
-            self.wait_for_page_ready()
-            return "dialog"
-
-        # 尝试 viewDc 的"创建物理连接"按钮（独立页面方式）
-        if self._is_view_dc_page():
-            self.logger.info("检测到 viewDc 空状态页，直接导航到创建页面")
-            base_url = self.page.url.split("#")[0]
-            self.page.goto(f"{base_url}#/physical-connection-add")
-            self.wait_for_page_ready()
-            self.page.wait_for_timeout(2000)
-            return "page"
-
-        # 兜底：直接 URL 导航到创建页面
-        self.logger.info("未检测到创建入口，直接导航到创建页面")
+        """导航到物理连接创建页面。始终使用独立页面方式，避免弹窗模式的不稳定性。"""
+        self.logger.info("直接导航到物理连接创建页面（独立页面方式）")
         base_url = self.page.url.split("#")[0]
         self.page.goto(f"{base_url}#/physical-connection-add")
         self.wait_for_page_ready()
@@ -184,11 +166,10 @@ class DcMixin(BasePage):
             contact_email_input.fill(contact_email)
 
         with allure_step_log("点击立即创建按钮"):
-            # 关闭可能遮挡提交按钮的 tooltip/popover
-            self.page.keyboard.press("Escape")
-            self.page.wait_for_timeout(300)
+            # 等待弹窗完全稳定，避免按钮处于 loading/动画状态
+            self.page.wait_for_timeout(1000)
             submit_btn = ctx.get_by_text("立即创建", exact=True)
-            submit_btn.click()
+            submit_btn.click(force=True)
 
     @submenu("物理连接")
     def dc_physical_connection_terminate(self, name: str):
@@ -378,6 +359,9 @@ class DcMixin(BasePage):
         """
         dialog = self._open_approve_dialog(name)
 
+        # 等待审批弹窗内容完全加载后再开始输入
+        self.page.wait_for_timeout(2000)
+
         self._select_approve_status(dialog, status)
 
         if status == "DONE":
@@ -386,6 +370,12 @@ class DcMixin(BasePage):
             if cluster_name:
                 selected = self._select_cluster(dialog, cluster_name)
                 self.logger.info(f"实际选择的集群: {selected}")
+
+        with allure_step_log("等待审批弹窗加载完成"):
+            # 审批弹窗打开后，确定按钮可能处于 loading 状态（如显示"新建中..."），
+            # 需等待操作完成后再点击
+            self.wait_for_operation_complete(timeout=10)
+            self.page.wait_for_timeout(500)
 
         with allure_step_log("点击确定提交审批"):
             submit_btn = dialog.get_by_text("确定", exact=True)

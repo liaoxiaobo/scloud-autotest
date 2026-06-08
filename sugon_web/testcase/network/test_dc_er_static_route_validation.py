@@ -204,6 +204,7 @@ class TestDCERStaticRouteValidation:
                 dialog = vpc_page.page.locator(".el-dialog__wrapper:visible")
 
                 vpc_page.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
+                vpc_page.page.wait_for_timeout(1000)
 
                 # 选择下一跳类型：企业路由器
                 vpc_page.locator(".el-form-item").filter(
@@ -212,13 +213,12 @@ class TestDCERStaticRouteValidation:
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^企业路由器$")
                 ).first.click()
-                vpc_page.page.wait_for_timeout(500)
+                vpc_page.page.wait_for_timeout(2000)
 
                 # 选择下一跳：ER实例
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
 
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:

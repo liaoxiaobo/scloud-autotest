@@ -109,7 +109,7 @@ class TestDCBgpValidation:
                 contact_email="ll@sugon.com",
                 ha_enable=True,
             )
-            dc_page.assert_popup_success(timeout=10000)
+            dc_page.assert_popup_success(timeout=10)
             dc_page.assert_status(dc_name, status="办理中")
 
             dc_page.dc_physical_connection_approve(
@@ -118,7 +118,7 @@ class TestDCBgpValidation:
                 vlan_code="705",
                 cluster_name="Autotest",
             )
-            dc_page.assert_popup_success(timeout=10000)
+            dc_page.assert_popup_success(timeout=10)
 
         with allure_step_log("前置条件2: 等待物理连接状态变为办结"):
             dc_page.wait_for_physical_connection_status(
@@ -135,7 +135,7 @@ class TestDCBgpValidation:
                 vpc_name=vpc_name,
                 bgp_asn="10000",
             )
-            dc_page.assert_popup_success(timeout=10000)
+            dc_page.assert_popup_success(timeout=10)
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件4: 创建虚拟接口（BGP模式）"):
@@ -151,7 +151,7 @@ class TestDCBgpValidation:
                 bgp_md5_password="123123",
                 subnet_index=0,
             )
-            dc_page.assert_popup_success(timeout=10000)
+            dc_page.assert_popup_success(timeout=10)
 
         with allure_step_log("前置条件4.5: 等待虚拟接口状态变为运行中"):
             dc_page.assert_status(
@@ -179,18 +179,18 @@ class TestDCBgpValidation:
                 dialog = vpc_page.page.locator(".el-dialog__wrapper:visible")
 
                 vpc_page.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
-
+                vpc_page.page.wait_for_timeout(1000)
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text="下一跳类型")
                 ).get_by_placeholder("请选择").click()
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^云专线$")
                 ).first.click()
+                vpc_page.page.wait_for_timeout(2000)
 
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
 
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:

@@ -680,10 +680,12 @@ class VpcMixin(BasePage):
             self.locator("li").filter(has_text=ip_version).click()
 
         self.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
+        self.page.wait_for_timeout(1000)
 
         if next_hop_type != "ECS实例":
             self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text="下一跳类型")).get_by_placeholder("请选择").click()
             self.locator("li").filter(has_text=re.compile(f"^{next_hop_type}$")).click()
+            self.page.wait_for_timeout(2000)
 
         self.locator(".el-form-item").filter(has=self.locator("label").filter(has_text=re.compile(r"^下一跳$"))).get_by_placeholder("请选择").click()
         self.locator("li").filter(has_text=next_hop).first.click()
@@ -714,6 +716,7 @@ class VpcMixin(BasePage):
                 has=self.locator("label").filter(has_text="下一跳类型")
             ).get_by_placeholder("请选择").click()
             self.locator("li").filter(has_text=re.compile(f"^{new_next_hop_type}$")).click()
+            self.page.wait_for_timeout(2000)
 
         if new_next_hop is not None:
             dialog.locator(".el-form-item").filter(

@@ -429,6 +429,7 @@ class ErMixin(BasePage):
                 dest_input = dialog_body.get_by_placeholder("必填 如：10.0.13.0/24")
                 expect(dest_input).to_be_visible(timeout=5000)
                 dest_input.fill(destination)
+                self.page.wait_for_timeout(1000)
 
             # 选择下一跳类型
             with allure_step_log(f"选择下一跳类型: {next_hop_type}"):

@@ -180,19 +180,18 @@ class TestDCStaticRouteValidation:
                 dialog = vpc_page.page.locator(".el-dialog__wrapper:visible")
 
                 vpc_page.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
-
+                vpc_page.page.wait_for_timeout(1000)
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text="下一跳类型")
                 ).get_by_placeholder("请选择").click()
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^云专线$")
                 ).first.click()
-                vpc_page.page.wait_for_timeout(500)
+                vpc_page.page.wait_for_timeout(2000)
 
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
 
                 # 精确定位下拉框内的选项（先找可见下拉框，再在其内部匹配选项）
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
