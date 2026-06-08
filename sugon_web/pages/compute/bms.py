@@ -1411,7 +1411,7 @@ class BmsPage(BasePage):
 
         self._js_click_action(row, "查看监控")
         # 监控图表加载需要时间，Jenkins 环境给予更充足等待
-        self.page.wait_for_timeout(8000)
+        self.page.wait_for_timeout(15000)
 
         # 监控可能是弹窗或新页面，优先查找弹窗
         monitor_dlg = self.page.locator('[role="dialog"]').filter(
