@@ -1410,8 +1410,8 @@ class BmsPage(BasePage):
         }""")
 
         self._js_click_action(row, "查看监控")
-        # 监控图表加载需要时间，给予充足等待
-        self.page.wait_for_timeout(5000)
+        # 监控图表加载需要时间，Jenkins 环境给予更充足等待
+        self.page.wait_for_timeout(8000)
 
         # 监控可能是弹窗或新页面，优先查找弹窗
         monitor_dlg = self.page.locator('[role="dialog"]').filter(
@@ -1432,14 +1432,21 @@ class BmsPage(BasePage):
         mem_value = ""
 
         # 策略1：通过 echarts API 直接读取图表数据
-        # 1a. 先尝试从拦截器记录的实例 ID 读取
+        # 1a. 先尝试从拦截器记录的实例 ID 读取（优先读取当前可见区域的）
         # 1b. 再尝试标准 getInstanceByDom
         chart_data = self.page.evaluate("""() => {
             const results = [];
             if (!window.echarts) return {results, diagnostics: {reason: 'no_echarts'}};
-            const diagnostics = {hookCount: 0, byDomCount: 0, byIdCount: 0, byHookCount: 0, canvasCount: 0, attrCount: 0};
+            const diagnostics = {hookCount: 0, byDomCount: 0, byIdCount: 0, byHookCount: 0, visibleHookCount: 0, canvasCount: 0, attrCount: 0};
 
-            // 1a. 从拦截器记录的实例 ID 读取
+            // 辅助函数：判断元素是否在视口内且可见
+            function isVisible(el) {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+            }
+
+            // 1a. 从拦截器记录的实例 ID 读取，优先读取当前可见的 canvas 对应的实例
             if (window._echarts_instances && window._echarts_instances.length > 0) {
                 diagnostics.hookCount = window._echarts_instances.length;
                 for (const rec of window._echarts_instances) {
@@ -1447,55 +1454,99 @@ class BmsPage(BasePage):
                         const ec = window.echarts.getInstanceById(rec.id);
                         if (ec) {
                             diagnostics.byHookCount++;
+                            // 尝试通过 dom 找到对应元素并检查可见性
+                            let domEl = null;
+                            if (rec.domTag && rec.domClass) {
+                                const candidates = document.querySelectorAll(rec.domTag + '.' + rec.domClass.split(' ').join('.'));
+                                for (const c of candidates) {
+                                    const cEc = window.echarts.getInstanceByDom(c);
+                                    if (cEc && cEc.id === rec.id) { domEl = c; break; }
+                                }
+                            }
+                            const visible = domEl ? isVisible(domEl) : true;
+                            if (visible) diagnostics.visibleHookCount++;
                             const opt = ec.getOption();
                             const title = opt.title?.[0]?.text || '';
-                            const seriesData = (opt.series || []).map(s => {
+                            // 同时检查 series 和 dataset 两种数据源
+                            let seriesData = (opt.series || []).map(s => {
                                 const data = s.data || [];
                                 const last = data[data.length - 1];
                                 return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                             });
-                            results.push({title, seriesData, source: 'hook'});
+                            // 如果 series 为空但 dataset 有数据，构造 seriesData
+                            if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                                const src = opt.dataset.source;
+                                if (src.length > 1) {
+                                    // dataset.source[0] 是表头，后面是数据行
+                                    const header = src[0];
+                                    const lastRow = src[src.length - 1];
+                                    for (let i = 1; i < header.length; i++) {
+                                        seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                    }
+                                }
+                            }
+                            results.push({title, seriesData, source: 'hook', visible});
                         }
                     } catch(e) {}
                 }
             }
 
-            // 1b. 标准 getInstanceByDom
+            // 1b. 标准 getInstanceByDom（仅处理可见 canvas）
             document.querySelectorAll('canvas').forEach(c => {
                 diagnostics.canvasCount++;
                 try {
                     const ec = window.echarts.getInstanceByDom(c);
-                    if (ec) {
+                    if (ec && isVisible(c)) {
                         diagnostics.byDomCount++;
                         const opt = ec.getOption();
                         const title = opt.title?.[0]?.text || '';
-                        const seriesData = (opt.series || []).map(s => {
+                        let seriesData = (opt.series || []).map(s => {
                             const data = s.data || [];
                             const last = data[data.length - 1];
                             return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                         });
-                        results.push({title, seriesData, source: 'dom'});
+                        if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                            const src = opt.dataset.source;
+                            if (src.length > 1) {
+                                const header = src[0];
+                                const lastRow = src[src.length - 1];
+                                for (let i = 1; i < header.length; i++) {
+                                    seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                }
+                            }
+                        }
+                        results.push({title, seriesData, source: 'dom', visible: true});
                     }
                 } catch(e) {}
             });
 
-            // 1c. _echarts_instance 属性
+            // 1c. _echarts_instance 属性（仅处理可见元素）
             document.querySelectorAll('[_echarts_instance]').forEach(el => {
                 diagnostics.attrCount++;
                 try {
                     const id = el.getAttribute('_echarts_instance');
-                    if (id && window.echarts.getInstanceById) {
+                    if (id && window.echarts.getInstanceById && isVisible(el)) {
                         const ec = window.echarts.getInstanceById(id);
                         if (ec) {
                             diagnostics.byIdCount++;
                             const opt = ec.getOption();
                             const title = opt.title?.[0]?.text || '';
-                            const seriesData = (opt.series || []).map(s => {
+                            let seriesData = (opt.series || []).map(s => {
                                 const data = s.data || [];
                                 const last = data[data.length - 1];
                                 return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                             });
-                            results.push({title, seriesData, source: 'attr'});
+                            if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                                const src = opt.dataset.source;
+                                if (src.length > 1) {
+                                    const header = src[0];
+                                    const lastRow = src[src.length - 1];
+                                    for (let i = 1; i < header.length; i++) {
+                                        seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                    }
+                                }
+                            }
+                            results.push({title, seriesData, source: 'attr', visible: true});
                         }
                     }
                 } catch(e) {}
@@ -1507,11 +1558,17 @@ class BmsPage(BasePage):
         logger.info(f"echarts API 读取图表数据: {chart_data.get('results')}")
         chart_data = chart_data.get('results', [])
 
-        for chart in chart_data:
+        # 优先处理当前可见区域的图表数据，再处理隐藏的（其他 tab）
+        visible_charts = [c for c in chart_data if c.get("visible", True)]
+        charts_to_process = visible_charts if visible_charts else chart_data
+        logger.info(f"echarts 处理: 可见图表 {len(visible_charts)} 个, 总计 {len(chart_data)} 个")
+
+        for chart in charts_to_process:
             title = chart.get("title", "")
             for s in chart.get("seriesData", []):
                 val = s.get("lastValue")
                 series_name = s.get("name", "")
+                data_count = s.get("dataCount", 0)
                 if val is not None and str(val) != "":
                     val_str = str(val)
                     # 通过 title 或 series name 匹配 CPU 使用率
@@ -1520,6 +1577,7 @@ class BmsPage(BasePage):
                         or ("CPU" in title and "使用率" in title)
                         or "cpu使用率" in series_name.lower()
                         or series_name.lower() == "cpu"
+                        or "cpu" in series_name.lower()
                     )
                     # 通过 title 或 series name 匹配内存使用率
                     is_mem = (
@@ -1527,7 +1585,14 @@ class BmsPage(BasePage):
                         or ("内存" in title and "使用率" in title)
                         or "内存使用率" in series_name
                         or series_name.lower() == "memory"
+                        or "mem" in series_name.lower()
                     )
+                    # 额外判断：如果 title 为空但 dataCount > 0，且 seriesName 包含 cpu/mem，也视为有效
+                    if not title and data_count > 0:
+                        if "cpu" in series_name.lower():
+                            is_cpu = True
+                        if "mem" in series_name.lower():
+                            is_mem = True
                     if is_cpu and not cpu_value:
                         cpu_value = val_str + "%" if "%" not in val_str else val_str
                         logger.info(f"从echarts获取CPU [title={title}, series={series_name}]: {cpu_value}")
@@ -1535,12 +1600,15 @@ class BmsPage(BasePage):
                         mem_value = val_str + "%" if "%" not in val_str else val_str
                         logger.info(f"从echarts获取内存 [title={title}, series={series_name}]: {mem_value}")
 
-        # 策略2：悬浮到各个 canvas 图表的多个位置，读取 tooltip
+        # 策略2：悬浮到各个**可见** canvas 图表的多个位置，读取 tooltip
         if not cpu_value or not mem_value:
             canvases = monitor_container.locator("canvas").all()
             logger.info(f"找到 {len(canvases)} 个 canvas 元素，尝试悬浮读取 tooltip")
 
-            for idx, canvas in enumerate(canvases[:8]):
+            visible_canvases = [c for c in canvases if c.is_visible()]
+            logger.info(f"其中可见 canvas: {len(visible_canvases)} 个")
+
+            for idx, canvas in enumerate(visible_canvases[:8]):
                 if cpu_value and mem_value:
                     break
                 try:
@@ -1598,6 +1666,36 @@ class BmsPage(BasePage):
                             break
                 except Exception as e:
                     logger.warning(f"canvas[{idx}] 悬浮读取失败: {e}")
+
+        # 策略2b：通过 DOM 文本直接读取可见的图表数值（不依赖 echarts API / tooltip）
+        if not cpu_value or not mem_value:
+            dom_values = self.page.evaluate("""() => {
+                const result = {cpu: '', memory: ''};
+                // 查找所有可能包含指标名称和数值的元素
+                const cells = document.querySelectorAll('[role="dialog"] .chart-title, [role="dialog"] .monitor-title, [role="dialog"] .chart-header, [role="dialog"] h3, [role="dialog"] h4, [role="dialog"] .title');
+                for (const cell of cells) {
+                    const text = (cell.innerText || cell.textContent || '').trim();
+                    const parent = cell.closest('.chart-wrapper, .monitor-item, [class*="chart"], [class*="monitor"]') || cell.parentElement;
+                    if (!parent) continue;
+                    const parentText = (parent.innerText || parent.textContent || '').trim();
+                    // 在父容器内查找包含 % 的数值
+                    const pctMatches = parentText.match(/(\d+\.?\d*)\s*%/g);
+                    const firstPct = pctMatches ? pctMatches[0].replace(/\s*%/, '') + '%' : '';
+                    if (!result.cpu && (text.includes('CPU使用率') || text.includes('CPU使用率'))) {
+                        result.cpu = firstPct;
+                    }
+                    if (!result.memory && (text.includes('内存使用率') || text.includes('内存使用率'))) {
+                        result.memory = firstPct;
+                    }
+                }
+                return result;
+            }""")
+            if dom_values.get('cpu') and not cpu_value:
+                cpu_value = dom_values['cpu']
+                logger.info(f"从 DOM 文本获取CPU: {cpu_value}")
+            if dom_values.get('memory') and not mem_value:
+                mem_value = dom_values['memory']
+                logger.info(f"从 DOM 文本获取内存: {mem_value}")
 
         # 策略3：如果悬浮未获取到数值，检查图表区域是否显示"暂无数据"
         if not cpu_value and not mem_value:
