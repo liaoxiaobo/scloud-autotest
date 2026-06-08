@@ -105,7 +105,10 @@ def iam_shared_child_org(_iam_shared_ctx, config, iam_shared_org):
     page = _create_logged_in_page(_iam_shared_ctx, config)
     iam = IamPage(page)
     iam.goto_service("统一身份认证IAM")
-    iam.iam_delete_organization(child_info["child_name"])
+    try:
+        iam.iam_delete_organization(child_info["child_name"])
+    except Exception as e:
+        logger.warning(f"清理子组织 {child_info['child_name']} 失败: {e}")
     page.close()
 
 
