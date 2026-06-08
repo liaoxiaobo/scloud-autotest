@@ -3,7 +3,7 @@ import pytest
 import ipaddress
 import random
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 @allure.epic('网络服务')
 @allure.feature('负载均衡')

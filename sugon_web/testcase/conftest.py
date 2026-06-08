@@ -16,6 +16,7 @@
 
 import re
 import time
+from pathlib import Path
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
@@ -35,7 +36,7 @@ from typing import Any, Callable, Iterator, NotRequired, TypedDict
 from sugon_web.pages.ops import OpsPage
 from sugon_web.config.config import Config
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 
 
@@ -1085,3 +1086,112 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
     logger.info(f"测试会话结束，统计: {stats}")
     send_feishu_report(stats)
+
+
+# ── 自动 mark 体系 ──────────────────────────────────────────────
+# 新增模块目录或服务前缀时，只要遵循 testcase/<module>/test_<service>_*.py
+# 的命名约定，就无需修改本文件。
+# 多词服务名（如 internal_dns）需要在 sugon_web/config/service_marks.yaml
+# 中注册描述，确保 _resolve_service_mark 能做最长前缀匹配。
+
+import yaml
+
+_SERVICE_NAME_RE = re.compile(r"^test_([a-zA-Z0-9]+)_.*\.py$")
+
+
+_SERVICE_MARKS_CONFIG_PATH = Path(__file__).parent.parent / "config" / "service_marks.yaml"
+
+
+def _load_service_descriptions() -> dict:
+    """加载 service_marks.yaml 中的 mark 描述映射。
+
+    配置文件不存在或解析失败时返回空字典，保证 pytest 仍能启动。
+    """
+    if not _SERVICE_MARKS_CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(_SERVICE_MARKS_CONFIG_PATH, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning(f"加载 service_marks.yaml 失败: {e}")
+        return {}
+
+
+_SERVICE_DESCRIPTIONS = _load_service_descriptions()
+
+
+def _resolve_service_mark(filename):
+    """从测试文件名提取服务级 mark。
+
+    优先按 _SERVICE_DESCRIPTIONS 中的已知服务做最长前缀匹配，兼容
+    test_bms_bind.py、test_bms_remove_label.py 等非规范命名；
+    未知服务则 fallback 到 test_<service>_* 的首个下划线段。
+    """
+    for service in sorted(_SERVICE_DESCRIPTIONS, key=len, reverse=True):
+        if filename.startswith(f"test_{service}_"):
+            return service
+    match = _SERVICE_NAME_RE.match(filename)
+    return match.group(1) if match else None
+
+
+def pytest_configure(config):
+    """在 pytest 启动时动态注册所有模块级和服务级 mark。
+
+    扫描 testpaths 下的测试文件，自动提取模块目录名和服务前缀，
+    追加到 markers 配置中。配合 --strict-markers 时，新增服务也
+    不会触发未知 mark 错误。
+    """
+    testpaths = config.getini("testpaths") or ["sugon_web/testcase"]
+    if isinstance(testpaths, str):
+        testpaths = [testpaths]
+
+    module_marks = set()
+    service_marks = set()
+
+    for tp in testpaths:
+        base = Path(tp)
+        if not base.is_dir():
+            continue
+        for path in base.rglob("test_*.py"):
+            parts = path.parts
+            if "testcase" in parts:
+                idx = parts.index("testcase")
+                if len(parts) > idx + 1:
+                    module_marks.add(parts[idx + 1])
+
+            service = _resolve_service_mark(path.name)
+            if service:
+                service_marks.add(service)
+
+    for mark in sorted(module_marks):
+        desc = _SERVICE_DESCRIPTIONS.get(mark, f"{mark}测试")
+        config.addinivalue_line("markers", f"{mark}: 模块级-{desc}")
+
+    for mark in sorted(service_marks):
+        desc = _SERVICE_DESCRIPTIONS.get(mark, mark)
+        config.addinivalue_line("markers", f"{mark}: 服务级-{desc}")
+
+
+def pytest_collection_modifyitems(config, items):
+    """根据测试文件路径自动添加模块级和服务级 pytest mark。
+
+    模块级 mark：testcase/<module>/ 下的直接子目录名。
+    服务级 mark：文件名 test_<service>_*.py 中的 service 部分。
+    新增模块目录或服务前缀时，只要遵循命名约定，无需修改本函数。
+    """
+    for item in items:
+        path = item.path
+        parts = path.parts
+
+        # ── 模块级 mark（按目录） ──
+        if "testcase" in parts:
+            idx = parts.index("testcase")
+            if len(parts) > idx + 1:
+                module_mark = parts[idx + 1]
+                item.add_marker(module_mark)
+
+        # ── 服务级 mark（按文件名） ──
+        service_mark = _resolve_service_mark(path.name)
+        if service_mark:
+            item.add_marker(service_mark)

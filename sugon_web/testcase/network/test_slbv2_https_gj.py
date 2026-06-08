@@ -19,7 +19,7 @@ from sugon_web.testcase.network._slb_helpers import (
     wait_for_curl_match,
 )
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 PORT = 7070
 CERT_DIR = "/root/mtls-certificates"
