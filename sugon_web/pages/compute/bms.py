@@ -2759,6 +2759,47 @@ class BmsPage(BasePage):
         logger.info(f"[bms_instance_rebuild] 实例 '{instance_name}' 重建操作已提交")
         self.page.wait_for_timeout(2000)
 
+    # ---- switch group (exchange unit) ----
+
+    def bms_switch_group_unbind(self, group_name: str):
+        """解绑交换机组中的所有物理机。
+
+        Args:
+            group_name: 交换机组名称
+        """
+        self.goto_service("交换机组")
+        self.page.wait_for_timeout(3000)
+        row = self._get_row_by_name(group_name)
+        if not row:
+            logger.warning(f"未找到交换机组 '{group_name}'，跳过解绑")
+            return
+        # 点击"更多"展开下拉菜单
+        self._js_click_action(row, "解绑物理机")
+        self.page.wait_for_timeout(500)
+        # 处理可能的确认弹窗
+        try:
+            self._confirm_sugon_dialog()
+        except Exception:
+            pass
+        self.page.wait_for_timeout(10000)  # 解绑是异步的，等待10秒
+        logger.info(f"交换机组 '{group_name}' 解绑物理机操作已提交")
+
+    def bms_switch_group_delete(self, group_name: str):
+        """删除交换机组。
+
+        Args:
+            group_name: 交换机组名称
+        """
+        self.goto_service("交换机组")
+        self.page.wait_for_timeout(3000)
+        row = self._get_row_by_name(group_name)
+        if not row:
+            logger.warning(f"未找到交换机组 '{group_name}'，跳过删除")
+            return
+        self._js_click_action(row, "删除")
+        self._confirm_sugon_dialog()
+        logger.info(f"交换机组 '{group_name}' 删除成功")
+
     # ---- full cleanup ----
 
     def clean_all_bms_resources(self):
