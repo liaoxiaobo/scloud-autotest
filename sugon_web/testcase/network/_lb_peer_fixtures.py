@@ -1,6 +1,6 @@
 """LB 对等连接跨 VPC 场景专用 fixture。
 
-为 `test_lb_peer_connect.py` 提供：
+为 `test_slb_peer_connect.py` 提供：
 
 - `lb_peer_vms`: class 级别 fixture，在 vpc[0] 与 vpc[1] 下各创建 2 台虚机（共 4 台）并绑定 MFIP
 - `slbv2_in_vpc1`: class 级别 fixture，在 vpc[0] 下创建 V2 负载均衡实例

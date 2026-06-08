@@ -1,12 +1,15 @@
-"""负载均衡（基础版）V1 - 监听器监控功能验证。
+"""负载均衡 - 监听器监控功能验证。
 
-三个场景共享同一套测试资源（vpc、4台vm、slbv1），每个方法独立创建/清理监听器，
+V1 三个场景共享同一套测试资源（vpc、4台vm、slbv1），每个方法独立创建/清理监听器，
 通过 class-scoped fixture 复用 VM 和 SLB 资源。
 
-包含三个场景的测试：
-- 用例414240：L7LB-HTTP监听器监控正向功能验证
-- 用例414218：L4LB-TCP监听器监控正向功能验证
-- 用例421567：L4LB-UDP监听器监控正向功能验证
+V2 场景独立使用 3 台 vm 和 V2 版本 SLB。
+
+包含四个场景的测试：
+- 用例414240：L7LB-HTTP监听器监控正向功能验证（V1）
+- 用例414218：L4LB-TCP监听器监控正向功能验证（V1）
+- 用例421567：L4LB-UDP监听器监控正向功能验证（V1）
+- 用例436993：v2-lb基础版 > lb监控 > 数据有效性验证 > 节点（V2）
 """
 
 import allure
@@ -22,6 +25,7 @@ from sugon_web.testcase.network._slb_helpers import (
     prepare_udp_backend,
     send_udp_message,
 )
+from sugon_web.utils.data import random_data
 from sugon_web.utils.logger import allure_step_log
 
 
@@ -565,3 +569,152 @@ class TestSlbv1Monitor:
             cms_page.select_object_tab("监听器")
             cms_page.select_listener(lb_name)
             cms_page.assert_monitor_data_not_zero(wait_sec=5)
+
+
+# ==============================================================================
+# V2 版本 - UDP 监听器监控验证（用例436993）
+# ==============================================================================
+PORT_UDP = 5050
+LISTENER_DESC = "1234567890edwqWDWQ中文~"
+
+
+@pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": True}], indirect=True)
+@pytest.mark.parametrize("slb", [{"version": "V2"}], indirect=True)
+@allure.epic("网络服务")
+@allure.feature("负载均衡")
+@allure.story("基础版V2-UDP监听器监控验证")
+class TestSlbv2Monitor:
+    """用例436993：v2-lb基础版 > lb监控 > 数据有效性验证 > 节点"""
+
+    @allure.title("SLB-V2-UDP监听器监控数据验证")
+    def test_slbv2_udp_monitor(self, page, vpc_page, slb, vm, ssh_vm, clean_lb_listener):
+        """用例436993：v2-lb基础版 > lb监控 > 数据有效性验证 > 节点"""
+        cleanup = clean_lb_listener
+        requester = vm[0]  # ecs0
+        backends = vm[1:3]  # ecs1, ecs2
+
+        lb_name = f"udp-{random_data()}"
+        pool_name = f"pool-{random_data()}"
+
+        # 步骤1: 创建UDP监听器并添加资源池成员
+        with allure_step_log("步骤1: 创建UDP监听器并添加资源池成员"):
+            vpc_page.slb_lb_create(
+                slb_name=slb["name"],
+                lb_name=lb_name,
+                protocol="UDP",
+                port=PORT_UDP,
+                desc=LISTENER_DESC,
+                pool_name=pool_name,
+                balance_method="轮询",
+                health_check=False,
+            )
+            vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
+            vpc_page.assert_listener_exists(lb_name)
+            cleanup.add_listener({
+                "slb_name": slb["name"],
+                "lb_name": lb_name,
+                "pool_name": pool_name,
+            })
+
+            vpc_page.lb_pool_add_vm(
+                vm_names=[b["name"] for b in backends],
+                lb_name=lb_name,
+                pool_name=pool_name,
+                ports=PORT_UDP,
+            )
+            vpc_page.assert_popup_success("提交成功")
+            for backend in backends:
+                vpc_page.assert_lb_pool_member_info(
+                    backend["name"], port=PORT_UDP, resource_status="运行中"
+                )
+
+        # 步骤2: 后端虚机启动UDP服务
+        with allure_step_log("步骤2: 后端虚机启动UDP服务"):
+            for backend in backends:
+                prepare_udp_backend(ssh_vm, backend, port=PORT_UDP)
+                cleanup.add_backend_server(
+                    backend, port=PORT_UDP, kill_pattern=f"UDP_server.py.*{PORT_UDP}"
+                )
+
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
+        slb_uuid = vpc_page.get_slb_uuid(slb["name"])
+        project_id = vpc_page.get_slb_project_id(slb["name"])
+
+        # 步骤3: 验证UDP连通性
+        with allure_step_log("步骤3: 验证UDP连通性"):
+            ssh_vm.connect(requester["mfip"])
+            result = send_udp_message(ssh_vm, lb_vip, PORT_UDP, "test_msg")
+            assert result["rc"] == 0, f"UDP连通性验证失败: {result}"
+
+        # 步骤4: 进入CMS监控服务的负载均衡详情页
+        with allure_step_log("步骤4: 进入CMS监控服务的负载均衡详情页"):
+            cms_page = CmsPage(page)
+            cms_page.goto_submenu("负载均衡（基础版）")
+            cms_page.click_slb_in_list(slb["name"], slb_uuid=slb_uuid)
+            cms_page.wait_for_page_ready()
+            cms_page.page.wait_for_timeout(3000)
+            cms_page.select_time_range("实时")
+
+        # 步骤5: 发送UDP流量（1分钟）
+        with allure_step_log("步骤5: 发送UDP流量（1分钟）"):
+            ssh_vm.connect(requester["mfip"])
+            start_time = time.time()
+            msg_count = 0
+            while time.time() - start_time < 60:
+                send_udp_message(ssh_vm, lb_vip, PORT_UDP, f"msg_{msg_count}")
+                msg_count += 1
+                time.sleep(1)
+
+        # 步骤6: 查看实例级别监控曲线（运维监控）
+        with allure_step_log("步骤6: 查看实例级别监控曲线（运维监控）"):
+            cms_page.select_object_tab("实例")
+            cms_page.assert_monitor_charts_visible(min_charts=1)
+
+        # 步骤7: 查看监听器级别监控曲线（运维监控）
+        with allure_step_log("步骤7: 查看监听器级别监控曲线（运维监控）"):
+            cms_page.select_object_tab("监听器")
+            cms_page.select_listener(lb_name)
+            cms_page.assert_monitor_charts_visible(min_charts=1)
+
+        # 补充流量并验证数据不为零
+        with allure_step_log("补充流量数据并等待监控数据刷新"):
+            ssh_vm.connect(requester["mfip"])
+            for _ in range(20):
+                send_udp_message(ssh_vm, lb_vip, PORT_UDP, "burst_msg")
+                time.sleep(1)
+            time.sleep(15)
+
+        with allure_step_log("验证CMS实例监控数据不为零"):
+            cms_page.select_object_tab("实例")
+            cms_page.assert_monitor_data_not_zero(wait_sec=5)
+
+        with allure_step_log("验证CMS监听器监控数据不为零"):
+            cms_page.select_object_tab("监听器")
+            cms_page.select_listener(lb_name)
+            cms_page.assert_monitor_data_not_zero(wait_sec=5)
+
+        # 步骤8: 验证流量停止后监控归零
+        with allure_step_log("步骤8: 验证流量停止后监控归零"):
+            time.sleep(150)
+            cms_page.select_object_tab("实例")
+            cms_page.assert_monitor_charts_visible(min_charts=1)
+            cms_page.assert_monitor_data_zero(wait_sec=20, tolerance=60)
+            cms_page.select_object_tab("监听器")
+            cms_page.select_listener(lb_name)
+            cms_page.assert_monitor_charts_visible(min_charts=1)
+            cms_page.assert_monitor_data_zero(wait_sec=20, tolerance=60)
+
+        # 步骤9: 查看实例级别监控曲线（网络服务）
+        with allure_step_log("步骤9: 查看实例级别监控曲线（网络服务）"):
+            vpc_page.goto_service("虚拟私有云")
+            vpc_page.goto_submenu("负载均衡（基础版）")
+            vpc_page.click_action(slb["name"], "查看监控")
+            vpc_page.select_time_range("实时")
+            vpc_page.select_object_tab("实例")
+            vpc_page.assert_monitor_charts_visible(min_charts=1)
+
+        # 步骤10: 查看监听器级别监控曲线（网络服务）
+        with allure_step_log("步骤10: 查看监听器级别监控曲线（网络服务）"):
+            vpc_page.select_object_tab("监听器")
+            vpc_page.select_listener(lb_name)
+            vpc_page.assert_monitor_charts_visible(min_charts=1)
