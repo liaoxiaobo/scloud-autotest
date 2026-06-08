@@ -85,10 +85,8 @@ class AptPage(AptAssertionMixin, BasePage):
         """
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
-        if self.locator(".el-select-dropdown:visible").count() > 0:
+        if self.locator(".el-select-dropdown:visible").count() == 0:
             dropdown.click()
-            self.page.wait_for_timeout(500)
-        dropdown.click()
         for _ in range(10):
             self.page.wait_for_timeout(1000)
             options = self.locator(".el-select-dropdown:visible li")

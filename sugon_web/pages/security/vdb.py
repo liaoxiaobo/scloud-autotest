@@ -91,11 +91,9 @@ class VdbPage(VdbAssertionMixin, BasePage):
         """
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
-        # 先关闭可能已打开的空下拉框，再重新点击触发 API 请求
-        if self.locator(".el-select-dropdown:visible").count() > 0:
+        # 若下拉框已打开（如 _select_form_item 已点击过），不再重复点击以免关闭
+        if self.locator(".el-select-dropdown:visible").count() == 0:
             dropdown.click()
-            self.page.wait_for_timeout(500)
-        dropdown.click()
         for _ in range(10):
             self.page.wait_for_timeout(1000)
             options = self.locator(".el-select-dropdown:visible li")
