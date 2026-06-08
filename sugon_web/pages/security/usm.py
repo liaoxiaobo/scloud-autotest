@@ -168,7 +168,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         # 选择选项
         all_visible = self.locator(dropdown_option_selector)
         # 如果选项还没加载出来，多等几次
-        for _ in range(3):
+        for _ in range(10):
             if all_visible.count() > 0:
                 break
             self.page.wait_for_timeout(2000)

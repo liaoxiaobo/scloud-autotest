@@ -129,7 +129,7 @@ class VerPage(VerAssertionMixin, BasePage):
         dropdown_trigger.click()
         # 等待下拉选项加载，最多重试等待
         dropdown_option_selector = ".el-select-dropdown:visible li, .el-dropdown-menu:visible li"
-        for _ in range(3):
+        for _ in range(10):
             self.page.wait_for_timeout(500)
             all_visible = self.locator(dropdown_option_selector)
             if all_visible.count() > 0:

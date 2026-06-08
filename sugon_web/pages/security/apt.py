@@ -86,9 +86,15 @@ class AptPage(AptAssertionMixin, BasePage):
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
         dropdown.click()
-        self.page.wait_for_timeout(500)
-        self.locator(".el-select-dropdown:visible li").first.click()
-        logger.info(f"APT 创建：选择 {label} = 第一个可用选项")
+        for _ in range(10):
+            self.page.wait_for_timeout(1000)
+            options = self.locator(".el-select-dropdown:visible li")
+            if options.count() > 0:
+                options.first.click()
+                logger.info(f"APT 创建：选择 {label} = 第一个可用选项")
+                return
+        dropdown.click()
+        raise Exception(f"下拉选项为空: {label}")
 
     def _select_form_item(self, label: str, option: str):
         """选择表单的下拉项。
