@@ -100,13 +100,12 @@ def cce_cluster(browser_context, config, ssh_host, request):
 
     create_kwargs = _build_cce_create_kwargs(params)
     cluster_name = create_kwargs["name"]
-    cluster_name = "cce-autotest-4gh"
 
 
-    # with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
-    #     cce_page.cce_create(**create_kwargs)
-    #     cce_page.assert_popup_success()
-    #     cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+    with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
+        cce_page.cce_create(**create_kwargs)
+        cce_page.assert_popup_success()
+        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
     with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
         node_data = cce_page.get_cluster_node_data(cluster_name)
@@ -132,13 +131,13 @@ def cce_cluster(browser_context, config, ssh_host, request):
         "worker_node": worker_node,
     }
 
-    # with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
-    #     try:
-    #         _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
-    #     except Exception as e:
-    #         logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
-    #     finally:
-    #         page.close()
+    with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
+        try:
+            _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
+        except Exception as e:
+            logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
+        finally:
+            page.close()
 
 
 @pytest.fixture(scope="class")

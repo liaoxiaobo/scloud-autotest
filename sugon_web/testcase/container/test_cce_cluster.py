@@ -8,7 +8,7 @@ from sugon_web.utils.data import random_data, load_data
 
 @allure.epic('容器服务')
 @allure.feature('云容器引擎')
-@allure.story('集群管理')
+@allure.story('集群管理-列表页')
 class TestCCEClusterCreate:
 
     @allure.title("集群管理-创建CCE集群-{params[network_model]}网络-{params[version]}版本-{params[container_runtime]}运行时")
@@ -101,12 +101,6 @@ class TestCCEClusterCreate:
             cce_page.assert_deleted(cluster_name)
             ssh_host.wait_vm_deleted(cluster_name, timeout=600)
             ssh_host.wait_volume_deleted(cluster_name, timeout=600)
-
-
-@allure.epic('容器服务')
-@allure.feature('云容器引擎')
-@allure.story('集群管理-列表页')
-class TestCCEClusterList:
 
     @allure.title("集群管理-列表页-搜索")
     def test_search_cluster(self, cce_page, cce_cluster):

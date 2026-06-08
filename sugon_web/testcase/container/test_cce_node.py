@@ -198,7 +198,7 @@ class TestCCENodeOperations:
 
         with allure_step_log("步骤1: 进入集群详情页"):
             cce_page.goto_submenu("集群管理")
-            cce_page.goto_detail_page(cluster_name, tab_name="详情")
+            cce_page.goto_detail_page(cluster_name, tab_name="详情", row_name=node_name, timeout=30)
 
         with allure_step_log("步骤2: 记录当前节点规格"):
             before_data = cce_page.get_row_data(node_name)
@@ -214,8 +214,17 @@ class TestCCENodeOperations:
             cce_page.cce_node_flavor_shrink(node_name, "cce.d6.large")
             cce_page.assert_popup_success()
 
+        with allure_step_log("步骤4.5: 等待状态进入中间态"):
+            # 状态必须先变为"规格调整中"（证明后端已开始处理）
+            # 如果操作极快（<30秒已完成），此步骤会超时，不影响后续
+            try:
+                cce_page.assert_status(node_name, "规格调整中", timeout=30, refresh=True)
+            except AssertionError:
+                # 状态已经变回"运行中"（操作极快），继续后续断言
+                pass
+
         with allure_step_log("步骤5: 验证节点规格已缩容"):
-            cce_page.assert_status(node_name, "运行中", timeout=600)
+            cce_page.assert_status(node_name, "运行中", timeout=600, refresh=True)
             after_data = cce_page.get_row_data(node_name)
             after_flavor = after_data.get("规格", "") if after_data else ""
             assert "cce.d6.large" in after_flavor, f"规格未缩容: 期望包含 cce.d6.large, 实际 {after_flavor}"
