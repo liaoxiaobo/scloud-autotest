@@ -11,20 +11,15 @@ from sugon_web.utils.logger import allure_step_log, logger
 class TestBmsBindEip:
 
     @allure.title("裸金属BMS-绑定公网IP")
-    def test_bms_bind_eip(self, bms_page, eip, ssh_host, request):
-        """验证裸金属实例绑定公网IP后网络连通性正常。"""
+    def test_bms_bind_eip(self, bms_page, eip, ssh_host):
+        """验证裸金属实例绑定公网IP后网络连通性正常。
+
+        注意：验证步骤失败时不解绑，保留绑定状态便于排查。
+        仅当所有验证通过后，在测试末尾执行解绑。
+        """
         instance_name = "bms-0430"
         bms_password = "admin1234@sugon"
         bound_ip = ""
-
-        # 注册清理回调：无论用例成败，测试结束后都执行解绑
-        def _unbind_eip():
-            with allure_step_log("清理: 解绑公网IP"):
-                try:
-                    bms_page.bms_instance_unbind_eip(instance_name)
-                except Exception as e:
-                    logger.warning(f"解绑公网IP失败: {e}")
-        request.addfinalizer(_unbind_eip)
 
         # 步骤1：搜索裸金属实例
         with allure_step_log("步骤1: 搜索裸金属实例"):
@@ -76,3 +71,7 @@ class TestBmsBindEip:
                 assert lsblk_output, "lsblk 命令未返回结果"
 
             bms_ssh.close()
+
+        # 步骤7：解绑公网IP（仅在全部验证通过后执行，失败时保留现场）
+        with allure_step_log("步骤7: 解绑公网IP"):
+            bms_page.bms_instance_unbind_eip(instance_name)
