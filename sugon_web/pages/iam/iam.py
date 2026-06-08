@@ -110,7 +110,11 @@ class IamPage(BasePage):
 
         self.wait_for_page_ready()
         self.close_dialog_if_exists()
-        self.page.wait_for_timeout(3000)
+        # 等待组织树容器渲染完成（替代固定3秒等待）
+        try:
+            self.page.wait_for_selector("#iam-department", state="visible", timeout=10000)
+        except Exception:
+            logger.warning("IAM：组织树容器未在10秒内出现")
 
         # "请先创建组织"可能是页面树组件加载中的瞬态，等待后重试
         for attempt in range(3):
@@ -171,14 +175,17 @@ class IamPage(BasePage):
         except Exception:
             pass
 
-        # 等待表格数据加载完成（Jenkins 环境渲染较慢）
+        # 等待表格数据加载完成（Jenkins 环境渲染较慢，异步数据需轮询）
         try:
-            self.page.wait_for_selector(
-                ".el-table__row, .el-table__empty-text, .el-table__empty-block",
-                timeout=30000
-            )
+            self.page.wait_for_function("""
+                () => {
+                    const rows = document.querySelectorAll('.el-table__row');
+                    const emptyText = document.querySelector('.el-table__empty-text');
+                    return rows.length > 0 || (emptyText && emptyText.offsetParent !== null);
+                }
+            """, timeout=30000)
         except Exception:
-            pass
+            logger.warning("IAM：表格数据加载超时")
 
     def _open_create_user_dialog(self, target_org: str = None):
         """点击创建用户按钮，等待弹窗出现。"""
@@ -562,7 +569,6 @@ class IamPage(BasePage):
         """
         self._navigate_to_user_management(target_org)
         self.click_action(name, operation_text)
-        self.page.wait_for_timeout(800)
         dialog = self.get_by_role("dialog").filter(has_text=dialog_title)
         expect(dialog.first).to_be_visible(timeout=8000)
         logger.info(f"IAM：{dialog_title}弹窗已打开")
@@ -1778,6 +1784,15 @@ class IamPage(BasePage):
                 self.page.wait_for_timeout(500)
                 logger.info(
                     f"IAM：访问控制-时间限制 周{kwargs['time_day']+1} {kwargs['time_hour']}:00")
+        if kwargs.get("clear_time"):
+            switch_label = dialog.locator(".el-form-item").filter(has_text="设置允许登录时间")
+            switch = switch_label.locator(".el-switch")
+            if switch.count() > 0:
+                switch_el = switch.first
+                is_checked = "is-checked" in (switch_el.get_attribute("class") or "")
+                if is_checked:
+                    switch_el.click()
+                    self.page.wait_for_timeout(500)
         self._submit_and_close_dialog(dialog, f"访问控制({name})")
 
     def _click_batch_operation_option(self, operation: str):

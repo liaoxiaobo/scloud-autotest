@@ -1,7 +1,6 @@
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.pages.login import LoginPage
-from sugon_web.testcase.iam._iam_helpers import restore_admin_login
+from sugon_web.testcase.iam._iam_helpers import verify_login, restore_admin_login
 
 
 @allure.epic('身份认证IAM')
@@ -14,7 +13,6 @@ class TestIamUserCreate:
         """验证共享IAM用户可登录。"""
         username = iam_shared_user["name"]
         user_password = iam_shared_user["password"]
-        login = LoginPage(iam_page.page)
 
         with allure_step_log("步骤1: 进入统一身份认证IAM页面"):
             iam_page.wait_for_page_ready()
@@ -29,12 +27,9 @@ class TestIamUserCreate:
                 f"用户 {username} 未在列表中找到，列表内容: {user_list[:5]}..."
             logger.info(f"用户 {username} 已在列表中找到")
 
-        with allure_step_log(f"步骤3: 退出登录并使用 {username} 重新登录验证"):
-            login.logout()
-            login.login(username, user_password)
-            iam_page.wait_for_page_ready()
-            assert "login" not in iam_page.page.url.lower(), \
-                f"用户 {username} 登录失败，当前 URL: {iam_page.page.url}"
+        with allure_step_log(f"步骤3: 使用 {username} 重新登录验证"):
+            assert verify_login(iam_page.page, username, user_password, expect_success=True), \
+                f"用户 {username} 登录验证失败"
             logger.info(f"用户 {username} 登录成功")
 
         with allure_step_log("步骤4: 恢复admin登录状态"):

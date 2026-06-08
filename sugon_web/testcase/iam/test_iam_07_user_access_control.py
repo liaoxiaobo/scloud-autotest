@@ -1,7 +1,32 @@
 from datetime import date, timedelta, datetime
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.testcase.iam._iam_helpers import verify_login
+
+
+@pytest.fixture(scope="function")
+def acl_cleanup(iam_page, iam_shared_user, iam_shared_child_org):
+    """在每个访问控制测试后清空访问控制设置，避免限制累积影响后续测试。"""
+    yield
+    disp = iam_shared_user["name"]
+    child_org = iam_shared_child_org["child_name"]
+    today = date.today().strftime("%Y-%m-%d")
+    far_future = "2099-12-31"
+    try:
+        iam_page.close_dialog_if_exists()
+        iam_page._navigate_to_user_management(target_org=child_org)
+        iam_page.iam_set_access_control(
+            disp, target_org=child_org, ip="",
+            start_date=today, end_date=far_future,
+            clear_time=True,
+        )
+        logger.info(f"ACL cleanup: 用户 {disp} 访问控制已清空")
+    except Exception as e:
+        logger.warning(f"ACL cleanup failed: {e}")
+
+
+pytestmark = pytest.mark.usefixtures("acl_cleanup")
 
 
 @allure.epic('身份认证IAM')
