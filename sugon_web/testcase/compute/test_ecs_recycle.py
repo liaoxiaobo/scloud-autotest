@@ -1,7 +1,8 @@
 import time
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, only_stor
+from sugon_web.utils.data import random_data
+from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('计算服务')

@@ -87,7 +87,7 @@ def iam_shared_user(_iam_shared_ctx, config, iam_shared_child_org):
 @pytest.fixture(scope="function")
 def iam_batch_users(_iam_shared_ctx, config, iam_shared_child_org):
     """function级 fixture：在共享子组织下创建5个普通用户，测试结束后自动删除。"""
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
     import random
 
     page = _create_logged_in_page(_iam_shared_ctx, config)

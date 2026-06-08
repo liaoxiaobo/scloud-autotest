@@ -2,7 +2,7 @@ import re
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.common.playwright import expect
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 class CertMixin(BasePage):
