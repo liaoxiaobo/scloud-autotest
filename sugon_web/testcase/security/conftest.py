@@ -17,7 +17,7 @@ def usm_instance(browser, config):
     """
     from sugon_web.conftest import _create_logged_in_page
     from sugon_web.testcase.security._usm_helpers import create_usm_instance, delete_usm_instance
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
 
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
@@ -89,7 +89,7 @@ def ver_instance(browser, config):
     """
     from sugon_web.conftest import _create_logged_in_page
     from sugon_web.testcase.security._ver_helpers import create_ver_instance, delete_ver_instance
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
 
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
