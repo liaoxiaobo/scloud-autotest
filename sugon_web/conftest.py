@@ -132,26 +132,6 @@ def pytest_configure(config):
     config.option.allure_report_dir = str(allure_dir)
 
 
-def _ensure_allure_report_dir(config):
-    """确保 Allure 结果目录存在，防止插件写附件/结果时父目录缺失。"""
-    allure_report_dir = getattr(config.option, "allure_report_dir", None)
-    if allure_report_dir:
-        Path(allure_report_dir).mkdir(parents=True, exist_ok=True)
-        os.environ["_ALLURE_REPORT_DIR"] = str(allure_report_dir)
-
-
-def pytest_sessionstart(session):
-    """会话开始后兜底创建 Allure 结果目录。"""
-    _ensure_allure_report_dir(session.config)
-
-
-def pytest_runtest_logstart(nodeid, location):
-    """每条用例开始前兜底创建 Allure 结果目录。"""
-    allure_report_dir = os.environ.get("_ALLURE_REPORT_DIR")
-    if allure_report_dir:
-        Path(allure_report_dir).mkdir(parents=True, exist_ok=True)
-
-
 @pytest.fixture(scope="session")
 def config(pytestconfig):
     """配置fixture，初始化Config类并返回Config对象"""
