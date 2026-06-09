@@ -149,6 +149,14 @@ class TestBmsCleanup:
         bms_page._goto_submenu_safe("代理")
         bms_page.page.wait_for_load_state("networkidle")
         bms_page.page.wait_for_timeout(5000)
+        # 强制关闭任何残留对话框，防止拦截搜索
+        for dlg in bms_page.page.locator(".el-dialog__wrapper, [role='dialog']").all():
+            try:
+                if dlg.is_visible():
+                    bms_page.page.keyboard.press("Escape")
+                    bms_page.page.wait_for_timeout(500)
+            except Exception:
+                pass
         bms_page.bms_search(node_name)
         bms_page.page.wait_for_timeout(3000)
         row = bms_page._get_row_by_name(node_name)

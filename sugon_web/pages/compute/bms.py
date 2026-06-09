@@ -447,7 +447,9 @@ class BmsPage(BasePage):
                                     }"""
                                 )
                                 logger.info(f"[bms_agent_register] Region '{region_name}' 的网络选项: {net_texts}")
-                                if net_texts and "无数据" not in str(net_texts):
+                                # 排除网络选项与Region名相同的情况（说明网络未正确加载）
+                                valid_nets = [n for n in net_texts if n != region_name and "无数据" not in n]
+                                if valid_nets:
                                     region_clicked = True
                                     break
                                 self.page.keyboard.press("Escape")
@@ -501,7 +503,14 @@ class BmsPage(BasePage):
             # 3. 填写IP并提交
             d.locator(".el-form-item").filter(has_text="IP地址").locator("input").fill(current_ip)
             self._confirm_sugon_dialog()
-            self.page.wait_for_timeout(500)
+            # 等待对话框关闭（含关闭动画和可能的后续弹窗）
+            self.page.wait_for_timeout(2000)
+            try:
+                self.page.wait_for_selector(".el-dialog__wrapper", state="hidden", timeout=5000)
+            except Exception:
+                logger.warning("[bms_agent_register] 对话框关闭超时，强制按Escape")
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(1000)
 
             # 检查IP冲突
             try:
