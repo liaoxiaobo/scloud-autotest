@@ -267,12 +267,16 @@ class TestBmsCleanup:
     # ---------- 测试方法 ----------
 
     @allure.title("裸金属BMS-实例删除")
-    def test_bms_011_instance_delete(self, bms_page):
-        """删除裸金属实例并验证注册状态变更。"""
+    def test_bms_011_instance_delete(self, bms_page, ops_page, ssh_host, config, bms_instance):
+        """删除裸金属实例并验证注册状态变更。
+
+        若实例不存在，自动调用 BMS_001 完整创建流程先创建再删除，
+        使 cleanup 文件可独立运行，无需 Jenkins 按序调度创建用例。
+        """
         instance_name = "bms-0430"
         bmc_ip = "172.22.2.173"
 
-        # 检查实例是否存在，不存在则跳过（裸金属实例创建成本过高，不支持重建）
+        # 检查实例是否存在，不存在则自动创建
         bms_page._goto_submenu_safe("裸金属实例")
         bms_page.page.wait_for_timeout(3000)
         instance_exists = False
@@ -284,8 +288,17 @@ class TestBmsCleanup:
         except Exception as e:
             logger.warning(f"检查实例存在性时出错: {e}")
             instance_exists = False
+
         if not instance_exists:
-            pytest.skip(f"实例 '{instance_name}' 不存在，裸金属实例创建成本过高不支持重建，跳过删除测试")
+            logger.info(f"实例 '{instance_name}' 不存在，先执行镜像创建 + 完整创建流程...")
+            # 1) 先创建镜像，确保实例创建时有可用镜像
+            TestBmsCleanup().test_bms_017_image_create(ssh_host)
+            # 2) 执行完整创建流程（BMS_001）
+            from sugon_web.testcase.compute.test_bms_001_soft_create import TestBmsSoftCreate
+            TestBmsSoftCreate().test_bms_create_with_page_image(
+                ops_page, bms_page, ssh_host, config, bms_instance
+            )
+            logger.info("实例创建完成，继续执行删除测试")
 
         # 步骤1：搜索并删除实例
         with allure_step_log("步骤1: 搜索并删除裸金属实例"):
