@@ -278,27 +278,62 @@ class OpsPage(BasePage):
 
     # ---- switch group ----
 
-    def _goto_switch_group(self):
+    def _goto_switch_group(self, max_retries=2):
         base = self.page.url.split("#")[0].rstrip("/")
+        for attempt in range(max_retries):
+            self.page.goto(base + "/#/index")
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(2000)
+            try:
+                self.page.locator("text=基础设施").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.locator("text=区域资源").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.locator("text=交换机组").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(2000)
+
+            if "error-msg" in self.page.url:
+                logger.warning(f"[_goto_switch_group] 第 {attempt + 1} 次导航遇到错误页面: {self.page.url}，将重试")
+                self.page.wait_for_timeout(3000)
+                continue
+
+            logger.info(f"[_goto_switch_group] 成功导航到交换机组: {self.page.url}")
+            return
+
+        logger.warning("[_goto_switch_group] 菜单导航多次失败，尝试直接 URL 导航")
+        possible_urls = [
+            base + "/#/ops-switch-group",
+            base + "/#/switch-group",
+            base + "/#/switch-group-list",
+            base + "/#/ops-switch-group-list",
+        ]
+        for url in possible_urls:
+            self.page.goto(url)
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(3000)
+            if "error-msg" not in self.page.url:
+                logger.info(f"[_goto_switch_group] 直接 URL 导航成功: {url}")
+                return
+
         self.page.goto(base + "/#/index")
         self.page.wait_for_load_state("networkidle")
         self.page.wait_for_timeout(2000)
-        try:
-            self.page.locator("text=基础设施").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_timeout(1500)
-        try:
-            self.page.locator("text=区域资源").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_timeout(1500)
-        try:
-            self.page.locator("text=交换机组").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_load_state("networkidle")
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(3000)
 
     def _sg_dropdown_action(self, name, action):
         self.page.wait_for_timeout(1000)
