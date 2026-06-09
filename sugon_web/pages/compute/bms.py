@@ -385,6 +385,7 @@ class BmsPage(BasePage):
 
             # 1. 选择Region（"选择节点"下拉框）—— 使用Playwright click触发Vue change事件
             node_selected = False
+            selected_region = None
             for attempt in range(3):
                 try:
                     node_input = d.locator(".el-form-item").filter(has_text="选择节点").locator(".el-input")
@@ -451,6 +452,7 @@ class BmsPage(BasePage):
                                 valid_nets = [n for n in net_texts if n != region_name and "无数据" not in n]
                                 if valid_nets:
                                     region_clicked = True
+                                    selected_region = region_name
                                     break
                                 self.page.keyboard.press("Escape")
                                 self.page.wait_for_timeout(500)
@@ -488,9 +490,18 @@ class BmsPage(BasePage):
                     }"""
                 )
                 logger.info(f"[bms_agent_register] 网络下拉选项: {net_texts}")
-                if not net_texts or "无数据" in str(net_texts):
-                    raise Exception("网络下拉框无可用选项")
-                self.page.get_by_text(net_texts[0], exact=True).first.evaluate("""el => {
+                # 严格检查：网络选项为空、包含"无数据"、或全部等于Region名（网络未加载）
+                if not net_texts or "无数据" in str(net_texts) or (selected_region and all(n == selected_region for n in net_texts)):
+                    raise Exception(f"网络下拉框无可用选项（当前选项: {net_texts}）")
+                # 选择第一个不等于Region名的有效网络
+                target_net = None
+                for n in net_texts:
+                    if selected_region and n != selected_region:
+                        target_net = n
+                        break
+                if not target_net:
+                    target_net = net_texts[0]
+                self.page.get_by_text(target_net, exact=True).first.evaluate("""el => {
                     const opts = {bubbles: true, cancelable: true, view: window};
                     el.dispatchEvent(new MouseEvent('mousedown', opts));
                     el.dispatchEvent(new MouseEvent('mouseup', opts));
@@ -503,14 +514,23 @@ class BmsPage(BasePage):
             # 3. 填写IP并提交
             d.locator(".el-form-item").filter(has_text="IP地址").locator("input").fill(current_ip)
             self._confirm_sugon_dialog()
-            # 等待对话框关闭（含关闭动画和可能的后续弹窗）
+            # 强制关闭所有残留对话框（含错误提示、关闭动画期间的对话框）
             self.page.wait_for_timeout(2000)
-            try:
-                self.page.wait_for_selector(".el-dialog__wrapper", state="hidden", timeout=5000)
-            except Exception:
-                logger.warning("[bms_agent_register] 对话框关闭超时，强制按Escape")
-                self.page.keyboard.press("Escape")
-                self.page.wait_for_timeout(1000)
+            for _ in range(5):
+                any_visible = False
+                for dlg in self.page.locator(".el-dialog__wrapper").all():
+                    try:
+                        if dlg.is_visible():
+                            any_visible = True
+                            break
+                    except Exception:
+                        pass
+                if any_visible:
+                    logger.warning("[bms_agent_register] 检测到可见对话框残留，按Escape关闭")
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(800)
+                else:
+                    break
 
             # 检查IP冲突
             try:

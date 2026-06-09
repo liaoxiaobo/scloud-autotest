@@ -167,12 +167,22 @@ class TestBmsCleanup:
             try:
                 bms_page.bms_agent_register(node_name=node_name, ip_address="10.0.13.13")
                 bms_page.page.wait_for_timeout(5000)
-                # 检查注册对话框是否已关闭，如未关闭则尝试关闭
-                dlg = bms_page.page.locator('[role="dialog"]').filter(has_text="注册代理")
-                if dlg.count() > 0 and dlg.is_visible():
-                    logger.warning("注册代理对话框未关闭，尝试按Escape关闭")
-                    bms_page.page.keyboard.press("Escape")
-                    bms_page.page.wait_for_timeout(1000)
+                # 强制关闭所有残留对话框（含错误提示、注册对话框等），防止拦截后续操作
+                for _ in range(5):
+                    any_visible = False
+                    for dlg in bms_page.page.locator(".el-dialog__wrapper").all():
+                        try:
+                            if dlg.is_visible():
+                                any_visible = True
+                                break
+                        except Exception:
+                            pass
+                    if any_visible:
+                        logger.warning("检测到可见对话框残留，按Escape关闭")
+                        bms_page.page.keyboard.press("Escape")
+                        bms_page.page.wait_for_timeout(800)
+                    else:
+                        break
                 # 验证代理是否真正注册成功
                 bms_page._goto_submenu_safe("代理")
                 bms_page.page.wait_for_timeout(3000)
