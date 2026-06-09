@@ -1,7 +1,0 @@
-STABILITY SUMMARY
-Round 1: PASSED
-Round 2: FAILED
-Round 3: PASSED
-Round 4: PASSED
-Round 5: PASSED
-Total: 4/5 passed
