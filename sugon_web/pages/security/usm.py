@@ -104,7 +104,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
         """USM 创建表单：名称输入框"""
         # 通过表单标签精确定位，避免 strict mode violation
         return self.locator(".el-form-item").filter(
-            has_text=re.compile(r"^名称$")
+            has_text=re.compile(r"^名称")
         ).get_by_role("textbox")
 
     @property

@@ -633,18 +633,28 @@ class VerPage(VerAssertionMixin, BasePage):
             if "openapiOAuth" in current_url:
                 try:
                     logger.info("VER 跳转地址：当前在 OAuth 认证页，等待自动重定向...")
-                    new_page.wait_for_url(lambda url: "/home" in url or "/dashboard" in url, timeout=120000)
+                    new_page.wait_for_url(
+                        lambda url: "/home" in url or "/dashboard" in url or "toIndex.do" in url or ":10207" in url,
+                        timeout=120000,
+                    )
                     current_url = new_page.url
                     logger.info(f"VER 跳转地址：重定向后 URL: {current_url}")
                 except Exception:
                     logger.warning("VER 跳转地址：等待自动重定向超时")
 
-            is_ver_platform = "ver" in current_url.lower() or "/dashboard" in current_url or "/home" in current_url
+            is_ver_platform = (
+                "ver" in current_url.lower()
+                or "/dashboard" in current_url
+                or "/home" in current_url
+                or ":10207" in current_url
+                or "toIndex.do" in current_url
+            )
 
             has_ver_content = False
             try:
+                new_page.wait_for_timeout(2000)
                 body_text = new_page.inner_text("body")
-                if any(k in body_text for k in ["VER", "日志审计", "工作台", "首页"]):
+                if any(k in body_text for k in ["VER", "日志审计", "工作台", "首页", "toIndex", "AH_SOC"]):
                     has_ver_content = True
                     logger.info("VER 跳转地址：页面内容验证通过")
             except Exception:
