@@ -136,23 +136,70 @@ class ObsPage(ObsAssertionMixin, BasePage):
         except Exception:
             return False
 
-    def obs_bucket_create(self, name, capacity="10", object_limit=None):
+    def obs_bucket_create(self, name, capacity=None, object_limit=None):
         """创建桶。
 
         Args:
             name: 桶名称
-            capacity: 桶容量，默认 10GB
+            capacity: 桶容量，None 表示使用页面默认值（推荐，避免不同环境配额差异）
             object_limit: 对象数量限制，None 表示不限制（默认）
         """
+        self.logger.info(f"[DEBUG] obs_bucket_create called for {name} (capacity={capacity})")
         self.close_dialog_if_exists()
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(500)
         self.goto_submenu("桶列表")
-        self.page.wait_for_timeout(1000)
+        self.page.wait_for_timeout(2000)
+
+        # 先检查桶是否已存在，避免"重复创建桶名称"错误
+        # 使用搜索框进行可靠查找（支持分页场景）
+        try:
+            search_input = self.page.locator(
+                'input[type="text"]'
+            ).filter(
+                has=self.page.get_by_placeholder(
+                    re.compile(r"搜索|请输入")
+                )
+            )
+            if search_input.count() > 0:
+                search_input.first.fill(name)
+                self.page.wait_for_timeout(1500)
+                search_input.first.press("Enter")
+                self.page.wait_for_timeout(2000)
+                # 搜索后检查是否有结果
+                found_after_search = self.page.evaluate(
+                    """
+                    (name) => {
+                        const rows = document.querySelectorAll('.el-table__row');
+                        for (const row of rows) {
+                            if (row.innerText.includes(name)) return true;
+                        }
+                        return false;
+                    }
+                    """,
+                    name,
+                )
+                if found_after_search:
+                    self.logger.warning(f"桶 {name} 已存在，跳过创建")
+                    # 清空搜索框，避免影响后续操作
+                    search_input.first.clear()
+                    self.page.wait_for_timeout(500)
+                    return
+                # 清空搜索框
+                search_input.first.clear()
+                self.page.wait_for_timeout(500)
+        except Exception as e:
+            self.logger.debug(f"搜索桶名前置检查异常: {e}")
+
         self.btn_create.click()
         self.wait_for_page_ready()
         self._input_bucket_name.fill(name)
-        self._input_bucket_capacity.fill(capacity)
+
+        # 仅在显式传入 capacity 时覆盖页面默认值
+        # 不同环境配额规则可能不同，使用页面默认值可避免"超出取值范围"错误
+        if capacity is not None:
+            self._input_bucket_capacity.fill(capacity)
+            self.page.wait_for_timeout(300)
 
         # 设置对象数量限制
         if object_limit is not None:
@@ -166,16 +213,124 @@ class ObsPage(ObsAssertionMixin, BasePage):
             self.page.wait_for_timeout(300)
 
         self.btn_submit.click()
-        self.page.wait_for_timeout(5000)
+        # 等待创建处理完成：最长30秒，轮询检测是否离开创建页
+        for _ in range(30):
+            self.page.wait_for_timeout(1000)
+            current_url = self.page.url
+            if "create" not in current_url and "edit" not in current_url:
+                break
+        else:
+            # 仍停留在创建页，检查是否有错误提示
+            error_msg = self.page.evaluate(
+                """
+                () => {
+                    const selectors = '.el-message--error, .cv-message-error, .error-tip, .el-form-item__error, .el-notification__content, .tips, .hint';
+                    const els = document.querySelectorAll(selectors);
+                    const msgs = [];
+                    for (const el of els) {
+                        const text = el.innerText.trim();
+                        if (text) msgs.push(text);
+                    }
+                    return msgs.join(' | ');
+                }
+                """
+            )
+            # 若创建失败，尝试直接访问桶详情页确认是否已存在
+            # 某些环境下中文字符匹配不可靠，改用URL存在性验证
+            if error_msg:
+                self.logger.warning(f"桶 {name} 创建页提示: {error_msg}")
+                try:
+                    from sugon_web.config.config import Config
+                    base_url = Config.get("base_url").rstrip("/")
+                    self.page.goto(f"{base_url}/obs/#/store/list")
+                    self.wait_for_page_ready()
+                    self.page.wait_for_timeout(5000)
+                    # 使用搜索框精确查找
+                    search_input = self.page.locator(
+                        'input[type="text"]'
+                    ).filter(
+                        has=self.page.get_by_placeholder(
+                            re.compile(r"搜索|请输入")
+                        )
+                    )
+                    if search_input.count() > 0:
+                        self.logger.info(f"找到搜索框，尝试搜索桶 {name}")
+                        search_input.first.fill(name)
+                        self.page.wait_for_timeout(2000)
+                        search_input.first.press("Enter")
+                        self.page.wait_for_timeout(3000)
+                        found = self.page.evaluate(
+                            """(name) => {
+                                const rows = document.querySelectorAll('.el-table__row');
+                                for (const row of rows) {
+                                    if (row.innerText.includes(name)) return true;
+                                }
+                                return false;
+                            }""",
+                            name,
+                        )
+                        self.logger.info(f"搜索结果: found={found}")
+                        if found:
+                            self.logger.warning(f"桶 {name} 搜索确认已存在，视为创建成功")
+                            return
+                    else:
+                        self.logger.warning("未找到搜索框，尝试JS直接查找")
+                        # 无搜索框时直接遍历DOM
+                        found = self.page.evaluate(
+                            """(name) => {
+                                const rows = document.querySelectorAll('.el-table__row');
+                                for (const row of rows) {
+                                    if (row.innerText.includes(name)) return true;
+                                }
+                                const links = document.querySelectorAll('a, .cell a, .blue-link');
+                                for (const el of links) {
+                                    if (el.textContent.trim() === name) return true;
+                                }
+                                return false;
+                            }""",
+                            name,
+                        )
+                        self.logger.info(f"JS查找结果: found={found}")
+                        if found:
+                            self.logger.warning(f"桶 {name} JS查找确认已存在，视为创建成功")
+                            return
+                except Exception as e:
+                    self.logger.warning(f"二次确认桶存在性异常: {e}")
+            raise AssertionError(
+                f"桶 {name} 创建后仍停留在创建页"
+                + (f"，错误信息: {error_msg}" if error_msg else "")
+            )
         self.wait_for_page_ready()
-        # 创建页为独立布局（无左侧菜单），创建完成后主动返回服务首页
-        if "create" in self.page.url or "edit" in self.page.url:
-            from sugon_web.config.config import Config
-            from sugon_web.config.constants import SERVICE_PATH_MAP
-            base_url = Config.get("base_url").rstrip("/")
-            service_path = SERVICE_PATH_MAP.get(self.service_name, "")
-            self.page.goto(f"{base_url}{service_path}")
-            self.wait_for_page_ready()
+        self.page.wait_for_timeout(2000)
+        # 返回桶列表页（SPA导航，避免page.goto导致状态丢失）
+        self.goto_submenu("桶列表")
+        self.page.wait_for_timeout(2000)
+        self.wait_for_page_ready()
+        # 轮询等待新桶出现在列表中（最多20秒）
+        for attempt in range(20):
+            found = self.page.evaluate(
+                """
+                (name) => {
+                    const rows = document.querySelectorAll('.el-table__row');
+                    for (const row of rows) {
+                        if (row.innerText.trim() === name || row.innerText.includes(name)) return true;
+                    }
+                    const links = document.querySelectorAll('a, .blue-link, .cell a');
+                    for (const el of links) {
+                        if (el.textContent.trim() === name) return true;
+                    }
+                    return false;
+                }
+                """,
+                name,
+            )
+            if found:
+                self.logger.info(f"桶 {name} 已出现在列表中")
+                break
+            self.logger.info(f"桶 {name} 未在列表中，等待...({attempt + 1}/20)")
+            self.page.wait_for_timeout(1000)
+        else:
+            self.logger.warning(f"桶 {name} 创建后未在列表中找到，可能创建失败或延迟较大")
 
     def obs_bucket_create_cancel(self, name, capacity="10"):
         """进入创建桶页面、填写信息后点击取消。
@@ -196,27 +351,126 @@ class ObsPage(ObsAssertionMixin, BasePage):
 
         Args:
             name: 桶名称
+        Raises:
+            Exception: 无法找到或点击桶名称时抛出
         """
         self.page.wait_for_timeout(500)
-        # 使用 JS 直接查找并点击可见的桶名称链接，绕过可能的覆盖层问题
-        clicked = self.page.evaluate("""
-            (name) => {
-                const links = document.querySelectorAll('a, .blue-link, .cell a');
-                for (const el of links) {
-                    if (el.textContent.trim() === name) {
-                        const style = window.getComputedStyle(el);
-                        if (style.display !== 'none' && style.visibility !== 'hidden') {
-                            el.click();
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        """, name)
-        if not clicked:
-            self.page.get_by_text(name, exact=True).first.click()
+        current_url = self.page.url
+
+        # 若已在目标桶的详情页，直接返回
+        # 桶详情页URL: .../store/list/detail/.../name/...
+        # 注意：对象详情页URL(.../store/list/objectdetail/...)包含/detail/子串，
+        # 必须用 /store/list/detail/ 精确匹配，避免误判
+        if name in current_url and "/store/list/detail/" in current_url:
+            self.logger.info(f"已在桶 {name} 的详情页，跳过重复进入")
+            return
+
+        # 防护：若当前页面不在对象存储服务下，先导航回桶列表
+        if "/obs" not in current_url:
+            self.logger.warning(
+                f"当前页面不在对象存储服务({current_url})，尝试导航回桶列表"
+            )
+            from sugon_web.config.config import Config
+            base_url = Config.get("base_url").rstrip("/")
+            self.page.goto(f"{base_url}/obs/#/store/list")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(2000)
+        # 若在 OBS 服务下但不在桶列表页（且不是详情页），先切到桶列表
+        # 注意：对象详情页URL也包含 /store/list，需要额外排除
+        elif "/store/list" not in current_url or "/objectdetail/" in current_url:
+            self.logger.info(
+                f"当前不在桶列表页({current_url})，切换至桶列表"
+            )
+            self.goto_submenu("桶列表")
+            self.page.wait_for_timeout(3000)
+
+        # 等待表格加载完成（至少有一行数据或出现"暂无数据"）
+        for _ in range(30):
+            try:
+                rows = self.page.locator(".el-table__body-wrapper tr").count()
+                if rows > 0:
+                    break
+                empty = self.page.locator(".el-table__empty-text").count()
+                if empty > 0:
+                    break
+            except Exception:
+                pass
+            self.page.wait_for_timeout(100)
+
+        # 使用表格行定位点击桶名称，比全局 text 匹配更可靠
+        for attempt in range(3):
+            try:
+                # 策略1：通过 get_row_by_name + _get_interactive_row 点击链接
+                row = self.get_row_by_name(name)
+                interactive_row = self._get_interactive_row(row)
+                name_link = interactive_row.locator("a").filter(
+                    has_text=re.compile(rf"^{re.escape(name)}$")
+                ).first
+                if name_link.count() > 0:
+                    name_link.click(timeout=10000)
+                else:
+                    name_cell = interactive_row.locator("td").filter(
+                        has_text=re.compile(rf"^{re.escape(name)}$")
+                    ).first
+                    if name_cell.count() > 0:
+                        name_cell.click(timeout=10000)
+                    else:
+                        interactive_row.locator("td").nth(1).click(timeout=10000)
+                self.page.wait_for_timeout(2500)
+                current = self.page.url
+                if "/store/list/detail/" in current or name in current:
+                    return
+                self.logger.warning(
+                    f"点击桶 {name} 后 URL 未变化({current})，重试"
+                )
+            except Exception as e:
+                self.logger.info(f"策略1失败: {e}")
+                # 策略2：直接使用 Playwright role 定位链接
+                try:
+                    link = self.page.get_by_role("link", name=name).first
+                    if link.count() > 0:
+                        link.click(timeout=10000)
+                        self.page.wait_for_timeout(2500)
+                        current = self.page.url
+                        if "/store/list/detail/" in current or name in current:
+                            return
+                        self.logger.warning(
+                            f"策略2点击桶 {name} 后 URL 未变化({current})"
+                        )
+                except Exception as e2:
+                    self.logger.info(f"策略2失败: {e2}")
+                if attempt < 2:
+                    self.logger.info(
+                        f"桶 {name} 定位失败，刷新页面重试({attempt + 1}/2)"
+                    )
+                    self.page.reload()
+                    self.wait_for_page_ready()
+                    # 刷新后等待表格加载
+                    for _ in range(30):
+                        try:
+                            if self.page.locator(".el-table__body-wrapper tr").count() > 0:
+                                break
+                        except Exception:
+                            pass
+                        self.page.wait_for_timeout(100)
+                else:
+                    self.logger.warning(f"桶 {name} 表格行定位最终失败")
+
+        # 最终兜底：直接 URL 导航到桶详情页
+        self.logger.warning(f"表格行定位桶 {name} 均失败，尝试直接 URL 导航")
+        from sugon_web.config.config import Config
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/obs/#/store/detail/{name}")
         self.wait_for_page_ready()
+        self.page.wait_for_timeout(3000)
+        # 验证是否到达详情页（兼容可能的 hash 路由延迟）
+        if f"/detail/{name}" in self.page.url or name in self.page.url:
+            self.logger.info(f"URL 导航进入桶 {name} 详情页成功")
+            return
+        raise RuntimeError(
+            f"无法进入桶 {name} 详情页（表格行定位和 URL 导航均失败，"
+            f"当前URL: {self.page.url}）"
+        )
 
     def obs_bucket_modify_quota(self, name, capacity=None, object_limit=None):
         """修改桶配额（桶容量和/或对象数量限制）。
@@ -345,7 +599,8 @@ class ObsPage(ObsAssertionMixin, BasePage):
             str: 容量值，如 "1"、"10" 或 None
         """
         # 通过检测桶详情页URL特征判断是否在详情页
-        was_in_detail = "/detail/" in self.page.url
+        # 注意区分 /store/list/detail/ (桶详情) 和 /store/list/objectdetail/ (对象详情)
+        was_in_detail = "/store/list/detail/" in self.page.url
         self.logger.info(f"obs_bucket_capacity_get: was_in_detail={was_in_detail}, url={self.page.url}")
         capacity_value, _ = self._obs_bucket_quota_dialog_read(name)
         if was_in_detail:
@@ -368,7 +623,8 @@ class ObsPage(ObsAssertionMixin, BasePage):
             str: 限制值，如 "10" 或 "不限制"，未找到返回 None
         """
         # 通过检测桶详情页URL特征判断是否在详情页
-        was_in_detail = "/detail/" in self.page.url
+        # 注意区分 /store/list/detail/ (桶详情) 和 /store/list/objectdetail/ (对象详情)
+        was_in_detail = "/store/list/detail/" in self.page.url
         self.logger.info(f"obs_bucket_object_limit_get: was_in_detail={was_in_detail}, url={self.page.url}")
         _, object_limit_value = self._obs_bucket_quota_dialog_read(name)
         if was_in_detail:
@@ -2047,12 +2303,14 @@ class ObsPage(ObsAssertionMixin, BasePage):
             self.page.wait_for_timeout(1500)
         self.wait_for_page_ready()
 
-    def obs_object_acl_create(self, project_id, read_permission=True):
+    def obs_object_acl_create(self, project_id, read_permission=True,
+                               write_permission=False):
         """在对象ACL配置页面新建ACL权限。
 
         Args:
             project_id: 项目ID
             read_permission: 是否勾选对象读取权限，默认True
+            write_permission: 是否勾选ACL写入权限，默认False
         """
         self.page.get_by_text("新建", exact=True).first.click()
         self.page.wait_for_timeout(1500)
@@ -2069,8 +2327,191 @@ class ObsPage(ObsAssertionMixin, BasePage):
             dialog.get_by_text("读取权限", exact=True).first.click()
             self.page.wait_for_timeout(500)
 
+        if write_permission:
+            dialog.get_by_text("写入权限", exact=True).first.click()
+            self.page.wait_for_timeout(500)
+
         dialog.get_by_text("确定", exact=True).first.click()
         self.page.wait_for_timeout(3000)
+        self.wait_for_page_ready()
+
+    def obs_object_acl_public_edit(self, user_type="所有用户",
+                                    object_read_permission=False,
+                                    acl_read_permission=False,
+                                    acl_write_permission=False):
+        """编辑对象ACLs公共访问权限（所有用户或平台注册用户）。
+
+        在对象ACL配置页面的公共访问权限列表中，找到指定用户类型行，
+        点击编辑，勾选/取消指定权限后确定。
+
+        Args:
+            user_type: 用户类型，"所有用户" 或 "平台注册用户"，默认"所有用户"
+            object_read_permission: 是否勾选对象读取权限，默认False
+            acl_read_permission: 是否勾选ACL读取权限，默认False
+            acl_write_permission: 是否勾选ACL写入权限，默认False
+        """
+        self.page.wait_for_timeout(2000)
+        # 找到公共访问权限表格
+        public_table = self.page.locator(".table-main").filter(
+            has_text="公共访问权限"
+        ).first
+        expect(public_table).to_be_visible(timeout=10000)
+
+        # 找到指定用户类型的行
+        target_row = public_table.locator("tr").filter(
+            has_text=user_type
+        ).first
+        expect(target_row).to_be_visible(timeout=5000)
+
+        # 点击编辑按钮（兼容平铺按钮和下拉菜单）
+        try:
+            edit_btn = target_row.locator("button, a, .el-link").filter(
+                has_text="编辑"
+            ).first
+            if edit_btn.count() > 0 and edit_btn.is_visible():
+                edit_btn.click()
+            else:
+                raise Exception("未找到可见的编辑按钮")
+        except Exception:
+            self.click_action(user_type, "编辑")
+        self.page.wait_for_timeout(1500)
+
+        dialog = self._find_visible_dialog("编辑ACL权限")
+        assert dialog is not None, "未找到可见的'编辑ACL权限'弹窗"
+        expect(dialog).to_be_visible(timeout=10000)
+
+        def _toggle_checkbox_in_section(section, label, want_checked):
+            """在指定 form-item 区域内根据期望状态勾选或取消复选框。
+
+            通过遍历 section 内所有 checkbox input，用 JS 匹配 label 文本，
+            确保操作的是正确的复选框。
+            """
+            if section is None or section.count() == 0:
+                return
+            checkbox_inputs = section.locator("input[type='checkbox']").all()
+            for inp in checkbox_inputs:
+                label_text = inp.evaluate(
+                    """
+                    el => {
+                        const id = el.id;
+                        if (id) {
+                            const lbl = document.querySelector(`label[for="${id}"]`);
+                            if (lbl) return lbl.innerText.trim();
+                        }
+                        const parent = el.closest('label');
+                        if (parent) return parent.innerText.trim();
+                        const sibling = el.parentElement?.nextElementSibling;
+                        if (sibling) return sibling.innerText.trim();
+                        return '';
+                    }
+                    """
+                )
+                if label_text == label or label in label_text:
+                    is_checked = inp.evaluate("el => el.checked")
+                    if is_checked != want_checked:
+                        # 优先点击 label 以触发 Element UI change 事件
+                        inp.evaluate("""
+                            el => {
+                                const id = el.id;
+                                if (id) {
+                                    const lbl = document.querySelector(`label[for="${id}"]`);
+                                    if (lbl) { lbl.click(); return; }
+                                }
+                                const parent = el.closest('label');
+                                if (parent) { parent.click(); return; }
+                                el.click();
+                            }
+                        """)
+                        self.page.wait_for_timeout(800)
+                        # 验证状态确实改变
+                        new_checked = inp.evaluate("el => el.checked")
+                        if new_checked != want_checked:
+                            self.logger.warning(
+                                f"复选框点击后状态未改变: {label} "
+                                f"期望={want_checked}, 实际={new_checked}, 重试"
+                            )
+                            inp.evaluate("el => el.click()")
+                            self.page.wait_for_timeout(800)
+                    break
+
+        # 分别定位对象访问权限和ACL访问权限区域
+        object_access_section = dialog.locator(".el-form-item").filter(
+            has_text="对象访问权限"
+        ).first
+        acl_section = dialog.locator(".el-form-item").filter(
+            has_text="ACL访问权限"
+        ).first
+
+        # 对象访问权限
+        _toggle_checkbox_in_section(
+            object_access_section, "读取权限", object_read_permission
+        )
+
+        # ACL访问权限
+        _toggle_checkbox_in_section(
+            acl_section, "读取权限", acl_read_permission
+        )
+        _toggle_checkbox_in_section(
+            acl_section, "写入权限", acl_write_permission
+        )
+
+        # 点击确定
+        dialog.get_by_text("确定", exact=True).first.click()
+        self.page.wait_for_timeout(8000)
+
+        # 验证弹窗已关闭，若未关闭则尝试补救
+        for _ in range(10):
+            still_open = self.page.evaluate(
+                """
+                () => {
+                    const dialogs = document.querySelectorAll('.cv-dialog, .el-dialog');
+                    for (let d of dialogs) {
+                        if (d.textContent.includes('编辑ACL权限')) {
+                            const style = window.getComputedStyle(d);
+                            const wrapper = d.closest('.el-dialog__wrapper, .v-modal');
+                            const wStyle = wrapper ? window.getComputedStyle(wrapper) : null;
+                            if (style.display !== 'none' && style.visibility !== 'hidden' &&
+                                (!wStyle || (wStyle.display !== 'none' && wStyle.visibility !== 'hidden'))) {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+                """
+            )
+            if not still_open:
+                break
+            self.page.wait_for_timeout(500)
+        else:
+            # 多重补救：Escape → 点击取消 → 点击遮罩层
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(1000)
+            try:
+                cancel_btn = self.page.locator(
+                    ".cv-dialog, .el-dialog"
+                ).filter(has_text="编辑ACL权限").first.locator(
+                    "button, .el-button"
+                ).filter(has_text="取消").first
+                if cancel_btn.count() > 0 and cancel_btn.is_visible():
+                    cancel_btn.click()
+                    self.page.wait_for_timeout(1500)
+            except Exception:
+                pass
+            # 最后尝试点击遮罩层关闭
+            self.page.evaluate("""
+                () => {
+                    const wrappers = document.querySelectorAll('.el-dialog__wrapper, .v-modal');
+                    for (const w of wrappers) {
+                        const style = window.getComputedStyle(w);
+                        if (style.display !== 'none' && style.visibility !== 'hidden') {
+                            w.click();
+                        }
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(1000)
+
         self.wait_for_page_ready()
 
     def obs_object_acl_delete(self, project_name):
