@@ -328,11 +328,12 @@ class Playwright:
         """
         self.page.wait_for_load_state("load")
         self.page.wait_for_load_state("domcontentloaded")
-        loading_spinners = self.page.locator(".el-loading-spinner")
-        count = loading_spinners.count()
-        if count > 0:
-            for i in range(count):
-                loading_spinners.nth(i).wait_for(state='hidden')
+        # 轮询等待所有 Element UI loading 遮罩消失（包括异步出现的）
+        for _ in range(120):
+            spinners = self.page.locator(".el-loading-spinner:visible")
+            if spinners.count() == 0:
+                break
+            self.page.wait_for_timeout(500)
 
     def wait_for_operation_complete(self, timeout: int = 30) -> None:
         """等待页面操作完成。

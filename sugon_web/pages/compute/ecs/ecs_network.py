@@ -70,12 +70,13 @@ class EcsNetworkMixin(BasePage):
 
 
     @submenu("弹性云服务器")
-    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public_net"):
+    def ecs_bind_pub_ip(self, name: str, subnet: str = "Autotest", pub_net: str = "public_net", eip_ip: str = None):
         """绑定公网IP
         Args:
             name: 云服务器名称
             subnet: 子网
             pub_net: 公网资源池
+            eip_ip: 指定要绑定的公网IP地址，为None时随机选择可用IP
         """
         self.click_action(name, "绑定公网IP")
         # 选择端口
@@ -85,19 +86,81 @@ class EcsNetworkMixin(BasePage):
         bind_dialog = self.get_by_role("dialog", name="绑定公网IP")
         bind_dialog.get_by_placeholder("请选择").click()
         self.get_by_text(pub_net).click()
+        self.page.wait_for_timeout(2000)
         # 选择公网ip
-        # 获取所有可用IP行，随机选择一个
-        available_rows = bind_dialog.get_by_role("row").filter(has_text="关闭").all()
-        if not available_rows:
-            raise Exception("没有可用的公网IP")
-        # 随机选择一个IP，降低多线程冲突概率
-        selected_row = random.choice(available_rows)
-        selected_row.get_by_role("radio").click()
-        ip_info = selected_row.get_by_role("cell")
-        ip = ip_info.nth(1).text_content()
-        self.dialog_confirm.click()
-        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}, 公网ip: {ip}")
-        return str(ip)
+        if eip_ip:
+            # 在表格中查找指定IP地址的行，支持分页
+            for page_attempt in range(10):
+                rows = bind_dialog.get_by_role("row").all()
+                for row in rows:
+                    cells = row.get_by_role("cell").all_text_contents()
+                    if any(eip_ip in cell for cell in cells):
+                        row.get_by_role("radio").click()
+                        self.dialog_confirm.click()
+                        logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {eip_ip}")
+                        return eip_ip
+                # 尝试多种方式翻页
+                clicked = False
+                # 策略1: 标准 Element UI 分页下一页按钮
+                for selector in [
+                    ".el-pagination .btn-next:not([disabled])",
+                    ".el-pagination__next:not([disabled])",
+                    ".pagination .next:not([disabled])",
+                    ".btn-next:not(.is-disabled)",
+                    "button[class*='next']:not([disabled])",
+                ]:
+                    try:
+                        btns = bind_dialog.locator(selector).all()
+                        for btn in btns:
+                            if btn.is_visible() and btn.is_enabled():
+                                btn.click()
+                                self.page.wait_for_timeout(1500)
+                                clicked = True
+                                break
+                        if clicked:
+                            break
+                    except Exception:
+                        continue
+                # 策略2: 尝试点击页码数字（当前页+1）
+                if not clicked:
+                    try:
+                        current_page = bind_dialog.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
+                        if current_page.count() > 0:
+                            current_text = current_page.text_content() or "1"
+                            next_page_num = str(int(current_text) + 1)
+                            next_page = bind_dialog.locator(".el-pager li, .pagination .page-item").filter(has_text=re.compile(rf"^{re.escape(next_page_num)}$")).first
+                            if next_page.count() > 0 and next_page.is_visible():
+                                next_page.click()
+                                self.page.wait_for_timeout(1500)
+                                clicked = True
+                    except Exception:
+                        pass
+                # 策略3: 尝试滚动表格主体加载更多
+                if not clicked:
+                    try:
+                        body = bind_dialog.locator(".el-table__body-wrapper, .table-body").first
+                        if body.count() > 0:
+                            body.evaluate("el => el.scrollTop = el.scrollHeight")
+                            self.page.wait_for_timeout(1500)
+                            clicked = True
+                    except Exception:
+                        pass
+                if not clicked:
+                    break
+            raise AssertionError(f"未在可用公网IP列表中找到指定IP: {eip_ip}")
+        else:
+            # 获取所有可用IP行，随机选择一个
+            available_rows = bind_dialog.get_by_role("row").filter(has_text="关闭").all()
+            if not available_rows:
+                raise Exception("没有可用的公网IP")
+            # 随机选择一个IP，降低多线程冲突概率
+            selected_row = random.choice(available_rows)
+            selected_row.get_by_role("radio").click()
+            ip_info = selected_row.get_by_role("cell")
+            ip = ip_info.nth(1).text_content()
+            self.dialog_confirm.click()
+            logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {subnet}, 公网ip: {ip}")
+            return str(ip)
 
 
     @submenu("弹性云服务器")
