@@ -326,13 +326,16 @@ class Playwright:
         注意：本方法在 BasePage MRO 中优先级高于 WaitsMixin 的同名方法，
         实际调用的是本实现。
         """
-        self.page.wait_for_load_state("load")
-        self.page.wait_for_load_state("domcontentloaded")
+        self.page.wait_for_load_state("load", timeout=30000)
+        self.page.wait_for_load_state("domcontentloaded", timeout=30000)
         loading_spinners = self.page.locator(".el-loading-spinner")
         count = loading_spinners.count()
         if count > 0:
             for i in range(count):
-                loading_spinners.nth(i).wait_for(state='hidden')
+                try:
+                    loading_spinners.nth(i).wait_for(state='hidden', timeout=30000)
+                except Exception:
+                    pass
 
     def wait_for_operation_complete(self, timeout: int = 30) -> None:
         """等待页面操作完成。

@@ -1698,6 +1698,16 @@ class IamPage(BasePage):
             all_labels = dialog.locator(".el-form-item .el-form-item__label").all_inner_texts()
             all_values = dialog.locator(".el-input-number input").all_input_values()
             logger.warning(f"IAM：弹窗未关闭时的字段: {list(zip(all_labels, all_values))}")
+            # 强制关闭弹窗：尝试点击关闭按钮或按 Escape
+            try:
+                close_btn = dialog.locator(".el-dialog__headerbtn").first
+                if close_btn.is_visible():
+                    close_btn.click()
+                    self.page.wait_for_timeout(1000)
+            except Exception:
+                pass
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(500)
         # 等待配额列表重新加载（getQuota异步获取数据+waterFall瀑布流布局）
         self.page.wait_for_timeout(8000)
 
@@ -1734,6 +1744,8 @@ class IamPage(BasePage):
             self.page.wait_for_timeout(1000)
         assert metric_item.count() > 0, f"{service_name} 中未找到指标 {metric_name}"
 
+        # 等待 DOM 稳定后再读取值，避免异步刷新导致 Playwright 重试挂起
+        self.page.wait_for_timeout(2000)
         value_el = metric_item.first.locator("xpath=../..").locator(".item-value")
         actual_value = value_el.first.inner_text().strip()
         assert expected_value in actual_value, \

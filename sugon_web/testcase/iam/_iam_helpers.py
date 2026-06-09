@@ -272,17 +272,39 @@ def _navigate_to_login(page):
     base_url = Config.get("base_url")
     # 先关闭可能的弹窗，避免干扰后续导航
     try:
-        for _ in range(3):
-            dialog = page.locator(".el-message-box__wrapper:visible, .el-dialog__wrapper:visible").first
-            if dialog.count() == 0 or not dialog.is_visible():
-                break
-            for btn in dialog.locator("button").filter(has_text="确定").all():
-                if btn.is_visible():
-                    btn.click()
-                    page.wait_for_timeout(500)
-                    break
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(300)
+        for _ in range(5):
+            closed = False
+            # 检查 el-message-box
+            msg_box = page.locator(".el-message-box__wrapper")
+            if msg_box.count() > 0 and msg_box.first.is_visible():
+                for btn_text in ["确定", "确认", "关闭"]:
+                    for btn in msg_box.first.locator("button").filter(has_text=btn_text).all():
+                        if btn.is_visible():
+                            btn.click()
+                            page.wait_for_timeout(800)
+                            closed = True
+                            break
+                    if closed:
+                        break
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+                continue
+            # 检查 el-dialog
+            dialog = page.locator(".el-dialog__wrapper")
+            if dialog.count() > 0 and dialog.first.is_visible():
+                for btn_text in ["确定", "确认", "关闭"]:
+                    for btn in dialog.first.locator("button").filter(has_text=btn_text).all():
+                        if btn.is_visible():
+                            btn.click()
+                            page.wait_for_timeout(800)
+                            closed = True
+                            break
+                    if closed:
+                        break
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+                continue
+            break
     except Exception:
         pass
     page.context.clear_cookies()
@@ -300,9 +322,16 @@ def login_as_user(page, username: str, password: str):
         password: 密码
     """
     from sugon_web.pages.login import LoginPage
+    from sugon_web.utils.logger import logger
     _navigate_to_login(page)
     LoginPage(page).login(username, password)
     page.wait_for_load_state("domcontentloaded")
+    # 轮询等待路由跳转离开登录页（Vue 路由切换可能比 DOMContentLoaded 慢）
+    for _ in range(20):
+        if "login" not in page.url.lower():
+            break
+        page.wait_for_timeout(500)
+    logger.info(f"login_as_user: user={username}, url={page.url}")
 
 
 def restore_admin_login(page):
