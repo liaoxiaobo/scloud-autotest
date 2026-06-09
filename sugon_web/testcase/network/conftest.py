@@ -3,7 +3,7 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, VpnPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -69,6 +69,19 @@ def tm_page(page):
         TmPage: 流量镜像页面对象实例。
     """
     return TmPage(page)
+
+
+@pytest.fixture(scope="function")
+def vpn_page(page):
+    """初始化虚拟专用网络VPN页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        VpnPage: 虚拟专用网络VPN页面对象实例。
+    """
+    return VpnPage(page)
 
 
 def _build_vpc_create_kwargs(params=None):
