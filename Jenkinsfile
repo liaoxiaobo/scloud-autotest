@@ -7,7 +7,12 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
-        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
+        string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
+        string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
+        string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
+        string(name: 'BMS_NETWORK_NAME', defaultValue: '', description: 'BMS网络名称（留空使用配置文件）')
+        string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
+        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -49,8 +54,36 @@ pipeline {
             }
           steps{
                 script {
+                    def markFilter = (params.MARK ?: '').trim().toLowerCase()
+                    def jobName = (env.JOB_NAME ?: '').toLowerCase()
+                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
+                    def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+
+                    if (isBmsRun && effectiveParallelCount != '1') {
+                        echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
+                        effectiveParallelCount = '1'
+                    }
+
                     // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n ${params.PARALLEL_COUNT} --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    if (params.BMS_INSTANCE_NAME?.trim()) {
+                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                    }
+                    if (params.BMS_BMC_IP?.trim()) {
+                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                    }
+                    if (params.BMS_PREFERRED_NODE?.trim()) {
+                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                    }
+                    if (params.BMS_NETWORK_NAME?.trim()) {
+                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                    }
+                    if (params.BMS_PASSWORD?.trim()) {
+                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                    }
+                    if (effectiveParallelCount != '1') {
+                        pytestCommand += " -n ${effectiveParallelCount} --dist=loadscope"
+                    }
 
                     // 标签筛选逻辑（-m 参数）
                     if (params.MARK) {

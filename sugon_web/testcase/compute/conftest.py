@@ -105,24 +105,52 @@ def pool(ops_page, vm, request):
 
 # ---- BMS 裸金属 fixture（只读，无清理） ----
 
+@pytest.fixture(scope="session")
+def bms_env(pytestconfig, config):
+    """返回 BMS 回归测试的基线环境配置，CLI 参数可覆盖配置文件。"""
+    bms_config = config.get("bms", {}) or {}
+
+    def _value(option_name, config_key):
+        option_value = pytestconfig.getoption(option_name)
+        if option_value:
+            return option_value
+        return bms_config.get(config_key)
+
+    return {
+        "instance_name": _value("--bms-instance-name", "instance_name"),
+        "bmc_ip": _value("--bms-bmc-ip", "bmc_ip"),
+        "preferred_node": _value("--bms-preferred-node", "preferred_node"),
+        "network_name": _value("--bms-network-name", "network_name"),
+        "password": _value("--bms-password", "password"),
+    }
+
+
+@pytest.fixture(scope="session")
+def bms_instance_name(bms_env):
+    """返回 BMS 操作用例复用的实例名称。"""
+    return bms_env["instance_name"]
+
+
 @pytest.fixture()
-def bms_instance(bms_page):
+def bms_instance(bms_page, bms_env):
     """返回裸金属实例创建器（工厂函数），封装步骤13-14。
 
     使用方式：
-        instance_name = bms_instance(name="bms-0430")
+        instance_name = bms_instance(name=bms_env["instance_name"])
 
     前置条件：调用前需确保交换机组、网络、代理、PXE、发现、注册已完成。
     """
     def _create(
-        name="bms-0430",
+        name=None,
         image_name="bms",
         system_disk="sdi",
-        password="admin1234@sugon",
+        password=None,
         security_group="default",
         server_name="N/A 2U Rack Server",
         network_name="guanyy-vpc",
     ):
+        name = name or bms_env["instance_name"]
+        password = password or bms_env["password"]
         with allure_step_log("步骤13: 创建裸金属实例"):
             try:
                 bms_page.bms_instance_create(
@@ -133,6 +161,7 @@ def bms_instance(bms_page):
                     security_group=security_group,
                     server_name=server_name,
                     network_name=network_name,
+                    bmc_ip=bms_env["bmc_ip"],
                 )
             except RuntimeError as e:
                 pytest.skip(str(e))

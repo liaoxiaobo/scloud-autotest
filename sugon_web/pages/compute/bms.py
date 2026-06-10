@@ -99,6 +99,10 @@ class BmsPage(BasePage):
     def bms_search(self, keyword: str):
         """BMS 页面专用搜索，使用回车触发，避免 _btn_search 定位不稳定问题。"""
         self.logger.info(f"[bms_search] 开始搜索: {keyword}")
+        try:
+            self.close_dialog_if_exists()
+        except Exception as e:
+            logger.debug(f"[bms_search] 关闭残留弹窗失败，继续搜索: {e}")
         self.page.wait_for_timeout(1000)
         # 优先查找 BMS 各子菜单页面搜索输入框
         inp = self.page.locator(
@@ -122,6 +126,10 @@ class BmsPage(BasePage):
         self.page.keyboard.press("Enter")
         self.page.wait_for_timeout(2000)
         self.logger.info(f"[bms_search] 搜索完成: {keyword}")
+
+    def search(self, keyword: str):
+        """BMS 页面搜索入口，统一使用回车触发的专用搜索逻辑。"""
+        self.bms_search(keyword)
 
     # ---- buttons & dialog ----
 
@@ -817,7 +825,7 @@ class BmsPage(BasePage):
     # ---- instance ----
 
     def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
-                               security_group="", server_name="", network_name=""):
+                               security_group="", server_name="", network_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
         self.page.wait_for_load_state("networkidle")
@@ -1082,13 +1090,13 @@ class BmsPage(BasePage):
                             selected = True
                             logger.info(f"[bms_instance_create] 服务器选择成功({server_name})")
                             break
-            if not selected and server_rows:
+            if not selected and bmc_ip and server_rows:
                 for row in server_rows:
                     txt = row.text_content() or ""
-                    if "172.22.2.173" in txt:
+                    if bmc_ip in txt:
                         if self._click_el_radio(row):
                             selected = True
-                            logger.info("[bms_instance_create] 服务器选择成功(172.22.2.173)")
+                            logger.info(f"[bms_instance_create] 服务器选择成功({bmc_ip})")
                             break
             if not selected and server_rows:
                 if self._click_el_radio(server_rows[0]):
@@ -1097,7 +1105,7 @@ class BmsPage(BasePage):
                     logger.warning("[bms_instance_create] 服务器行无radio")
             elif not server_rows:
                 logger.warning("[bms_instance_create] 未找到服务器行，尝试JS选择")
-                result = self.page.evaluate("""() => {
+                result = self.page.evaluate("""(bmcIp) => {
                     const items = document.querySelectorAll('.el-form-item');
                     for (const item of items) {
                         const label = item.querySelector('label');
@@ -1106,7 +1114,7 @@ class BmsPage(BasePage):
                             if (!table) return 'no-table';
                             const rows = table.querySelectorAll('tbody tr');
                             for (const row of rows) {
-                                if (row.textContent.includes('172.22.2.173')) {
+                                if (bmcIp && row.textContent.includes(bmcIp)) {
                                     const radio = row.querySelector('.el-radio');
                                     if (radio && !radio.classList.contains('is-disabled')) {
                                         radio.click(); return 'found-bmc';
@@ -1121,7 +1129,7 @@ class BmsPage(BasePage):
                         }
                     }
                     return 'no-section';
-                }""")
+                }""", bmc_ip)
                 logger.info(f"[bms_instance_create] 服务器JS选择结果: {result}")
             self.page.wait_for_timeout(1500)
         except Exception as e:

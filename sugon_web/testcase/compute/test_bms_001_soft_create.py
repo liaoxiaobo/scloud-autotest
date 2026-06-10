@@ -14,13 +14,13 @@ from sugon_web.utils.data import random_data, get_file_abspath
 class TestBmsSoftCreate:
 
     @allure.title("裸金属BMS-软装版创建流程")
-    def test_bms_create_with_page_image(self, ops_page, bms_page, ssh_host, config, bms_instance):
+    def test_bms_create_with_page_image(self, ops_page, bms_page, ssh_host, config, bms_instance, bms_env):
         sg_name = f"test-bms-{random_data()}"
-        bms_network_name = "bms"
+        bms_network_name = bms_env["network_name"]
         discovery_name = f"bms-test-{random_data()}"
-        bmc_ip = "172.22.2.173"
-        preferred_node = "master02.cloud.local"
-        instance_name = "bms-0430"
+        bmc_ip = bms_env["bmc_ip"]
+        preferred_node = bms_env["preferred_node"]
+        instance_name = bms_env["instance_name"]
         skip_to_step14 = False  # 标记是否跳过到步骤14（已有实例复用）
 
         # === 步骤0: 清理（本次跳过，保留资源供后续测试使用） ===
@@ -304,25 +304,27 @@ class TestBmsSoftCreate:
                 ssh_node.close()
                 pytest.skip("未找到bms-nic网卡")
 
-        # === 步骤9: 记录 ===
-        with allure_step_log("步骤9: 记录网卡名称"):
-            allure.attach(bms_nic_name, "BMS网卡", allure.attachment_type.TEXT)
+        try:
+            # === 步骤9: 记录 ===
+            with allure_step_log("步骤9: 记录网卡名称"):
+                allure.attach(bms_nic_name, "BMS网卡", allure.attachment_type.TEXT)
 
-        # === 步骤10: 检查/编辑trusted.xml ===
-        with allure_step_log("步骤10: 检查trusted.xml"):
-            r = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
-            if f'<interface name="{bms_nic_name}"/>' not in r:
-                ssh_node.run("sudo cp /etc/firewalld/zones/trusted.xml /etc/firewalld/zones/trusted.xml.bak")
-                # 使用 sed 在 </zone> 前插入网卡配置
-                insert_line = f'  <interface name="{bms_nic_name}"/>'
-                ssh_node.run(f"sudo sed -i 's|</zone>|{insert_line}\\n</zone>|' /etc/firewalld/zones/trusted.xml")
-            v = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
-            assert f'<interface name="{bms_nic_name}"/>' in v
+            # === 步骤10: 检查/编辑trusted.xml ===
+            with allure_step_log("步骤10: 检查trusted.xml"):
+                r = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
+                if f'<interface name="{bms_nic_name}"/>' not in r:
+                    ssh_node.run("sudo cp /etc/firewalld/zones/trusted.xml /etc/firewalld/zones/trusted.xml.bak")
+                    # 使用 sed 在 </zone> 前插入网卡配置
+                    insert_line = f'  <interface name="{bms_nic_name}"/>'
+                    ssh_node.run(f"sudo sed -i 's|</zone>|{insert_line}\\n</zone>|' /etc/firewalld/zones/trusted.xml")
+                v = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
+                assert f'<interface name="{bms_nic_name}"/>' in v
 
-        # === 步骤11: 重启防火墙 ===
-        with allure_step_log("步骤11: 重启防火墙"):
-            r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True)
-            assert r["rc"] == 0
+            # === 步骤11: 重启防火墙 ===
+            with allure_step_log("步骤11: 重启防火墙"):
+                r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True)
+                assert r["rc"] == 0
+        finally:
             ssh_node.close()
 
         # === 步骤12: 注册物理机 ===

@@ -41,6 +41,11 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
+    parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
+    parser.addoption("--bms-bmc-ip", action="store", help="指定BMS带外IP，覆盖配置文件 bms.bmc_ip")
+    parser.addoption("--bms-preferred-node", action="store", help="指定BMS优先物理节点，覆盖配置文件 bms.preferred_node")
+    parser.addoption("--bms-network-name", action="store", help="指定BMS网络名称，覆盖配置文件 bms.network_name")
+    parser.addoption("--bms-password", action="store", help="指定BMS实例登录密码，覆盖配置文件 bms.password")
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -130,6 +135,56 @@ def pytest_configure(config):
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
+
+
+def pytest_collection_modifyitems(config, items):
+    """保持 BMS 编号用例在串行执行时按文件名顺序运行。"""
+    bms_file_order = {
+        "sanity": 0,
+        "soft_create": 1,
+        "bind_eip": 2,
+        "monitor": 3,
+        "rename": 4,
+        "security_group": 5,
+        "label": 6,
+        "remove_label": 7,
+        "shutdown": 8,
+        "start": 9,
+        "rebuild": 10,
+        "cleanup": 11,
+    }
+
+    def _bms_order_key(item):
+        filename = item.path.name
+        number_match = re.search(r"test_bms_(\d+)", filename)
+        if number_match:
+            return int(number_match.group(1)), filename, item.nodeid
+        for name_part, order in sorted(bms_file_order.items(), key=lambda item: len(item[0]), reverse=True):
+            if name_part in filename:
+                return order, filename, item.nodeid
+        return 999, filename, item.nodeid
+
+    bms_items = [
+        item
+        for item in items
+        if "/testcase/compute/test_bms" in str(item.path).replace("\\", "/")
+    ]
+    for item in bms_items:
+        item.add_marker("bms")
+        filename = item.path.name
+        if "soft_create" in filename:
+            item.add_marker("bms_prepare")
+        elif "rebuild" in filename or "cleanup" in filename:
+            item.add_marker("bms_destructive")
+        else:
+            item.add_marker("bms_regression")
+    if len(bms_items) <= 1:
+        return
+
+    ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
+    for index, item in enumerate(items):
+        if item in bms_items:
+            items[index] = next(ordered_bms_items)
 
 
 @pytest.fixture(scope="session")

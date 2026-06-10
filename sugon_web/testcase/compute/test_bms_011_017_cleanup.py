@@ -61,7 +61,7 @@ class TestBmsCleanup:
         else:
             logger.info(f"网络 '{network_name}' 已存在")
 
-    def _ensure_discovery_exists(self, bms_page, discovery_name, bmc_ip, node_name="master02.cloud.local"):
+    def _ensure_discovery_exists(self, bms_page, discovery_name, bmc_ip, node_name):
         """确保发现任务存在，不存在则创建。返回实际的任务名称。"""
         bms_page._goto_submenu_safe("发现")
         bms_page.page.wait_for_load_state("networkidle")
@@ -200,7 +200,7 @@ class TestBmsCleanup:
         else:
             logger.info(f"交换机组 '{group_name}' 已绑定物理机")
 
-    def _ensure_register_exists(self, bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name):
+    def _ensure_register_exists(self, bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name, network_name):
         """确保注册信息存在，不存在则重建完整流程。"""
         bms_page._goto_submenu_safe("注册")
         bms_page.page.wait_for_load_state("networkidle")
@@ -213,7 +213,7 @@ class TestBmsCleanup:
             return
         logger.info(f"注册信息 '{bmc_ip}' 不存在，重建中...")
         # 1. 确保网络存在（代理依赖）
-        self._ensure_network_exists(bms_page, "bms")
+        self._ensure_network_exists(bms_page, network_name)
         # 2. 确保代理存在且PXE已安装（发现任务的前置依赖）
         self._require_pxe_agent_or_skip(bms_page, node_name)
         # 3. 确保交换机组存在
@@ -247,14 +247,14 @@ class TestBmsCleanup:
     # ---------- 测试方法 ----------
 
     @allure.title("裸金属BMS-实例删除")
-    def test_bms_011_instance_delete(self, bms_page, ops_page, ssh_host, config, bms_instance):
+    def test_bms_011_instance_delete(self, bms_page, ops_page, ssh_host, config, bms_instance, bms_env):
         """删除裸金属实例并验证注册状态变更。
 
         若实例不存在，自动调用 BMS_001 完整创建流程先创建再删除，
         使 cleanup 文件可独立运行，无需 Jenkins 按序调度创建用例。
         """
-        instance_name = "bms-0430"
-        bmc_ip = "172.22.2.173"
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
 
         # 检查实例是否存在，不存在则自动创建
         bms_page._goto_submenu_safe("裸金属实例")
@@ -276,7 +276,7 @@ class TestBmsCleanup:
             # 2) 执行完整创建流程（BMS_001）
             from sugon_web.testcase.compute.test_bms_001_soft_create import TestBmsSoftCreate
             TestBmsSoftCreate().test_bms_create_with_page_image(
-                ops_page, bms_page, ssh_host, config, bms_instance
+                ops_page, bms_page, ssh_host, config, bms_instance, bms_env
             )
             logger.info("实例创建完成，继续执行删除测试")
 
@@ -303,15 +303,16 @@ class TestBmsCleanup:
             bms_page.bms_register_wait_status(bmc_ip, target_status="就绪", poll_interval=5, max_wait=600)
 
     @allure.title("裸金属BMS-注册信息删除")
-    def test_bms_012_register_delete(self, bms_page, ops_page):
+    def test_bms_012_register_delete(self, bms_page, ops_page, bms_env):
         """删除裸金属注册信息。"""
-        bmc_ip = "172.22.2.173"
+        bmc_ip = bms_env["bmc_ip"]
         discovery_name = "bms-test-autotest"
         group_name = "test-bms-autotest"
-        node_name = "master02.cloud.local"
+        node_name = bms_env["preferred_node"]
+        network_name = bms_env["network_name"]
 
         # 确保注册信息存在（支持重建）
-        self._ensure_register_exists(bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name)
+        self._ensure_register_exists(bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name, network_name)
 
         # 步骤1：搜索并删除注册信息
         with allure_step_log("步骤1: 搜索并删除注册信息"):
@@ -323,13 +324,14 @@ class TestBmsCleanup:
             bms_page.assert_list_not_contain(bmc_ip, "带外IP")
 
     @allure.title("裸金属BMS-发现信息删除")
-    def test_bms_013_discovery_delete(self, bms_page):
+    def test_bms_013_discovery_delete(self, bms_page, bms_env):
         """删除裸金属发现信息。"""
         discovery_name = "bms-test-autotest"
-        bmc_ip = "172.22.2.173"
+        bmc_ip = bms_env["bmc_ip"]
+        node_name = bms_env["preferred_node"]
 
         # 确保发现任务存在（支持重建），并获取实际任务名称
-        actual_discovery_name = self._ensure_discovery_exists(bms_page, discovery_name, bmc_ip)
+        actual_discovery_name = self._ensure_discovery_exists(bms_page, discovery_name, bmc_ip, node_name)
 
         # 步骤1：搜索并删除发现信息
         with allure_step_log("步骤1: 搜索并删除发现信息"):
@@ -341,9 +343,9 @@ class TestBmsCleanup:
             bms_page.assert_list_not_contain(actual_discovery_name, "名称")
 
     @allure.title("裸金属BMS-代理信息删除")
-    def test_bms_014_agent_delete(self, bms_page, ssh_host, config):
+    def test_bms_014_agent_delete(self, bms_page, ssh_host, config, bms_env):
         """删除裸金属代理信息并验证后台清理。"""
-        node_name = "master02.cloud.local"
+        node_name = bms_env["preferred_node"]
 
         # 确保代理存在（支持重建）
         self._ensure_agent_exists(bms_page, node_name)
@@ -398,9 +400,9 @@ class TestBmsCleanup:
             assert node_name not in result["stdout"], f"Pod 中仍包含 {node_name} 相关记录: {result['stdout']}"
 
     @allure.title("裸金属BMS-网络信息删除")
-    def test_bms_015_network_delete(self, bms_page):
+    def test_bms_015_network_delete(self, bms_page, bms_env):
         """删除裸金属网络信息。"""
-        network_name = "bms"
+        network_name = bms_env["network_name"]
 
         # 确保网络存在（支持重建）
         self._ensure_network_exists(bms_page, network_name)
@@ -415,10 +417,10 @@ class TestBmsCleanup:
             bms_page.assert_list_not_contain(network_name, "名称")
 
     @allure.title("裸金属BMS-交换机信息删除")
-    def test_bms_016_switch_group_delete(self, bms_page, ops_page):
+    def test_bms_016_switch_group_delete(self, bms_page, ops_page, bms_env):
         """解绑物理机并删除交换机组。"""
         group_name = "test-bms-autotest"
-        node_name = "master02.cloud.local"
+        node_name = bms_env["preferred_node"]
 
         # 确保交换机组存在且绑定物理机（支持重建）
         self._ensure_switch_group_exists(ops_page, group_name, node_name)
