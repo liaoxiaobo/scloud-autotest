@@ -409,7 +409,8 @@ class MySQLPage(BasePage):
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
         self.get_by_role("tab", name="读写分离").click()
-        self.get_by_text("开通读写分离", exact=True).click()
+        self.page.wait_for_timeout(1000)
+        self.locator(".hide-middleware").get_by_text("立即开通", exact=True).click()
 
     @submenu("实例管理")
     def disable_splitting(self, name: str):

@@ -1153,6 +1153,11 @@ def pytest_configure(config):
 
     for tp in testpaths:
         base = Path(tp)
+        if not base.is_absolute():
+            base = Path(config.rootpath) / base
+        if not base.is_dir():
+            # PyCharm 从子目录启动单用例时，相对 testpaths 可能解析不到项目根。
+            base = Path(__file__).parent
         if not base.is_dir():
             continue
         for path in base.rglob("test_*.py"):
