@@ -13,14 +13,6 @@ class TestBmsCleanup:
 
     # ---------- 资源重建辅助方法 ----------
 
-    def _get_agent_ip_for_node(self, node_name):
-        """根据节点名返回代理注册时应使用的起始IP地址。"""
-        ip_map = {
-            "master01.cloud.local": "10.0.13.13",
-            "master02.cloud.local": "10.0.13.14",
-        }
-        return ip_map.get(node_name, "10.0.13.13")
-
     def _require_pxe_agent_or_skip(self, bms_page, node_name):
         """确保指定代理已安装PXE插件，如未安装则尝试安装；环境不支持则跳过测试。"""
         bms_page._goto_submenu_safe("代理")
@@ -32,15 +24,8 @@ class TestBmsCleanup:
             logger.info(f"代理 '{node_name}' PXE插件已安装")
             return
         if not row:
-            logger.info(f"代理 '{node_name}' 不存在，注册中...")
-            self._ensure_network_exists(bms_page, "bms")
-            try:
-                agent_ip = self._get_agent_ip_for_node(node_name)
-                bms_page.bms_agent_register(node_name=node_name, ip_address=agent_ip)
-                bms_page.page.wait_for_timeout(5000)
-            except Exception as e:
-                logger.warning(f"代理 '{node_name}' 注册失败: {e}")
-                pytest.skip(f"环境不支持代理注册，跳过需要发现任务的测试: {e}")
+            logger.warning(f"代理 '{node_name}' 不存在，且注册代理无法精确选择目标节点（UI仅支持选Region），跳过测试")
+            pytest.skip(f"代理 '{node_name}' 不存在，无法通过UI精确注册到指定节点，跳过测试")
         logger.info(f"代理 '{node_name}' PXE未安装，开始安装...")
         try:
             bms_page.bms_agent_install_pxe(node_name)
@@ -170,43 +155,8 @@ class TestBmsCleanup:
         bms_page.page.wait_for_timeout(3000)
         row = bms_page._get_row_by_name(node_name)
         if not row:
-            logger.info(f"代理 '{node_name}' 不存在，注册中...")
-            # 注册代理依赖网络存在
-            self._ensure_network_exists(bms_page, "bms")
-            try:
-                agent_ip = self._get_agent_ip_for_node(node_name)
-                bms_page.bms_agent_register(node_name=node_name, ip_address=agent_ip)
-                bms_page.page.wait_for_timeout(5000)
-                # 强制关闭所有残留对话框（含错误提示、注册对话框等），防止拦截后续操作
-                for _ in range(5):
-                    any_visible = False
-                    for dlg in bms_page.page.locator(".el-dialog__wrapper").all():
-                        try:
-                            if dlg.is_visible():
-                                any_visible = True
-                                break
-                        except Exception:
-                            pass
-                    if any_visible:
-                        logger.warning("检测到可见对话框残留，按Escape关闭")
-                        bms_page.page.keyboard.press("Escape")
-                        bms_page.page.wait_for_timeout(800)
-                    else:
-                        break
-                # 验证代理是否真正注册成功
-                bms_page._goto_submenu_safe("代理")
-                bms_page.page.wait_for_timeout(3000)
-                bms_page.bms_search(node_name)
-                bms_page.page.wait_for_timeout(3000)
-                row = bms_page._get_row_by_name(node_name)
-                if row:
-                    logger.info(f"代理 '{node_name}' 注册成功")
-                else:
-                    logger.warning(f"代理 '{node_name}' 注册后仍不存在")
-                    pytest.skip(f"环境不支持代理注册（Region下无可选网络），跳过测试")
-            except Exception as e:
-                logger.warning(f"代理 '{node_name}' 注册失败: {e}")
-                pytest.skip(f"环境不支持代理注册（Region下无可选网络或对话框异常），跳过测试: {e}")
+            logger.warning(f"代理 '{node_name}' 不存在，且注册代理无法精确选择目标节点（UI仅支持选Region），跳过测试")
+            pytest.skip(f"代理 '{node_name}' 不存在，无法通过UI精确注册到指定节点，跳过测试")
         else:
             logger.info(f"代理 '{node_name}' 已存在")
 
