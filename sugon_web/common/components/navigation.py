@@ -61,6 +61,12 @@ class NavigationMixin:
             self.page.goto(target_url)
             self.wait_for_page_ready()
 
+            # SPA hash 路由可能异步更新，轮询等待 URL 匹配
+            for _ in range(20):
+                if self._is_current_service_path(service_path):
+                    break
+                self.page.wait_for_timeout(500)
+
             if not self._is_current_service_path(service_path):
                 raise AssertionError(
                     f"URL 直达服务失败: current={self.page.url}, expected_service_path={service_path}"
