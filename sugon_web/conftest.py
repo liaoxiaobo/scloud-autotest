@@ -138,10 +138,10 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """保持 BMS 编号用例在串行执行时按文件名顺序运行。"""
+    """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
     bms_file_order = {
-        "sanity": 0,
-        "soft_create": 1,
+        "soft_create": 0,
+        "sanity": 1,
         "bind_eip": 2,
         "monitor": 3,
         "rename": 4,
@@ -156,12 +156,12 @@ def pytest_collection_modifyitems(config, items):
 
     def _bms_order_key(item):
         filename = item.path.name
-        number_match = re.search(r"test_bms_(\d+)", filename)
-        if number_match:
-            return int(number_match.group(1)), filename, item.nodeid
         for name_part, order in sorted(bms_file_order.items(), key=lambda item: len(item[0]), reverse=True):
             if name_part in filename:
                 return order, filename, item.nodeid
+        number_match = re.search(r"test_bms_(\d+)", filename)
+        if number_match:
+            return int(number_match.group(1)), filename, item.nodeid
         return 999, filename, item.nodeid
 
     bms_items = [
