@@ -663,6 +663,31 @@ class BmsPage(BasePage):
             return
         raise Exception("所有IP地址均已被使用")
 
+    def bms_agent_wait_healthy(self, node_name: str, max_wait: int = 600, poll_interval: int = 30):
+        """等待BMS代理状态变为健康，返回代理行数据；超时返回 None。"""
+        deadline = time.time() + max_wait
+        last_status = "未找到"
+        while time.time() < deadline:
+            self._goto_submenu_safe("代理")
+            self.bms_search(node_name)
+            try:
+                agent_data = self.get_row_data(node_name)
+            except Exception as e:
+                logger.warning(f"[bms_agent_wait_healthy] 未找到代理 '{node_name}'，继续等待: {e}")
+                agent_data = None
+
+            if agent_data:
+                last_status = str(agent_data.get("状态", "")).strip()
+                if "健康" in last_status:
+                    logger.info(f"代理 '{node_name}' 状态已为健康")
+                    return agent_data
+                logger.info(f"代理 '{node_name}' 当前状态为 '{last_status}'，继续等待健康")
+
+            self.page.wait_for_timeout(poll_interval * 1000)
+
+        logger.warning(f"代理 '{node_name}' 未在 {max_wait}s 内变为健康，最后状态: {last_status}")
+        return None
+
     def bms_agent_install_pxe(self, node_name):
         row = self._get_row_by_name(node_name)
         self._js_click_action(row, "安装PXE插件")

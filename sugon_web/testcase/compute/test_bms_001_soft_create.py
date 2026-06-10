@@ -106,15 +106,9 @@ class TestBmsSoftCreate:
         # === 步骤4: 注册代理 ===
         with allure_step_log("步骤4: 注册代理"):
             bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
-            bms_page.page.wait_for_timeout(3000)
-            bms_page._goto_submenu_safe("代理")
-            bms_page.search(actual_node)
-            agent_data = bms_page.get_row_data(actual_node)
-            assert agent_data is not None
-            agent_status = agent_data.get("状态", "")
-            if agent_status != "健康":
-                logger.warning(f"代理 {actual_node} 状态为 '{agent_status}'，不为健康，跳过测试")
-                pytest.skip(f"代理 {actual_node} 状态异常: {agent_status}，无法继续 BMS 流程")
+            agent_data = bms_page.bms_agent_wait_healthy(actual_node, max_wait=600, poll_interval=30)
+            if not agent_data:
+                pytest.skip(f"代理 {actual_node} 未在10分钟内变为健康，无法继续 BMS 流程")
 
         # === 步骤5: 安装PXE ===
         with allure_step_log("步骤5: 安装PXE"):

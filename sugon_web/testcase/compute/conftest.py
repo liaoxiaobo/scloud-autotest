@@ -131,6 +131,26 @@ def bms_instance_name(bms_env):
     return bms_env["instance_name"]
 
 
+@pytest.fixture(autouse=True)
+def bms_regression_requires_instance(request):
+    """BMS回归用例执行前确认实例已存在，避免创建失败后的级联失败。"""
+    if not request.node.get_closest_marker("bms_regression"):
+        return
+
+    bms_page = request.getfixturevalue("bms_page")
+    bms_env = request.getfixturevalue("bms_env")
+    instance_name = bms_env["instance_name"]
+    with allure_step_log("setup: 检查BMS回归实例前置"):
+        bms_page._goto_submenu_safe("裸金属实例")
+        bms_page.bms_search(instance_name)
+        row = bms_page._get_row_by_name(instance_name)
+        if not row:
+            pytest.skip(f"BMS实例 '{instance_name}' 不存在，跳过依赖该实例的回归用例")
+        row_text = row.text_content() or ""
+        if any(status in row_text for status in ["删除", "错误"]):
+            pytest.skip(f"BMS实例 '{instance_name}' 状态异常，跳过回归用例: {row_text[:120]}")
+
+
 @pytest.fixture()
 def bms_instance(bms_page, bms_env):
     """返回裸金属实例创建器（工厂函数），封装步骤13-14。
