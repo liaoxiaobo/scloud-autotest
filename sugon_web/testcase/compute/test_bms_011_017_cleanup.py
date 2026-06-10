@@ -2,6 +2,8 @@ import pytest
 import allure
 import time
 
+from sugon_web.common.remote import SSH
+from sugon_web.utils.data import get_file_abspath
 from sugon_web.utils.logger import allure_step_log, logger
 
 
@@ -339,7 +341,7 @@ class TestBmsCleanup:
             bms_page.assert_list_not_contain(actual_discovery_name, "名称")
 
     @allure.title("裸金属BMS-代理信息删除")
-    def test_bms_014_agent_delete(self, bms_page, ssh_host):
+    def test_bms_014_agent_delete(self, bms_page, ssh_host, config):
         """删除裸金属代理信息并验证后台清理。"""
         node_name = "master02.cloud.local"
 
@@ -355,29 +357,45 @@ class TestBmsCleanup:
             bms_page.search(node_name)
             bms_page.assert_list_not_contain(node_name, "物理机")
 
-        # 步骤3：验证后台网卡已清理
+        # 步骤3：验证后台网卡已清理（需在目标BMS节点上执行）
         with allure_step_log("步骤3: 验证后台网卡已清理"):
+            # 获取目标节点IP，通过跳板机SSH到该节点验证
+            node_info = ssh_host.run(f"kubectl get nodes {node_name} -owide", return_rc=True)
+            target_ip = None
+            for line in node_info.get("stdout", "").split('\n'):
+                parts = line.split()
+                if len(parts) >= 6 and node_name in line:
+                    target_ip = parts[5]
+                    break
+            if not target_ip:
+                target_ip = node_name
+            logger.info(f"目标BMS节点地址: {target_ip}")
+
+            ssh_node = SSH()
+            ssh_node.jumphost_client = ssh_host.ssh_client
+            pkey_path = get_file_abspath(config.get("pkey"))
+            ssh_node.connect(host=target_ip, username="scloudadmin", pkey=pkey_path, use_jumphost=True)
+
             deadline = time.time() + 300
             cleaned = False
             while time.time() < deadline:
-                result = ssh_host.run("ip a | grep bms", return_rc=True)
+                result = ssh_node.run("ip a | grep bms", return_rc=True)
                 if result and "bms" not in result.get("stdout", ""):
                     cleaned = True
                     break
                 time.sleep(10)
+            ssh_node.close()
             assert cleaned, "后台网卡未在300秒内清理完成"
 
-        # 步骤4：验证后台Pod和ConfigMap已清理
+        # 步骤4：验证后台Pod和ConfigMap已清理（在controller上执行kubectl即可）
         with allure_step_log("步骤4: 验证后台Pod和ConfigMap已清理"):
             result = ssh_host.run("kubectl get configmap -A | grep bms", return_rc=True)
-            # grep 无匹配时 rc=1 是正常的，只断言命令本身没有执行错误
             assert result["rc"] in (0, 1), f"命令执行失败: {result.get('stderr', '')}"
-            # 无master02相关节点的输出
-            assert "master02" not in result["stdout"], f"ConfigMap 中仍包含 master02 相关记录: {result['stdout']}"
+            assert node_name not in result["stdout"], f"ConfigMap 中仍包含 {node_name} 相关记录: {result['stdout']}"
 
             result = ssh_host.run("kubectl get pods -A -o wide | grep bms", return_rc=True)
             assert result["rc"] in (0, 1), f"命令执行失败: {result.get('stderr', '')}"
-            assert "master02" not in result["stdout"], f"Pod 中仍包含 master02 相关记录: {result['stdout']}"
+            assert node_name not in result["stdout"], f"Pod 中仍包含 {node_name} 相关记录: {result['stdout']}"
 
     @allure.title("裸金属BMS-网络信息删除")
     def test_bms_015_network_delete(self, bms_page):
