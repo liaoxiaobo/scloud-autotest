@@ -138,9 +138,9 @@ class TestBmsCleanup:
         return None
 
     def _ensure_agent_exists(self, bms_page, node_name):
-        """确保代理存在，不存在则注册（不强制安装PXE，PXE由调用方按需处理）。
+        """确保代理存在，优先使用指定节点，不存在则回退删除列表中的实际残留代理。
 
-        若环境不支持代理注册（如Region下无可选网络），则跳过测试。
+        清理阶段的目标是删除残留代理；如果配置节点不存在，不应直接 skip。
         """
         bms_page._goto_submenu_safe("代理")
         bms_page.page.wait_for_load_state("networkidle")
@@ -157,10 +157,35 @@ class TestBmsCleanup:
         bms_page.page.wait_for_timeout(3000)
         row = bms_page._get_row_by_name(node_name)
         if not row:
-            logger.warning(f"代理 '{node_name}' 不存在，且注册代理无法精确选择目标节点（UI仅支持选Region），跳过测试")
-            pytest.skip(f"代理 '{node_name}' 不存在，无法通过UI精确注册到指定节点，跳过测试")
-        else:
-            logger.info(f"代理 '{node_name}' 已存在")
+            logger.warning(f"代理 '{node_name}' 不存在，尝试删除列表中的实际残留代理")
+            try:
+                reset_btn = bms_page.page.locator("button, .cloud-button, .el-button").filter(has_text="重置")
+                if reset_btn.count() > 0 and reset_btn.first.is_visible():
+                    reset_btn.first.click()
+                    bms_page.page.wait_for_timeout(3000)
+                else:
+                    bms_page._goto_submenu_safe("代理")
+                    bms_page.page.wait_for_timeout(3000)
+            except Exception as e:
+                logger.warning(f"重置代理搜索条件失败: {e}")
+
+            for agent_row in bms_page._get_rows():
+                try:
+                    row_text = agent_row.text_content(timeout=3000) or ""
+                    if not row_text or "暂无数据" in row_text:
+                        continue
+                    cells = agent_row.locator("td")
+                    actual_node = cells.nth(1).text_content(timeout=3000).strip() if cells.count() > 1 else ""
+                    if actual_node:
+                        logger.info(f"发现实际残留代理 '{actual_node}'，将执行删除")
+                        return actual_node
+                except Exception as e:
+                    logger.debug(f"读取代理行失败: {e}")
+                    continue
+            pytest.skip(f"未找到代理 '{node_name}'，代理列表也无残留数据")
+
+        logger.info(f"代理 '{node_name}' 已存在")
+        return node_name
 
     def _ensure_switch_group_exists(self, ops_page, group_name, node_name):
         """确保交换机组存在且绑定物理机，不存在则创建并绑定。"""
@@ -348,7 +373,7 @@ class TestBmsCleanup:
         node_name = bms_env["preferred_node"]
 
         # 确保代理存在（支持重建）
-        self._ensure_agent_exists(bms_page, node_name)
+        node_name = self._ensure_agent_exists(bms_page, node_name)
 
         # 步骤1：搜索并删除代理信息
         with allure_step_log("步骤1: 搜索并删除代理信息"):
