@@ -39,13 +39,13 @@ class TestIamOrgChild:
 
         with allure_step_log(f"步骤3: 修改子组织名称 {old_name} -> {new_name}"):
             iam_page.iam_modify_organization(old_name, new_name)
-            iam_shared_child_org["child_name"] = new_name
-            iam_shared_user["target_org"] = new_name
-            logger.info(f"子组织名称已修改，fixture dict已更新为 {new_name}")
+            logger.info(f"子组织名称已修改")
 
         with allure_step_log("步骤4: 验证子组织名称已修改"):
             iam_page.wait_for_page_ready()
             iam_page.iam_assert_org_in_tree(parent_name)
             iam_page.iam_click_org_in_tree(parent_name)
             iam_page.iam_assert_org_node_exists(new_name, visible_after_expand=True)
+            iam_shared_child_org["child_name"] = new_name
+            iam_shared_user["target_org"] = new_name
             logger.info(f"验证成功：子组织名称已修改为 {new_name}")

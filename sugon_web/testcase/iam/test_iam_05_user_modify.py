@@ -39,12 +39,12 @@ class TestIamUserModify:
         with allure_step_log(f"步骤1: 修改用户 {disp} 的手机号为 {new_phone}"):
             iam_page.iam_modify_user(disp, target_org=child_org, phone=new_phone)
 
-        with allure_step_log(f"步骤2: 验证列表页手机号已更新"):
-            row_data = iam_page.get_row_data(disp)
-            assert row_data is not None, f"未在列表中找到用户 {disp}"
-            assert new_phone in str(row_data), \
-                f"手机号 {new_phone} 未在行数据中找到: {row_data}"
-            logger.info(f"手机号修改成功，列表已显示 {new_phone}")
+        with allure_step_log(f"步骤2: 验证详情页手机号已更新"):
+            iam_page.iam_open_user_detail(disp, target_org=child_org)
+            contact = iam_page.iam_get_user_contact_from_detail()
+            assert contact["phone"] == new_phone, \
+                f"手机号 {new_phone} 未在详情页找到，实际: {contact['phone']}"
+            logger.info(f"手机号修改成功，详情页显示 {new_phone}")
 
     @allure.title("IAM-用户管理-修改邮箱")
     def test_iam_modify_user_email(self, iam_page, iam_shared_user, iam_shared_child_org):
@@ -57,12 +57,12 @@ class TestIamUserModify:
         with allure_step_log(f"步骤1: 修改用户 {disp} 的邮箱为 {new_email}"):
             iam_page.iam_modify_user(disp, target_org=child_org, email=new_email)
 
-        with allure_step_log(f"步骤2: 验证列表页邮箱已更新"):
-            row_data = iam_page.get_row_data(disp)
-            assert row_data is not None, f"未在列表中找到用户 {disp}"
-            assert new_email in str(row_data), \
-                f"邮箱 {new_email} 未在行数据中找到: {row_data}"
-            logger.info(f"邮箱修改成功，列表已显示 {new_email}")
+        with allure_step_log(f"步骤2: 验证详情页邮箱已更新"):
+            iam_page.iam_open_user_detail(disp, target_org=child_org)
+            contact = iam_page.iam_get_user_contact_from_detail()
+            assert contact["email"] == new_email, \
+                f"邮箱 {new_email} 未在详情页找到，实际: {contact['email']}"
+            logger.info(f"邮箱修改成功，详情页显示 {new_email}")
 
     @allure.title("IAM-用户管理-修改描述信息")
     def test_iam_modify_user_extra(self, iam_page, iam_shared_user, iam_shared_child_org):
@@ -137,15 +137,20 @@ class TestIamUserModify:
             iam_shared_user["email"] = new_email
             iam_shared_user["phone"] = new_phone
 
-        with allure_step_log("步骤2: 验证列表页各字段已更新"):
+        with allure_step_log("步骤2: 验证列表页用户名及详情页手机邮箱已更新"):
             row_data = iam_page.get_row_data(new_alias)
             assert row_data is not None, \
                 f"未在列表中找到用户 {new_alias}"
             row_text = "\n".join(f"{k}: {v}" for k, v in row_data.items())
             assert new_alias in row_text, f"用户名 {new_alias} 未找到"
-            assert new_email in row_text, f"邮箱 {new_email} 未找到"
-            assert new_phone in row_text, f"手机号 {new_phone} 未找到"
-            logger.info(f"组合修改成功，列表字段均已更新")
+            # 手机/邮箱通过详情页回读验证（避免列表列差异问题）
+            iam_page.iam_open_user_detail(new_alias, target_org=child_org)
+            contact = iam_page.iam_get_user_contact_from_detail()
+            assert contact["phone"] == new_phone, \
+                f"手机号 {new_phone} 未在详情页找到，实际: {contact['phone']}"
+            assert contact["email"] == new_email, \
+                f"邮箱 {new_email} 未在详情页找到，实际: {contact['email']}"
+            logger.info(f"组合修改成功，字段均已更新")
 
         # 场景8：修改后登录验证（合并在组合修改内，避免跨测试 state 问题）
         username = iam_shared_user["name"]  # 账号，不可修改

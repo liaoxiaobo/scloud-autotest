@@ -176,16 +176,34 @@ class IamPage(BasePage):
             pass
 
         # 等待表格数据加载完成（Jenkins 环境渲染较慢，异步数据需轮询）
-        try:
-            self.page.wait_for_function("""
+        # 注意：emptyText 可能是数据加载前的瞬态，检测到空数据时应重试点击组织树刷新
+        for retry in range(3):
+            rows_count = self.page.evaluate("() => document.querySelectorAll('.el-table__row').length")
+            if rows_count > 0:
+                break  # 有数据，成功
+
+            empty_visible = self.page.evaluate("""
                 () => {
-                    const rows = document.querySelectorAll('.el-table__row');
                     const emptyText = document.querySelector('.el-table__empty-text');
-                    return rows.length > 0 || (emptyText && emptyText.offsetParent !== null);
+                    return emptyText && emptyText.offsetParent !== null;
                 }
-            """, timeout=30000)
-        except Exception:
-            logger.warning("IAM：表格数据加载超时")
+            """)
+            if empty_visible and retry < 2:
+                logger.warning(f"IAM：用户列表为空，尝试重新点击组织树刷新（{retry+1}/2）")
+                if target_org:
+                    tree_div = self.page.locator("#iam-department")
+                    depart = tree_div.locator(".depart_name").filter(has_text=target_org)
+                    if depart.count() > 0:
+                        click_target = depart.first.locator("xpath=ancestor::*[@click='choose'][1]")
+                        if click_target.count() > 0:
+                            click_target.first.evaluate("el => el.click()")
+                            self.page.wait_for_timeout(3000)
+                else:
+                    self.page.wait_for_timeout(3000)
+            else:
+                self.page.wait_for_timeout(2000)
+        else:
+            logger.warning("IAM：表格数据多次重试后仍为空")
 
     def _open_create_user_dialog(self, target_org: str = None):
         """点击创建用户按钮，等待弹窗出现。"""
@@ -556,6 +574,38 @@ class IamPage(BasePage):
             if rows.count() > 0:
                 return [rows.nth(i).inner_text() for i in range(rows.count())]
         return []
+
+    def iam_get_user_contact_from_detail(self) -> dict:
+        """从用户详情页读取手机号和邮箱。
+
+        Returns:
+            {"phone": str, "email": str}
+        """
+        result = {"phone": "", "email": ""}
+        for field, keyword in [("phone", "电话"), ("email", "邮箱")]:
+            pattern = r"1\\d{10}" if field == "phone" else r"@"
+            value = self.page.evaluate(f"""
+                () => {{
+                    const allElements = Array.from(document.querySelectorAll('*'));
+                    for (const el of allElements) {{
+                        if (el.children.length === 0 && el.textContent.trim() === '{keyword}') {{
+                            const grandparent = el.parentElement?.parentElement;
+                            if (!grandparent) continue;
+                            const leaves = Array.from(grandparent.querySelectorAll('*'))
+                                .filter(e => e.children.length === 0)
+                                .map(e => e.textContent.trim())
+                                .filter(t => t && t !== '{keyword}');
+                            for (const t of leaves) {{
+                                if (t.match(/{pattern}/)) return t;
+                            }}
+                            if (leaves.length > 0) return leaves[0];
+                        }}
+                    }}
+                    return '';
+                }}
+            """)
+            result[field] = value
+        return result
 
     def _open_user_operation_dialog(self, name: str, operation_text: str, dialog_title: str,
                                      target_org: str = None):
@@ -1469,21 +1519,61 @@ class IamPage(BasePage):
         self.wait_for_page_ready()
         self.page.wait_for_timeout(3000)
 
+        # 若在子页面（如 projectModifyQuota），先返回组织管理根页面
+        current_url = self.page.url
+        if "project" in current_url or "projectDetail" in current_url:
+            from sugon_web.config.config import Config
+            base_url = Config.get("base_url").rstrip("/")
+            self.page.goto(f"{base_url}/iam/#/departmentManage")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(2000)
+
         tree_container = self.page.locator("#iam-department")
         org_node = tree_container.locator(".depart_name").filter(has_text=org_name)
-        for _ in range(5):
+
+        # 轮询等待组织节点出现
+        for attempt in range(10):
             if org_node.count() > 0:
                 break
+            logger.info(f"IAM：等待组织 '{org_name}' 出现在组织树中（{attempt+1}/10）")
             self.page.wait_for_timeout(1500)
-        assert org_node.count() > 0, f"组织树中未找到组织 {org_name}"
+        else:
+            # 尝试展开所有节点后再查找
+            self.page.evaluate("""
+                () => {
+                    const icons = document.querySelectorAll('#iam-department .el-tree-node__expand-icon');
+                    icons.forEach(icon => {
+                        if (!icon.classList.contains('is-leaf') &&
+                            icon.classList.contains('el-icon-caret-right')) {
+                            icon.click();
+                        }
+                    });
+                }
+            """)
+            self.page.wait_for_timeout(2000)
+            if org_node.count() == 0:
+                raise AssertionError(f"组织树中未找到组织 {org_name}")
 
+        org_node.first.scroll_into_view_if_needed()
         org_node.first.click()
-        self.page.wait_for_timeout(2000)
+
+        # 轮询等待 tab 容器渲染完成（替代固定等待，避免 Jenkins 环境渲染时序差异）
+        for _ in range(20):
+            tabs = self.page.locator(".el-tabs")
+            if tabs.count() > 0 and tabs.first.is_visible():
+                break
+            self.page.wait_for_timeout(200)
 
         quota_tab = self.get_by_role("tab").filter(has_text="组织配额")
         expect(quota_tab.first).to_be_visible(timeout=30000)
         quota_tab.first.click()
-        self.page.wait_for_timeout(3000)
+        # 等待配额内容区域 #tabContainer 渲染完成（异步加载，可能超过3秒）
+        tab_container = self.page.locator("#tabContainer")
+        for _ in range(30):
+            if tab_container.count() > 0 and tab_container.first.is_visible():
+                break
+            self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(1500)
         logger.info(f"IAM：已进入组织 {org_name} 的配额页面")
 
     def iam_filter_quota_service_type(self, service_type: str):
@@ -1523,20 +1613,21 @@ class IamPage(BasePage):
         logger.info(f"IAM：服务类型 {service_type} 过滤完成，配额列表已加载")
 
     def _read_available_from_form_item(self, form_item, quota_name):
-        """从弹窗form-item中读取"可用量"显示的parent_available数值。"""
+        """从弹窗form-item中读取"上级配额可分配量"显示的parent_available数值。"""
         try:
-            # 可用量显示在带color:red样式的span中（ram字段可能被mbToSize过滤为小数）
-            available_el = form_item.locator("span").filter(has_text="可用量")
+            # 上级配额可分配量显示在form-item下方（如"上级配额可分配量: 0 个"）
+            available_el = form_item.locator("span").filter(has_text="上级配额可分配量")
             if available_el.count() > 0:
-                red_num = available_el.first.locator("span[style*='color: red']")
-                if red_num.count() == 0:
-                    red_num = available_el.first.locator("span").filter(has_text_regex=r"\d+\.?\d*").first
-                if red_num.count() > 0:
-                    text = red_num.first.inner_text().strip()
-                    try:
-                        return int(float(text))
-                    except ValueError:
-                        return None
+                # 提取文本中的数字，格式如"上级配额可分配量: 0 个"或"上级配额可分配量: 0 GiB"
+                text = available_el.first.inner_text().strip()
+                import re as _re
+                match = _re.search(r":\s*(\d+)", text)
+                if match:
+                    return int(match.group(1))
+                # 降级：直接取所有数字
+                nums = _re.findall(r"\d+", text)
+                if nums:
+                    return int(nums[0])
             return None
         except Exception:
             return None
@@ -1694,11 +1785,11 @@ class IamPage(BasePage):
             logger.info(f"IAM：{service_name} 配额修改弹窗已关闭")
         except Exception:
             logger.warning(f"IAM：{service_name} 配额修改弹窗未在15秒内关闭")
-            # 如果弹窗未关闭，截图并记录当前弹窗内容
             all_labels = dialog.locator(".el-form-item .el-form-item__label").all_inner_texts()
-            all_values = dialog.locator(".el-input-number input").all_input_values()
+            input_els = dialog.locator(".el-input-number input").all()
+            all_values = [el.input_value() for el in input_els] if input_els else []
             logger.warning(f"IAM：弹窗未关闭时的字段: {list(zip(all_labels, all_values))}")
-            # 强制关闭弹窗：尝试点击关闭按钮或按 Escape
+            # 强制关闭弹窗
             try:
                 close_btn = dialog.locator(".el-dialog__headerbtn").first
                 if close_btn.is_visible():
@@ -1708,8 +1799,7 @@ class IamPage(BasePage):
                 pass
             self.page.keyboard.press("Escape")
             self.page.wait_for_timeout(500)
-        # 等待配额列表重新加载（getQuota异步获取数据+waterFall瀑布流布局）
-        self.page.wait_for_timeout(8000)
+            raise EnvironmentError(f"{service_name} 配额修改失败(弹窗未关闭，配额值可能不满足约束)")
 
     def iam_assert_quota_value(self, service_name: str, metric_name: str, expected_value: str):
         """断言组织配额页面中指定服务的配额显示值。
@@ -2074,3 +2164,198 @@ class IamPage(BasePage):
                     logger.info(
                         f"IAM：批量访问控制-时间限制 周{kwargs['time_day']+1} {kwargs['time_hour']}:00")
         self._submit_and_close_dialog(dialog, f"批量访问控制({len(names)}个)")
+
+    # ==================== 项目管理 ====================
+
+    def iam_goto_project_management(self, org_name: str):
+        """在组织树中选择指定组织并切换到项目管理tab。
+
+        Args:
+            org_name: 组织名称
+        """
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(2000)
+        tree_container = self.page.locator("#iam-department")
+        org_node = tree_container.locator(".depart_name").filter(has_text=org_name)
+        for _ in range(5):
+            if org_node.count() > 0:
+                break
+            self.page.wait_for_timeout(1500)
+        assert org_node.count() > 0, f"组织树中未找到组织 {org_name}"
+        # 通过 JS 触发点击，绕过树节点展开时的 pointer-events 拦截
+        org_node.first.evaluate("el => el.click()")
+        self.page.wait_for_timeout(2000)
+        project_tab = self.get_by_role("tab").filter(has_text="项目管理")
+        expect(project_tab.first).to_be_visible(timeout=30000)
+        project_tab.first.click()
+        self.page.wait_for_timeout(3000)
+        logger.info(f"IAM：已进入组织 {org_name} 的项目管理页面")
+
+    def iam_create_project(self, project_name: str, desc: str = ""):
+        """创建项目。
+
+        Args:
+            project_name: 项目名称
+            desc: 项目描述，默认为空
+        """
+        self.wait_for_page_ready()
+        create_btn = self.page.locator(".cloud-button-btn").filter(has_text=re.compile(r"^\s*新建\s*$")).first
+        expect(create_btn).to_be_visible(timeout=10000)
+        create_btn.click()
+        self.page.wait_for_timeout(1500)
+        dialog = self.page.locator(".el-dialog").filter(has_text="新建项目")
+        expect(dialog.first).to_be_visible(timeout=10000)
+        dialog_form = dialog.first
+        name_input = dialog_form.locator(".el-form-item").filter(has_text="项目名称").locator("input").first
+        name_input.fill(project_name)
+        if desc:
+            desc_input = dialog_form.locator(".el-form-item").filter(has_text="描述").locator("textarea").first
+            desc_input.fill(desc)
+        submit_btn = dialog_form.locator(".cloud-button-btn").filter(has_text="确定").first
+        submit_btn.click()
+        self.page.wait_for_timeout(2000)
+        logger.info(f"IAM：已提交创建项目 {project_name}")
+
+    def iam_edit_project(self, project_name: str, new_desc: str):
+        """编辑项目描述。
+
+        Args:
+            project_name: 项目名称
+            new_desc: 新描述
+        """
+        self.wait_for_page_ready()
+        self.click_action(project_name, "编辑")
+        self.page.wait_for_timeout(1500)
+        dialog = self.page.locator(".el-dialog").filter(has_text=re.compile(r"编辑项目|编辑"))
+        if dialog.count() == 0:
+            dialog = self.page.locator(".el-dialog:visible")
+        expect(dialog.first).to_be_visible(timeout=10000)
+        dialog_form = dialog.first
+        desc_input = dialog_form.locator(".el-form-item").filter(has_text="描述").locator("textarea").first
+        desc_input.fill(new_desc)
+        submit_btn = dialog_form.locator(".cloud-button-btn").filter(has_text="确定").first
+        submit_btn.click()
+        self.page.wait_for_timeout(2000)
+        logger.info(f"IAM：已提交编辑项目 {project_name} 描述")
+
+    def iam_delete_project(self, project_name: str):
+        """删除项目。
+
+        Args:
+            project_name: 项目名称
+        """
+        self.wait_for_page_ready()
+        self.click_action(project_name, "删除")
+        self.page.wait_for_timeout(1500)
+
+        # 优先 JS 确认删除弹窗（sugon-delete-dialog 或 el-dialog）
+        js_confirmed = self.page.evaluate("""
+            () => {
+                const dialogs = document.querySelectorAll('.el-dialog, .sugon-delete-dialog, [class*="delete"]');
+                for (const d of dialogs) {
+                    if (d.textContent.includes('删除')) {
+                        const btns = d.querySelectorAll('button, .cloud-button-btn, .el-button');
+                        for (const btn of btns) {
+                            if (btn.textContent.trim() === '确定' && !btn.disabled) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+        """)
+        if js_confirmed:
+            logger.info(f"IAM：已通过JS确认删除项目 {project_name}")
+        else:
+            # 降级到 Playwright locator
+            confirm_btn = self.page.locator("button, .cloud-button-btn, .el-button").filter(has_text="确定").first
+            expect(confirm_btn).to_be_visible(timeout=5000)
+            confirm_btn.click()
+            logger.info(f"IAM：已通过Playwright确认删除项目 {project_name}")
+        self.page.wait_for_timeout(2000)
+
+    def iam_open_project_detail(self, project_name: str):
+        """点击项目名称进入项目详情页。
+
+        Args:
+            project_name: 项目名称
+        """
+        self.wait_for_page_ready()
+        # 通过JS直接查找并点击项目名称列的<a>标签，触发goToDetail路由跳转
+        clicked = self.page.evaluate(f"""
+            () => {{
+                const rows = document.querySelectorAll('.el-table__body-wrapper tr');
+                for (const row of rows) {{
+                    const links = row.querySelectorAll('a');
+                    for (const link of links) {{
+                        const span = link.querySelector('span');
+                        if (span && span.textContent.trim() === '{project_name}') {{
+                            link.click();
+                            return true;
+                        }}
+                    }}
+                }}
+                // 降级：点击包含项目名称的单元格
+                for (const row of rows) {{
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 2) {{
+                        const cell = cells[1]; // 项目名称列是第2个td
+                        if (cell.textContent.includes('{project_name}')) {{
+                            const link = cell.querySelector('a');
+                            if (link) {{
+                                link.click();
+                                return true;
+                            }}
+                            cell.click();
+                            return true;
+                        }}
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        if not clicked:
+            logger.warning(f"IAM：通过JS未找到项目 {project_name} 的详情链接，降级到Playwright")
+            row = self.get_row_by_name(project_name)
+            name_cell = row.locator("td").nth(1)
+            name_cell.evaluate("el => el.click()")
+        self.page.wait_for_timeout(3000)
+        # 等待URL确认已跳转到项目详情页
+        expect(self.page).to_have_url(re.compile(r"projectDetail", re.IGNORECASE), timeout=15000)
+        logger.info(f"IAM：已进入项目 {project_name} 详情页")
+
+    def iam_assert_project_detail(self, project_name: str, desc: str = None):
+        """断言项目详情页基本信息。
+
+        Args:
+            project_name: 期望的项目名称
+            desc: 期望的项目描述，None时不验证
+        """
+        self.wait_for_page_ready()
+        basic_tab = self.page.locator(".el-tab-pane").filter(has_text="基本信息")
+        if basic_tab.count() > 0:
+            basic_tab_pane = basic_tab.first
+        else:
+            basic_tab_pane = self.page
+        name_item = basic_tab_pane.locator(".cl-item-col, .el-form-item").filter(has_text="项目名称")
+        actual_name = name_item.first.inner_text().replace("项目名称", "").strip()
+        assert actual_name == project_name, f"项目名称不匹配，期望 {project_name}，实际 {actual_name}"
+        if desc is not None:
+            desc_item = basic_tab_pane.locator(".cl-item-col, .el-form-item").filter(has_text="项目描述")
+            actual_desc = desc_item.first.inner_text().replace("项目描述", "").strip()
+            assert actual_desc == desc or (desc == "" and actual_desc == "--"), \
+                f"项目描述不匹配，期望 {desc}，实际 {actual_desc}"
+        logger.info(f"IAM：项目详情验证通过 name={project_name}, desc={desc}")
+
+    def iam_open_project_quota(self, project_name: str):
+        """在项目列表中点击项目的"修改配额"进入配额页面。
+
+        Args:
+            project_name: 项目名称
+        """
+        self.wait_for_page_ready()
+        self.click_action(project_name, "修改配额")
+        self.page.wait_for_timeout(3000)
+        logger.info(f"IAM：已进入项目 {project_name} 的配额页面")
