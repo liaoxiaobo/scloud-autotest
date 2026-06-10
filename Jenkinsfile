@@ -64,8 +64,10 @@ pipeline {
                         effectiveParallelCount = '1'
                     }
 
+                    def testTarget = isBmsRun ? "$dir/sugon_web/testcase/compute/test_bms_*.py" : "$dir/sugon_web/testcase/"
+
                     // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir $dir/allure-result"
                     if (params.BMS_INSTANCE_NAME?.trim()) {
                         pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
                     }
