@@ -249,10 +249,10 @@ class BmsPage(BasePage):
         logger.info(f"[_js_click_action] 开始执行操作 '{action}'")
         row_text = ""
         try:
-            row_text = row.text_content()[:80]
+            row_text = (row.text_content() or "").strip()
         except Exception:
             pass
-        logger.info(f"[_js_click_action] 目标行文本: {row_text}")
+        logger.info(f"[_js_click_action] 目标行文本: {row_text[:120]}")
 
         # 先展开下拉菜单
         more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text=re.compile(r"更多|⋯|⋮"))
@@ -268,6 +268,20 @@ class BmsPage(BasePage):
         else:
             logger.info(f"[_js_click_action] 未找到'更多'按钮，操作可能直接可见")
 
+        # 下拉菜单通常挂载到 body，不一定在当前行 DOM 内。
+        global_items = self.page.locator(
+            ".cloud-table-dropdown-item, .el-dropdown-menu__item, [role='menuitem']"
+        ).filter(has_text=action)
+        for index in range(global_items.count()):
+            try:
+                item = global_items.nth(index)
+                if item.is_visible(timeout=1000):
+                    item.click(force=True)
+                    logger.info(f"[_js_click_action] 成功点击全局可见菜单项 '{action}'")
+                    return True
+            except Exception as e:
+                logger.debug(f"[_js_click_action] 全局菜单项第 {index + 1} 个不可点击: {e}")
+
         # 尝试标准点击下拉菜单项（要求元素可见可交互）
         items = row.locator(".cloud-table-dropdown-item").filter(has_text=action)
         item_count = items.count()
@@ -277,7 +291,7 @@ class BmsPage(BasePage):
                 items.first.wait_for(state="visible", timeout=3000)
                 items.first.click()
                 logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
-                return
+                return True
             except Exception as e:
                 logger.warning(f"[_js_click_action] 标准点击失败（元素不可见或不可交互）: {e}")
 
@@ -286,6 +300,17 @@ class BmsPage(BasePage):
         result = self.page.evaluate(
             """([t, a]) => {
                 const allRows = document.querySelectorAll('table tr');
+                const isVisible = (el) => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+                };
+                for (const i of document.querySelectorAll('.cloud-table-dropdown-item, .el-dropdown-menu__item, [role="menuitem"]')) {
+                    if (i.textContent.trim() === a && isVisible(i)) {
+                        i.click();
+                        return 'global-dropdown-clicked';
+                    }
+                }
                 for (const r of allRows) {
                     if (r.textContent.includes(t)) {
                         for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
@@ -311,6 +336,43 @@ class BmsPage(BasePage):
                 return 'row-not-found';
             }""", [row_text, action])
         logger.info(f"[_js_click_action] JavaScript 点击结果: {result}")
+        return result not in ("not-found", "row-not-found")
+
+    def _get_switch_group_row(self, group_name: str, node_name: str = ""):
+        """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
+        candidates = []
+        for row in self._get_rows():
+            try:
+                text = row.text_content(timeout=3000) or ""
+                if group_name in text:
+                    candidates.append((row, text))
+                    if node_name and node_name in text:
+                        logger.info(f"找到交换机组 '{group_name}' 且绑定节点 '{node_name}' 的目标行")
+                        return row
+            except Exception:
+                continue
+        if candidates:
+            for row, text in candidates:
+                if "--" in text or "—" in text:
+                    logger.info(f"未找到绑定节点 '{node_name}' 的行，优先使用已解绑行: {text[:120]}")
+                    return row
+            logger.info(f"未找到绑定节点 '{node_name}' 的交换机组行，回退使用第一条匹配: {candidates[0][1][:120]}")
+            return candidates[0][0]
+        return None
+
+    def _get_switch_group_name_from_row(self, row: Locator, fallback: str = ""):
+        try:
+            name = row.evaluate("""row => {
+                const cells = Array.from(row.querySelectorAll('td'))
+                    .map(td => (td.innerText || '').trim())
+                    .filter(Boolean);
+                return cells[0] || '';
+            }""")
+            if name:
+                return name
+        except Exception as e:
+            logger.debug(f"[_get_switch_group_name_from_row] 解析交换机组名称失败: {e}")
+        return fallback
 
     def _get_rows(self):
         return self.page.locator("tbody tr").all()
@@ -318,8 +380,10 @@ class BmsPage(BasePage):
     def _get_row_by_name(self, name: str):
         try:
             loc = self.page.get_by_role("row", name=name)
-            if loc.count() > 0:
-                return loc
+            if loc.count() == 1:
+                return loc.first
+            if loc.count() > 1:
+                logger.info(f"[_get_row_by_name] '{name}' 匹配到多行，改用逐行遍历避免 strict mode")
         except Exception:
             pass
         for r in self._get_rows():
@@ -2939,16 +3003,24 @@ class BmsPage(BasePage):
         """
         self.goto_service("交换机组")
         self.page.wait_for_timeout(3000)
-        row = self._get_row_by_name(group_name)
+        row = self._get_switch_group_row(group_name, node_name)
         if not row:
             logger.warning(f"未找到交换机组 '{group_name}'，跳过解绑")
             return
-        # 点击"更多"展开下拉菜单
-        self._js_click_action(row, "解绑物理机")
-        self.page.wait_for_timeout(500)
+        actual_group_name = self._get_switch_group_name_from_row(row, group_name)
+        row_text = row.text_content(timeout=3000) or ""
+        if "--" in row_text or "—" in row_text:
+            logger.info(f"交换机组 '{actual_group_name}' 已处于未绑定状态，跳过解绑")
+            return actual_group_name
+
+        if not self._js_click_action(row, "解绑物理机"):
+            raise RuntimeError(f"交换机组 '{actual_group_name}' 的 '解绑物理机' 操作未点击成功")
+
         # 处理解绑对话框：需要选择要解绑的节点
         d = self.page.locator('[role="dialog"]').filter(has_text="解绑物理机").last
-        d.locator("input").first.click()
+        d.wait_for(state="visible", timeout=10000)
+        input_box = d.locator("input:visible").first
+        input_box.click(force=True)
         self.page.wait_for_timeout(500)
         opts = self.page.locator(".el-select-dropdown:visible li")
         if opts.count() > 0:
@@ -2967,9 +3039,11 @@ class BmsPage(BasePage):
         # 多选下拉框点击选项后不会自动关闭，需要按 Escape 关闭后再点确定
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(500)
-        d.locator("button, .cloud-button-btn").filter(has_text="确定").first.click()
+        confirm = d.locator("button:visible, .cloud-button-btn:visible").filter(has_text="确定").first
+        confirm.click(force=True)
         self.page.wait_for_timeout(10000)  # 解绑是异步的，等待10秒
-        logger.info(f"交换机组 '{group_name}' 解绑物理机操作已提交")
+        logger.info(f"交换机组 '{actual_group_name}' 解绑物理机操作已提交")
+        return actual_group_name
 
     def bms_switch_group_delete(self, group_name: str):
         """删除交换机组。

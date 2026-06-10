@@ -421,13 +421,14 @@ class TestBmsCleanup:
         """解绑物理机并删除交换机组。"""
         group_name = "test-bms-autotest"
         node_name = bms_env["preferred_node"]
+        actual_group_name = group_name
 
         # 确保交换机组存在且绑定物理机（支持重建）
         self._ensure_switch_group_exists(ops_page, group_name, node_name)
 
         # 步骤1：解绑物理机
         with allure_step_log("步骤1: 解绑交换机组物理机"):
-            bms_page.bms_switch_group_unbind(group_name, node_name)
+            actual_group_name = bms_page.bms_switch_group_unbind(group_name, node_name) or group_name
 
         # 步骤2：验证物理机已解绑（异步操作，轮询等待）
         with allure_step_log("步骤2: 验证物理机已解绑"):
@@ -437,7 +438,7 @@ class TestBmsCleanup:
                 bms_page.goto_service("交换机组", force=True)
                 bms_page.wait_for_page_ready()
                 bms_page.page.wait_for_timeout(3000)
-                row = bms_page._get_row_by_name(group_name)
+                row = bms_page._get_row_by_name(actual_group_name)
                 if row:
                     row_text = row.text_content() or ""
                     if "--" in row_text:
@@ -447,18 +448,18 @@ class TestBmsCleanup:
                 logger.info(f"解绑验证第 {i + 1}/30 次轮询，物理机未变为 '--'，继续等待...")
                 bms_page.page.wait_for_timeout(5000)
             if not unbound:
-                row = bms_page._get_row_by_name(group_name)
+                row = bms_page._get_row_by_name(actual_group_name)
                 row_text = row.text_content() or "" if row else "(未找到行)"
                 assert "--" in row_text, f"物理机列应显示'--'，实际: {row_text}"
 
         # 步骤3：删除交换机组
         with allure_step_log("步骤3: 删除交换机组"):
-            bms_page.bms_switch_group_delete(group_name)
+            bms_page.bms_switch_group_delete(actual_group_name)
 
         # 步骤4：验证交换机组已删除
         with allure_step_log("步骤4: 验证交换机组已删除"):
-            bms_page.search(group_name)
-            bms_page.assert_list_not_contain(group_name, "名称")
+            bms_page.search(actual_group_name)
+            bms_page.assert_list_not_contain(actual_group_name, "名称")
 
     @allure.title("裸金属BMS-镜像创建")
     def test_bms_017_image_create(self, ssh_host):
