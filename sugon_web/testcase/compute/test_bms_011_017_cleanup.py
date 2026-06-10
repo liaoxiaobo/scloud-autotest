@@ -13,6 +13,14 @@ class TestBmsCleanup:
 
     # ---------- 资源重建辅助方法 ----------
 
+    def _get_agent_ip_for_node(self, node_name):
+        """根据节点名返回代理注册时应使用的起始IP地址。"""
+        ip_map = {
+            "master01.cloud.local": "10.0.13.13",
+            "master02.cloud.local": "10.0.13.14",
+        }
+        return ip_map.get(node_name, "10.0.13.13")
+
     def _require_pxe_agent_or_skip(self, bms_page, node_name):
         """确保指定代理已安装PXE插件，如未安装则尝试安装；环境不支持则跳过测试。"""
         bms_page._goto_submenu_safe("代理")
@@ -27,7 +35,8 @@ class TestBmsCleanup:
             logger.info(f"代理 '{node_name}' 不存在，注册中...")
             self._ensure_network_exists(bms_page, "bms")
             try:
-                bms_page.bms_agent_register(node_name=node_name, ip_address="10.0.13.13")
+                agent_ip = self._get_agent_ip_for_node(node_name)
+                bms_page.bms_agent_register(node_name=node_name, ip_address=agent_ip)
                 bms_page.page.wait_for_timeout(5000)
             except Exception as e:
                 logger.warning(f"代理 '{node_name}' 注册失败: {e}")
@@ -165,7 +174,8 @@ class TestBmsCleanup:
             # 注册代理依赖网络存在
             self._ensure_network_exists(bms_page, "bms")
             try:
-                bms_page.bms_agent_register(node_name=node_name, ip_address="10.0.13.13")
+                agent_ip = self._get_agent_ip_for_node(node_name)
+                bms_page.bms_agent_register(node_name=node_name, ip_address=agent_ip)
                 bms_page.page.wait_for_timeout(5000)
                 # 强制关闭所有残留对话框（含错误提示、注册对话框等），防止拦截后续操作
                 for _ in range(5):

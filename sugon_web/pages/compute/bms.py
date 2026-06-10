@@ -376,7 +376,13 @@ class BmsPage(BasePage):
         必须使用Playwright原生click触发Vue的change事件，JS click不会触发API调用。
         """
         self._goto_submenu_safe("代理")
-        for ip_suffix in range(13, 20):
+        # 根据传入的 ip_address 确定起始后缀，使不同节点可对应不同 IP（如 master01→13, master02→14）
+        ip_parts = ip_address.split('.')
+        try:
+            start_suffix = int(ip_parts[-1])
+        except ValueError:
+            start_suffix = 13
+        for ip_suffix in range(start_suffix, 20):
             current_ip = f"10.0.13.{ip_suffix}"
             self._click_cl_btn("注册代理")
             d = self.page.locator('[role="dialog"]').filter(has_text="注册代理").last
