@@ -394,6 +394,23 @@ class BmsPage(BasePage):
                 continue
         return None
 
+    def _get_row_by_cell_text(self, text: str, cell_index: int = 1, exact: bool = True):
+        """按指定单元格文本定位表格行，避免只按整行包含导致误判。"""
+        for row in self._get_rows():
+            try:
+                row_text = row.text_content(timeout=3000) or ""
+                if "暂无数据" in row_text:
+                    continue
+                cells = row.locator("td")
+                if cells.count() <= cell_index:
+                    continue
+                value = re.sub(r"\s+", " ", cells.nth(cell_index).text_content(timeout=3000) or "").strip()
+                if (exact and value == text) or (not exact and text in value):
+                    return row
+            except Exception:
+                continue
+        return None
+
     # ---- network ----
 
     def bms_network_create(self, name, cidr, start_ip, end_ip, gateway, vlan):
@@ -416,11 +433,29 @@ class BmsPage(BasePage):
     def bms_network_delete(self, name):
         self._goto_submenu_safe("网络")
         self.page.wait_for_timeout(500)
-        for i, r in enumerate(self._get_rows()):
-            if name in r.text_content():
-                self._js_click_action(r, "删除")
-                self._confirm_sugon_dialog()
-                return
+        self.bms_search(name)
+        row = self._get_row_by_cell_text(name, cell_index=1)
+        if not row:
+            logger.info(f"网络 '{name}' 不存在，无需删除")
+            return False
+        if not self._js_click_action(row, "删除"):
+            raise AssertionError(f"未找到网络 '{name}' 的删除操作")
+        self._confirm_sugon_dialog(required=True)
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            self.page.wait_for_timeout(3000)
+            self._goto_submenu_safe("网络")
+            self.bms_search(name)
+            if not self._get_row_by_cell_text(name, cell_index=1):
+                logger.info(f"网络 '{name}' 已删除")
+                return True
+        raise AssertionError(f"网络 '{name}' 删除后仍存在")
+
+    def bms_network_exists(self, name: str):
+        """判断网络列表中是否存在指定网络名称。"""
+        self._goto_submenu_safe("网络")
+        self.bms_search(name)
+        return self._get_row_by_cell_text(name, cell_index=1) is not None
 
     def bms_network_cleanup(self):
         self.page.wait_for_timeout(1000)

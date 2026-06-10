@@ -438,8 +438,7 @@ class TestBmsCleanup:
 
         # 步骤2：验证网络信息已删除
         with allure_step_log("步骤2: 验证网络信息已删除"):
-            bms_page.search(network_name)
-            bms_page.assert_list_not_contain(network_name, "名称")
+            assert not bms_page.bms_network_exists(network_name), f"网络 '{network_name}' 删除后仍存在"
 
     @allure.title("裸金属BMS-交换机信息删除")
     def test_bms_016_switch_group_delete(self, bms_page, ops_page, bms_env):
