@@ -33,6 +33,7 @@ SERVICE_PATH_MAP = {
     '分布式消息服务 RabbitMQ': '/rbs',
     '云搜索服务': '/es',
     '监控服务': '/prom',
+    'E-MapReduce': '/emr',
     '云容器引擎': '/cce',
     '交换机组': '/ops/#/exchange-unit-list',
     '基础设施': '/ops',
@@ -43,4 +44,3 @@ SERVICE_PATH_MAP = {
     '云堡垒机高级版': '/das/#/usm',
     '日志审计': '/das/#/ver'
 }
-
