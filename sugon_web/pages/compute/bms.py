@@ -475,6 +475,88 @@ class BmsPage(BasePage):
 
     # ---- agent ----
 
+    def _dialog_form_control(self, dialog: Locator, label_text: str, selector: str) -> Locator:
+        """在对话框内按表单 label 精确定位控件。"""
+        form_items = dialog.locator(".el-form-item")
+        for index in range(form_items.count()):
+            item = form_items.nth(index)
+            try:
+                label = item.locator(".el-form-item__label").first.text_content(timeout=1000) or ""
+                label = re.sub(r"[\s:*：]+", "", label)
+                if label == re.sub(r"[\s:*：]+", "", label_text):
+                    control = item.locator(selector)
+                    if control.count() > 0:
+                        return control.first
+            except Exception:
+                continue
+        return dialog.locator(".el-form-item").filter(has_text=label_text).locator(selector).first
+
+    def _visible_select_options(self):
+        """读取当前可见 ElementUI 下拉框选项。"""
+        return self.page.evaluate(
+            """() => {
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return el.getAttribute('aria-hidden') !== 'true'
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && style.opacity !== '0'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const dropdowns = Array.from(document.querySelectorAll('body > div.el-select-dropdown, .el-select-dropdown'))
+                    .filter(isVisible);
+                const dropdown = dropdowns[dropdowns.length - 1];
+                if (!dropdown) return [];
+                return Array.from(dropdown.querySelectorAll('li.el-select-dropdown__item, li'))
+                    .filter((item) => isVisible(item) && !item.classList.contains('is-disabled'))
+                    .map((item) => (item.textContent || '').trim())
+                    .filter(Boolean);
+            }"""
+        )
+
+    def _click_visible_select_option(self, option_text: str = "", exclude_texts=None):
+        """点击当前可见 ElementUI 下拉框中的指定选项；未指定时选第一个有效项。"""
+        exclude_texts = exclude_texts or []
+        clicked = self.page.evaluate(
+            """({optionText, excludeTexts}) => {
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return el.getAttribute('aria-hidden') !== 'true'
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && style.opacity !== '0'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const dropdowns = Array.from(document.querySelectorAll('body > div.el-select-dropdown, .el-select-dropdown'))
+                    .filter(isVisible);
+                const dropdown = dropdowns[dropdowns.length - 1];
+                if (!dropdown) return '';
+                const items = Array.from(dropdown.querySelectorAll('li.el-select-dropdown__item, li'))
+                    .filter((item) => isVisible(item) && !item.classList.contains('is-disabled'));
+                const target = items.find((item) => {
+                    const text = (item.textContent || '').trim();
+                    if (!text || excludeTexts.includes(text)) return false;
+                    return optionText ? text === optionText : true;
+                });
+                if (!target) return '';
+                const opts = {bubbles: true, cancelable: true, view: window};
+                target.dispatchEvent(new MouseEvent('mousedown', opts));
+                target.dispatchEvent(new MouseEvent('mouseup', opts));
+                target.dispatchEvent(new MouseEvent('click', opts));
+                return (target.textContent || '').trim();
+            }""",
+            {"optionText": option_text, "excludeTexts": exclude_texts},
+        )
+        if not clicked:
+            raise Exception(f"未找到可点击的下拉选项: {option_text or '<first>'}")
+        return clicked
+
     def bms_agent_register(self, node_name, ip_address="10.0.13.13"):
         """注册BMS代理。
 
@@ -490,87 +572,54 @@ class BmsPage(BasePage):
             d.wait_for(state="visible", timeout=10000)
             self.page.wait_for_timeout(1500)
 
-            # 1. 选择Region（"选择节点"下拉框）—— 使用Playwright click触发Vue change事件
+            # 1. 选择节点/Region（不同版本展示不同文案）—— 使用原生事件触发 Vue change
             node_selected = False
-            selected_region = None
+            last_net_texts = []
             for attempt in range(3):
                 try:
-                    node_input = d.locator(".el-form-item").filter(has_text="选择节点").locator(".el-input")
+                    node_input = self._dialog_form_control(d, "选择节点", ".el-input")
                     node_input.click()
                     self.page.wait_for_timeout(2000)
-                    # 使用JS仅用于诊断，实际选择用Playwright locator
-                    all_texts = self.page.evaluate(
-                        """() => {
-                            const dropdown = document.querySelector('.el-select-dropdown');
-                            if (!dropdown) return [];
-                            const items = dropdown.querySelectorAll('li');
-                            return Array.from(items).map(i => i.textContent.trim());
-                        }"""
-                    )
-                    logger.info(f"[bms_agent_register] Region下拉选项(attempt {attempt + 1}): {all_texts}")
+                    all_texts = self._visible_select_options()
+                    logger.info(f"[bms_agent_register] 节点/Region下拉选项(attempt {attempt + 1}): {all_texts}")
                     if not all_texts:
                         self.page.keyboard.press("Escape")
                         self.page.wait_for_timeout(500)
                         continue
-                    # 使用Playwright force click选择Region（触发Vue change）
-                    # 依次尝试每个Region，直到某个Region能加载出网络
-                    region_names = self.page.evaluate(
-                        """() => {
-                            const dropdown = document.querySelector('.el-select-dropdown');
-                            if (!dropdown) return [];
-                            const items = dropdown.querySelectorAll('li');
-                            return Array.from(items).map(i => i.textContent.trim());
-                        }"""
-                    )
-                    region_clicked = False
-                    for region_name in region_names:
+                    # 选择节点下拉在不同版本可能展示 Region 或物理机名；优先选择目标物理机。
+                    candidate_names = [node_name] if node_name in all_texts else all_texts
+                    if node_name not in all_texts:
+                        logger.warning(f"[bms_agent_register] 目标节点 '{node_name}' 不在下拉选项中，回退尝试: {all_texts}")
+                    for candidate_index, region_name in enumerate(candidate_names):
                         try:
-                            # 使用get_by_text定位选项，然后通过JS dispatchEvent点击
-                            # ElementUI下拉框在headless模式下Playwright认为不可见，
-                            # 但元素实际在DOM中，需用JS触发点击事件
-                            # ElementUI Select组件使用mousedown+click组合事件
-                            opt = self.page.get_by_text(region_name, exact=True).first
-                            opt.evaluate("""el => {
-                                const opts = {bubbles: true, cancelable: true, view: window};
-                                el.dispatchEvent(new MouseEvent('mousedown', opts));
-                                el.dispatchEvent(new MouseEvent('mouseup', opts));
-                                el.dispatchEvent(new MouseEvent('click', opts));
-                            }""")
-                            logger.info(f"[bms_agent_register] 已选择Region: {region_name}")
-                            # 等待网络API加载
+                            if candidate_index > 0:
+                                node_input.click()
+                                self.page.wait_for_timeout(1000)
+                            self._click_visible_select_option(region_name)
+                            logger.info(f"[bms_agent_register] 已选择节点/Region: {region_name}")
                             self.page.wait_for_timeout(5000)
-                            # 检查该Region是否有可用网络
+                            net_input = self._dialog_form_control(d, "网络", ".el-input")
+                            net_input.click(timeout=5000)
+                            self.page.wait_for_timeout(1500)
+                            net_texts = self._visible_select_options()
+                            last_net_texts = net_texts
+                            logger.info(f"[bms_agent_register] 节点/Region '{region_name}' 的网络选项: {net_texts}")
+                            valid_nets = [
+                                n for n in net_texts
+                                if n != region_name and "无数据" not in n and "暂无数据" not in n
+                            ]
+                            if valid_nets:
+                                selected_network = self._click_visible_select_option(valid_nets[0])
+                                logger.info(f"[bms_agent_register] 已选择网络: {selected_network}")
+                                node_selected = True
+                                break
                             self.page.keyboard.press("Escape")
                             self.page.wait_for_timeout(500)
-                            net_input = d.locator(".el-form-item").filter(has_text="网络").locator(".el-input")
-                            try:
-                                net_input.click(timeout=5000)
-                                self.page.wait_for_timeout(1500)
-                                net_texts = self.page.evaluate(
-                                    """() => {
-                                        const dropdown = document.querySelector('.el-select-dropdown');
-                                        if (!dropdown) return [];
-                                        const items = dropdown.querySelectorAll('li');
-                                        return Array.from(items).map(i => i.textContent.trim());
-                                    }"""
-                                )
-                                logger.info(f"[bms_agent_register] Region '{region_name}' 的网络选项: {net_texts}")
-                                # 排除网络选项与Region名相同的情况（说明网络未正确加载）
-                                valid_nets = [n for n in net_texts if n != region_name and "无数据" not in n]
-                                if valid_nets:
-                                    region_clicked = True
-                                    selected_region = region_name
-                                    break
-                                self.page.keyboard.press("Escape")
-                                self.page.wait_for_timeout(500)
-                            except Exception as e:
-                                logger.warning(f"[bms_agent_register] 检查Region '{region_name}' 网络失败: {e}")
-                                self.page.keyboard.press("Escape")
-                                self.page.wait_for_timeout(500)
                         except Exception as e:
-                            logger.warning(f"[bms_agent_register] 点击Region '{region_name}' 失败: {e}")
-                    if region_clicked:
-                        node_selected = True
+                            logger.warning(f"[bms_agent_register] 节点/Region '{region_name}' 未找到可用网络: {e}")
+                            self.page.keyboard.press("Escape")
+                            self.page.wait_for_timeout(500)
+                    if node_selected:
                         break
                     # 如果没有Region有网络，继续下一轮重试
                     self.page.keyboard.press("Escape")
@@ -581,45 +630,10 @@ class BmsPage(BasePage):
                     self.page.keyboard.press("Escape")
                     self.page.wait_for_timeout(1000)
             if not node_selected:
-                raise Exception("无法选择Region，下拉框未加载出选项")
-
-            # 2. 选择网络 —— 网络下拉框在Region选择后已打开，直接选第一个可用选项
-            net_input = d.locator(".el-form-item").filter(has_text="网络").locator(".el-input")
-            try:
-                net_input.click(timeout=10000)
-                self.page.wait_for_timeout(1500)
-                net_texts = self.page.evaluate(
-                    """() => {
-                        const dropdown = document.querySelector('.el-select-dropdown');
-                        if (!dropdown) return [];
-                        const items = dropdown.querySelectorAll('li');
-                        return Array.from(items).map(i => i.textContent.trim());
-                    }"""
-                )
-                logger.info(f"[bms_agent_register] 网络下拉选项: {net_texts}")
-                # 严格检查：网络选项为空、包含"无数据"、或全部等于Region名（网络未加载）
-                if not net_texts or "无数据" in str(net_texts) or (selected_region and all(n == selected_region for n in net_texts)):
-                    raise Exception(f"网络下拉框无可用选项（当前选项: {net_texts}）")
-                # 选择第一个不等于Region名的有效网络
-                target_net = None
-                for n in net_texts:
-                    if selected_region and n != selected_region:
-                        target_net = n
-                        break
-                if not target_net:
-                    target_net = net_texts[0]
-                self.page.get_by_text(target_net, exact=True).first.evaluate("""el => {
-                    const opts = {bubbles: true, cancelable: true, view: window};
-                    el.dispatchEvent(new MouseEvent('mousedown', opts));
-                    el.dispatchEvent(new MouseEvent('mouseup', opts));
-                    el.dispatchEvent(new MouseEvent('click', opts));
-                }""")
-            except Exception as e:
-                logger.warning(f"[bms_agent_register] 选择网络失败: {e}")
-                raise Exception("无法选择网络，下拉框无可用选项")
+                raise Exception(f"无法选择节点/Region或网络，下拉框无可用网络选项: {last_net_texts}")
 
             # 3. 填写IP并提交
-            d.locator(".el-form-item").filter(has_text="IP地址").locator("input").fill(current_ip)
+            self._dialog_form_control(d, "IP地址", "input").fill(current_ip)
             self._confirm_sugon_dialog()
             # 强制关闭所有残留对话框（含错误提示、关闭动画期间的对话框）
             self.page.wait_for_timeout(2000)
