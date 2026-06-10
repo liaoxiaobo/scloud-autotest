@@ -1,4 +1,5 @@
 from .acl import AclMixin
+from .cfw import CfwMixin
 from .dc import DcMixin
 from .cms_monitor import MonitorMixin
 from .eip import EipMixin
@@ -32,6 +33,12 @@ class VpcPage(
     service_name = "虚拟私有云"
 
 
+class CfwPage(CfwMixin):
+    """云防火墙页面类。"""
+
+    service_name = "云防火墙"
+
+
 class DcPage(DcMixin):
     """云专线DC页面类。"""
 
@@ -50,4 +57,4 @@ class TmPage(TmMixin):
     service_name = "流量镜像"
 
 
-__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage", "SlbPage", "SlbMixin"]
+__all__ = ["VpcPage", "CfwPage", "DcPage", "ErPage", "TmPage", "SlbPage", "SlbMixin"]
