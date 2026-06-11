@@ -25,8 +25,7 @@ class TestVPCBasic:
             # ✨ 先设置每页显示 100 条，确保能看到所有数据
             logger.info("设置每页显示 100 条数据")
             vpc_page.goto_submenu("虚拟私有云")
-            vpc_page.locator("#cloud-container-content").get_by_placeholder("请选择").click()
-            vpc_page.get_by_text("100条/页").click()
+            vpc_page._expand_page_size("100")
 
             # 获取"网络类型"列的所有数据
             network_types = vpc_page.get_column_data('网络类型')

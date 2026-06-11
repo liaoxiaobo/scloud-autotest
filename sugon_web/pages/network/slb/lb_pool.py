@@ -201,13 +201,7 @@ class LbPoolMixin(LbDetailMixin):
         dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
 
         try:
-            pagination_trigger = dialog.locator(".el-pagination__sizes .el-input__inner").first
-            if pagination_trigger.count() > 0 and pagination_trigger.is_visible():
-                pagination_trigger.click()
-                self.locator("div.el-select-dropdown:visible li").filter(
-                    has_text=re.compile(r"^100条/页$")
-                ).first.click()
-                dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+            self._expand_page_size("50")
         except Exception as e:
             self.logger.warning(f"尝试设置资源选择分页为100失败: {e}")
 
@@ -510,13 +504,7 @@ class LbPoolMixin(LbDetailMixin):
         dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
 
         try:
-            pagination_trigger = dialog.locator(".el-pagination__sizes .el-input__inner").first
-            if pagination_trigger.count() > 0 and pagination_trigger.is_visible():
-                pagination_trigger.click()
-                self.locator("div.el-select-dropdown:visible li").filter(
-                    has_text=re.compile(r"^100条/页$")
-                ).first.click()
-                dialog.locator(".el-loading-mask").wait_for(state="hidden", timeout=15000)
+            self._expand_page_size("50")
         except Exception as exc:
             self.logger.warning(f"尝试设置资源选择分页为100失败: {exc}")
 
