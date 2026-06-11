@@ -165,6 +165,50 @@ def wait_for_ping_reachable(ssh_client, host, timeout_sec=180, interval_sec=10):
     )
 
 
+def wait_for_curl_match(ssh_client, curl_cmd, match_text, timeout_sec=180, interval_sec=10):
+    """轮询执行 curl 命令，直到响应中包含目标文本。
+
+    该函数适用于需要等待网络配置生效后再继续断言的场景，
+    例如 ACL 规则同步、服务注册收敛等。
+
+    Args:
+        ssh_client: 用于执行远端命令的 SSH 客户端。
+        curl_cmd: curl 命令字符串。
+        match_text: 期望响应中包含的文本。
+        timeout_sec: 最大等待时间，单位为秒。
+        interval_sec: 轮询间隔，单位为秒。
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: 在等待时间内响应始终未包含目标文本。
+    """
+    end_time = time.time() + timeout_sec
+    last_response = None
+
+    while time.time() < end_time:
+        result = ssh_client.run(curl_cmd, check_rc=False, return_rc=True)
+        stdout = (result.get("stdout") or "").strip()
+        last_response = stdout
+        if match_text in stdout:
+            logger.info("curl 响应已匹配目标文本: match_text=%s", match_text)
+            return
+
+        logger.info(
+            "等待 curl 响应匹配: match_text=%s rc=%s stdout=%r",
+            match_text,
+            result.get("rc"),
+            stdout[:200] if stdout else "",
+        )
+        time.sleep(interval_sec)
+
+    raise AssertionError(
+        f"curl 响应在 {timeout_sec} 秒内仍未包含目标文本 {match_text!r}，"
+        f"最后响应: {last_response[:500] if last_response else ''}"
+    )
+
+
 def collect_lb_responses(ssh_client, curl_cmd, count, interval_sec=0, check_rc=True):
     """连续执行给定命令并收集原始响应文本。
 

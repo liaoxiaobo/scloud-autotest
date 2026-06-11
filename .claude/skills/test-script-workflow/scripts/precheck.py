@@ -26,6 +26,8 @@ validator → fix → repeat 反馈环，避免这些违规被带到阶段三的
     python precheck.py sugon_web/testcase/network/        # 递归扫描目录下 test_*.py
     python precheck.py <文件> --expected-tests 2          # 同时校验测试方法数
     python precheck.py <文件> --pytest-ini sugon_web/pytest.ini
+
+注：运行报告（skill_runs 下的 md）的章节锚点完整性校验是另一职责，见同目录 report_check.py。
 """
 import argparse
 import ast

@@ -151,3 +151,9 @@ environment.properties
 refrence/
 case_specs/
 skill_runs/
+
+# 测试需求CSV、备份CSV及日志（不参与版本控制）
+csv用例备份/
+requirements_csv/
+logs/
+sugon_web/logs/
