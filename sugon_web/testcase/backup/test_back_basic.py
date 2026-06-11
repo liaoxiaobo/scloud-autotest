@@ -33,7 +33,6 @@ class TestBackupCreate:
             backup_page.assert_backup_policy_details(task_name, {"云服务器名": server_name}, "云服务器列表")
 
     @pytest.mark.parametrize("policy", load_data('test_backup_once', "test_backup.yaml"))
-    # @pytest.mark.slow
     @allure.title("备份任务-创建和删除（一次性）")
     def test_backup_once(self, backup_page, vm_backup, cleanup_backup_task, policy):
         """测试创建一次性备份任务功能"""
@@ -152,7 +151,6 @@ class TestBackupBasic:
                 backup_page.assert_deleted(names)
 
     @allure.title("备份任务-执行全量和增量备份")
-    # @pytest.mark.slow
     @pytest.mark.parametrize("method", ["执行增量", "执行全量"])
     def test_backup_exec_full(self, backup_task, backup_page, method):
         """测试执行全量/增量备份功能"""
@@ -173,7 +171,6 @@ class TestBackupBasic:
             backup_page.assert_backup_policy_details(task_name, {"状态": "备份成功"}, "周期性任务")
 
     @allure.title("备份任务-执行备份后重置任务")
-    # @pytest.mark.slow
     @pytest.mark.parametrize("method", ["执行增量", "执行全量"])
     def test_backup_reset_task(self, backup_task, backup_page, method):
         """测试 重置任务功能"""
@@ -230,7 +227,6 @@ class TestBackupBasic:
 class TestResumeCreate:
 
     @allure.title("恢复任务-创建和恢复")
-    # @pytest.mark.slow
     @pytest.mark.parametrize("data", load_data('test_resume_create_scenario', 'test_backup.yaml'))
     def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ops_page, ssh_vm, cleanup_resume_data, data):
         """测试创建恢复任务的各种场景"""
