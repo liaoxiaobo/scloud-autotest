@@ -1,4 +1,5 @@
 import allure
+import pytest
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
 
@@ -9,12 +10,12 @@ from sugon_web.utils.data import random_data
 class TestOBSProxyAddCustomDomain:
 
     @allure.title("对象存储-访问代理-添加自定义域名并验证")
-    def test_obs_proxy_add_custom_domain(self, obs_page):
+    def test_obs_proxy_add_custom_domain(self, obs_page, bucket):
         """验证在访问代理页面添加自定义域名后，列表和详情展示正确，
         且桶详情页Endpoint显示正确。
         """
         domain_name = f"obs-{random_data(length=6)}.sugoncloud.com"
-        bucket_name = f"bucket-{random_data()}"
+        bucket_name = bucket["name"]
 
         # ------------------ 步骤1：进入访问代理页面 ------------------
         with allure_step_log("步骤1: 进入访问代理页面"):
@@ -52,17 +53,17 @@ class TestOBSProxyAddCustomDomain:
                 )
                 assert found, f"未找到预期的Endpoint记录: {typ}/{method}/{url}"
 
-        # ------------------ 步骤5：创建桶并验证Endpoint ------------------
-        with allure_step_log("步骤5: 创建桶并验证桶详情页Endpoint显示"):
-            # 确保任何残留弹窗已关闭
+        # ------------------ 步骤5：验证桶详情页Endpoint ------------------
+        with allure_step_log("步骤5: 验证桶详情页Endpoint显示"):
+            # 彻底清理：强制关闭可能残留的代理创建对话框
+            obs_page._close_proxy_dialog()
             obs_page.close_dialog_if_exists()
             obs_page.page.keyboard.press("Escape")
-            obs_page.page.wait_for_timeout(500)
+            obs_page.page.wait_for_timeout(1000)
+
             obs_page.goto_submenu("桶列表")
             obs_page.wait_for_page_ready()
-
-            obs_page.obs_bucket_create(bucket_name)
-            obs_page.wait_for_page_ready()
+            obs_page.page.wait_for_timeout(3000)
 
             # 进入桶详情页
             obs_page.obs_bucket_enter_detail(bucket_name)
@@ -77,15 +78,8 @@ class TestOBSProxyAddCustomDomain:
                 f"桶详情页未显示VPC名称: {selected_vpc_name}"
             )
 
-        # ------------------ 清理 ------------------
-        with allure_step_log("清理: 删除桶和访问代理"):
-            # 先删除桶
-            obs_page.goto_submenu("桶列表")
-            obs_page.wait_for_page_ready()
-            obs_page.obs_bucket_delete(bucket_name)
-            obs_page.assert_deleted(bucket_name)
-
-            # 再删除访问代理
+        # ------------------ 清理：删除访问代理 ------------------
+        with allure_step_log("清理: 删除访问代理"):
             obs_page.goto_submenu("访问代理")
             obs_page.wait_for_page_ready()
             obs_page.obs_proxy_delete(domain_name)

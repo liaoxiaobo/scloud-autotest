@@ -441,14 +441,18 @@ class ObsPage(ObsAssertionMixin, BasePage):
                     self.logger.info(f"策略2失败: {e2}")
                 if attempt < 2:
                     self.logger.info(
-                        f"桶 {name} 定位失败，刷新页面重试({attempt + 1}/2)"
+                        f"桶 {name} 定位失败，重新导航到桶列表重试({attempt + 1}/2)"
                     )
-                    self.page.reload()
+                    # 使用 goto_submenu 而非 page.reload()，避免丢失项目选择状态
+                    self.goto_submenu("桶列表")
+                    self.page.wait_for_timeout(3000)
                     self.wait_for_page_ready()
-                    # 刷新后等待表格加载
-                    for _ in range(30):
+                    # 等待表格加载
+                    for _ in range(50):
                         try:
                             if self.page.locator(".el-table__body-wrapper tr").count() > 0:
+                                break
+                            if self.page.locator(".el-table__empty-text").count() > 0:
                                 break
                         except Exception:
                             pass
@@ -460,12 +464,14 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.logger.warning(f"表格行定位桶 {name} 均失败，尝试直接 URL 导航")
         from sugon_web.config.config import Config
         base_url = Config.get("base_url").rstrip("/")
-        self.page.goto(f"{base_url}/obs/#/store/detail/{name}")
+        # 使用正确的桶详情页 URL 格式（含 /list/ 路径）
+        self.page.goto(f"{base_url}/obs/#/store/list/detail/{name}")
         self.wait_for_page_ready()
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(5000)
         # 验证是否到达详情页（兼容可能的 hash 路由延迟）
-        if f"/detail/{name}" in self.page.url or name in self.page.url:
-            self.logger.info(f"URL 导航进入桶 {name} 详情页成功")
+        current_url = self.page.url
+        if f"/detail/{name}" in current_url or name in current_url:
+            self.logger.info(f"URL 导航进入桶 {name} 详情页成功: {current_url}")
             return
         raise RuntimeError(
             f"无法进入桶 {name} 详情页（表格行定位和 URL 导航均失败，"
@@ -1244,15 +1250,17 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.close_dialog_if_exists()
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(500)
-        # 使用 click_action 以兼容下拉菜单模式（_click_object_action 无法处理下拉菜单）
-        self.click_action(name, "删除")
+        # 使用 _click_object_action（先 hover 行触发操作按钮渲染）
+        self._click_object_action(name, "删除")
         self.wait_for_page_ready()
         # 等待删除对话框渲染
         self.page.wait_for_timeout(3000)
 
         # 对象删除确认弹窗：只定位当前可见对话框，避免匹配到残留旧弹窗
         try:
-            dialog = self.page.locator(".cv-dialog:visible, .el-dialog:visible").first
+            dialog = self.page.locator(
+                ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+            ).first
             dialog.wait_for(state="visible", timeout=10000)
             confirm_btn = dialog.get_by_text("确定", exact=True).first
             if confirm_btn.count() > 0:
@@ -1263,7 +1271,7 @@ class ObsPage(ObsAssertionMixin, BasePage):
             else:
                 dialog.evaluate("""
                     (dialog) => {
-                        const btn = dialog.querySelector('.cl-dialog-footer, .el-dialog__footer, .dialog-footer');
+                        const btn = dialog.querySelector('.cl-dialog-footer, .el-dialog__footer, .dialog-footer, .el-message-box__btns');
                         if (btn) {
                             const confirm = btn.querySelector('button, .cloud-button-btn');
                             if (confirm && confirm.innerText.includes('确定')) {
@@ -1593,12 +1601,17 @@ class ObsPage(ObsAssertionMixin, BasePage):
         Args:
             folder_name: 文件夹名称
         """
+        # 先关闭可能存在的弹窗
+        self.close_dialog_if_exists()
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(500)
+
         # 点击新建文件夹按钮
         self.page.get_by_text("新建文件夹", exact=True).first.click()
         self.page.wait_for_timeout(1500)
 
-        # 获取弹窗并输入文件夹名称
-        dialog = self.page.locator(".cv-dialog, .el-dialog").filter(
+        # 获取弹窗并输入文件夹名称（使用 :visible 避免匹配到隐藏的残留对话框）
+        dialog = self.page.locator(".cv-dialog:visible, .el-dialog:visible").filter(
             has_text="新建文件夹"
         ).first
         expect(dialog).to_be_visible(timeout=10000)
@@ -1607,8 +1620,10 @@ class ObsPage(ObsAssertionMixin, BasePage):
 
         # 点击确定
         dialog.get_by_text("确定", exact=True).first.click()
-        self.page.wait_for_timeout(3000)
+        # 文件夹创建后列表异步刷新，新桶首次创建需更长时间
+        self.page.wait_for_timeout(5000)
         self.wait_for_page_ready()
+        self.page.wait_for_timeout(2000)
 
     def obs_object_enter_folder(self, folder_name):
         """在对象列表中点击文件夹名称，进入文件夹内部。
@@ -1678,8 +1693,8 @@ class ObsPage(ObsAssertionMixin, BasePage):
 
         # 点击立即上传
         dialog.get_by_text("立即上传", exact=True).first.click()
-        # 大文件上传需要较长时间等待
-        self.page.wait_for_timeout(15000)
+        # 大文件批量上传需要较长时间等待后台处理完成
+        self.page.wait_for_timeout(25000)
 
         # 关闭任务列表面板
         self._close_task_list_panel_if_exists()
@@ -1695,16 +1710,28 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(500)
 
-        # 点击删除操作（使用 click_action 以兼容下拉菜单模式）
-        self.click_action(folder_name, "删除")
+        # 点击删除操作：先尝试 _click_object_action（hover 渲染），
+        # 若未弹出确认对话框则回退到 click_action（处理下拉菜单模式）
+        self._click_object_action(folder_name, "删除")
         self.wait_for_page_ready()
         self.page.wait_for_timeout(3000)
 
+        # 检查是否有确认对话框出现
+        has_dialog = self.page.locator(
+            ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+        ).count() > 0
+        if not has_dialog:
+            # _click_object_action 未触发删除，回退到 click_action
+            self.click_action(folder_name, "删除")
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(3000)
+
         # 确认删除：只定位当前可见对话框，避免匹配到残留旧弹窗
-        dialog = self.page.locator(".cv-dialog:visible, .el-dialog:visible").filter(
-            has_text="删除文件夹"
-        ).first
-        if dialog.count() > 0:
+        try:
+            dialog = self.page.locator(
+                ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+            ).first
+            dialog.wait_for(state="visible", timeout=10000)
             confirm_btn = dialog.get_by_text("确定", exact=True).first
             if confirm_btn.count() > 0:
                 try:
@@ -1712,10 +1739,9 @@ class ObsPage(ObsAssertionMixin, BasePage):
                 except Exception:
                     confirm_btn.evaluate("el => el.click()")
             else:
-                # fallback：使用 JS 触发点击
                 dialog.evaluate("""
                     (dialog) => {
-                        const btn = dialog.querySelector('.cl-dialog-footer, .el-dialog__footer, .dialog-footer');
+                        const btn = dialog.querySelector('.cl-dialog-footer, .el-dialog__footer, .dialog-footer, .el-message-box__btns');
                         if (btn) {
                             const confirm = btn.querySelector('button, .cloud-button-btn');
                             if (confirm && confirm.innerText.includes('确定')) {
@@ -1726,7 +1752,7 @@ class ObsPage(ObsAssertionMixin, BasePage):
                         return 'not-found';
                     }
                 """)
-        else:
+        except Exception:
             # fallback 到公共 dialog_confirm
             try:
                 self.dialog_confirm.click(force=True)
@@ -2068,10 +2094,29 @@ class ObsPage(ObsAssertionMixin, BasePage):
 
     def obs_bucket_acl_config_click(self):
         """在桶详情页点击桶ACLs卡片的'点击配置'按钮，进入ACL配置页面。"""
-        acl_card = self.page.locator(".safe-config-container").filter(
-            has_text="桶ACLs"
-        ).first
-        expect(acl_card).to_be_visible(timeout=10000)
+        # 先确保页面基础加载完成
+        self.wait_for_page_ready()
+        self.page.wait_for_timeout(1500)
+
+        # 卡片可能异步渲染，使用重试查找
+        acl_card = None
+        for attempt in range(3):
+            acl_card = self.page.locator(".safe-config-container").filter(
+                has_text="桶ACLs"
+            ).first
+            try:
+                expect(acl_card).to_be_visible(timeout=15000)
+                break
+            except Exception as e:
+                self.logger.info(
+                    f"桶ACLs卡片查找尝试 {attempt + 1}/3 失败: {e}"
+                )
+                if attempt < 2:
+                    self.wait_for_page_ready()
+                    self.page.wait_for_timeout(2000)
+                else:
+                    raise
+
         config_btn = acl_card.get_by_text("点击配置", exact=True)
         config_btn.click()
         self.page.wait_for_timeout(2000)
@@ -2634,6 +2679,41 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.wait_for_page_ready()
         self.page.wait_for_timeout(3000)
 
+    def _close_proxy_dialog(self):
+        """强制关闭访问代理创建/编辑对话框（JS方式）。
+
+        用于obs_proxy_create后确保对话框完全关闭，
+        避免close_dialog_if_exists无法识别特定Vue对话框的问题。
+        """
+        self.page.evaluate(
+            """
+            () => {
+                function findVueInstance(root, predicate) {
+                    if (!root) return null;
+                    if (predicate(root)) return root;
+                    for (let child of root.$children || []) {
+                        const found = findVueInstance(child, predicate);
+                        if (found) return found;
+                    }
+                    return null;
+                }
+                const appEl = document.querySelector('#app') || document.querySelector('[id^="app"]');
+                const app = appEl && appEl.__vue__;
+                if (!app) return;
+                const proxyPage = findVueInstance(app, (vm) => {
+                    return vm.$refs && vm.$refs.createDialog;
+                });
+                if (proxyPage && proxyPage.$refs.createDialog) {
+                    proxyPage.$refs.createDialog.dialogVisible = false;
+                }
+                // 同时尝试点击关闭按钮
+                const closeBtns = document.querySelectorAll('.el-dialog__headerbtn, .cv-dialog-header .close-btn, .el-message-box__headerbtn');
+                closeBtns.forEach(btn => btn.click());
+            }
+            """
+        )
+        self.page.wait_for_timeout(500)
+
     def obs_proxy_create(self, domain_name, vpc_name=None):
         """新建访问代理（自定义域名）。
 
@@ -2647,6 +2727,10 @@ class ObsPage(ObsAssertionMixin, BasePage):
         Returns:
             str: 选择的VPC名称
         """
+        # 先确保没有残留的创建对话框
+        self._close_proxy_dialog()
+        self.close_dialog_if_exists()
+
         # 点击新建按钮打开弹窗
         self.page.get_by_text("新建", exact=True).first.click()
         self.page.wait_for_timeout(2000)
@@ -2686,11 +2770,22 @@ class ObsPage(ObsAssertionMixin, BasePage):
                 // 获取项目ID
                 const projectId = localStorage.getItem('ProjectId') || '';
 
-                // 获取VPC列表
+                // 获取VPC列表，增加轮询等待
                 let vpcOptions = createDialog.VpcOptions || [];
+                let waitCount = 0;
+                while (vpcOptions.length === 0 && waitCount < 10) {
+                    waitCount++;
+                    if (typeof createDialog.getVpcList === 'function') {
+                        createDialog.getVpcList();
+                    }
+                    // 同步等待一小段时间
+                    const start = Date.now();
+                    while (Date.now() - start < 500) {
+                        vpcOptions = createDialog.VpcOptions || [];
+                        if (vpcOptions.length > 0) break;
+                    }
+                }
                 if (vpcOptions.length === 0) {
-                    // 如果VPC列表为空，尝试调用getVpcList获取
-                    createDialog.getVpcList();
                     return { error: 'vpc-list-empty' };
                 }
 
@@ -2709,6 +2804,13 @@ class ObsPage(ObsAssertionMixin, BasePage):
                 // 调用确认方法提交
                 createDialog.confirm();
 
+                // 确保对话框关闭（confirm可能是异步的）
+                setTimeout(() => {
+                    if (createDialog.dialogVisible) {
+                        createDialog.dialogVisible = false;
+                    }
+                }, 300);
+
                 return {
                     vpcName: selectedVpc.name,
                     vpcId: selectedVpc.id,
@@ -2719,10 +2821,84 @@ class ObsPage(ObsAssertionMixin, BasePage):
             [domain_name, vpc_name],
         )
 
-        # 如果VPC列表为空，等待加载后重试
+        # 如果VPC列表为空，在当前对话框内等待重试（不重新打开）
         if isinstance(result, dict) and result.get("error") == "vpc-list-empty":
             self.page.wait_for_timeout(3000)
-            return self.obs_proxy_create(domain_name, vpc_name)
+            result = self.page.evaluate(
+                """
+                (args) => {
+                    const [domainName, targetVpcName] = args;
+
+                    function findVueInstance(root, predicate) {
+                        if (!root) return null;
+                        if (predicate(root)) return root;
+                        for (let child of root.$children || []) {
+                            const found = findVueInstance(child, predicate);
+                            if (found) return found;
+                        }
+                        return null;
+                    }
+
+                    const appEl = document.querySelector('#app') || document.querySelector('[id^="app"]');
+                    const app = appEl && appEl.__vue__;
+                    if (!app) return { error: 'no-app' };
+
+                    const proxyPage = findVueInstance(app, (vm) => {
+                        return vm.$refs && vm.$refs.createDialog;
+                    });
+                    if (!proxyPage) return { error: 'no-proxy-page' };
+
+                    const createDialog = proxyPage.$refs.createDialog;
+                    if (!createDialog) return { error: 'no-create-dialog' };
+
+                    if (!createDialog.dialogVisible) return { error: 'dialog-not-visible' };
+
+                    const projectId = localStorage.getItem('ProjectId') || '';
+
+                    let vpcOptions = createDialog.VpcOptions || [];
+                    let waitCount = 0;
+                    while (vpcOptions.length === 0 && waitCount < 15) {
+                        waitCount++;
+                        if (typeof createDialog.getVpcList === 'function') {
+                            createDialog.getVpcList();
+                        }
+                        const start = Date.now();
+                        while (Date.now() - start < 500) {
+                            vpcOptions = createDialog.VpcOptions || [];
+                            if (vpcOptions.length > 0) break;
+                        }
+                    }
+                    if (vpcOptions.length === 0) {
+                        return { error: 'vpc-list-empty-after-retry' };
+                    }
+
+                    let selectedVpc = vpcOptions[0];
+                    if (targetVpcName) {
+                        const found = vpcOptions.find(v => v.name === targetVpcName);
+                        if (found) selectedVpc = found;
+                    }
+
+                    createDialog.$set(createDialog.form, 'name', domainName);
+                    createDialog.$set(createDialog.form, 'project_id', projectId);
+                    createDialog.$set(createDialog.form, 'vpc', [selectedVpc.id]);
+
+                    createDialog.confirm();
+
+                    setTimeout(() => {
+                        if (createDialog.dialogVisible) {
+                            createDialog.dialogVisible = false;
+                        }
+                    }, 300);
+
+                    return {
+                        vpcName: selectedVpc.name,
+                        vpcId: selectedVpc.id,
+                        projectId: projectId
+                    };
+                }
+                """,
+                [domain_name, vpc_name],
+            )
 
         assert not isinstance(result, dict) or not result.get("error"), (
             f"访问代理创建失败: {result}"
@@ -2730,6 +2906,11 @@ class ObsPage(ObsAssertionMixin, BasePage):
 
         # 等待提交完成和弹窗关闭
         self.page.wait_for_timeout(5000)
+
+        # 强制关闭可能残留的对话框
+        self._close_proxy_dialog()
+        self.close_dialog_if_exists()
+
         self.wait_for_page_ready()
 
         # 重新导航到访问代理页面刷新列表
@@ -2737,21 +2918,48 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.wait_for_page_ready()
         self.page.wait_for_timeout(3000)
 
+        # 轮询等待代理出现在列表中（后端创建是异步的，列表刷新可能延迟）
+        for attempt in range(30):
+            locator = self.page.get_by_text(domain_name, exact=True)
+            if locator.count() > 0 and locator.first.is_visible():
+                self.logger.info(f"访问代理 {domain_name} 已出现在列表中")
+                break
+            self.logger.info(
+                f"访问代理 {domain_name} 未在列表中，等待...({attempt + 1}/30)"
+            )
+            self.page.wait_for_timeout(1000)
+        else:
+            self.logger.warning(
+                f"访问代理 {domain_name} 创建后未在列表中找到，可能后端延迟较大"
+            )
+
         return result.get("vpcName") if isinstance(result, dict) else None
 
-    def obs_proxy_assert_contain(self, domain_name):
+    def obs_proxy_assert_contain(self, domain_name, timeout_seconds=30):
         """断言访问代理列表中包含指定域名。
 
-        使用页面文本直接搜索，避免表格结构不稳定导致的断言失败。
+        使用页面文本直接搜索，支持轮询重试，避免表格结构不稳定
+        或后端异步刷新导致的断言失败。
 
         Args:
             domain_name: 内网访问域名
+            timeout_seconds: 轮询超时时间，默认30秒
         """
-        self.page.wait_for_timeout(3000)
-        # 优先检查域名是否存在
-        locator = self.page.get_by_text(domain_name, exact=True)
-        if locator.count() > 0 and locator.first.is_visible():
-            return
+        # 轮询等待域名出现在列表中
+        for attempt in range(timeout_seconds):
+            self.page.wait_for_timeout(1000)
+            locator = self.page.get_by_text(domain_name, exact=True)
+            if locator.count() > 0 and locator.first.is_visible():
+                self.logger.info(f"断言通过: 访问代理列表中找到域名 {domain_name}")
+                return
+            self.logger.info(
+                f"访问代理列表中未找到 {domain_name}，重试...({attempt + 1}/{timeout_seconds})"
+            )
+            # 每次重试后刷新页面（导航回当前页强制刷新列表）
+            if (attempt + 1) % 5 == 0:
+                self.goto_submenu("访问代理")
+                self.wait_for_page_ready()
+
         # 若域名未找到，再判断是否列表为空（避免 false positive）
         empty_text = self.page.locator(".el-table__empty-text")
         if empty_text.count() > 0 and empty_text.first.is_visible():
@@ -3222,6 +3430,197 @@ class ObsPage(ObsAssertionMixin, BasePage):
                         continue
             except Exception as e:
                 self.logger.warning(f"Playwright 填端口异常: {e}")
+
+        if not port_filled:
+            self.logger.warning(f"未能定位端口输入框，端口号 {source_port} 可能未正确填入")
+
+        # 静态路径：不输入
+        # 桶名称输入
+        bucket_input = dialog.get_by_placeholder("请输入桶名称").first
+        if bucket_input.count() > 0:
+            bucket_input.fill(source_bucket)
+            self.page.wait_for_timeout(300)
+
+        # 点击确定
+        dialog.get_by_text("确定", exact=True).first.click()
+        self.page.wait_for_timeout(3000)
+        self.wait_for_page_ready()
+
+    def obs_datasource_redirect_rule_create(self, source_domain, source_bucket,
+                                            source_port="80"):
+        """在数据回源页面新建重定向回源规则。
+
+        按照需求配置：
+        - 回源类型：重定向回源
+        - 重定向码：默认 307
+        - 源站类型：公有类型
+        - HTTP 状态码：默认 404
+        - 对象名称前缀：不配置
+        - 添加前后缀：不开启
+        - 替换前缀：不配置
+        - 携带请求字符串：不开启
+        - 回源地址：路径样式
+        - 路径样式主站：协议 HTTP
+
+        Args:
+            source_domain: 源站域名
+            source_bucket: 源站桶名称
+            source_port: 源站端口，默认 80（HTTP 协议）
+        """
+        # 点击新建
+        self.page.get_by_text("新建", exact=True).first.click()
+        self.page.wait_for_timeout(1500)
+
+        # 获取弹窗
+        dialog = self._find_visible_dialog("规则")
+        assert dialog is not None, "未找到可见的规则弹窗"
+        expect(dialog).to_be_visible(timeout=10000)
+
+        # 回源类型：重定向回源
+        redirect_radio = dialog.get_by_text("重定向回源", exact=True)
+        if redirect_radio.count() > 0:
+            redirect_radio.click()
+            self.page.wait_for_timeout(500)
+
+        # 重定向码：默认 307（disabled，无需操作）
+        # 源站类型：公有类型（默认 false）
+        public_radio = dialog.get_by_text("公有类型", exact=True)
+        if public_radio.count() > 0:
+            public_radio.click()
+            self.page.wait_for_timeout(500)
+
+        # HTTP 状态码：默认 404，disabled 状态无需操作
+        # 对象名称前缀：不配置（留空）
+        # 添加前后缀：不开启（默认 false）
+        # 替换前缀：不配置（留空）
+        # 携带请求字符串：不开启（默认 false）
+
+        # 回源地址类型：路径样式
+        path_style_radio = dialog.get_by_text("路径样式", exact=True)
+        if path_style_radio.count() > 0:
+            path_style_radio.click()
+            self.page.wait_for_timeout(1000)
+
+        # 路径样式主站配置
+        # 协议选择 HTTP
+        protocol_select = dialog.locator(".el-select").first
+        if protocol_select.count() > 0:
+            current_protocol = protocol_select.inner_text()
+            if "HTTP" not in current_protocol:
+                protocol_select.click()
+                self.page.wait_for_timeout(500)
+                http_option = self.page.locator(".el-select-dropdown__item").filter(
+                    has_text="HTTP://"
+                ).first
+                if http_option.count() > 0:
+                    http_option.click()
+                    self.page.wait_for_timeout(500)
+
+        # 填写域名
+        domain_input = dialog.get_by_placeholder("请输入桶域名").first
+        if domain_input.count() == 0:
+            domain_input = dialog.locator(".el-input__inner").first
+        expect(domain_input).to_be_visible(timeout=10000)
+        domain_input.fill(source_domain)
+        self.page.wait_for_timeout(300)
+
+        # 填写端口（关键：必须使用 bucket01 S3 URL 中的端口号）
+        port_filled = False
+        try:
+            # 策略1：通过 el-form-item='端口' 精确定位
+            port_form_item = dialog.locator(".el-form-item").filter(
+                has_text=re.compile(r"端口|Port")
+            ).first
+            if port_form_item.count() > 0 and port_form_item.is_visible():
+                port_input = port_form_item.locator("input").first
+                if port_input.count() > 0 and port_input.is_visible():
+                    port_input.fill("")
+                    port_input.fill(source_port)
+                    port_filled = True
+                    self.logger.info(f"端口已填入 (el-form-item='端口'): {source_port}")
+                    self.page.wait_for_timeout(300)
+            # 策略2：通过 placeholder 找端口输入框（兼容 text/number）
+            if not port_filled:
+                for placeholder_text in ["端口", "port", "Port", "请输入端口"]:
+                    port_input = dialog.get_by_placeholder(placeholder_text).first
+                    if port_input.count() > 0 and port_input.is_visible():
+                        port_input.fill("")
+                        port_input.fill(source_port)
+                        port_filled = True
+                        self.logger.info(f"端口已填入 (placeholder='{placeholder_text}'): {source_port}")
+                        self.page.wait_for_timeout(300)
+                        break
+            # 策略3：通过 label 文本找端口输入框
+            if not port_filled:
+                for label_text in ["端口", "port", "Port"]:
+                    try:
+                        labels = dialog.locator("label").all()
+                        for lbl in labels:
+                            try:
+                                if label_text in (lbl.text_content() or ""):
+                                    for_id = lbl.get_attribute("for")
+                                    if for_id:
+                                        for_input = dialog.locator(f"#{for_id}").first
+                                    else:
+                                        parent = lbl.locator("xpath=..")
+                                        for_input = parent.locator("input").first
+                                    if for_input and hasattr(for_input, 'count') and for_input.count() > 0 and for_input.is_visible():
+                                        for_input.fill("")
+                                        for_input.fill(source_port)
+                                        port_filled = True
+                                        self.logger.info(f"端口已填入 (label='{label_text}'): {source_port}")
+                                        self.page.wait_for_timeout(300)
+                                        break
+                                if port_filled:
+                                    break
+                            except Exception:
+                                continue
+                        if port_filled:
+                            break
+                    except Exception:
+                        continue
+            # 策略4：通过 domain_input 的兄弟节点查找
+            if not port_filled and domain_input.count() > 0:
+                try:
+                    parent_form = domain_input.locator("xpath=ancestor::div[contains(@class,'el-form-item')]")
+                    if parent_form.count() > 0:
+                        next_items = parent_form.locator("xpath=following-sibling::div[contains(@class,'el-form-item')]")
+                        for i in range(min(3, next_items.count())):
+                            inp = next_items.nth(i).locator("input").first
+                            if not inp.is_visible():
+                                continue
+                            val = inp.input_value().strip()
+                            if val in ["", "443", "80", "8080"]:
+                                inp.fill("")
+                                inp.fill(source_port)
+                                port_filled = True
+                                self.logger.info(f"端口已填入 (sibling fallback): {source_port}")
+                                self.page.wait_for_timeout(300)
+                                break
+                except Exception as e:
+                    self.logger.debug(f"兄弟节点查找端口输入框失败: {e}")
+            # 策略5：通过 Playwright 遍历弹窗中所有可见 input，找到值为 443/80/8080 的
+            if not port_filled:
+                try:
+                    all_inputs = dialog.locator("input").all()
+                    for inp in all_inputs:
+                        try:
+                            if not inp.is_visible():
+                                continue
+                            val = inp.input_value().strip()
+                            if val in ("443", "80", "8080"):
+                                inp.fill("")
+                                inp.fill(source_port)
+                                port_filled = True
+                                self.logger.info(f"端口已填入 (Playwright value='{val}'): {source_port}")
+                                self.page.wait_for_timeout(300)
+                                break
+                        except Exception:
+                            continue
+                except Exception as e:
+                    self.logger.warning(f"Playwright 填端口异常: {e}")
+        except Exception as e:
+            self.logger.warning(f"端口填写过程异常: {e}")
 
         if not port_filled:
             self.logger.warning(f"未能定位端口输入框，端口号 {source_port} 可能未正确填入")
