@@ -18,13 +18,25 @@ class TestEMRBasic:
             emr_page.assert_popup_success("执行成功")
             ssh_host.ping(ip)
 
+        with allure_step_log("步骤三：基础信息页解绑公网IP"):
+            emr_page.instance_ip_unbinding(cluster_name)
+
+        with allure_step_log("步骤四：验证解绑结果"):
+            emr_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip, connected=False)
+
     @allure.title("E-MapReduce-添加服务")
     def test_add_service(self, emr_page, emr):
-        with allure_step_log("步骤一：添加服务"):
-            emr_page.add_service(emr["name"])
+        with allure_step_log("步骤一：添加 Kafka 服务"):
+            submitted = emr_page.add_service(emr["name"], "Kafka")
 
         with allure_step_log("步骤二：验证添加服务结果"):
-            emr_page.assert_popup_success()
+            if submitted:
+                emr_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤三：等待并断言 Kafka 服务状态正常"):
+            emr_page.wait_service_running("Kafka", timeout=1800)
+            emr_page.assert_service_status("Kafka", "正常")
 
     @allure.title("E-MapReduce-卸载服务")
     def test_uninstall_service(self, emr_page, emr):
@@ -98,3 +110,10 @@ class TestEMRBasic:
         with allure_step_log("步骤二：验证节点绑定公网IP结果"):
             emr_page.assert_popup_success("执行成功")
             ssh_host.ping(ip)
+
+        with allure_step_log("步骤三：节点解绑公网IP"):
+            emr_page.node_ip_unbinding(emr["name"])
+
+        with allure_step_log("步骤四：验证节点解绑公网IP结果"):
+            emr_page.assert_popup_success("执行成功")
+            ssh_host.ping(ip, connected=False)
