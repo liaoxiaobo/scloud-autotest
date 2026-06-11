@@ -164,7 +164,6 @@ class TestCCEClusterList:
             else:
                 assert False, f"时间同步服务器配置未生效: {result.get('stdout', '')}"
 
-    @pytest.mark.slow
     @allure.title("集群管理-列表页-批量删除")
     def test_batch_delete_cluster(self, cce_page, ssh_host):
         """创建两个临时集群后批量删除，验证列表中已不存在"""
