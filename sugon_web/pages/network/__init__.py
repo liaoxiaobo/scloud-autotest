@@ -12,6 +12,7 @@ from .sg import SgMixin
 from .tm import TmMixin
 from .slb import SlbMixin, SlbPage
 from .vpc import VpcMixin
+from .vpn import VpnMixin
 
 
 class VpcPage(
@@ -50,4 +51,10 @@ class TmPage(TmMixin):
     service_name = "流量镜像"
 
 
-__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage", "SlbPage", "SlbMixin"]
+class VpnPage(VpnMixin):
+    """虚拟专用网络VPN页面类。"""
+
+    service_name = "专有网络VPN"
+
+
+__all__ = ["VpcPage", "DcPage", "ErPage", "TmPage", "VpnPage", "SlbPage", "SlbMixin"]

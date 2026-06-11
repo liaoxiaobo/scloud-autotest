@@ -1,7 +1,7 @@
 import allure
 import pytest
 from sugon_web.conftest import _create_logged_in_page
-from sugon_web.pages.middleware import KafkaPage, RedisPage, ESPage
+from sugon_web.pages.middleware import KafkaPage, RedisPage, ESPage, RabbitMQPage, PrometheusPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 
@@ -28,6 +28,22 @@ def es_page(page):
     es_page = ESPage(page)
     es_page.goto_service('云搜索服务')
     return es_page
+
+
+@pytest.fixture(scope="function")
+def rabbitmq_page(page):
+    """初始化 RabbitMQ 实例管理页面"""
+    rabbitmq_page = RabbitMQPage(page)
+    rabbitmq_page.goto_service('分布式消息服务 RabbitMQ')
+    return rabbitmq_page
+
+
+@pytest.fixture(scope="function")
+def prometheus_page(page):
+    """初始化 Prometheus 集群管理页面"""
+    prometheus_page = PrometheusPage(page)
+    prometheus_page.goto_service('监控服务')
+    return prometheus_page
 
 
 @pytest.fixture(scope="class")
@@ -105,5 +121,53 @@ def css(browser_context, config):
     with allure_step_log(f"后置操作：删除共享实例 {name}"):
         logger.info(f"清理共享云搜索服务 CSS 实例: {name}")
         es_page.delete_instance(name)
+
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def rabbitmq(browser_context, config):
+    """创建一个供整个测试类使用的 RabbitMQ 集群实例对象"""
+    page = _create_logged_in_page(browser_context, config)
+    rabbitmq_page = RabbitMQPage(page)
+    rabbitmq_page.goto_service('分布式消息服务 RabbitMQ')
+    name = f"rabbitmq-{random_data()}"
+    data = {"name": name, "password": "Admin1234@sugon"}
+    logger.info(f"为测试类创建共享 RabbitMQ 集群实例: {name}")
+
+    with allure_step_log(f"前置操作：创建共享实例 {name}"):
+        rabbitmq_page.create_instance(name=name)
+        rabbitmq_page.assert_popup_success("创建Rabbitmq资源成功")
+        rabbitmq_page.assert_status(name, status="运行中", timeout=2400, refresh=True)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享实例 {name}"):
+        logger.info(f"清理共享 RabbitMQ 实例: {name}")
+        rabbitmq_page.delete_instance(name)
+
+    page.close()
+
+
+@pytest.fixture(scope="class")
+def prometheus(browser_context, config):
+    """创建一个供整个测试类使用的 Prometheus 集群对象"""
+    page = _create_logged_in_page(browser_context, config)
+    prometheus_page = PrometheusPage(page)
+    prometheus_page.goto_service('监控服务')
+    name = f"prom-{random_data()}"
+    data = {"name": name}
+    logger.info(f"为测试类创建共享 Prometheus 集群: {name}")
+
+    with allure_step_log(f"前置操作：创建共享集群 {name}"):
+        prometheus_page.create_instance(name=name)
+        prometheus_page.assert_popup_success("创建prom成功")
+        prometheus_page.assert_status(name, status="运行中", timeout=2400, refresh=True)
+
+    yield data
+
+    with allure_step_log(f"后置操作：删除共享集群 {name}"):
+        logger.info(f"清理共享 Prometheus 集群: {name}")
+        prometheus_page.delete_instance(name)
 
     page.close()

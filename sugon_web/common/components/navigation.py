@@ -1,3 +1,4 @@
+import re
 from functools import wraps
 from typing import Callable
 from urllib.parse import urlparse
@@ -41,6 +42,14 @@ class NavigationMixin:
         """判断当前页面是否已位于目标服务下的任意页面。"""
         current_path, current_hash = self._normalize_route_parts(self.page.url)
         target_path, target_hash = self._normalize_route_parts(service_path)
+
+        # 兼容 8.0.6.0: URL 结构从 /#{service} 变为 /{service}/#/...
+        # 如 service_path=/#/vpc 对应实际 URL /vpc/#/vpc-overview
+        if target_path == "/" and target_hash:
+            service_from_hash = target_hash.lstrip("#")
+            if current_path.lstrip("/") == service_from_hash:
+                return True
+
         if current_path != target_path:
             return False
         # 若服务路径包含 hash，则要求当前 hash 也以该前缀开头
@@ -60,6 +69,15 @@ class NavigationMixin:
             target_url = f"{base_url}{service_path}"
             self.page.goto(target_url)
             self.wait_for_page_ready()
+
+            # 等待前端路由完成跳转（URL 稳定），慢环境兼容
+            prev_url = ""
+            for _ in range(60):
+                current_url = self.page.url
+                if current_url == prev_url:
+                    break
+                prev_url = current_url
+                self.page.wait_for_timeout(1000)
 
             if not self._is_current_service_path(service_path):
                 raise AssertionError(
@@ -109,18 +127,26 @@ class NavigationMixin:
         if service_name and service_path and not self._is_current_service_path(service_path):
             self.goto_service(service_name)
 
-        # 若当前页面无左侧菜单（如配置子页面），强制回到服务根页面
-        try:
-            expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=3000)
-        except Exception:
-            if service_name:
-                self.logger.info("当前页面无左侧菜单，强制回到服务根页面")
-                base_url = Config.get("base_url").rstrip("/")
-                path = service_path.lstrip("/") if service_path else ""
-                self.page.goto(f"{base_url}/{path}")
-                self.page.wait_for_load_state("networkidle")
-                self.page.wait_for_timeout(2000)
-                self.wait_for_page_ready()
+        # 兼容 8.0.6.0：等待左侧菜单出现，慢环境轮询检测
+        menu_found = False
+        for _ in range(30):
+            if self.locator("#cloud-menu-left").count() > 0:
+                menu_found = True
+                break
+            self.page.wait_for_timeout(500)
+
+        if not menu_found:
+            self.logger.info(f"左侧菜单不存在，跳过子菜单导航: {submenu}")
+            self.wait_for_page_ready()
+            # 等待前端路由完成跳转（URL 稳定），慢环境兼容
+            prev_url = ""
+            for _ in range(60):
+                current_url = self.page.url
+                if current_url == prev_url:
+                    break
+                prev_url = current_url
+                self.page.wait_for_timeout(1000)
+            return
 
         expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)
         menu_left = self.locator("#cloud-menu-left")

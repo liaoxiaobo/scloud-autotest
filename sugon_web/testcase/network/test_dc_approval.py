@@ -4,6 +4,47 @@ from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
 
+def _cleanup_residual_dc_resources(dc_page):
+    """按虚拟接口→虚拟网关→物理连接顺序清理残留资源。"""
+    try:
+        notifications = dc_page.page.locator(".el-notification__closeBtn")
+        for i in range(notifications.count()):
+            notifications.nth(i).click()
+            dc_page.page.wait_for_timeout(300)
+    except Exception:
+        pass
+
+    try:
+        dc_page._ensure_virtual_interface_list()
+        vif_names = dc_page.get_column_data("名称")
+        for name in vif_names:
+            if name and name.startswith("vif-"):
+                dc_page.virtual_interface_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟接口时跳过: {e}")
+
+    try:
+        dc_page._ensure_virtual_gateway_list()
+        vgw_names = dc_page.get_column_data("名称")
+        for name in vgw_names:
+            if name and name.startswith("vgw-"):
+                dc_page.virtual_gateway_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟网关时跳过: {e}")
+
+    try:
+        dc_page._ensure_physical_connection_list()
+        pc_names = dc_page.get_column_data("物理连接名称")
+        for name in pc_names:
+            if name and name.startswith("physical-"):
+                dc_page.dc_physical_connection_terminate(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理物理连接时跳过: {e}")
+
+
 @allure.epic('网络服务')
 @allure.feature('云专线DC')
 @allure.story('HA新建与审批功能验证')
@@ -20,6 +61,9 @@ class TestDCApproval:
         contact_name = "张三"
         contact_phone = "13805403159"
         contact_email = "ll@sugon.com"
+
+        with allure_step_log("步骤0: 清理残留资源（虚拟接口→虚拟网关→物理连接）"):
+            _cleanup_residual_dc_resources(dc_page)
 
         with allure_step_log("步骤1: 进入物理连接页面并创建物理连接（开启HA）"):
             dc_page._ensure_physical_connection_list()
@@ -77,40 +121,72 @@ class TestDCApproval:
         contact_email = "ll@sugon.com"
         vlan_code = "205"
 
-        with allure_step_log("步骤1: 创建物理连接（开启HA）"):
-            dc_page._ensure_physical_connection_list()
-            dc_page.dc_physical_connection_create(
-                name=dc_name,
-                operator=operator,
-                port_type=port_type,
-                contact_name=contact_name,
-                contact_phone=contact_phone,
-                contact_email=contact_email,
-                ha_enable=True,
-            )
-            dc_page.assert_popup_success(timeout=10000)
-            dc_page.assert_status(dc_name, status="办理中")
+        with allure_step_log("步骤0: 清理残留资源（虚拟接口→虚拟网关→物理连接）"):
+            _cleanup_residual_dc_resources(dc_page)
 
-        with allure_step_log("步骤2: 执行审批操作（状态=通过，VLAN=205，集群=Autotest）"):
-            dc_page.dc_physical_connection_approve(
-                name=dc_name,
-                status="DONE",
-                vlan_code=vlan_code,
-                cluster_name="Autotest",
-            )
-            dc_page.assert_popup_success(timeout=10000)
+        try:
+            with allure_step_log("步骤1: 创建物理连接（开启HA）"):
+                dc_page._ensure_physical_connection_list()
+                dc_page.dc_physical_connection_create(
+                    name=dc_name,
+                    operator=operator,
+                    port_type=port_type,
+                    contact_name=contact_name,
+                    contact_phone=contact_phone,
+                    contact_email=contact_email,
+                    ha_enable=True,
+                )
+                dc_page.assert_popup_success(timeout=10000)
+                dc_page.assert_status(dc_name, status="办理中")
 
-        with allure_step_log("步骤3: 轮询等待审批后状态变化（最长600秒）"):
-            final_row = dc_page.wait_for_physical_connection_status(
-                name=dc_name,
-                expected_status="办结",
-                expected_vm_status="运行中",
-                timeout=600,
-                interval=10,
-            )
-            logger.info(f"最终状态: {final_row}")
+            with allure_step_log("步骤2: 执行审批操作（状态=通过，VLAN=205，集群=Autotest）"):
+                dc_page.dc_physical_connection_approve(
+                    name=dc_name,
+                    status="DONE",
+                    vlan_code=vlan_code,
+                    cluster_name="Autotest",
+                )
+                dc_page.assert_popup_success(timeout=10000)
 
-        with allure_step_log("步骤4: 注销物理连接"):
-            dc_page._ensure_physical_connection_list()
-            dc_page.dc_physical_connection_terminate(dc_name)
-            dc_page.assert_deleted(dc_name, timeout=60)
+            with allure_step_log("步骤3: 轮询等待审批后状态变化（最长600秒）"):
+                final_row = dc_page.wait_for_physical_connection_status(
+                    name=dc_name,
+                    expected_status="办结",
+                    expected_vm_status="运行中",
+                    timeout=600,
+                    interval=10,
+                )
+                logger.info(f"最终状态: {final_row}")
+        finally:
+            with allure_step_log("清理: 删除虚拟接口"):
+                try:
+                    dc_page._ensure_virtual_interface_list()
+                    vif_names = dc_page.get_column_data("名称")
+                    for name in vif_names:
+                        if name and name.startswith("vif-"):
+                            dc_page.virtual_interface_delete(name)
+                            dc_page.assert_deleted(name, timeout=60)
+                except Exception as e:
+                    logger.warning(f"删除虚拟接口失败: {e}")
+
+            with allure_step_log("清理: 删除虚拟网关"):
+                try:
+                    dc_page._ensure_virtual_gateway_list()
+                    vgw_names = dc_page.get_column_data("名称")
+                    for name in vgw_names:
+                        if name and name.startswith("vgw-"):
+                            dc_page.virtual_gateway_delete(name)
+                            dc_page.assert_deleted(name, timeout=60)
+                except Exception as e:
+                    logger.warning(f"删除虚拟网关失败: {e}")
+
+            with allure_step_log("清理: 注销物理连接"):
+                try:
+                    dc_page._ensure_physical_connection_list()
+                    pc_names = dc_page.get_column_data("物理连接名称")
+                    for name in pc_names:
+                        if name and name.startswith("physical-"):
+                            dc_page.dc_physical_connection_terminate(name)
+                            dc_page.assert_deleted(name, timeout=60)
+                except Exception as e:
+                    logger.warning(f"注销物理连接失败: {e}")
