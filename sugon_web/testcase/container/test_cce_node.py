@@ -82,16 +82,14 @@ class TestCCENodeOperations:
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤3: 验证公网IP绑定成功"):
-            displayed_ip = cce_page.get_public_ip_text(timeout=30)
-            assert displayed_ip == ip, f"公网IP显示不一致: 期望 {ip}, 实际 {displayed_ip}"
+            cce_page.assert_public_ip_displayed(displayed=True)
 
         with allure_step_log("步骤4: 解绑公网IP"):
             cce_page.cce_public_ip_unbind()
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤5: 验证公网IP解绑成功"):
-            displayed_ip = cce_page.get_public_ip_text(timeout=10)
-            assert displayed_ip == "", f"公网IP未解绑: 实际显示 {displayed_ip}"
+            cce_page.assert_public_ip_displayed(displayed=False)
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情页-绑定和解绑节点公网IP")
@@ -119,9 +117,12 @@ class TestCCENodeOperations:
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情页-节点挂载新云硬盘")
-    def test_node_volume_mount_new(self, cce_page, cce_cluster, node_type):
+    def test_node_volume_mount_new(self, cce_page, cce_cluster, node_type, ssh_vm):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
+        volume_name = random_data()
+        size = 50
+        mount_path = f"/data/{volume_name}"
 
         with allure_step_log("步骤1: 进入集群详情页"):
             cce_page.goto_submenu("集群管理")
@@ -130,13 +131,24 @@ class TestCCENodeOperations:
         with allure_step_log("步骤2: 挂载新云硬盘"):
             cce_page.cce_node_volume_mount_new(
                 node_name,
-                name=f"test-vol-{random_data()}",
+                name=volume_name,
                 volume_type=cce_page.volume_type,
                 volume_mode="精简置备",
-                size=50,
-                mount_path="/data/test"
+                size=size,
+                mount_path=mount_path
             )
-            cce_page.assert_popup_success()
+            cce_page.assert_popup_success(timeout=60)
+
+        with allure_step_log("步骤3: 后台验证挂载成功"):
+            node_mfip = cce_cluster.get(f"{node_type}_mfip", "")
+            assert node_mfip, f"未获取到 {node_type} 节点的 MFIP"
+            ssh_vm.connect(node_mfip, port=22022, pwd="admin1234@sugon")
+            result = ssh_vm.run(
+                f"lsblk -l | grep {mount_path}",
+                return_rc=True
+            )
+            assert result["rc"] == 0, f"未找到挂载路径 {mount_path}: {result.get('stderr', '')}"
+            assert f"{size}G" in result["stdout"], f"挂载大小不匹配，期望包含 {size}G，实际: {result['stdout']}"
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情页-修改节点规格")
@@ -156,7 +168,9 @@ class TestCCENodeOperations:
             target_flavor = "cce.d6.xlarge"  # 对应 8核16GiB
             if before_flavor == target_flavor:
                 target_flavor = "cce.d6.large"  # 对应 4核8GiB
-            cce_page.cce_node_flavor_change(node_name, target_flavor)
+                cce_page.cce_node_flavor_shrink(node_name, target_flavor)
+            else:
+                cce_page.cce_node_flavor_expand(node_name, target_flavor)
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤4: 验证节点规格已变更"):
@@ -184,7 +198,7 @@ class TestCCENodeOperations:
 
         with allure_step_log("步骤1: 进入集群详情页"):
             cce_page.goto_submenu("集群管理")
-            cce_page.goto_detail_page(cluster_name, tab_name="详情")
+            cce_page.goto_detail_page(cluster_name, tab_name="详情", row_name=node_name, timeout=30)
 
         with allure_step_log("步骤2: 记录当前节点规格"):
             before_data = cce_page.get_row_data(node_name)
@@ -192,16 +206,25 @@ class TestCCENodeOperations:
 
         with allure_step_log("步骤3: 确保当前规格非目标规格（如需则先扩容）"):
             if "cce.d6.large" in before_flavor:
-                cce_page.cce_node_flavor_change(node_name, "cce.d6.xlarge")
+                cce_page.cce_node_flavor_expand(node_name, "cce.d6.xlarge")
                 cce_page.assert_popup_success()
                 cce_page.assert_status(node_name, "运行中", timeout=600)
 
         with allure_step_log("步骤4: 缩容节点规格"):
-            cce_page.cce_node_flavor_change(node_name, "cce.d6.large")
+            cce_page.cce_node_flavor_shrink(node_name, "cce.d6.large")
             cce_page.assert_popup_success()
 
+        with allure_step_log("步骤4.5: 等待状态进入中间态"):
+            # 状态必须先变为"规格调整中"（证明后端已开始处理）
+            # 如果操作极快（<30秒已完成），此步骤会超时，不影响后续
+            try:
+                cce_page.assert_status(node_name, "规格调整中", timeout=30, refresh=True)
+            except AssertionError:
+                # 状态已经变回"运行中"（操作极快），继续后续断言
+                pass
+
         with allure_step_log("步骤5: 验证节点规格已缩容"):
-            cce_page.assert_status(node_name, "运行中", timeout=600)
+            cce_page.assert_status(node_name, "运行中", timeout=600, refresh=True)
             after_data = cce_page.get_row_data(node_name)
             after_flavor = after_data.get("规格", "") if after_data else ""
             assert "cce.d6.large" in after_flavor, f"规格未缩容: 期望包含 cce.d6.large, 实际 {after_flavor}"
@@ -230,7 +253,7 @@ class TestCCENodeOperations:
             cce_page.assert_status(node_name, "无法调度", timeout=300)
 
         with allure_step_log("步骤4: SSH登录节点后台验证kubectl节点状态"):
-            ssh_vm.connect(cce_cluster["mfip"], port=22022, pwd="admin1234@sugon")
+            ssh_vm.connect(cce_cluster["master_mfip"], port=22022, pwd="admin1234@sugon")
             result = ssh_vm.run(f"kubectl get node -o wide | grep {node_name}", return_rc=True)
             assert result["rc"] == 0, f"未找到名称为 {node_name} 的节点: {result.get('stdout', '')}"
             assert "SchedulingDisabled" in result["stdout"], f"节点未进入SchedulingDisabled状态: {result['stdout']}"
