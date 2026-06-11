@@ -759,11 +759,13 @@ class BmsPage(BasePage):
         except AssertionError as e:
             logger.warning(f"未捕获到代理删除成功提示，继续轮询列表确认: {e}")
 
-        deadline = time.time() + 90
+        deadline = time.time() + 300
         while time.time() < deadline:
             self._goto_submenu_safe("代理")
             self.search(node_name)
-            if not self._get_row_by_name(node_name):
+            self.page.wait_for_timeout(3000)
+            physical_machines = self.get_column_data("物理机")
+            if node_name not in physical_machines:
                 logger.info(f"代理 '{node_name}' 已删除")
                 return
             self.page.wait_for_timeout(5000)

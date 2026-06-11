@@ -314,14 +314,25 @@ class TestBmsSoftCreate:
                 v = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
                 assert f'<interface name="{bms_nic_name}"/>' in v
 
-            # === 步骤11: 重启防火墙 ===
-            with allure_step_log("步骤11: 重启防火墙"):
+            # === 步骤11: 检查并重载防火墙 ===
+            with allure_step_log("步骤11: 检查并重载防火墙"):
+                status = ssh_node.run("sudo systemctl is-active firewalld", return_rc=True, return_stderr=True)
+                firewall_status = (status.get("stdout", "") or status.get("stderr", "")).strip()
+                if status["rc"] != 0 or firewall_status != "active":
+                    logger.warning(f"firewalld 当前状态为 {firewall_status or 'unknown'}，尝试启动 firewalld")
+                    start = ssh_node.run("sudo systemctl start firewalld", return_rc=True, return_stderr=True)
+                    start_output = f"{start.get('stdout', '')}\n{start.get('stderr', '')}"
+                    assert start["rc"] == 0, f"firewalld 启动失败: {start_output}"
+
+                    status = ssh_node.run("sudo systemctl is-active firewalld", return_rc=True, return_stderr=True)
+                    firewall_status = (status.get("stdout", "") or status.get("stderr", "")).strip()
+                    assert status["rc"] == 0 and firewall_status == "active", (
+                        f"firewalld 启动后状态异常: {firewall_status or status.get('stderr', '')}"
+                    )
+
                 r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True, return_stderr=True)
                 firewall_output = f"{r.get('stdout', '')}\n{r.get('stderr', '')}"
-                if r["rc"] != 0 and "not running" in firewall_output.lower():
-                    logger.warning("firewalld 未运行，trusted.xml 已写入，跳过 firewall-cmd reload")
-                else:
-                    assert r["rc"] == 0, f"防火墙重载失败: {firewall_output}"
+                assert r["rc"] == 0, f"防火墙重载失败: {firewall_output}"
         finally:
             ssh_node.close()
 
