@@ -746,9 +746,28 @@ class BmsPage(BasePage):
     def bms_agent_delete(self, node_name):
         self._goto_submenu_safe("代理")
         row = self._get_row_by_name(node_name)
-        if row:
-            self._js_click_action(row, "删除")
-            self._confirm_sugon_dialog()
+        if not row:
+            logger.info(f"代理 '{node_name}' 不存在，无需删除")
+            return
+
+        clicked = self._js_click_action(row, "删除")
+        if not clicked:
+            raise RuntimeError(f"代理 '{node_name}' 的删除操作未点击成功")
+        self._confirm_sugon_dialog(required=True)
+        try:
+            self.assert_popup_success()
+        except AssertionError as e:
+            logger.warning(f"未捕获到代理删除成功提示，继续轮询列表确认: {e}")
+
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            self._goto_submenu_safe("代理")
+            self.search(node_name)
+            if not self._get_row_by_name(node_name):
+                logger.info(f"代理 '{node_name}' 已删除")
+                return
+            self.page.wait_for_timeout(5000)
+        raise AssertionError(f"代理 '{node_name}' 删除后仍存在")
 
     def bms_agent_cleanup(self):
         self.page.wait_for_timeout(1500)

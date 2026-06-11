@@ -316,8 +316,12 @@ class TestBmsSoftCreate:
 
             # === 步骤11: 重启防火墙 ===
             with allure_step_log("步骤11: 重启防火墙"):
-                r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True)
-                assert r["rc"] == 0
+                r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True, return_stderr=True)
+                firewall_output = f"{r.get('stdout', '')}\n{r.get('stderr', '')}"
+                if r["rc"] != 0 and "not running" in firewall_output.lower():
+                    logger.warning("firewalld 未运行，trusted.xml 已写入，跳过 firewall-cmd reload")
+                else:
+                    assert r["rc"] == 0, f"防火墙重载失败: {firewall_output}"
         finally:
             ssh_node.close()
 

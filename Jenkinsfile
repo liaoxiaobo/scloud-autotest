@@ -39,7 +39,6 @@ pipeline {
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    dir = "$workspace"  // 记录工作目录,供后续stage使用（容器内执行测试时需知道代码路径）
                     sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
@@ -64,10 +63,10 @@ pipeline {
                         effectiveParallelCount = '1'
                     }
 
-                    def testTarget = isBmsRun ? "$dir/sugon_web/testcase/compute/test_bms_*.py" : "$dir/sugon_web/testcase/"
+                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
 
                     // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
                     if (params.BMS_INSTANCE_NAME?.trim()) {
                         pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
                     }
@@ -104,6 +103,10 @@ pipeline {
     }
     post('Send Report') {
         always {
+            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
+            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
+            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
+
             // 保留allure历史数据
             sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
@@ -112,7 +115,7 @@ pipeline {
             allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
 
             // 清理临时文件
-            sh "rm -f allure-result/* || true"
+            sh "rm -rf allure-result/* || true"
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
