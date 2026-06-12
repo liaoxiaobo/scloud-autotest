@@ -7,14 +7,13 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。为空时按原逻辑运行整个 testcase')
-        text(name: 'ENV_CONFIGS', defaultValue: '''bigdata_env|172.22.1.190|ceph|admin|keystone_sugon
-middleware_env|172.22.1.190|usan|admin|keystone_sugon
-special_env|172.22.1.191|ceph|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
+        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
+middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
 格式：环境别名|host|stor|user|pwd''')
-        text(name: 'MODULE_ENV_MAP', defaultValue: '''bigdata=bigdata_env
+        text(name: 'MODULE_ENV_MAP', defaultValue: '''database=database_env
 middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
 示例：
-bigdata=bigdata_env
+database=database_env
 middleware=middleware_env''')
         text(name: 'MODULE_MARK_MAP', defaultValue: '', description: '''模块绑定 pytest mark，一行一个映射。优先级高于全局 MARK。
 示例：
