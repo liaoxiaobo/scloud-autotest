@@ -528,6 +528,17 @@ class BmsPage(BasePage):
             }"""
         )
 
+    def _wait_visible_select_options(self, timeout=10000, interval=500):
+        """等待当前可见下拉框选项出现。"""
+        deadline = time.time() + timeout / 1000
+        last_texts = []
+        while time.time() < deadline:
+            last_texts = self._visible_select_options()
+            if last_texts:
+                return last_texts
+            self.page.wait_for_timeout(interval)
+        return last_texts
+
     def _click_visible_select_option(self, option_text: str = "", exclude_texts=None):
         """点击当前可见 ElementUI 下拉框中的指定选项；未指定时选第一个有效项。"""
         exclude_texts = exclude_texts or []
@@ -586,12 +597,12 @@ class BmsPage(BasePage):
             # 1. 选择节点/Region（不同版本展示不同文案）—— 使用原生事件触发 Vue change
             node_selected = False
             last_net_texts = []
-            for attempt in range(3):
+            for attempt in range(5):
                 try:
                     node_input = self._dialog_form_control(d, "选择节点", ".el-input")
                     node_input.click()
-                    self.page.wait_for_timeout(2000)
-                    all_texts = self._visible_select_options()
+                    self.page.wait_for_timeout(1000)
+                    all_texts = self._wait_visible_select_options(timeout=10000)
                     logger.info(f"[bms_agent_register] 节点/Region下拉选项(attempt {attempt + 1}): {all_texts}")
                     if not all_texts:
                         self.page.keyboard.press("Escape")
@@ -608,11 +619,11 @@ class BmsPage(BasePage):
                                 self.page.wait_for_timeout(1000)
                             self._click_visible_select_option(region_name)
                             logger.info(f"[bms_agent_register] 已选择节点/Region: {region_name}")
-                            self.page.wait_for_timeout(5000)
+                            self.page.wait_for_timeout(3000)
                             net_input = self._dialog_form_control(d, "网络", ".el-input")
                             net_input.click(timeout=5000)
-                            self.page.wait_for_timeout(1500)
-                            net_texts = self._visible_select_options()
+                            self.page.wait_for_timeout(1000)
+                            net_texts = self._wait_visible_select_options(timeout=10000)
                             last_net_texts = net_texts
                             logger.info(f"[bms_agent_register] 节点/Region '{region_name}' 的网络选项: {net_texts}")
                             valid_nets = [
