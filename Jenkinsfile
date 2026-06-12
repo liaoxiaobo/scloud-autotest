@@ -7,7 +7,12 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
-        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
+        string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
+        string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
+        string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
+        string(name: 'BMS_NETWORK_NAME', defaultValue: '', description: 'BMS网络名称（留空使用配置文件）')
+        string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
+        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -34,7 +39,6 @@ pipeline {
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    dir = "$workspace"  // 记录工作目录,供后续stage使用（容器内执行测试时需知道代码路径）
                     sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
@@ -45,12 +49,43 @@ pipeline {
                 docker{
                     image "playwright-sugon:${IMAGE_TAG}"
                     args '--rm'
+                    reuseNode true
                 }
             }
           steps{
                 script {
+                    def markFilter = (params.MARK ?: '').trim().toLowerCase()
+                    def jobName = (env.JOB_NAME ?: '').toLowerCase()
+                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
+                    def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+
+                    if (isBmsRun && effectiveParallelCount != '1') {
+                        echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
+                        effectiveParallelCount = '1'
+                    }
+
+                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
+
                     // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} -n ${params.PARALLEL_COUNT} --dist=loadscope $dir/sugon_web/testcase/ --alluredir $dir/allure-result"
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
+                    if (params.BMS_INSTANCE_NAME?.trim()) {
+                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                    }
+                    if (params.BMS_BMC_IP?.trim()) {
+                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                    }
+                    if (params.BMS_PREFERRED_NODE?.trim()) {
+                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                    }
+                    if (params.BMS_NETWORK_NAME?.trim()) {
+                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                    }
+                    if (params.BMS_PASSWORD?.trim()) {
+                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                    }
+                    if (effectiveParallelCount != '1') {
+                        pytestCommand += " -n ${effectiveParallelCount} --dist=loadscope"
+                    }
 
                     // 标签筛选逻辑（-m 参数）
                     if (params.MARK) {
@@ -69,6 +104,10 @@ pipeline {
     }
     post('Send Report') {
         always {
+            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
+            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
+            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
+
             // 保留allure历史数据
             sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
@@ -77,7 +116,7 @@ pipeline {
             allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
 
             // 清理临时文件
-            sh "rm -f allure-result/* || true"
+            sh "rm -rf allure-result/* || true"
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
