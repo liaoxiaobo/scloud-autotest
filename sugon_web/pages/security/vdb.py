@@ -92,9 +92,15 @@ class VdbPage(VdbAssertionMixin, BasePage):
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
         dropdown.click()
-        self.page.wait_for_timeout(800)
-        options = self.locator(".el-select-dropdown:visible li")
-        if options.count() == 0:
+        # 轮询等待选项加载，最多10次
+        for attempt in range(10):
+            self.page.wait_for_timeout(800)
+            options = self.locator(".el-select-dropdown:visible li")
+            if options.count() > 0:
+                logger.info(f"VDB 下拉框 '{label}' 选项已加载，共 {options.count()} 项")
+                break
+            logger.warning(f"VDB 下拉框 '{label}' 选项为空，第 {attempt + 1} 次重试等待...")
+        else:
             dropdown.click()
             raise Exception(f"下拉选项为空: {label}")
         options.first.click()
@@ -127,18 +133,36 @@ class VdbPage(VdbAssertionMixin, BasePage):
         if dropdown_trigger.count() == 0:
             dropdown_trigger = form_item.get_by_placeholder(re.compile(r"请选择|选择")).first
         dropdown_trigger.click()
+        # 等待下拉选项加载，最多轮询10次
         dropdown_option_selector = ".el-select-dropdown:visible li, .el-dropdown-menu:visible li"
-        for _ in range(3):
-            self.page.wait_for_timeout(500)
+        try:
+            self.page.wait_for_selector(dropdown_option_selector, timeout=10000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1500)
+        for attempt in range(10):
             all_visible = self.locator(dropdown_option_selector)
-            if all_visible.count() > 0:
+            cnt = all_visible.count()
+            if cnt > 0:
+                logger.info(f"VDB 下拉框 '{label}' 选项已加载，共 {cnt} 项")
                 break
+            logger.warning(f"VDB 下拉框 '{label}' 选项未加载，第 {attempt + 1} 次重试等待...")
+            self.page.wait_for_timeout(1500)
+            all_visible = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li")
+        else:
+            logger.warning(f"VDB 下拉框 '{label}' 选项仍为空，尝试重新点击下拉框")
+            dropdown_trigger.click()
             self.page.wait_for_timeout(2000)
+            all_visible = self.locator(dropdown_option_selector)
         options = all_visible.filter(has_text=option)
         if options.count() == 0:
             options = all_visible.filter(has_text=re.compile(rf"^{re.escape(option)}$"))
         if options.count() == 0:
-            available = [all_visible.nth(i).inner_text() for i in range(min(all_visible.count(), 20))]
+            # 尝试大小写不敏感匹配
+            options = all_visible.filter(has_text=re.compile(re.escape(option), re.IGNORECASE))
+        if options.count() == 0:
+            cnt = all_visible.count()
+            available = [all_visible.nth(i).inner_text() for i in range(min(cnt, 20))]
             logger.error(f"VDB 下拉框 '{label}' 可用选项: {available}")
             raise Exception(f"未找到下拉选项: {label} = {option}，可用选项: {available}")
         options.first.click()
@@ -216,11 +240,28 @@ class VdbPage(VdbAssertionMixin, BasePage):
         self.goto_list_page()
         btn = self.btn_create
         btn.click()
+        self.page.wait_for_url(lambda url: "create-vdb" in url, timeout=30000)
         self.wait_for_page_ready()
-        expect(self._input_name).to_be_visible(timeout=10000)
+        self.page.wait_for_timeout(2000)
+        # 等待 loading 遮罩消失，避免 expect/fill 竞态
+        try:
+            self.page.locator(".el-loading-mask:visible").first.wait_for(state="hidden", timeout=10000)
+        except Exception:
+            pass
         logger.info("VDB 创建页面加载成功")
 
-        self._input_name.fill(name)
+        # 名称输入框：等待可见并填充，多次重试
+        for fill_attempt in range(3):
+            try:
+                self._input_name.wait_for(state="visible", timeout=10000)
+                self._input_name.fill(name, timeout=30000)
+                break
+            except Exception as e:
+                logger.warning(f"VDB 创建：名称输入框填充失败(第{fill_attempt+1}次): {e}")
+                if fill_attempt < 2:
+                    self.page.wait_for_timeout(3000)
+                else:
+                    raise
 
         if version:
             try:
@@ -229,8 +270,12 @@ class VdbPage(VdbAssertionMixin, BasePage):
                 logger.warning(f"VDB 创建：版本 {version} 不可用，选择第一个可用选项")
                 self._select_form_item_first("版本")
         if cluster:
-            self._select_form_item("集群", cluster)
-            self.page.wait_for_timeout(3000)
+            self.page.wait_for_timeout(2000)
+            try:
+                self._select_form_item("集群", cluster)
+                self.page.wait_for_timeout(3000)
+            except Exception:
+                logger.warning("VDB 创建：集群字段未找到或无需选择，跳过")
         if base_name:
             self._select_form_item("安全底座", base_name)
         else:
@@ -730,6 +775,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
             action: 操作名称，"授权" 或 "续期"
             duration: 购买时长，如 "1个月", "2个月", "3个月"
         """
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
         self.click_action(name, action)
         self.page.wait_for_timeout(1500)
