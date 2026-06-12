@@ -540,52 +540,93 @@ class OssPage(BasePage):
     def oss_bucket_delete(self, name):
         """删除指定桶。
 
-        在桶列表中搜索并找到桶，点击"删除"，确认删除。
-        若列表中直接找不到，先通过搜索框过滤后再定位。
+        流程：导航到桶列表 -> 搜索过滤目标桶 -> 点击删除 -> 确认删除。
+        采用"先搜索再操作"策略，避免表格分页/异步加载导致行定位失败。
 
         Args:
             name: 桶名称。
         """
         self._goto_bucket_list()
 
-        # 先尝试直接定位删除；若失败则通过搜索框过滤后重试
-        for attempt in range(2):
+        # 等待表格行加载完成（最多等 10 秒）
+        for _ in range(10):
+            rows = self.page.locator(
+                "#cloud-container-content .el-table__body-wrapper tr"
+            ).all()
+            if len(rows) > 0:
+                break
+            self.page.wait_for_timeout(1000)
+
+        # 策略：先搜索过滤，再点击删除（避免分页/异步加载问题）
+        search_input = self.page.locator(
+            'input[placeholder*="搜索"], input[placeholder*="桶名称"]'
+        ).first
+        if search_input.count() > 0:
+            search_input.click()
+            search_input.fill("")
+            self.page.wait_for_timeout(300)
+            search_input.fill(name)
+            self.page.wait_for_timeout(500)
+            # 触发搜索
+            self.page.evaluate("""
+                () => {
+                    const input = document.querySelector('input[placeholder*="搜索"], input[placeholder*="桶名称"]');
+                    if (input) {
+                        const event = new KeyboardEvent('keydown', {
+                            key: 'Enter', code: 'Enter', keyCode: 13,
+                            bubbles: true, cancelable: true
+                        });
+                        input.dispatchEvent(event);
+                    }
+                    const btns = document.querySelectorAll('button, .el-button, .cl-button');
+                    for (const btn of btns) {
+                        if (btn.innerText && btn.innerText.trim() === '搜索') {
+                            btn.dispatchEvent(new MouseEvent('click', {
+                                bubbles: true, cancelable: true, view: window
+                            }));
+                            break;
+                        }
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(5000)
+
+        # 尝试点击删除（最多 3 次）
+        for attempt in range(3):
             try:
                 self.click_action(name, "删除")
                 break
             except AssertionError as e:
-                if attempt == 0 and "未找到名称为" in str(e):
-                    # 通过搜索框过滤
-                    search_input = self.page.locator(
-                        'input[placeholder*="搜索"], input[placeholder*="桶名称"]'
-                    ).first
-                    if search_input.count() > 0:
-                        search_input.fill(name)
-                        self.page.wait_for_timeout(500)
-                        # 触发搜索（点击搜索按钮或回车）
-                        self.page.evaluate("""
-                            () => {
-                                const input = document.querySelector('input[placeholder*="搜索"], input[placeholder*="桶名称"]');
-                                if (input) {
-                                    const event = new KeyboardEvent('keydown', {
-                                        key: 'Enter', code: 'Enter', keyCode: 13,
-                                        bubbles: true, cancelable: true
-                                    });
-                                    input.dispatchEvent(event);
-                                }
-                                const btns = document.querySelectorAll('button, .el-button, .cl-button');
-                                for (const btn of btns) {
-                                    if (btn.innerText && btn.innerText.trim() === '搜索') {
-                                        btn.dispatchEvent(new MouseEvent('click', {
+                if "未找到名称为" in str(e) and attempt < 2:
+                    self.page.wait_for_timeout(3000)
+                    # 尝试 JS 直接定位删除按钮兜底
+                    result = self.page.evaluate(f"""
+                        () => {{
+                            const rows = document.querySelectorAll('.el-table__row, .cl-table-body tr');
+                            for (const row of rows) {{
+                                if (row.innerText.includes('{name}')) {{
+                                    const deleteBtn = row.querySelector('button, .el-button, .cl-button');
+                                    if (deleteBtn) {{
+                                        deleteBtn.dispatchEvent(new MouseEvent('click', {{
                                             bubbles: true, cancelable: true, view: window
-                                        }));
-                                        break;
-                                    }
-                                }
-                            }
-                        """)
-                        self.page.wait_for_timeout(3000)
-                        continue
+                                        }}));
+                                        return 'clicked';
+                                    }}
+                                }}
+                            }}
+                            return 'not-found';
+                        }}
+                    """)
+                    if 'clicked' in str(result):
+                        self.logger.info(f"JS 兜底删除点击成功: {name}")
+                        break
+                    continue
+                raise
+            except Exception as e:
+                if attempt < 2:
+                    self.logger.warning(f"删除操作失败，重试: {name} -> {e}")
+                    self.page.wait_for_timeout(3000)
+                    continue
                 raise
 
         self.wait_for_page_ready()

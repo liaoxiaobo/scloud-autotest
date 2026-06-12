@@ -148,8 +148,14 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.close_dialog_if_exists()
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(500)
-        self.goto_submenu("桶列表")
-        self.page.wait_for_timeout(2000)
+
+        # 若当前已在桶列表页，避免重复导航导致页面重新加载
+        current_url = self.page.url
+        if "/store/list" not in current_url:
+            self.goto_submenu("桶列表")
+            self.page.wait_for_timeout(3000)
+        else:
+            self.page.wait_for_timeout(1000)
 
         # 先检查桶是否已存在，避免"重复创建桶名称"错误
         # 使用搜索框进行可靠查找（支持分页场景）
@@ -191,14 +197,33 @@ class ObsPage(ObsAssertionMixin, BasePage):
         except Exception as e:
             self.logger.debug(f"搜索桶名前置检查异常: {e}")
 
-        self.btn_create.click()
+        # 等待新建按钮出现并点击（兼容慢环境，最多等待20秒）
+        for attempt in range(10):
+            try:
+                self.btn_create.click()
+                break
+            except Exception:
+                if attempt == 9:
+                    raise
+                self.logger.warning(f"新建按钮未出现，等待后重试({attempt + 1}/10)")
+                self.page.wait_for_timeout(2000)
         self.wait_for_page_ready()
+        # 等待创建页表单元素完全渲染（兼容慢环境）
+        self.page.wait_for_timeout(2000)
         self._input_bucket_name.fill(name)
 
         # 仅在显式传入 capacity 时覆盖页面默认值
         # 不同环境配额规则可能不同，使用页面默认值可避免"超出取值范围"错误
         if capacity is not None:
-            self._input_bucket_capacity.fill(capacity)
+            # 容量输入框在某些环境下加载较慢，轮询等待（最多15秒）
+            for _ in range(15):
+                try:
+                    self._input_bucket_capacity.fill(capacity)
+                    break
+                except Exception:
+                    self.page.wait_for_timeout(1000)
+            else:
+                raise TimeoutError("容量输入框在15秒内未出现或不可交互")
             self.page.wait_for_timeout(300)
 
         # 设置对象数量限制
@@ -213,8 +238,8 @@ class ObsPage(ObsAssertionMixin, BasePage):
             self.page.wait_for_timeout(300)
 
         self.btn_submit.click()
-        # 等待创建处理完成：最长30秒，轮询检测是否离开创建页
-        for _ in range(30):
+        # 等待创建处理完成：最长60秒，轮询检测是否离开创建页
+        for _ in range(60):
             self.page.wait_for_timeout(1000)
             current_url = self.page.url
             if "create" not in current_url and "edit" not in current_url:
@@ -235,67 +260,67 @@ class ObsPage(ObsAssertionMixin, BasePage):
                 }
                 """
             )
-            # 若创建失败，尝试直接访问桶详情页确认是否已存在
-            # 某些环境下中文字符匹配不可靠，改用URL存在性验证
             if error_msg:
                 self.logger.warning(f"桶 {name} 创建页提示: {error_msg}")
-                try:
-                    from sugon_web.config.config import Config
-                    base_url = Config.get("base_url").rstrip("/")
-                    self.page.goto(f"{base_url}/obs/#/store/list")
-                    self.wait_for_page_ready()
-                    self.page.wait_for_timeout(5000)
-                    # 使用搜索框精确查找
-                    search_input = self.page.locator(
-                        'input[type="text"]'
-                    ).filter(
-                        has=self.page.get_by_placeholder(
-                            re.compile(r"搜索|请输入")
-                        )
+            # 无论是否有错误提示，都尝试直接访问桶列表页确认是否已存在
+            # 某些环境下中文字符匹配不可靠，改用URL存在性验证
+            try:
+                from sugon_web.config.config import Config
+                base_url = Config.get("base_url").rstrip("/")
+                self.page.goto(f"{base_url}/obs/#/store/list")
+                self.wait_for_page_ready()
+                self.page.wait_for_timeout(5000)
+                # 使用搜索框精确查找
+                search_input = self.page.locator(
+                    'input[type="text"]'
+                ).filter(
+                    has=self.page.get_by_placeholder(
+                        re.compile(r"搜索|请输入")
                     )
-                    if search_input.count() > 0:
-                        self.logger.info(f"找到搜索框，尝试搜索桶 {name}")
-                        search_input.first.fill(name)
-                        self.page.wait_for_timeout(2000)
-                        search_input.first.press("Enter")
-                        self.page.wait_for_timeout(3000)
-                        found = self.page.evaluate(
-                            """(name) => {
-                                const rows = document.querySelectorAll('.el-table__row');
-                                for (const row of rows) {
-                                    if (row.innerText.includes(name)) return true;
-                                }
-                                return false;
-                            }""",
-                            name,
-                        )
-                        self.logger.info(f"搜索结果: found={found}")
-                        if found:
-                            self.logger.warning(f"桶 {name} 搜索确认已存在，视为创建成功")
-                            return
-                    else:
-                        self.logger.warning("未找到搜索框，尝试JS直接查找")
-                        # 无搜索框时直接遍历DOM
-                        found = self.page.evaluate(
-                            """(name) => {
-                                const rows = document.querySelectorAll('.el-table__row');
-                                for (const row of rows) {
-                                    if (row.innerText.includes(name)) return true;
-                                }
-                                const links = document.querySelectorAll('a, .cell a, .blue-link');
-                                for (const el of links) {
-                                    if (el.textContent.trim() === name) return true;
-                                }
-                                return false;
-                            }""",
-                            name,
-                        )
-                        self.logger.info(f"JS查找结果: found={found}")
-                        if found:
-                            self.logger.warning(f"桶 {name} JS查找确认已存在，视为创建成功")
-                            return
-                except Exception as e:
-                    self.logger.warning(f"二次确认桶存在性异常: {e}")
+                )
+                if search_input.count() > 0:
+                    self.logger.info(f"找到搜索框，尝试搜索桶 {name}")
+                    search_input.first.fill(name)
+                    self.page.wait_for_timeout(2000)
+                    search_input.first.press("Enter")
+                    self.page.wait_for_timeout(3000)
+                    found = self.page.evaluate(
+                        """(name) => {
+                            const rows = document.querySelectorAll('.el-table__row');
+                            for (const row of rows) {
+                                if (row.innerText.includes(name)) return true;
+                            }
+                            return false;
+                        }""",
+                        name,
+                    )
+                    self.logger.info(f"搜索结果: found={found}")
+                    if found:
+                        self.logger.warning(f"桶 {name} 搜索确认已存在，视为创建成功")
+                        return
+                else:
+                    self.logger.warning("未找到搜索框，尝试JS直接查找")
+                    # 无搜索框时直接遍历DOM
+                    found = self.page.evaluate(
+                        """(name) => {
+                            const rows = document.querySelectorAll('.el-table__row');
+                            for (const row of rows) {
+                                if (row.innerText.includes(name)) return true;
+                            }
+                            const links = document.querySelectorAll('a, .cell a, .blue-link');
+                            for (const el of links) {
+                                if (el.textContent.trim() === name) return true;
+                            }
+                            return false;
+                        }""",
+                        name,
+                    )
+                    self.logger.info(f"JS查找结果: found={found}")
+                    if found:
+                        self.logger.warning(f"桶 {name} JS查找确认已存在，视为创建成功")
+                        return
+            except Exception as e:
+                self.logger.warning(f"二次确认桶存在性异常: {e}")
             raise AssertionError(
                 f"桶 {name} 创建后仍停留在创建页"
                 + (f"，错误信息: {error_msg}" if error_msg else "")
@@ -660,12 +685,43 @@ class ObsPage(ObsAssertionMixin, BasePage):
         """
         # 点击上传对象按钮
         self.page.get_by_text("上传对象", exact=True).first.click()
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(2000)
 
-        # 在弹窗中设置文件
-        file_input = self.page.locator("#obsUploadInput")
-        if file_input.count() == 0:
-            file_input = self.page.locator('input[type="file"]')
+        # 等待上传弹窗出现
+        for _ in range(10):
+            dialog = self.page.locator(".cv-dialog, .el-dialog").filter(
+                has_text="上传对象"
+            ).first
+            if dialog.count() > 0 and dialog.is_visible():
+                break
+            self.page.wait_for_timeout(500)
+
+        # 在弹窗中设置文件（兼容多种文件输入框定位方式）
+        file_input = None
+        for _ in range(10):
+            # 优先按 ID 查找
+            loc = self.page.locator("#obsUploadInput")
+            if loc.count() > 0:
+                file_input = loc
+                break
+            # 其次按 type=file 查找
+            loc = self.page.locator('input[type="file"]')
+            if loc.count() > 0:
+                file_input = loc
+                break
+            # 兜底：在弹窗内查找
+            dialog = self.page.locator(".cv-dialog, .el-dialog").filter(
+                has_text="上传对象"
+            ).first
+            if dialog.count() > 0:
+                loc = dialog.locator('input[type="file"]')
+                if loc.count() > 0:
+                    file_input = loc
+                    break
+            self.page.wait_for_timeout(500)
+
+        if file_input is None or file_input.count() == 0:
+            raise RuntimeError("上传弹窗中未找到文件输入框")
         file_input.set_input_files(file_path)
         self.page.wait_for_timeout(1500)
 
@@ -1073,13 +1129,12 @@ class ObsPage(ObsAssertionMixin, BasePage):
     def obs_object_download(self, name):
         """点击对象列表中的下载按钮。
 
-        使用 click_action 以兼容下拉菜单模式。
+        使用对象列表专用操作点击，兼容行内平铺按钮和下拉菜单模式。
 
         Args:
             name: 对象名称
         """
-        self.click_action(name, "下载")
-        self.page.wait_for_timeout(3000)
+        self._click_object_action(name, "下载")
 
     def obs_object_share_open(self, name):
         """点击对象列表中的分享按钮，打开分享弹窗。

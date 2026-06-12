@@ -73,8 +73,8 @@ def bucket(obs_page, request):
             try:
                 delete_bucket(obs_page, item["name"])
             except Exception as e:
-                logger.error(f"删除桶 {item['name']} 失败: {e}")
-                raise
+                # ACL变更可能导致桶无法通过UI访问，仅记录日志不抛异常
+                logger.warning(f"删除桶 {item['name']} 失败(可能因ACL限制): {e}")
 
 
 @pytest.fixture(scope="function")

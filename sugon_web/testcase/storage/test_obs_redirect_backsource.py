@@ -6,9 +6,23 @@ import pytest
 from sugon_web.testcase.storage._obs_backsource_helpers import (
     _access_with_retry,
     _close_page_silent,
-    _goto_handle_download,
+    _verify_source_public_read,
 )
-from sugon_web.utils.logger import allure_step_log
+from sugon_web.utils.logger import allure_step_log, logger
+
+
+def _goto_bucket_list(obs_page):
+    """从任意 OBS 页面强制回到桶列表。
+
+    obs_page.goto_service 会复用当前已在对象存储服务下的页面，
+    但在 ACL/数据回源配置页等子页面中左侧菜单可能缺失，
+    goto_submenu 无法完成导航。此处使用直达桶列表 URL 的兜底方式。
+    """
+    from sugon_web.config.config import Config
+
+    base_url = Config.get("base_url").rstrip("/")
+    obs_page.page.goto(f"{base_url}/obs/#/store/list")
+    obs_page.wait_for_page_ready()
 
 
 @allure.epic('存储服务')
@@ -38,16 +52,13 @@ class TestOBSRedirectBacksource:
         with allure_step_log("步骤1: 进入 bucket01 并上传对象 test1"):
             obs_page.obs_bucket_enter_detail(bucket01["name"])
             obs_page.obs_object_tab_click()
-            obs_page.page.wait_for_timeout(3000)
             obs_page.obs_object_upload(test_file_path)
             obs_page.wait_for_page_ready()
-            # 上传后对象列表可能异步刷新，先等待再断言
-            obs_page.page.wait_for_timeout(2000)
             obs_page.assert_object_list_contain(test_file_name)
 
         # ------------------ 步骤2：获取 bucket01 EndPoint HTTP URL ------------------
         with allure_step_log("步骤2: 获取 bucket01 的 EndPoint HTTP URL"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket01["name"])
             obs_page.wait_for_page_ready()
             endpoint_text = obs_page.obs_bucket_endpoint_get(protocol="http")
@@ -66,7 +77,7 @@ class TestOBSRedirectBacksource:
 
         # ------------------ 步骤4：开启 bucket02 公共读权限 ------------------
         with allure_step_log("步骤4: 开启 bucket02 桶ACLs公共访问权限"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_acl_config_click()
             obs_page.obs_bucket_acl_public_edit(
@@ -76,7 +87,7 @@ class TestOBSRedirectBacksource:
 
         # ------------------ 步骤5：为 bucket02 配置重定向回源规则 ------------------
         with allure_step_log("步骤5: 为 bucket02 配置重定向回源规则"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_datasource_config_click()
             obs_page.obs_datasource_redirect_rule_create(
@@ -91,20 +102,13 @@ class TestOBSRedirectBacksource:
         # ------------------ 步骤6：诊断源站公共读权限 ------------------
         with allure_step_log("步骤6-诊断: 验证源站 bucket01 公共读权限是否生效"):
             source_direct_url = f"{endpoint_text}/{bucket01['name']}/{test_file_name}"
-
-            anon_context = page.context.browser.new_context()
-            anon_page = anon_context.new_page()
-            anonymous_status = _goto_handle_download(anon_page, source_direct_url)
-            _close_page_silent(anon_page)
-            anon_context.close()
-            obs_page.logger.info(
+            anonymous_status, auth_status = _verify_source_public_read(
+                page.context.browser, page.context, source_direct_url
+            )
+            logger.info(
                 f"匿名访问源站 {bucket01['name']}/{test_file_name} 状态码: {anonymous_status}"
             )
-
-            source_page = page.context.new_page()
-            auth_status = _goto_handle_download(source_page, source_direct_url)
-            _close_page_silent(source_page)
-            obs_page.logger.info(
+            logger.info(
                 f"登录态访问源站 {bucket01['name']}/{test_file_name} 状态码: {auth_status}"
             )
 
@@ -126,7 +130,7 @@ class TestOBSRedirectBacksource:
 
         # ------------------ 步骤8：验证 bucket02 对象列表不存在回源对象 ------------------
         with allure_step_log("步骤8: 验证 bucket02 对象列表中不存在回源对象"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_object_tab_click()
             obs_page.assert_list_not_contain(test_file_name)
@@ -137,7 +141,10 @@ class TestOBSRedirectBacksource:
 
         # ------------------ 清理：删除 bucket02 的数据回源规则 ------------------
         with allure_step_log("清理: 删除 bucket02 的重定向回源规则"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_datasource_config_click()
             obs_page.obs_datasource_rule_delete(rule_type="重定向回源")
+            # 删除规则后页面停留在数据回源配置页，左侧菜单可能缺失；
+            # 回到桶列表，确保 fixture teardown 能正常定位并清理桶。
+            _goto_bucket_list(obs_page)

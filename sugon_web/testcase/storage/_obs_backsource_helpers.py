@@ -47,14 +47,15 @@ def _close_context_silent(context):
         pass
 
 
-def _verify_source_public_read(browser, url):
+def _verify_source_public_read(browser, context, url):
     """诊断验证源站公共读权限是否生效。
 
-    分别使用匿名上下文和当前登录态访问源站 URL，
+    分别使用匿名浏览器上下文和当前登录态访问源站 URL，
     返回 (anonymous_status, auth_status)。
 
     Args:
-        browser: Playwright Browser 实例。
+        browser: Playwright Browser 实例（用于匿名上下文）。
+        context: 当前登录态的 BrowserContext 实例。
         url: 源站对象访问 URL。
 
     Returns:
@@ -70,14 +71,9 @@ def _verify_source_public_read(browser, url):
     except Exception as e:
         logger.warning(f"匿名访问验证异常: {e}")
 
-    auth_status = 0
-    auth_page = None
-    try:
-        # 注意：auth_page 需要由调用方提供所属 context，此处不新建
-        # 本函数只负责匿名访问诊断，auth_status 由调用方自行获取
-        pass
-    except Exception:
-        pass
+    auth_page = context.new_page()
+    auth_status = _goto_handle_download(auth_page, url)
+    _close_page_silent(auth_page)
 
     return anonymous_status, auth_status
 
