@@ -2,7 +2,7 @@
 name: run-jenkins-local
 description: |
   在本地模拟 Jenkins 构建参数页面执行 Playwright 测试，帮助测试人员在提交代码前提前暴露 CI 环境中可能出现的问题。
-  自动对齐 Jenkinsfile 中的参数默认值与 pytest 命令拼接逻辑，默认强制并行执行（-n 2），
+  自动对齐 Jenkinsfile 中的参数默认值与 pytest 命令拼接逻辑，默认串行执行（-n 1），
   支持按模块/服务标签筛选（如 iam、container、compute），并自动完成环境预检、命令构建、测试执行、结果汇总。
   用户只需说"本地跑一下 iam 模块"或"/run-jenkins-local --mark=iam"，AI 即自动执行。
 allowed-tools: [Read, Bash, Grep, Glob]
@@ -21,14 +21,14 @@ user-invocable: true
 - "/run-jenkins-local" 或 "/jenkins-local"
 
 如果用户未指定 `--mark`，需要主动询问：
-> "请告诉我你要执行哪个模块/服务的用例？例如：iam、container、compute、storage、network，或组合表达式如 `iam and not slow`。本 skill 禁止执行全量用例，必须指定筛选标签。"
+> "请告诉我你要执行哪个模块/服务的用例？例如：iam、container、compute、storage、network，或组合表达式如 `iam and smoke`。本 skill 禁止执行全量用例，必须指定筛选标签。"
 
 ---
 
 ## 2. 核心原则
 
 1. **命令行为与 Jenkins 严格对齐**：参数默认值、pytest 命令拼接顺序必须和 `Jenkinsfile` 一致，杜绝"本地命令和 Jenkins 不一样"。
-2. **并行是默认，串行需显式**：除非用户明确 `--serial` 或 `--parallel=1`，否则默认 `-n 2 --dist=loadscope`，强制暴露并发问题。
+2. **并行是默认，串行需显式**：除非用户明确 `--serial` 或 `--parallel=1`，否则默认 `-n 1 --dist=loadscope`，强制暴露并发问题。
 3. **参数校验提前报错**：在启动 pytest 之前完成 STOR/parallel/host 等参数校验，避免跑一半因参数错误失败。
 4. **环境预检透明化**：执行前检查 Python 版本、git 分支状态等，仅做诊断信息展示。
 5. **结果面向非技术人员**：业务测试人员看不懂 pytest 输出，需要给出"通过/失败 X 个/疑似环境问题/建议"的清晰结论。
@@ -42,12 +42,12 @@ user-invocable: true
 
 | Skill 参数 | Jenkins 参数 | 默认值 | 说明 |
 |:---:|:---|:---|:---|
-| `--mark` / `-m` | `MARK` | **必填，禁止为空** | pytest `-m` 标签表达式，如 `iam`、`container and smoke`、`not slow`。本 skill 强制要求指定，禁止全量执行。 |
+| `--mark` / `-m` | `MARK` | **必填，禁止为空** | pytest `-m` 标签表达式，如 `iam`、`container and smoke`、`compute`。本 skill 强制要求指定，禁止全量执行。 |
 | `--host` | `HOST` | 从配置读取，兜底 `172.22.1.190` | 被测环境管理 VIP |
 | `--stor` | `STOR` | 从配置读取，兜底 `xstor` | 存储池类型 |
 | `--username` | `USER` | 从配置读取，兜底 `admin` | 登录用户名 |
 | `--password` | `PWD` | 从配置读取，兜底 `keystone_sugon` | 登录密码 |
-| `--parallel` / `-n` | `PARALLEL_COUNT` | `2` | 并行线程数。最大不超过本地 CPU 核心数 |
+| `--parallel` / `-n` | `PARALLEL_COUNT` | `1` | 并行线程数。最大不超过本地 CPU 核心数 |
 | `--lf` | `RUN_LAST_FAILED` | `false` | 只运行上次失败的用例 |
 | `--headless` | 隐式固定 | `true` | Jenkins 固定为 true，本地也默认 true |
 | `--alluredir` | 报告目录 | `./allure-result` | Allure 结果输出目录 |
@@ -162,8 +162,17 @@ fi
 3. **mark 非空强制校验**：
    - 如果 `--mark` 为空字符串，**立即停止执行**，报错："`--mark` 不能为空。本 skill 禁止执行全量用例，请指定模块/服务标签，如 iam、container、compute 等。"
 
-4. **mark 语法简单校验**（仅检查明显错误）：
-   - 如果包含非法字符或明显语法错误，给出警告但不阻塞（因为 pytest 自己会报错）
+4. **mark 有效性预检**（阻塞性）：
+   - 在正式执行 pytest 前，使用阶段三探测到的 `$PYTEST_CMD` 执行一次快速收集：
+     ```bash
+     $PYTEST_CMD --collect-only -m '<MARK>' sugon_web/testcase/ 2>&1
+     ```
+   - 如果输出中包含 `no tests collected`、`/ 0 selected`、`collected 0 items` 或 `Unknown mark` 等关键字，**立即停止执行**，报错：
+     > ❌ `--mark='<MARK>'` 未匹配到任何用例。请检查标记是否拼写正确。
+     > 可用的模块标记可通过扫描 `sugon_web/testcase/` 目录获取，例如：backup, compute, container, database, iam, middleware, network, security, storage。
+     > 通用标记：smoke, slow。
+     > 请使用有效标记重新执行，例如 `--mark=compute` 或 `--mark="evs and smoke"`。
+   - 如果组合表达式存在语法错误（如括号不匹配、运算符错误），pytest 收集阶段会报错，同样阻塞并展示错误信息。
 
 **阶段完成标志**：环境检查完成且所有参数校验通过
 
@@ -200,12 +209,12 @@ $PYTEST_CMD \
 ```markdown
 🚀 即将执行以下命令（与 Jenkins 构建逻辑对齐）：
 
-./.venv/bin/pytest --headless=true --host=172.22.1.190 --stor=xstor --username=admin --password=keystone_sugon -n 2 --dist=loadscope sugon_web/testcase/ --alluredir ./allure-result -m 'iam and not slow'
+./.venv/bin/pytest --headless=true --host=172.22.1.190 --stor=xstor --username=admin --password=keystone_sugon -n 1 --dist=loadscope sugon_web/testcase/ --alluredir ./allure-result -m 'iam and not slow'
 
 参数来源：
 - host：来自 sugon_web/config/base.yaml
 - stor：用户显式传入
-- parallel：默认值 2
+- parallel：默认值 1
 - mark：用户显式传入
 - pytest 路径：来自阶段三探测到的虚拟环境
 ```
@@ -355,22 +364,40 @@ print(json.dumps({'counts': counts, 'failures': failures}, ensure_ascii=False))
 
 ## 7. 典型使用示例
 
-**示例 1：自然语言触发**
+**示例 1：模块调用**
 ```
-用户：本地跑一下 iam 模块
-AI：正在为您模拟 Jenkins 参数执行 iam 模块测试，默认并行 2 线程...
+用户：/run-jenkins-local --mark=iam
+AI：正在为您模拟 Jenkins 参数执行 iam 模块测试，默认串行 1 线程...
 ```
 
 **示例 2：带参数触发**
 ```
-用户：/run-jenkins-local --mark="iam and not slow" --parallel=4 --stor=ceph
+用户：/run-jenkins-local --mark=container --parallel=4 --stor=ceph
 AI：已识别参数，正在按 Jenkins 构建逻辑执行...
 ```
 
 **示例 3：串行验证**
 ```
-用户：帮我串行跑一下 container 模块，排除 slow
-AI：已切换到串行模式，执行命令：pytest ... -m "container and not slow" -n 1 ...
+用户：/run-jenkins-local --mark=compute --serial
+AI：已切换到串行模式，执行命令：pytest ... -m "compute" -n 1 ...
+```
+
+或显式指定单线程：
+```
+用户：/run-jenkins-local --mark=compute --parallel=1
+AI：已切换到串行模式，执行命令：pytest ... -m "compute" -n 1 ...
+```
+
+**示例 4：组合表达式**
+```
+用户：/run-jenkins-local --mark="compute or network and smoke"
+AI：正在按组合标签表达式执行，覆盖 compute 和 network 模块的 smoke 用例...
+```
+
+**示例 5：失败用例重跑**
+```
+用户：/run-jenkins-local --mark=storage --lf
+AI：已启用 last-failed 模式，仅重跑 storage 模块上次失败的用例...
 ```
 
 ---

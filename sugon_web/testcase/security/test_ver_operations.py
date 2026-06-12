@@ -1,5 +1,4 @@
 import re
-import time
 
 import allure
 import pytest
@@ -24,7 +23,6 @@ class TestVerOperations:
         with allure_step_log(f"步骤1: 进入日志审计列表页并验证跳转地址"):
             ver_page.goto_list_page()
             ver_page.ver_to_details(name)
-            page.wait_for_timeout(30000)
             new_page = ver_page.ver_open_jump_address()
             if new_page is None:
                 logger.warning(f"VER 实例 {name} 跳转地址验证跳过：目标服务器网络不可达")
@@ -49,10 +47,7 @@ class TestVerOperations:
             ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤4: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=120)
-            logger.info(f"开机后等待 2 分钟让 VER 服务就绪...")
-            time.sleep(120)
+            ver_page.assert_ver_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤5: 再次验证实例 {name} 跳转地址"):
             ver_page.ver_to_details(name)
@@ -81,7 +76,7 @@ class TestVerOperations:
 
         with allure_step_log(f"步骤1: 进入实例详情页查看信息"):
             ver_page.ver_to_details(name)
-            body_text = ver_page.page.inner_text("body")
+            body_text = ver_page.get_detail_body_text()
             logger.info("详情页信息已获取")
             ver_page.goto_list_page()
 
@@ -102,21 +97,30 @@ class TestVerOperations:
         with allure_step_log(f"步骤3: 执行退订操作"):
             ver_page.ver_unsubscribe(name)
             ver_page.wait_for_operation_complete(timeout=60)
-            ver_page.goto_list_page()
-            row_data = ver_page.get_row_data(name)
-            service_status = row_data.get("服务状态", "")
+            # 退订异步生效，轮询等待状态变化
+            import time
+            start = time.time()
+            service_status = ""
             expire_time = ""
-            for k, v in row_data.items():
-                if "到期时间" in k:
-                    expire_time = v
+            while time.time() - start < 120:
+                ver_page.goto_list_page()
+                row_data = ver_page.get_row_data(name)
+                service_status = row_data.get("服务状态", "")
+                expire_time = ""
+                for k, v in row_data.items():
+                    if "到期时间" in k:
+                        expire_time = v
+                        break
+                if "已退订" in service_status or "不可用" in service_status:
                     break
+                time.sleep(5)
             logger.info(f"VER 实例 {name} 退订后状态: 服务={service_status}, 到期时间={expire_time}")
             assert "已退订" in service_status or "不可用" in service_status, \
                 f"退订后服务状态异常: {service_status}"
 
         with allure_step_log(f"步骤4: 验证退订后详情页信息"):
             ver_page.ver_to_details(name)
-            body_text = ver_page.page.inner_text("body")
+            body_text = ver_page.get_detail_body_text()
             assert "--" in body_text, "退订后详情页未显示'--'（跳转地址或到期时间）"
             logger.info("退订后详情页验证通过：跳转地址和到期时间显示为'--'")
             ver_page.goto_list_page()
@@ -207,7 +211,17 @@ class TestVerOperations:
 
         with allure_step_log(f"步骤1: 获取当前规格信息"):
             ver_page.goto_list_page()
-            row_data = ver_page.get_row_data(name)
+            row_data = None
+            for attempt in range(10):
+                try:
+                    row_data = ver_page.get_row_data(name)
+                    break
+                except AssertionError:
+                    logger.warning(f"第 {attempt + 1} 次未找到 VER 实例 {name}，刷新列表页...")
+                    ver_page.page.reload()
+                    ver_page.wait_for_page_ready()
+                    ver_page.page.wait_for_timeout(2000)
+            assert row_data, f"列表页未找到 VER 实例: {name}"
             current_spec = row_data.get("规格", "")
             physical_host = row_data.get("物理机", "")
             logger.info(f"VER 实例 {name} 当前规格: {current_spec}, 物理节点: {physical_host}")
@@ -278,7 +292,7 @@ class TestVerOperations:
         with allure_step_log(f"步骤1: 进入日志审计页面并查看云硬盘大小"):
             ver_page.goto_list_page()
             ver_page.ver_to_details(name)
-            body_text = ver_page.page.inner_text("body")
+            body_text = ver_page.get_detail_body_text()
             vol_match = re.search(r"(\d+)\s*GiB", body_text)
             current_size = int(vol_match.group(1)) if vol_match else None
             logger.info(f"VER 实例 {name} 当前云硬盘大小: {current_size}GiB")
@@ -359,6 +373,6 @@ class TestVerOperations:
 
         with allure_step_log("步骤3: 验证详情页名称一致"):
             ver_page.ver_to_details(new_name)
-            body_text = ver_page.page.inner_text("body")
+            body_text = ver_page.get_detail_body_text()
             assert new_name in body_text, f"详情页未显示修改后的名称: {new_name}"
             logger.info("详情页验证通过: 名称与修改后一致")
