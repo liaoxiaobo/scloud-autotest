@@ -124,21 +124,22 @@ def _wait_pool_member_names(page, vpc_page, timeout_ms=20000, interval_ms=2000):
     return last_member_names
 
 
-def _safe_unbind_slb_eip(vpc_page, slb_name):
+def _safe_unbind_slb_eip(vpc_page, slb_name, ip_version="IPv4"):
     """尝试解绑指定 SLB 的公网 IP，失败仅记录日志。
 
     Args:
         vpc_page: 与当前页面绑定的 `VpcPage` 实例。
         slb_name: 目标 SLB 名称。
+        ip_version: 公网 IP 版本，``IPv4`` 或 ``IPv6``，默认 ``IPv4``。
 
     Returns:
         None.
     """
-    with allure_step_log(f"Fixture清理: 解绑SLB {slb_name} 的公网IP"):
+    with allure_step_log(f"Fixture清理: 解绑SLB {slb_name} 的公网{ip_version}"):
         try:
-            vpc_page.slb_unbind_eip(slb_name)
+            vpc_page.slb_unbind_eip(slb_name, ip_version=ip_version)
         except Exception as exc:
-            logger.warning(f"解绑公网IP失败: {slb_name}, error={exc}")
+            logger.warning(f"解绑公网{ip_version}失败: {slb_name}, error={exc}")
 
 
 def _safe_remove_pool_members(page, vpc_page, listener_info):
@@ -311,8 +312,14 @@ def _cleanup_listeners_and_eips(page, ssh_vm, registry):
             vpc_page.goto_service("虚拟私有云")
             vpc_page.goto_submenu("负载均衡（基础版）")
         _cleanup_backend_servers(ssh_vm, registry)
-        for slb_name in registry.eip_bound_slbs:
-            _safe_unbind_slb_eip(vpc_page, slb_name)
+        for eip_info in registry.eip_bound_slbs:
+            if isinstance(eip_info, dict):
+                _safe_unbind_slb_eip(
+                    vpc_page, eip_info["slb_name"], eip_info.get("ip_version", "IPv4")
+                )
+            else:
+                # 向后兼容旧格式（纯 slb_name 字符串）
+                _safe_unbind_slb_eip(vpc_page, eip_info)
         for listener_info in registry.listeners:
             _safe_delete_listener(page, vpc_page, listener_info)
     except Exception as exc:

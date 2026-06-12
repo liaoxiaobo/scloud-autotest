@@ -54,6 +54,86 @@ def _get_vm_mfip(vm_info):
     if isinstance(vm_info, dict):
         return vm_info["mfip"]
     return str(vm_info)
+def prepare_http_backend_ipv6(ssh_vm, vm_info, backend_key, port=4040, content=None):
+    """在后端虚机上启动支持IPv6的HTTP服务。
+
+    使用python3 http.server绑定到::（所有接口），支持IPv4和IPv6访问。
+    启动后轮询检查端口监听状态，最多等待60秒。
+
+    Args:
+        ssh_vm: 用于连接后端虚机的SSH客户端。
+        vm_info: 虚机信息字典或可直接连接的地址字符串。
+        backend_key: 后端唯一标识，通常用于区分 ``ecs1``、``ecs2`` 等节点。
+        port: HTTP服务监听端口。
+        content: 自定义首页内容；未提供时默认使用 ``this is {backend_key}``。
+
+    Raises:
+        AssertionError: 后端服务在等待时间内未成功监听目标端口。
+    """
+    backend_content = content or f"this is {backend_key}"
+    workdir = f"/root/slb-http-{backend_key}-{port}"
+    quoted_workdir = shlex.quote(workdir)
+    quoted_content = shlex.quote(backend_content)
+
+    ssh_vm.connect(_get_vm_mfip(vm_info))
+    ssh_vm.run(f"rm -rf {quoted_workdir} && mkdir -p {quoted_workdir}", check_rc=True)
+    ssh_vm.run(
+        f"printf '%s\n' {quoted_content} > {quoted_workdir}/index.html",
+        check_rc=True,
+    )
+    # Python 3.6 的 http.server --bind :: 可能因 hostname 解析失败。
+    # 先将脚本写入文件，再用 nohup 执行，避免引号嵌套问题。
+    script_path = f"/tmp/slb_http_{backend_key}_{port}.py"
+    server_script = (
+        f"import os, socket, http.server, socketserver\n"
+        f"os.chdir({repr(workdir)})\n"
+        f"socketserver.TCPServer.address_family = socket.AF_INET6\n"
+        f"httpd = socketserver.TCPServer(('::', {port}), http.server.SimpleHTTPRequestHandler)\n"
+        f"httpd.serve_forever()\n"
+    )
+    ssh_vm.run(
+        f"cat > {script_path} << 'EOF'\n{server_script}EOF",
+        check_rc=True,
+    )
+    ssh_vm.run(
+        f"nohup python3 {script_path} > /tmp/{backend_key}-{port}.log 2>&1 &",
+        check_rc=False,
+        wait_for_exit=False,
+    )
+
+    end_time = time.time() + 60
+    while time.time() < end_time:
+        result = ssh_vm.run(
+            f"ss -lntp | grep ':{port} '", check_rc=False, return_rc=True
+        )
+        if result["rc"] == 0 and f":{port}" in result["stdout"]:
+            logger.info(
+                "后端IPv6服务启动成功: %s -> %s",
+                _get_vm_name(vm_info),
+                backend_key,
+            )
+            return
+        time.sleep(2)
+
+    py_check = ssh_vm.run(
+        "command -v python3 || command -v python", check_rc=False, return_rc=True
+    )
+    log_result = ssh_vm.run(
+        f"cat /tmp/{backend_key}-{port}.log 2>/dev/null || true",
+        check_rc=False,
+        return_rc=True,
+    )
+    ss_result = ssh_vm.run("ss -lntp", check_rc=False, return_rc=True)
+    raise AssertionError(
+        f"虚机 {_get_vm_name(vm_info)} 上的IPv6 http.server {port} 在60秒内未启动; "
+        f"python3/python 路径: rc={py_check.get('rc')} "
+        f"stdout={py_check.get('stdout', '').strip()}; "
+        f"启动日志: {log_result.get('stdout', '').strip()}; "
+        f"ss -lntp: rc={ss_result.get('rc')} "
+        f"stdout={ss_result.get('stdout', '').strip()[:500]}"
+    )
+
+
 def prepare_http_backend(ssh_vm, vm_info, backend_key, port=8080, content=None):
     """在后端虚机上启动一个带标识内容的 HTTP 服务。
 
@@ -271,7 +351,8 @@ def collect_lb_responses(ssh_client, curl_cmd, count, interval_sec=0, check_rc=T
 
 
 def collect_lb_http_responses(
-    ssh_client, target_url, count=30, interval_sec=1, connect_timeout=10
+    ssh_client, target_url, count=30, interval_sec=1, connect_timeout=10,
+    use_cookie=False
 ):
     """连续 curl 指定 URL，并返回原始响应列表。
 
@@ -283,6 +364,8 @@ def collect_lb_http_responses(
         count: 采样次数。
         interval_sec: 两次采样之间的等待秒数。
         connect_timeout: curl 连接超时时间，单位为秒。
+        use_cookie: 是否使用 cookie jar 保存/发送 cookie，用于 HTTP COOKIE
+            会话保持验证。默认 False。
 
     Returns:
         list[str]: 按采样顺序保存的 HTTP 响应文本列表。
@@ -291,7 +374,13 @@ def collect_lb_http_responses(
         当测试需要验证调度分布时，优先使用本函数保留完整响应序列，
         再交给 `assert_lb_algorithm()` 做策略断言。
     """
-    curl_cmd = f"curl -s --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+    if use_cookie:
+        curl_cmd = (
+            f"curl -s -c /tmp/lb_test_cookie -b /tmp/lb_test_cookie "
+            f"--connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+        )
+    else:
+        curl_cmd = f"curl -s --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
     return collect_lb_responses(
         ssh_client,
         curl_cmd,
@@ -584,3 +673,134 @@ def is_http_reachable(ssh_client, url, timeout_sec=60, interval_sec=5, connect_t
             return True
         time.sleep(interval_sec)
     return False
+
+
+def verify_curl_backend(ssh_vm, requester_mfip, lb_vip, port, backend_markers,
+                        expected_description, expected_backend=None, excluded_backend=None,
+                        max_retries=8, retry_interval=0.8):
+    """执行curl并验证结果中是否包含/排除指定后端，支持重试轮询。
+
+    Args:
+        ssh_vm: 用于连接后端虚机的 SSH 客户端。
+        requester_mfip: 请求者虚机的MFIP。
+        lb_vip: 负载均衡VIP。
+        port: 访问端口。
+        backend_markers: 后端标识字典。
+        expected_description: 验证场景描述。
+        expected_backend: 期望包含的后端名称，默认None。
+        excluded_backend: 期望排除的后端名称，默认None。
+        max_retries: 最大重试次数，默认8。
+        retry_interval: 重试间隔秒数，默认0.8。
+
+    Returns:
+        list[str]: 响应列表。
+    """
+    for attempt in range(max_retries + 1):
+        ssh_vm.connect(requester_mfip)
+        responses = collect_lb_http_responses(
+            ssh_vm, f"http://{lb_vip}:{port}/index.html", count=15
+        )
+        ok = True
+        if excluded_backend:
+            marker = backend_markers[excluded_backend]
+            if any(marker in r for r in responses):
+                ok = False
+        if expected_backend:
+            marker = backend_markers[expected_backend]
+            if not any(marker in r for r in responses):
+                ok = False
+        if ok:
+            return responses
+        if attempt < max_retries:
+            time.sleep(retry_interval)
+
+    # 最后一次完整断言，产生清晰的失败信息
+    ssh_vm.connect(requester_mfip)
+    responses = collect_lb_http_responses(
+        ssh_vm, f"http://{lb_vip}:{port}/index.html", count=15
+    )
+    if excluded_backend:
+        marker = backend_markers[excluded_backend]
+        for r in responses:
+            assert marker not in r, (
+                f"{expected_description}: 不应包含 {excluded_backend}"
+            )
+    if expected_backend:
+        marker = backend_markers[expected_backend]
+        found = any(marker in r for r in responses)
+        assert found, f"{expected_description}: 应包含 {expected_backend}"
+    return responses
+
+
+def collect_and_assert_with_retry(ssh_vm, requester_mfip, lb_vip, port, backend_markers,
+                                   policy, scene_name, weights=None, count=15, tolerance=0.15,
+                                   max_retries=5, retry_interval=1.0):
+    """采集HTTP响应并按算法策略断言，支持重试轮询（用于权重/算法变更后的验证）。
+
+    Args:
+        ssh_vm: 用于连接后端虚机的 SSH 客户端。
+        requester_mfip: 请求者虚机的MFIP。
+        lb_vip: 负载均衡VIP。
+        port: 访问端口。
+        backend_markers: 后端标识字典。
+        policy: 算法策略名称。
+        scene_name: 场景描述。
+        weights: 权重字典，默认None。
+        count: curl请求次数，默认15。
+        tolerance: 命中比例允许偏差，默认0.15。
+        max_retries: 断言失败时最大重试次数，默认5。
+        retry_interval: 重试间隔秒数，默认1.0。
+
+    Returns:
+        list[str]: 响应列表。
+    """
+    for attempt in range(max_retries + 1):
+        ssh_vm.connect(requester_mfip)
+        responses = collect_lb_http_responses(
+            ssh_vm, f"http://{lb_vip}:{port}/index.html", count=count
+        )
+        try:
+            assert_lb_algorithm(
+                policy,
+                responses,
+                backend_markers,
+                scene_name,
+                weights=weights,
+                tolerance=tolerance,
+            )
+            return responses
+        except AssertionError:
+            if attempt < max_retries:
+                time.sleep(retry_interval)
+            else:
+                raise
+
+
+def verify_lb_unreachable(ssh_vm, requester_mfip, lb_vip, port,
+                          max_retries=5, retry_interval=3):
+    """验证负载均衡VIP在监听器删除后不可达，支持重试轮询。
+
+    LB 删除后连接可能短暂保持，需轮询确认真正不可达。
+
+    Args:
+        ssh_vm: 用于连接后端虚机的 SSH 客户端。
+        requester_mfip: 请求者虚机的MFIP。
+        lb_vip: 负载均衡VIP。
+        port: 访问端口。
+        max_retries: 最大重试次数，默认5。
+        retry_interval: 重试间隔秒数，默认3。
+
+    Returns:
+        dict: 最后一次 curl 的结果（含 rc, stdout）。
+    """
+    ssh_vm.connect(requester_mfip)
+    for attempt in range(max_retries + 1):
+        result = ssh_vm.run(
+            f"curl -s --connect-timeout 10 http://{lb_vip}:{port}/index.html",
+            return_rc=True,
+        )
+        if result["rc"] != 0:
+            return result
+        if attempt < max_retries:
+            time.sleep(retry_interval)
+    return result

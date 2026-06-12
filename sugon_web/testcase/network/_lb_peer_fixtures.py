@@ -113,25 +113,38 @@ def lb_peer_vms(browser_context, config, vpc, request):
 
 
 @pytest.fixture(scope="class")
-def slbv2_in_vpc1(browser_context, config, vpc):
-    """在 vpc[0] 下创建一个 V2 负载均衡实例，测试结束后自动清理。"""
+def slb_peer_in_vpc1(browser_context, config, vpc, request):
+    """在 vpc[0] 下创建负载均衡实例，版本由 request.param 决定，测试结束后自动清理。"""
     if not isinstance(vpc, list) or len(vpc) < 1:
-        raise AssertionError("slbv2_in_vpc1 需要 vpc fixture 返回列表")
+        raise AssertionError("slb_peer_in_vpc1 需要 vpc fixture 返回列表")
+
+    param = getattr(request, "param", "V2")
+    if isinstance(param, dict):
+        version = param.get("version", "V2")
+    elif isinstance(param, str):
+        version = param
+    else:
+        raise AssertionError(f"slb_peer_in_vpc1 参数类型不支持: {type(param)}")
+    if version not in ("V1", "V2"):
+        raise AssertionError(f"slb_peer_in_vpc1 仅支持 V1/V2，实际: {version}")
 
     page = _create_logged_in_page(browser_context, config)
     vpc_page = VpcPage(page)
-    slb_name = f"slbv2-{random_data()}"
+    slb_name = f"slb-{version.lower()}-{random_data()}"
     target_vpc = vpc[0]["name"]
 
-    with allure_step_log(f"Setup: 在 {target_vpc} 下创建负载均衡 V2 {slb_name}"):
-        vpc_page.slb_create(
-            name=slb_name,
-            version="V2",
-            ip_type="自动分配",
-            vpc=target_vpc,
-            cluster="Autotest",
-            spec="slb.d6.large 2核 4GiB 内网带宽",
-        )
+    create_kwargs = {
+        "name": slb_name,
+        "version": version,
+        "ip_type": "自动分配",
+        "vpc": target_vpc,
+    }
+    if version == "V2":
+        create_kwargs["cluster"] = "Autotest"
+        create_kwargs["spec"] = "slb.d6.large 2核 4GiB 内网带宽"
+
+    with allure_step_log(f"Setup: 在 {target_vpc} 下创建负载均衡 {version} {slb_name}"):
+        vpc_page.slb_create(**create_kwargs)
         vpc_page.search(slb_name)
         vpc_page.assert_status(slb_name, status="运行中")
 

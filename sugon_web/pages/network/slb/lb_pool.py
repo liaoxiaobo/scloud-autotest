@@ -462,6 +462,160 @@ class LbPoolMixin(LbDetailMixin):
             f"最后状态: {actual_status}"
         )
 
+    def lb_pool_edit_weight(self, vm_names, weights, lb_name=None, pool_name=None):
+        """在资源池详情页修改已添加虚机成员的权重。
+
+        Args:
+            vm_names: 待修改权重的虚机名称，支持单个字符串或名称列表。
+            weights: 权重配置，支持单个权重值、与 vm_names 顺序对应的列表，
+                或 {vm_name: weight} 字典。权重范围 1~100。
+            lb_name: 监听器名称；和 ``pool_name`` 一起传入时，会先自动进入资源池详情页。
+            pool_name: 资源池名称；和 ``lb_name`` 一起传入时，会先自动进入资源池详情页。
+        """
+        if isinstance(vm_names, str):
+            vm_names = [vm_names]
+
+        def resolve_weight(vm_name, index):
+            if weights is None:
+                return None
+            if isinstance(weights, dict):
+                return weights.get(vm_name)
+            if isinstance(weights, (list, tuple)):
+                return weights[index]
+            return weights
+
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        for index, vm_name in enumerate(vm_names):
+            target_weight = resolve_weight(vm_name, index)
+            if target_weight is None:
+                continue
+
+            self.click_action(vm_name, "修改权重")
+
+            dialog = self.get_by_role("dialog", name="修改资源权重")
+            expect(dialog).to_be_visible(timeout=5000)
+
+            weight_input = dialog.locator("div.el-form-item").filter(
+                has_text=re.compile(r"权重")
+            ).get_by_role("spinbutton")
+            expect(weight_input).to_be_visible(timeout=3000)
+            weight_input.fill(str(target_weight))
+
+            dialog.get_by_text("确定", exact=True).click()
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(1500)
+            self.logger.info(f"资源池成员权重修改成功: {vm_name} -> {target_weight}")
+
+    def lb_pool_config_session_persistence(self, lb_name, pool_name, enable=True, session_type=None):
+        """在资源池详情页配置会话保持。
+
+        弹窗内会话保持主控为 ``el-switch``（label="是否开启"），
+        开启后显示类型选择下拉框。
+
+        Args:
+            lb_name: 监听器名称。
+            pool_name: 资源池名称。
+            enable: 是否开启会话保持，默认 True。
+            session_type: 会话保持类型，如 ``SOURCE IP``、``HTTP COOKIE``。
+                开启会话保持时必须提供。
+        """
+        self.goto_lb_pool_detail(lb_name, pool_name)
+        page_root = self.locator("#cloud-container-content")
+
+        # 点击会话保持区域的"配置"按钮
+        # 资源池详情页的"配置"链接按 DOM 顺序为：会话保持、健康检查、负载调度算法
+        # 会话保持的配置链接始终是第一个
+        config_links = page_root.locator("a").filter(
+            has_text=re.compile(r"^\s*配置\s*$")
+        )
+        count = config_links.count()
+        self.logger.info(f"会话保持配置: 页面找到 {count} 个'配置'链接")
+        if count == 0:
+            raise RuntimeError("无法定位会话保持的'配置'链接")
+        config_link = config_links.nth(0)
+
+        expect(config_link).to_be_visible(timeout=5000)
+        config_link.click()
+
+        dialog = self.get_by_role("dialog", name="配置会话保持")
+        expect(dialog).to_be_visible(timeout=10000)
+
+        # 切换会话保持开关（控件为 el-switch，直接在弹窗内查找）
+        switch_ctrl = dialog.locator(".el-switch").first
+        expect(switch_ctrl).to_be_visible(timeout=10000)
+
+        is_checked = switch_ctrl.evaluate("el => el.classList.contains('is-checked')")
+        if enable != is_checked:
+            switch_ctrl.click()
+
+        if enable:
+            if not session_type:
+                raise ValueError("开启会话保持时，必须提供 session_type (例如: 'SOURCE IP', 'HTTP COOKIE')")
+            # 类型选择：在包含"类型"标签的 form-item 中查找下拉框
+            type_select = dialog.locator("div.el-form-item").filter(has_text="类型").get_by_placeholder("请选择")
+            if type_select.is_visible() and not type_select.evaluate("el => el.disabled"):
+                type_select.click()
+                self.locator("div.el-select-dropdown:visible li").filter(
+                    has_text=re.compile(rf"^{re.escape(session_type)}$")
+                ).click()
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.assert_popup_success()
+        self.logger.info(
+            f"会话保持配置完成: lb={lb_name}, pool={pool_name}, "
+            f"enable={enable}, session_type={session_type}"
+        )
+
+    def lb_pool_config_balance_method(self, balance_method, lb_name=None, pool_name=None):
+        """在资源池详情页修改负载调度算法。
+
+        Args:
+            balance_method: 负载调度算法中文名，可选"轮询"、"加权轮询"、"源IP"、"最小连接数"。
+            lb_name: 监听器名称；和 ``pool_name`` 一起传入时，会先自动进入资源池详情页。
+            pool_name: 资源池名称；和 ``lb_name`` 一起传入时，会先自动进入资源池详情页。
+        """
+        if lb_name and pool_name:
+            self.goto_lb_pool_detail(lb_name, pool_name)
+        elif lb_name or pool_name:
+            raise ValueError("lb_name 和 pool_name 需要同时传入，或者都不传")
+
+        page_root = self.locator("#cloud-container-content")
+
+        # 在"负载调度算法"行点击"配置"链接
+        # 资源池详情页的"配置"链接按 DOM 顺序为：会话保持、健康检查、负载调度算法
+        # 负载调度算法的配置链接始终是最后一个
+        config_links = page_root.locator("a").filter(
+            has_text=re.compile(r"^\s*配置\s*$")
+        )
+        count = config_links.count()
+        self.logger.info(f"负载调度算法配置: 页面找到 {count} 个'配置'链接")
+        if count == 0:
+            raise RuntimeError("无法定位负载调度算法的'配置'链接")
+        config_link = config_links.nth(count - 1)
+
+        expect(config_link).to_be_visible(timeout=5000)
+        config_link.click()
+
+        dialog = self.get_by_role("dialog", name="修改负载调度算法")
+        expect(dialog).to_be_visible(timeout=5000)
+
+        # 选择负载调度算法
+        algorithm_select = dialog.locator("div.el-form-item").filter(
+            has_text=re.compile(r"负载调度算法")
+        ).get_by_placeholder("请选择")
+        algorithm_select.click()
+        self.locator("div.el-select-dropdown:visible li").filter(
+            has_text=re.compile(rf"^{re.escape(balance_method)}$")
+        ).click()
+
+        dialog.get_by_text("确定", exact=True).click()
+        self.wait_for_page_ready()
+        self.logger.info(f"负载调度算法修改成功: {balance_method}")
+
     def get_lb_pool_candidate_vm_names(self, lb_name=None, pool_name=None,
                                        resource_type="弹性云服务器 ECS"):
         """打开资源池"新建资源"弹窗，返回当前可选虚机名称列表后关闭弹窗。

@@ -15,7 +15,7 @@ from sugon_web.testcase.network._lb_fixtures import clean_lb_listener
 from sugon_web.testcase.network._lb_peer_fixtures import (
     clean_peer_connect,
     lb_peer_vms,
-    slbv2_in_vpc1,
+    slb_peer_in_vpc1,
 )
 from sugon_web.testcase.network._slb_helpers import (
     assert_lb_algorithm,
@@ -35,6 +35,7 @@ LISTENER_DESC = "1234567890edwqWDWQ中文~"
 @allure.feature("负载均衡")
 @allure.story("对等连接跨VPC场景")
 @pytest.mark.parametrize("vpc", [{"count": 2}], indirect=True)
+@pytest.mark.parametrize("slb_peer_in_vpc1", [{"version": "V2"}], indirect=True)
 class TestLbPeerConnectScenario:
     """LB > 对等连接 > 跨VPC场景验证（用例编号 418861、418865）。"""
 
@@ -44,7 +45,7 @@ class TestLbPeerConnectScenario:
         vpc,
         vpc_page,
         lb_peer_vms,
-        slbv2_in_vpc1,
+        slb_peer_in_vpc1,
         ssh_vm,
         clean_lb_listener,
         clean_peer_connect,
@@ -361,22 +362,20 @@ class TestLbPeerConnectScenario:
 
 
 # ==============================================================================
-# 场景3：v2-lbv1 > 对等连接 > http结合转发规则（用例436756）
+# 场景3：对等连接 > HTTP结合转发规则（用例419398、436756）
 # ==============================================================================
-@pytest.mark.parametrize("vpc", [{"count": 2}], indirect=True)
-@allure.epic("网络服务")
-@allure.feature("负载均衡")
-@allure.story("基础版V2-HTTP对等连接与转发规则")
-class TestSlbV2HttpPeerForwardScenario:
-    """用例436756：v2-lbv1 > 对等连接 > http结合转发规则"""
+class _BaseTestHttpPeerForwardScenario:
+    """对等连接 + HTTP 转发规则验证基类（用例419398、436756）。"""
 
-    @allure.title("SLB-V2-HTTP对等连接与转发规则验证")
-    def test_slbv2_http_peer_forward(
+    SLB_VERSION = ""
+
+    @allure.title("SLB-HTTP对等连接与转发规则验证")
+    def test_http_peer_forward(
         self,
         vpc,
         vpc_page,
         lb_peer_vms,
-        slbv2_in_vpc1,
+        slb_peer_in_vpc1,
         ssh_vm,
         clean_lb_listener,
         clean_peer_connect,
@@ -388,7 +387,7 @@ class TestSlbV2HttpPeerForwardScenario:
         vpc2_backends = lb_peer_vms["vpc2"]  # ecs2-1, ecs2-2
         vpc2_client = vpc2_backends[1]  # ecs2-2
 
-        slb_name = slbv2_in_vpc1
+        slb_name = slb_peer_in_vpc1
         lb_name = f"http-{random_data()}"
         pool_name_1 = f"pool-{random_data()}"
         pool_name_2 = f"pool-{random_data()}"
@@ -632,3 +631,25 @@ class TestSlbV2HttpPeerForwardScenario:
                 f"example.com1应返回backend_1的唯一成员 {expected_backend}, "
                 f"实际: {stdout}"
             )
+
+
+@pytest.mark.parametrize("vpc", [{"count": 2}], indirect=True)
+@pytest.mark.parametrize("slb_peer_in_vpc1", [{"version": "V1"}], indirect=True)
+@allure.epic("网络服务")
+@allure.feature("负载均衡")
+@allure.story("基础版V1-HTTP对等连接与转发规则")
+class TestSlbV1HttpPeerForwardScenario(_BaseTestHttpPeerForwardScenario):
+    """用例419398：lbv1 > 对等连接 > http结合转发规则"""
+
+    SLB_VERSION = "V1"
+
+
+@pytest.mark.parametrize("vpc", [{"count": 2}], indirect=True)
+@pytest.mark.parametrize("slb_peer_in_vpc1", [{"version": "V2"}], indirect=True)
+@allure.epic("网络服务")
+@allure.feature("负载均衡")
+@allure.story("基础版V2-HTTP对等连接与转发规则")
+class TestSlbV2HttpPeerForwardScenario(_BaseTestHttpPeerForwardScenario):
+    """用例436756：v2-lbv1 > 对等连接 > http结合转发规则"""
+
+    SLB_VERSION = "V2"
