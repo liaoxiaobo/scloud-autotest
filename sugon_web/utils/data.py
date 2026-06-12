@@ -69,12 +69,12 @@ def random_data(data_type='string', length=5, cidr=None, version=4):
             network = ipaddress.ip_network(cidr, strict=False)
             while True:
                 ip_addr = str(random.choice(list(network.hosts())))
-                if not ip_addr.split('.')[-1] in {'1', '2', '255'}:
+                if not ip_addr.split('.')[-1] in {'0', '1', '2', '255'}:
                     return ip_addr
         else:
             while True:
                 ipv4 = fake.ipv4()
-                if not ipv4.split('.')[-1] in {'1', '2', '255'}:
+                if not ipv4.split('.')[-1] in {'0', '1', '2', '255'}:
                     return ipv4
     else:
         return None

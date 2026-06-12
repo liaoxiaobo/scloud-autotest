@@ -100,16 +100,16 @@ def cce_cluster(browser_context, config, ssh_host, request):
 
     create_kwargs = _build_cce_create_kwargs(params)
     cluster_name = create_kwargs["name"]
-    cluster_name = "liaoxb"
 
 
-    # with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
-    #     cce_page.cce_create(**create_kwargs)
-    #     cce_page.assert_popup_success()
-    #     cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+    with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
+        cce_page.cce_create(**create_kwargs)
+        cce_page.assert_popup_success()
+        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
     with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
         node_data = cce_page.get_cluster_node_data(cluster_name)
+        assert node_data, f"获取集群 {cluster_name} 节点数据失败，返回空列表"
 
         # 按节点类型分类，供不同用例选择
         master_nodes = [n for n in node_data if n.get("类型") == "控制节点"]
@@ -119,23 +119,25 @@ def cce_cluster(browser_context, config, ssh_host, request):
         master_node_ip = master_nodes[0].get("内网IP") if master_nodes else ""
         worker_node_ip = worker_nodes[0].get("内网IP") if worker_nodes else ""
         mfip = ssh_host.find_mfip(master_node_ip) if master_node_ip else ""
+        worker_mfip = ssh_host.find_mfip(worker_node_ip) if worker_node_ip else ""
 
     yield {
         "name": cluster_name,
         "master_node_ip": master_node_ip,
         "worker_node_ip": worker_node_ip,
-        "mfip": mfip,
+        "master_mfip": mfip,
+        "worker_mfip": worker_mfip,
         "master_node": master_node,
         "worker_node": worker_node,
     }
 
-    # with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
-    #     try:
-    #         _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
-    #     except Exception as e:
-    #         logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
-    #     finally:
-    #         page.close()
+    with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
+        try:
+            _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
+        except Exception as e:
+            logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
+        finally:
+            page.close()
 
 
 @pytest.fixture(scope="class")

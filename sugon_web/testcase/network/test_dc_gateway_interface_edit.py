@@ -165,6 +165,26 @@ class TestDCGatewayInterfaceEdit:
                 logger.info(f"清理物理连接时跳过: {e}")
 
         with allure_step_log("步骤0.5: 创建虚拟私有云"):
+            # 关闭可能存在的通知弹窗，避免阻塞后续点击
+            try:
+                notifications = dc_page.page.locator(".el-notification__closeBtn")
+                for i in range(notifications.count()):
+                    notifications.nth(i).click()
+                    dc_page.page.wait_for_timeout(300)
+            except Exception:
+                pass
+            # 关闭可能存在的对话框
+            try:
+                dialogs = dc_page.page.locator(".el-dialog__wrapper:visible")
+                if dialogs.count() > 0:
+                    for i in range(dialogs.count()):
+                        close_btn = dialogs.nth(i).locator(".el-dialog__close-btn, .el-dialog__headerbtn, .el-icon-close").first
+                        if close_btn.count() > 0 and close_btn.is_visible():
+                            close_btn.click()
+                            dc_page.page.wait_for_timeout(500)
+            except Exception:
+                pass
+
             vpc_page.vpc_create(
                 name=vpc_name,
                 subnet_name=subnet_name,

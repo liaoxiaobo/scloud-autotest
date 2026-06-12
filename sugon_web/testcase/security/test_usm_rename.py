@@ -24,7 +24,16 @@ class TestUsmRename:
 
         with allure_step_log("步骤2: 验证列表页名称已更新"):
             usm_page.goto_list_page()
-            row_data = usm_page.get_row_data(new_name)
+            row_data = None
+            for attempt in range(10):
+                try:
+                    row_data = usm_page.get_row_data(new_name)
+                    break
+                except AssertionError:
+                    logger.warning(f"第 {attempt + 1} 次未找到重命名后实例，刷新列表页...")
+                    usm_page.page.reload()
+                    usm_page.wait_for_page_ready()
+                    usm_page.page.wait_for_timeout(2000)
             assert row_data, f"列表页未找到修改后的实例名称: {new_name}"
             logger.info(f"列表页验证通过: 找到实例 {new_name}")
 

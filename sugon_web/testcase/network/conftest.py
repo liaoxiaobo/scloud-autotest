@@ -3,7 +3,7 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, VpnPage, CfwPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -30,6 +30,19 @@ def vpc_page(page):
             vpc_page.vpc_create(name="test-vpc", cidr="10.0.0.0/24")
     """
     return VpcPage(page)
+
+
+@pytest.fixture(scope="function")
+def cfw_page(page):
+    """初始化云防火墙页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        CfwPage: 云防火墙页面对象实例。
+    """
+    return CfwPage(page)
 
 
 @pytest.fixture(scope="function")
@@ -69,6 +82,19 @@ def tm_page(page):
         TmPage: 流量镜像页面对象实例。
     """
     return TmPage(page)
+
+
+@pytest.fixture(scope="function")
+def vpn_page(page):
+    """初始化虚拟专用网络VPN页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        VpnPage: 虚拟专用网络VPN页面对象实例。
+    """
+    return VpnPage(page)
 
 
 def _build_vpc_create_kwargs(params=None):
@@ -203,8 +229,20 @@ def _build_vpc_batch_params(params, count):
 
 
 def _cleanup_vpc_resource(vpc_page, name):
-    """清理VPC资源。"""
+    """清理VPC资源，确保后端真正删除。"""
+    # 先导航到VPC列表页确保状态正确
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
+    try:
+        vpc_page.get_row_by_name(name)
+    except Exception:
+        logger.info(f"VPC {name} 已不存在，跳过清理")
+        return
     vpc_page.vpc_delete(name)
+    # 刷新页面并验证删除，避免前端缓存导致误判
+    vpc_page.page.reload()
+    vpc_page.wait_for_page_ready()
+    vpc_page.goto_submenu("虚拟私有云")
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)
 
@@ -387,7 +425,42 @@ def vip(vpc_page, vpc):
     vpc_page.get_by_role("tab", name="虚拟IP管理").click()
 
     logger.info(f"清理虚拟IP {vip_address}")
-    vpc_page.vip_delete(vip_address)
+
+    # 先获取一次行数据，检查是否仍有绑定关系
+    # 避免对已解绑的VIP重复点击禁用状态的按钮浪费时间
+    try:
+        row_data = vpc_page.get_row_data(vip_address)
+    except Exception:
+        logger.info(f"VIP {vip_address} 已从列表中消失，无需清理")
+        return
+
+    bound_instance = row_data.get("绑定的实例") or ""
+    bound_eip = row_data.get("绑定的公网IP") or ""
+
+    # 仅在有实际绑定值时才执行解绑（按钮可用状态）
+    if bound_instance and bound_instance != "--":
+        instance_name = bound_instance.split("(")[0] if "(" in bound_instance else bound_instance
+        logger.info(f"VIP {vip_address} 仍绑定实例 {instance_name}，先解绑")
+        try:
+            vpc_page.vip_unbind_instance(vip_address, instance_name)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑实例时出错: {e}")
+
+    if bound_eip and bound_eip != "--":
+        logger.info(f"VIP {vip_address} 仍绑定公网IP {bound_eip}，先解绑")
+        try:
+            vpc_page.vip_unbind_eip(vip_address)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑公网IP时出错: {e}")
+
+    try:
+        vpc_page.vip_delete(vip_address)
+    except Exception as e:
+        logger.warning(f"清理虚拟IP失败: {e}")
 
 
 @pytest.fixture(scope="function")
@@ -549,6 +622,54 @@ def nat(vpc_page, vpc, request):
             logger.info(f"NAT网关 {current_name} 删除成功")
         except Exception as e:
             logger.warning(f"清理NAT网关时出错: {e}")
+
+
+@pytest.fixture(scope="function")
+def cfw(cfw_page, request):
+    """创建并返回云防火墙。
+
+    本 fixture 仅负责创建云防火墙，创建成功后即交由测试使用，
+    测试结束后不执行删除（按业务需求保留实例）。
+
+    Args:
+        cfw_page: 云防火墙页面对象，由 cfw_page fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        name (str): 云防火墙名称，默认自动生成。
+        version (str): 防火墙版本，默认"山石引擎-5.5"。
+        cluster (str): 部署集群，默认"Autotest"。
+        protected_resource (str): 待防护资源标识，可选。
+
+    Yields:
+        dict: 云防火墙信息字典，包含：
+            - name (str): 云防火墙名称
+
+    Example:
+        @pytest.mark.parametrize("cfw", [{"version": "山石引擎-5.5", "cluster": "Autotest"}], indirect=True)
+        def test_cfw_with_cluster(cfw):
+            print(f"云防火墙: {cfw['name']}")
+    """
+    params = getattr(request, 'param', {})
+    name = params.get('name', random_data())
+    version = params.get('version', '山石引擎-5.5')
+    cluster = params.get('cluster', 'Autotest')
+    protected_resource = params.get('protected_resource')
+
+    with allure_step_log(f"Setup: 创建云防火墙 {name}"):
+        cfw_page.cfw_create(
+            name=name,
+            version=version,
+            cluster=cluster,
+            protected_resource=protected_resource,
+        )
+        logger.info(f"云防火墙 {name} 创建成功")
+
+    with allure_step_log(f"Setup: 等待云防火墙 {name} 状态变为运行中"):
+        cfw_page.assert_status(name, status="运行中", timeout=1200, refresh=True, refresh_interval=10)
+
+    yield {"name": name}
+
 
 @pytest.fixture(scope="function")
 def qos(vpc_page):

@@ -1,7 +1,16 @@
+import random
+
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+
+
+def _random_mac():
+    """生成随机MAC地址，使用 fa:16:e3 前缀（与CSV示例一致）。"""
+    return "fa:16:e3:{:02x}:{:02x}:{:02x}".format(
+        random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
+    )
 
 
 @allure.epic('网络服务')
@@ -62,6 +71,10 @@ class TestTMCreateInnerECS:
             with allure_step_log("步骤5: 清理流量镜像"):
                 if created_name:
                     try:
+                        # 显式回到列表页再删除，详情页返回不可靠
+                        tm_page.goto_service("流量镜像")
+                        tm_page.goto_submenu("流量镜像")
+                        tm_page.page.wait_for_timeout(5000)
                         tm_page.tm_delete(created_name)
                         tm_page.assert_deleted(created_name, timeout=30000)
                     except Exception as e:
@@ -75,6 +88,13 @@ class TestTMCreateInnerECS:
                 except Exception as e:
                     logger.warning(f"清理弹性云服务器失败: {e}")
 
+            with allure_step_log("步骤7: 从回收站彻底删除弹性云服务器"):
+                try:
+                    ecs_page.ecs_delete(vm_name)
+                    ecs_page.assert_deleted(vm_name, timeout=60000)
+                except Exception as e:
+                    logger.warning(f"从回收站彻底删除弹性云服务器失败: {e}")
+
 
 @allure.epic('网络服务')
 @allure.feature('流量镜像')
@@ -87,7 +107,7 @@ class TestTMCreateOutsideDevice:
         """测试流量镜像云外设备类型的新建、列表验证和详情验证。"""
         tm_name = f"tm-outside-{random_data()}"
         vlan = "259"
-        mac = "fa:16:e3:44:53:47"
+        mac = _random_mac()
 
         with allure_step_log("步骤0: 清理环境中可能残留的同名MAC流量镜像"):
             tm_page.tm_cleanup_by_mac(mac)
@@ -121,6 +141,8 @@ class TestTMCreateOutsideDevice:
             assert "正常" in page_text, "详情页未找到状态: 正常"
             assert vlan in page_text, f"详情页未找到VLAN: {vlan}"
             assert mac in page_text, f"详情页未找到MAC地址: {mac}"
+            # 等待 Vue Router 状态稳定后再执行清理
+            tm_page.page.wait_for_timeout(3000)
 
         with allure_step_log("步骤4: 清理流量镜像"):
             tm_page.tm_delete(created_name)

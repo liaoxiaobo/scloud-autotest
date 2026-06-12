@@ -9,6 +9,47 @@ from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
 
+def _cleanup_residual_dc_resources(dc_page):
+    """按虚拟接口→虚拟网关→物理连接顺序清理残留资源。"""
+    try:
+        notifications = dc_page.page.locator(".el-notification__closeBtn")
+        for i in range(notifications.count()):
+            notifications.nth(i).click()
+            dc_page.page.wait_for_timeout(300)
+    except Exception:
+        pass
+
+    try:
+        dc_page._ensure_virtual_interface_list()
+        vif_names = dc_page.get_column_data("名称")
+        for name in vif_names:
+            if name and name.startswith("vif-"):
+                dc_page.virtual_interface_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟接口时跳过: {e}")
+
+    try:
+        dc_page._ensure_virtual_gateway_list()
+        vgw_names = dc_page.get_column_data("名称")
+        for name in vgw_names:
+            if name and name.startswith("vgw-"):
+                dc_page.virtual_gateway_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟网关时跳过: {e}")
+
+    try:
+        dc_page._ensure_physical_connection_list()
+        pc_names = dc_page.get_column_data("物理连接名称")
+        for name in pc_names:
+            if name and name.startswith("physical-"):
+                dc_page.dc_physical_connection_terminate(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理物理连接时跳过: {e}")
+
+
 @allure.epic('网络服务')
 @allure.feature('云专线DC')
 @allure.story('ER类型HA静态路由生效性验证')
@@ -21,7 +62,7 @@ class TestDCERStaticRouteValidation:
     )
     @pytest.mark.parametrize(
         "vm",
-        [{"basic": {"count": 1}, "bind_mfip": True}],
+        [{"basic": {"count": 1}, "bind_mfip": True, "name_prefix": "dc_"}],
         indirect=True,
     )
     @allure.title("云专线DC-ER类型HA静态路由生效性验证")
@@ -57,31 +98,8 @@ class TestDCERStaticRouteValidation:
         # 前置条件准备
         # ─────────────────────────────────────────────
 
-        with allure_step_log("前置条件0: 检查并清理残留物理连接"):
-            dc_page._ensure_physical_connection_list()
-            dc_page.page.wait_for_timeout(3000)
-            try:
-                rows = dc_page.page.locator(".el-table__body-wrapper tbody tr").all()
-                for row in rows:
-                    try:
-                        name_cell = row.locator("td").nth(1)
-                        name_text = name_cell.text_content(timeout=5000)
-                        if name_text and name_text.strip():
-                            res_name = name_text.strip().split()[0]
-                            if res_name and res_name != "名称":
-                                logger.info(f"发现残留物理连接: {res_name}，执行注销")
-                                try:
-                                    dc_page.dc_physical_connection_terminate(res_name)
-                                    dc_page.assert_deleted(res_name, timeout=60)
-                                    logger.info(f"残留物理连接 {res_name} 注销成功")
-                                except Exception as e:
-                                    logger.warning(f"注销残留物理连接 {res_name} 失败: {e}")
-                    except Exception:
-                        break
-            except Exception as e:
-                logger.warning(f"检查残留物理连接时出错: {e}")
-            dc_page.page.reload()
-            dc_page.wait_for_page_ready()
+        with allure_step_log("前置条件0: 清理残留资源（虚拟接口→虚拟网关→物理连接）"):
+            _cleanup_residual_dc_resources(dc_page)
 
         with allure_step_log("前置条件1: 创建HA物理连接并审批通过"):
             dc_page.dc_physical_connection_create(
@@ -186,6 +204,7 @@ class TestDCERStaticRouteValidation:
                 dialog = vpc_page.page.locator(".el-dialog__wrapper:visible")
 
                 vpc_page.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
+                vpc_page.page.wait_for_timeout(1000)
 
                 # 选择下一跳类型：企业路由器
                 vpc_page.locator(".el-form-item").filter(
@@ -194,24 +213,24 @@ class TestDCERStaticRouteValidation:
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^企业路由器$")
                 ).first.click()
-                vpc_page.page.wait_for_timeout(500)
+                vpc_page.page.wait_for_timeout(2000)
 
                 # 选择下一跳：ER实例
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
 
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:
                     dropdown.wait_for(state="visible", timeout=5000)
-                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=er_name).first
-                    expect(option).to_be_visible(timeout=5000)
-                    option.click()
+                    vpc_page.page.wait_for_timeout(2000)
+                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=re.compile(re.escape(er_name))).first
+                    option.scroll_into_view_if_needed(timeout=5000)
+                    option.click(force=True)
                     logger.info(f"下一跳选择成功: {er_name}")
                 except Exception:
-                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 get_by_text 选择: {er_name}")
-                    vpc_page.page.get_by_text(er_name, exact=False).first.click()
+                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 dropdown.get_by_text 选择: {er_name}")
+                    dropdown.get_by_text(er_name, exact=True).last.click(force=True)
 
                 vpc_page.get_by_label("新建路由表规则").get_by_text("确定").click()
                 try:
@@ -327,6 +346,14 @@ class TestDCERStaticRouteValidation:
                 allure.attach(combined_output, name="SSH验证结果", attachment_type=allure.attachment_type.TEXT)
 
                 assert ping_result["rc"] == 0, f"ping命令执行失败"
+                # 放宽丢包容忍：允许首次丢包（路由刚建立时的ARP/MAC学习延迟），重试一次
+                if not ("4 packets transmitted, 4 received" in ping_result["stdout"]
+                        or "0% packet loss" in ping_result["stdout"]):
+                    logger.warning("首次ping存在丢包，等待10秒后重试...")
+                    time.sleep(10)
+                    ping_result = ssh_vm.run("ping -c 4 123.12.0.10", return_rc=True, return_stdout=True)
+                    logger.info(f"重试ping结果: rc={ping_result['rc']}, stdout={ping_result['stdout']}")
+                assert ping_result["rc"] == 0, f"ping命令执行失败"
                 assert (
                     "4 packets transmitted, 4 received" in ping_result["stdout"]
                     or "0% packet loss" in ping_result["stdout"]
@@ -364,8 +391,13 @@ class TestDCERStaticRouteValidation:
                 try:
                     dc_page._ensure_virtual_interface_list()
                     dc_page.page.wait_for_timeout(2000)
-                    dc_page.virtual_interface_delete(vif_name)
-                    dc_page.assert_deleted(vif_name, timeout=60)
+                    try:
+                        dc_page.get_row_by_name(vif_name)
+                    except Exception:
+                        logger.info(f"虚拟接口 {vif_name} 已不存在或已被级联删除，跳过")
+                    else:
+                        dc_page.virtual_interface_delete(vif_name)
+                        dc_page.assert_deleted(vif_name, timeout=60)
                 except Exception as e:
                     cleanup_errors.append(f"删除虚拟接口: {e}")
 

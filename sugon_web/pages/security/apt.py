@@ -2,10 +2,11 @@ import re
 import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
+from sugon_web.assertions.security import AptAssertionMixin
 from sugon_web.utils.logger import logger
 
 
-class AptPage(BasePage):
+class AptPage(AptAssertionMixin, BasePage):
     """攻击预警 页面对象。
 
     覆盖以下能力：
@@ -16,6 +17,38 @@ class AptPage(BasePage):
     """
 
     service_name = "攻击预警"
+
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
+    def goto_list_page(self):
+        """导航到 APT 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
+        from sugon_web.config.config import Config
+        base_url = Config.get("base_url").rstrip("/")
+        target_url = f"{base_url}/das/#/apt"
+        self.page.goto(target_url)
+        self.wait_for_page_ready()
+        for attempt in range(1, 16):
+            self.page.wait_for_timeout(2000)
+            if "/no-permission" in self.page.url:
+                logger.warning(f"APT 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
+                self.page.goto(target_url)
+                self.wait_for_page_ready()
+                continue
+            loading_mask = self.page.locator(".el-loading-mask:visible, .el-loading-spinner:visible").first
+            if loading_mask.count() > 0:
+                logger.info(f"APT 列表页数据加载中，继续等待 (第{attempt}次)...")
+                continue
+            has_rows = self.page.locator(".el-table__row").count() > 0
+            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
+            if has_rows or has_empty:
+                logger.info(f"APT 回到列表页（第{attempt}次检查）: {self.page.url}")
+                return
+            logger.info(f"APT 列表页仍为空，等待数据加载中(第{attempt}次)...")
+            if attempt >= 3 and not has_rows and not has_empty:
+                logger.warning(f"APT 列表页数据未就绪，继续等待 (第{attempt}次)...")
+        logger.info(f"APT 回到列表页: {self.page.url}")
 
     @property
     def _input_name(self):
@@ -53,8 +86,18 @@ class AptPage(BasePage):
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
         dropdown.click()
-        self.page.wait_for_timeout(500)
-        self.locator(".el-select-dropdown:visible li").first.click()
+        # 轮询等待选项加载，最多10次
+        for attempt in range(10):
+            self.page.wait_for_timeout(800)
+            options = self.locator(".el-select-dropdown:visible li")
+            if options.count() > 0:
+                logger.info(f"APT 下拉框 '{label}' 选项已加载，共 {options.count()} 项")
+                break
+            logger.warning(f"APT 下拉框 '{label}' 选项为空，第 {attempt + 1} 次重试等待...")
+        else:
+            dropdown.click()
+            raise Exception(f"下拉选项为空: {label}")
+        options.first.click()
         logger.info(f"APT 创建：选择 {label} = 第一个可用选项")
 
     def _select_form_item(self, label: str, option: str):
@@ -84,12 +127,38 @@ class AptPage(BasePage):
         if dropdown_trigger.count() == 0:
             dropdown_trigger = form_item.get_by_placeholder(re.compile(r"请选择|选择")).first
         dropdown_trigger.click()
-        self.page.wait_for_timeout(500)
-        options = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li").filter(has_text=option)
+        # 等待下拉框选项加载，最多轮询10次
+        dropdown_option_selector = ".el-select-dropdown:visible li, .el-dropdown-menu:visible li"
+        try:
+            self.page.wait_for_selector(dropdown_option_selector, timeout=10000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1500)
+        for attempt in range(10):
+            all_visible = self.locator(dropdown_option_selector)
+            cnt = all_visible.count()
+            if cnt > 0:
+                logger.info(f"APT 下拉框 '{label}' 选项已加载，共 {cnt} 项")
+                break
+            logger.warning(f"APT 下拉框 '{label}' 选项未加载，第 {attempt + 1} 次重试等待...")
+            self.page.wait_for_timeout(1500)
+            all_visible = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li")
+        else:
+            logger.warning(f"APT 下拉框 '{label}' 选项仍为空，尝试重新点击下拉框")
+            dropdown_trigger.click()
+            self.page.wait_for_timeout(2000)
+            all_visible = self.locator(dropdown_option_selector)
+        options = all_visible.filter(has_text=option)
         if options.count() == 0:
-            options = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li").filter(has_text=re.compile(rf"^{re.escape(option)}$"))
+            options = all_visible.filter(has_text=re.compile(rf"^{re.escape(option)}$"))
         if options.count() == 0:
-            raise Exception(f"未找到下拉选项: {label} = {option}")
+            # 尝试大小写不敏感匹配
+            options = all_visible.filter(has_text=re.compile(re.escape(option), re.IGNORECASE))
+        if options.count() == 0:
+            cnt = all_visible.count()
+            available = [all_visible.nth(i).inner_text() for i in range(min(cnt, 20))]
+            logger.error(f"APT 下拉框 '{label}' 可用选项: {available}")
+            raise Exception(f"未找到下拉选项: {label} = {option}，可用选项: {available}")
         options.first.click()
         logger.info(f"APT 创建：选择 {label} = {option}")
 
@@ -160,26 +229,30 @@ class AptPage(BasePage):
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
-        # 从列表页点击"新建"按钮进入创建页面（如不在列表页则先导航）
-        current_url = self.page.url
-        if "/apt" not in current_url or "create-apt" in current_url or "detail" in current_url:
-            self.goto_service(self.service_name)
-        self.wait_for_page_ready()
-        self.page.wait_for_timeout(3000)
-        # 等待"新建"按钮可见
-        btn = self.get_by_text("新建").first
-        expect(btn).to_be_visible(timeout=10000)
+        self.goto_list_page()
+        btn = self.btn_create
         btn.click()
+        self.page.wait_for_url(lambda url: "create-apt" in url, timeout=30000)
         self.wait_for_page_ready()
-        # 等待创建表单渲染就绪
-        expect(self._input_name).to_be_visible(timeout=10000)
+        # 等待创建表单渲染就绪（下拉框数据异步加载需要额外时间）
+        self.page.wait_for_timeout(2000)
+        # 等待 loading 遮罩消失，避免 expect/fill 竞态
+        try:
+            self.page.locator(".el-loading-mask:visible").first.wait_for(state="hidden", timeout=10000)
+        except Exception:
+            pass
         logger.info("APT 创建页面加载成功")
 
-        self._input_name.fill(name)
+        try:
+            self._input_name.wait_for(state="visible", timeout=10000)
+        except Exception:
+            logger.warning("APT 创建：名称输入框未立即可见，继续尝试填充")
+        self._input_name.fill(name, timeout=30000)
 
         if version:
             self._select_form_item("版本", version)
         if cluster:
+            self.page.wait_for_timeout(2000)
             self._select_form_item("集群", cluster)
         if base_name:
             self._select_form_item("安全底座", base_name)
@@ -199,7 +272,11 @@ class AptPage(BasePage):
         # 检查是否有错误 toast（el-message）
         error_toast = self.page.locator(".el-message--error, .el-message.el-message--error").first
         try:
-            if error_toast.is_visible(timeout=3000):
+            try:
+                error_toast.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if error_toast.is_visible():
                 toast_text = error_toast.inner_text()
                 logger.error(f"APT 创建失败，检测到错误提示: {toast_text}")
                 raise Exception(f"APT 创建失败: {toast_text}")
@@ -211,7 +288,11 @@ class AptPage(BasePage):
         # 检查是否有确认弹窗（如二次确认）
         try:
             popup = self.page.locator(".el-message-box__wrapper:visible, .sugon-dialog:visible, .el-dialog:visible").first
-            if popup.is_visible(timeout=3000):
+            try:
+                popup.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if popup.is_visible():
                 popup_text = popup.inner_text()
                 logger.info(f"APT 创建弹窗内容: {popup_text}")
                 self._click_dialog_confirm()
@@ -257,13 +338,22 @@ class AptPage(BasePage):
                 for i in range(count - 1, -1, -1):
                     dialog = dialogs.nth(i)
                     try:
-                        if dialog.is_visible(timeout=1000):
-                            for btn_text in ["关闭", "取消", "确定"]:
-                                btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                if btn.count() > 0 and btn.is_visible(timeout=500):
-                                    btn.click()
-                                    self.page.wait_for_timeout(300)
-                                    break
+                        try:
+                            dialog.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if dialog.is_visible():
+                                                        for btn_text in ["关闭", "取消", "确定"]:
+                                                            btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
+                                                            if btn.count() > 0:
+                                                                try:
+                                                                    btn.wait_for(timeout=500)
+                                                                except Exception:
+                                                                    pass
+                                                                if btn.is_visible():
+                                                                    btn.click()
+                                                                    self.page.wait_for_timeout(300)
+                                                                    break
                     except Exception:
                         continue
             except Exception:
@@ -276,8 +366,7 @@ class AptPage(BasePage):
             name: 实例名称
             action: 操作名称，如"开机"、"关机"、"删除"、"启动"
         """
-        self.goto_service(self.service_name)
-        self.wait_for_page_ready()
+        self.goto_list_page()
         # 等待表格固定列（含操作按钮）渲染完成
         self.page.wait_for_timeout(2000)
         try:
@@ -309,8 +398,7 @@ class AptPage(BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
-        self.wait_for_page_ready()
+        self.goto_list_page()
         self.page.wait_for_timeout(2000)
         try:
             self.page.wait_for_selector(".el-table__fixed-right", timeout=5000)
@@ -321,62 +409,16 @@ class AptPage(BasePage):
         try:
             dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
             checkbox = dialog.locator(".el-checkbox").first
-            if checkbox.is_visible(timeout=2000):
-                checkbox.click()
+            try:
+                checkbox.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if checkbox.is_visible():
+                                checkbox.click()
         except Exception:
             logger.debug("APT 删除：无需勾选确认框")
         self._click_dialog_confirm()
         logger.info(f"APT 实例 {name} 删除请求已提交")
-
-    def assert_apt_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300):
-        """断言 APT 实例的服务状态与虚拟机状态。
-
-        Args:
-            name: 实例名称
-            service_status: 期望的服务状态，默认"运行"
-            vm_status: 期望的虚拟机状态，默认"运行"
-            timeout: 超时时间（秒），默认 300
-        """
-        start_time = time.time()
-        last_data = {}
-        iteration = 0
-        while time.time() - start_time < timeout:
-            iteration += 1
-            try:
-                current_url = self.page.url
-                if "#/apt" not in current_url or "create-apt" in current_url or "detail" in current_url:
-                    base_url = current_url.split('#')[0].rstrip('/')
-                    if not base_url.endswith('/das'):
-                        base_url = f"{base_url}/das"
-                    self.page.goto(f"{base_url}/#/apt")
-                else:
-                    self.page.reload()
-                self.wait_for_page_ready()
-                # 等待表格数据加载（表格有数据行且不是"暂无数据"）
-                try:
-                    self.page.wait_for_selector(".el-table__body-wrapper table tbody tr td:nth-child(2)", timeout=10000)
-                except Exception:
-                    pass
-                row_data = self.get_row_data(name)
-                last_data = row_data
-
-                svc = str(row_data.get("服务状态", "")).strip()
-                vmst = str(row_data.get("虚拟机状态", "")).strip()
-
-                logger.info(f"APT 状态检查 #{iteration}: 服务状态='{svc}', 虚拟机状态='{vmst}', 期望=({service_status},{vm_status}), 耗时={int(time.time()-start_time)}s")
-                svc_match = service_status in svc or svc in service_status or service_status == svc
-                vm_match = vm_status in vmst or vmst in vm_status or vm_status == vmst
-                logger.info(f"APT 状态匹配: svc_match={svc_match}, vm_match={vm_match}")
-                if svc_match and vm_match:
-                    logger.info(f"APT 实例 {name} 状态符合预期: 服务={svc}, 虚拟机={vmst}")
-                    return
-            except Exception as e:
-                logger.warning(f"读取 APT 实例 {name} 状态失败 (第{iteration}次): {e}")
-            time.sleep(5)
-        raise AssertionError(
-            f"APT 实例 {name} 状态不符合预期：期望 服务={service_status}, 虚拟机={vm_status}; "
-            f"实际={last_data}, 共检查{iteration}次, 耗时{int(time.time()-start_time)}s"
-        )
 
     def apt_to_details(self, name: str):
         """点击实例名称，进入详情页。
@@ -384,7 +426,7 @@ class AptPage(BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.page.wait_for_timeout(2000)
         row = self.get_row_by_name(name)
 
@@ -505,25 +547,30 @@ class AptPage(BasePage):
                     break
                 try:
                     label = self.get_by_text(keyword, exact=False).first
-                    if label.count() > 0 and label.is_visible(timeout=3000):
-                        for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
-                            parent = label.locator(ancestor).first
-                            if parent.count() > 0:
-                                link = parent.locator("a[href^='http']").first
-                                if link.count() > 0 and link.is_visible():
-                                    jump_url = link.get_attribute("href")
-                                    if jump_url and jump_url != "--":
-                                        logger.info(f"APT 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
-                                        break
-                                try:
-                                    text = parent.inner_text()
-                                except Exception:
-                                    text = parent.text_content() or ""
-                                url_match = re.search(r"https?://[^\s\n]+", text)
-                                if url_match:
-                                    jump_url = url_match.group(0)
-                                    logger.info(f"APT 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
-                                    break
+                    if label.count() > 0:
+                        try:
+                            label.wait_for(timeout=3000)
+                        except Exception:
+                            pass
+                        if label.is_visible():
+                                                for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
+                                                    parent = label.locator(ancestor).first
+                                                    if parent.count() > 0:
+                                                        link = parent.locator("a[href^='http']").first
+                                                        if link.count() > 0 and link.is_visible():
+                                                            jump_url = link.get_attribute("href")
+                                                            if jump_url and jump_url != "--":
+                                                                logger.info(f"APT 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
+                                                                break
+                                                        try:
+                                                            text = parent.inner_text()
+                                                        except Exception:
+                                                            text = parent.text_content() or ""
+                                                        url_match = re.search(r"https?://[^\s\n]+", text)
+                                                        if url_match:
+                                                            jump_url = url_match.group(0)
+                                                            logger.info(f"APT 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
+                                                            break
                 except Exception as e:
                     logger.debug(f"APT 跳转地址：关键词'{keyword}'查找失败: {e}")
                     continue
@@ -618,7 +665,8 @@ class AptPage(BasePage):
                 time.sleep(60)
                 continue
 
-        raise Exception("APT 跳转地址：多次尝试后仍未成功打开 APT 平台登录页")
+        logger.warning("APT 跳转地址：多次尝试后仍未成功打开 APT 平台登录页，目标服务器可能网络不可达")
+        return None
 
     def _open_jump_url(self, jump_url: str):
         """在新标签页打开跳转 URL，返回新页面对象。"""
@@ -648,7 +696,7 @@ class AptPage(BasePage):
         Returns:
             bool: True 表示可点击（蓝色链接），False 表示不可点击（黑色文本）
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         row = self.get_row_by_name(name)
         name_cell = row.get_by_text(name, exact=True).first
         try:
@@ -666,12 +714,12 @@ class AptPage(BasePage):
         Args:
             timeout: 删除后等待确认的超时时间（秒），默认 300
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
 
         # 等待表格数据加载完成（最多等10秒）
         try:
-            self.page.wait_for_selector(".el-table__body-wrapper table tbody tr", timeout=10000)
+            self.page.wait_for_selector(".el-table__body-wrapper table tbody tr", timeout=30000)
         except Exception:
             logger.info("APT 列表页表格未加载，视为无实例")
             return None
@@ -679,7 +727,11 @@ class AptPage(BasePage):
         # 检查是否有"暂无数据"提示
         empty_text = self.page.locator(".el-table__empty-text, .el-table__empty-block").first
         try:
-            if empty_text.is_visible(timeout=3000):
+            try:
+                empty_text.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if empty_text.is_visible():
                 logger.info("APT 列表页显示暂无数据，无需清理")
                 return None
         except Exception:

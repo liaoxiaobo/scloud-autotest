@@ -41,6 +41,7 @@ SERVICE_PATH_MAP = {
     '可信密码模块': '/sdf',
     '攻击预警': '/das/#/apt',
     '云堡垒机高级版': '/das/#/usm',
-    '日志审计': '/das/#/ver'
+    '日志审计': '/das/#/ver',
+    '数据库审计': '/das/#/vdb'
 }
 

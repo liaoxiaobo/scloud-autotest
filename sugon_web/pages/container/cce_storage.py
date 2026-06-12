@@ -3,12 +3,12 @@ import re
 class CceStorageMixin:
     """存储管理：存储类型 + 存储卷。"""
 
-    def storage_class_create(self, name, volume_type="xbd-type", fstype="ext4", encrypt=False, access_mode="ReadWriteOnce"):
+    def storage_class_create(self, name, volume_type="", fstype="ext4", encrypt=False, access_mode="ReadWriteOnce"):
         """创建云硬盘存储类型。
 
         Args:
             name: 存储类型名称
-            volume_type: 云硬盘类型，默认"xbd-type"
+            volume_type: 云硬盘类型，未指定时自动从配置读取
             fstype: 分区格式，默认"ext4"
             encrypt: 是否加密，默认False
             access_mode: 访问模式，默认"ReadWriteOnce"
@@ -18,6 +18,8 @@ class CceStorageMixin:
         dialog.wait_for(state="visible", timeout=10000)
         dialog.locator(".el-form-item").filter(has_text="存储类型名称").locator("input").fill(name)
         dialog.get_by_role("radio", name=re.compile(r"云硬盘|EVS")).click()
+        # 云硬盘类型：未指定时从配置自动推导
+        volume_type = volume_type or self.volume_type
         dialog.locator(".el-form-item").filter(has_text="云硬盘类型").locator(".el-select").click()
         self._select_option(volume_type, exact=False)
         dialog.get_by_role("radio", name=fstype).click()
