@@ -41,6 +41,7 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
+    parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -110,6 +111,9 @@ def pytest_configure(config):
 
     # 从命令行参数提取运行标识（测试文件名或类名）
     run_id = _get_run_id_from_args(config)
+    env_label = config.getoption("--env-label")
+    if env_label:
+        run_id = f"{run_id}/{env_label}" if run_id else env_label
     os.environ['_PYTEST_RUN_ID'] = run_id
 
     # 创建 logs 子目录（按 run_id 隔离）
