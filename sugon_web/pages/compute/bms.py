@@ -1,7 +1,7 @@
 import re
 import time
 import pytest
-from playwright.sync_api import Locator
+from playwright.sync_api import Locator, expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
@@ -183,6 +183,14 @@ class BmsPage(BasePage):
         # 统计可见对话框数量
         visible_dialogs = [d for d in self.page.locator(".sugon-dialog, .el-dialog, [role='dialog']").all() if d.is_visible()]
         logger.info(f"[_confirm_sugon_dialog] 可见对话框数量: {len(visible_dialogs)}")
+        visible_dialogs_locator = self.page.locator(".sugon-dialog:visible, .el-dialog:visible, [role='dialog']:visible")
+
+        def _wait_dialogs_closed():
+            try:
+                expect(visible_dialogs_locator).to_have_count(0, timeout=5000)
+            except Exception as e:
+                logger.warning(f"[_confirm_sugon_dialog] 对话框关闭等待超时: {e}")
+                self.page.wait_for_timeout(1000)
 
         if len(visible_dialogs) == 0 and not required:
             logger.info("[_confirm_sugon_dialog] 无可见对话框且非必需，直接返回")
@@ -218,6 +226,7 @@ class BmsPage(BasePage):
                             except Exception as e:
                                 logger.warning(f"[_confirm_sugon_dialog] JS点击失败: {e}")
                         self.page.wait_for_timeout(1000)
+                        _wait_dialogs_closed()
                         return
         try:
             logger.info("[_confirm_sugon_dialog] 尝试使用 dialog_confirm 定位器")
@@ -226,6 +235,7 @@ class BmsPage(BasePage):
             except Exception:
                 self.dialog_confirm.click(force=True)
             self.page.wait_for_timeout(1000)
+            _wait_dialogs_closed()
             return
         except Exception as e:
             logger.warning(f"[_confirm_sugon_dialog] dialog_confirm 点击失败: {e}")
@@ -237,6 +247,7 @@ class BmsPage(BasePage):
                         logger.info("[_confirm_sugon_dialog] 通过对话框内搜索找到可见确定按钮")
                         btn.click(force=True)
                         self.page.wait_for_timeout(1000)
+                        _wait_dialogs_closed()
                         return
         except Exception as e:
             logger.warning(f"[_confirm_sugon_dialog] 对话框内搜索确定按钮失败: {e}")
@@ -745,6 +756,7 @@ class BmsPage(BasePage):
 
     def bms_agent_delete(self, node_name):
         self._goto_submenu_safe("代理")
+        self.search(node_name)
         row = self._get_row_by_name(node_name)
         if not row:
             logger.info(f"代理 '{node_name}' 不存在，无需删除")
@@ -759,17 +771,7 @@ class BmsPage(BasePage):
         except AssertionError as e:
             logger.warning(f"未捕获到代理删除成功提示，继续轮询列表确认: {e}")
 
-        deadline = time.time() + 300
-        while time.time() < deadline:
-            self._goto_submenu_safe("代理")
-            self.search(node_name)
-            self.page.wait_for_timeout(3000)
-            physical_machines = self.get_column_data("物理机")
-            if node_name not in physical_machines:
-                logger.info(f"代理 '{node_name}' 已删除")
-                return
-            self.page.wait_for_timeout(5000)
-        raise AssertionError(f"代理 '{node_name}' 删除后仍存在")
+        self._wait_for_row_absence("代理", node_name, label="代理", timeout=300)
 
     def bms_agent_cleanup(self):
         self.page.wait_for_timeout(1500)
@@ -872,10 +874,12 @@ class BmsPage(BasePage):
 
     def bms_discovery_delete(self, name):
         self._goto_discovery()
+        self.search(name)
         row = self._get_row_by_name(name)
         if row:
             self._js_click_action(row, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("发现", name, label="发现任务")
 
     def bms_discovery_cleanup(self):
         self._goto_discovery()
@@ -938,10 +942,12 @@ class BmsPage(BasePage):
 
     def bms_register_delete(self, bmc_ip):
         self._goto_submenu_safe("注册")
+        self.search(bmc_ip)
         row = self._get_row_by_name(bmc_ip)
         if row:
             self._js_click_action(row, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("注册", bmc_ip, label="注册信息", cell_index=3)
 
     def bms_register_cleanup(self):
         self._goto_submenu_safe("注册")
@@ -962,6 +968,22 @@ class BmsPage(BasePage):
                 return rows
             self.page.wait_for_timeout(interval)
         return []
+
+    def _wait_for_row_absence(self, submenu_name: str, keyword: str, *, label: str, timeout: int = 120,
+                              poll_interval: int = 5, cell_index: int | None = None):
+        """轮询等待指定行从当前列表中消失。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self._goto_submenu_safe(submenu_name)
+            self.search(keyword)
+            self.page.wait_for_timeout(2000)
+            row = (self._get_row_by_cell_text(keyword, cell_index=cell_index)
+                   if cell_index is not None else self._get_row_by_name(keyword))
+            if not row:
+                logger.info(f"{label} '{keyword}' 已删除")
+                return True
+            self.page.wait_for_timeout(poll_interval * 1000)
+        raise AssertionError(f"{label} '{keyword}' 删除后仍存在")
 
     def _click_el_radio(self, row_locator):
         """点击 Element UI 的 el-radio（优先点击包装器）。"""
@@ -1471,6 +1493,7 @@ class BmsPage(BasePage):
 
     def bms_instance_delete(self, name):
         self._goto_submenu_safe("裸金属实例")
+        self.search(name)
         row = self._get_row_by_name(name)
         if row:
             try:
@@ -1478,6 +1501,7 @@ class BmsPage(BasePage):
             except Exception:
                 self.click_action(name, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("裸金属实例", name, label="裸金属实例")
 
     def bms_instance_cleanup(self):
         self._goto_submenu_safe("裸金属实例")
@@ -3147,6 +3171,7 @@ class BmsPage(BasePage):
             group_name: 交换机组名称
         """
         self.goto_service("交换机组")
+        self.search(group_name)
         self.page.wait_for_timeout(3000)
         row = self._get_row_by_name(group_name)
         if not row:
@@ -3154,6 +3179,7 @@ class BmsPage(BasePage):
             return
         self._js_click_action(row, "删除")
         self._confirm_sugon_dialog()
+        self._wait_for_row_absence("交换机组", group_name, label="交换机组")
         logger.info(f"交换机组 '{group_name}' 删除成功")
 
     # ---- full cleanup ----
