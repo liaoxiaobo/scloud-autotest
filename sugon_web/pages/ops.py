@@ -37,15 +37,8 @@ class OpsPage(BasePage):
         self.get_by_placeholder(placeholder).click()
         dropdown = self.page.locator(".el-select-dropdown:visible")
         expect(dropdown).to_be_visible(timeout=timeout)
-        self.page.wait_for_timeout(500)
 
-        # 统一在下拉框内搜索选项，避免全局 get_by_title 匹配到不可见元素
-        target_item = dropdown.locator(".el-select-dropdown__item").filter(
-            has_text=re.compile(re.escape(value))
-        ).first
-        expect(target_item).to_be_attached(timeout=timeout)
-        target_item.scroll_into_view_if_needed(timeout=timeout)
-
+        # 若指定了接口模式，先等待异步接口返回，确保选项已加载
         if api_url_pattern:
             try:
                 with self.page.expect_response(
@@ -56,14 +49,37 @@ class OpsPage(BasePage):
                     ),
                     timeout=timeout
                 ):
-                    target_item.click(force=True)
-                logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
+                    pass
+                logger.info(f"下拉框选项接口已返回: {api_url_pattern}")
             except PlaywrightTimeoutError:
-                logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
-                target_item.click(force=True)
-        else:
+                logger.warning(f"未捕获接口 {api_url_pattern}，继续轮询等待选项")
+
+        # 轮询等待目标选项出现在下拉框中（慢环境/异步加载兼容）
+        target_item = None
+        for _ in range(30):
+            candidate = dropdown.locator(".el-select-dropdown__item").filter(
+                has_text=re.compile(re.escape(value))
+            ).first
+            if candidate.count() > 0 and candidate.is_visible():
+                target_item = candidate
+                break
             self.page.wait_for_timeout(500)
-            target_item.click(force=True)
+
+        if target_item is None:
+            # 兜底：获取当前所有选项文本用于诊断
+            all_items = dropdown.locator(".el-select-dropdown__item")
+            item_texts = []
+            for i in range(min(all_items.count(), 20)):
+                try:
+                    item_texts.append(all_items.nth(i).inner_text(timeout=2000))
+                except Exception:
+                    pass
+            raise AssertionError(
+                f"下拉框选项 '{value}' 未找到。当前可见选项: {item_texts}"
+            )
+
+        target_item.scroll_into_view_if_needed(timeout=timeout)
+        target_item.click(force=True)
 
     @submenu("平台网络")
     def mfip_create(self, project: str, network: str, ip: str, exact: bool = True):

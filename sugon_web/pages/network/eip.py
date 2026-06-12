@@ -159,6 +159,8 @@ class EipMixin(BasePage):
                 raise AssertionError(f"不支持的分配模式: {method}")
 
         dialog.get_by_text("确定", exact=True).click()
+        # 弹窗断言需在对话框关闭前完成（Element UI toast 默认只显示 3 秒）
+        self.assert_popup_success("执行成功")
         expect(dialog).not_to_be_visible(timeout=10000)
 
         if selected_ips:

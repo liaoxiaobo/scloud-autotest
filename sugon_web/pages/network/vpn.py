@@ -182,6 +182,7 @@ class VpnMixin(BasePage):
         fip_address: str = "",
         connection_type: str = "虚拟私有云",
         vpc_name: str = "",
+        er_name: str = "",
         flavor: str = "虚拟专用网络数据型",
         resource_pool_tag: str = "",
         client_subnet: str = "",
@@ -196,6 +197,7 @@ class VpnMixin(BasePage):
             fip_address: 绑定的弹性公网IP地址。
             connection_type: 连接类型，默认"虚拟私有云"。
             vpc_name: 关联的虚拟私有云名称。
+            er_name: 关联的企业路由器名称，连接类型为"企业路由器"时使用。
             flavor: 规格，默认"虚拟专用网络数据型"。
             resource_pool_tag: 资源池标签，仅SSL类型时需要，如"基础版"。
             client_subnet: 客户端网段，仅SSL类型时需要，如"17.17.17.0/24"。
@@ -226,28 +228,128 @@ class VpnMixin(BasePage):
             self._select_type(vpn_type)
 
         # SSL类型特有字段
+        is_high_edition = False
         if vpn_type == "SSL" and resource_pool_tag:
             with allure_step_log("选择资源池标签"):
                 try:
                     self._select_radio_by_label("资源池标签", resource_pool_tag)
+                    is_high_edition = resource_pool_tag == "高级版"
                 except Exception:
                     self.logger.info("资源池标签选择可能不存在或已自动填充")
 
-        with allure_step_log("选择资源池"):
-            self._click_dropdown_by_label("资源池", resource_pool)
+        # 定义IP选择的内部辅助逻辑
+        def _select_ip_from_dropdown(ip_addr):
+            """使用 JS 直接操作 DOM 和 Vue 组件来选择 IP 地址。
 
-        with allure_step_log("选择IP地址"):
-            if fip_address:
-                try:
-                    self._click_dropdown_by_label("IP地址", fip_address)
-                except Exception:
-                    self.logger.info("IP地址选择可能不存在或已自动填充")
+            绕过 Playwright 的 CustomLocator 包装和复杂的 UI 交互。
+            """
+            result = self.page.evaluate(
+                '''(ipAddr) => {
+                    return new Promise((resolve) => {
+                        // 1. 找到 IP 地址表单项
+                        const items = document.querySelectorAll('.el-form-item');
+                        let ipItem = null;
+                        for (const item of items) {
+                            const label = item.querySelector('.el-form-item__label');
+                            if (label) {
+                                const text = label.textContent.trim().replace('*', '').trim();
+                                if (text === 'IP地址') {
+                                    ipItem = item;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!ipItem) {
+                            resolve({ error: 'IP地址表单项未找到' });
+                            return;
+                        }
+
+                        // 2. 尝试通过 Vue 实例打开下拉框
+                        const selectEl = ipItem.querySelector('.el-select');
+                        let opened = false;
+                        if (selectEl && selectEl.__vue__) {
+                            try {
+                                selectEl.__vue__.toggleMenu();
+                                opened = true;
+                            } catch (e) {}
+                        }
+
+                        // 3. 如果 Vue 方法失败，使用 DOM click
+                        if (!opened) {
+                            const input = ipItem.querySelector('.el-input__inner');
+                            if (input) {
+                                input.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                input.focus();
+                                input.click();
+                                opened = true;
+                            }
+                        }
+
+                        if (!opened) {
+                            resolve({ error: '无法打开IP下拉框' });
+                            return;
+                        }
+
+                        // 4. 等待选项加载
+                        setTimeout(() => {
+                            const options = document.querySelectorAll('.el-select-dropdown__item');
+                            const texts = Array.from(options).map(o => o.textContent.trim());
+
+                            if (options.length === 0) {
+                                resolve({ error: '下拉框无选项', opened: true });
+                                return;
+                            }
+
+                            // 5. 查找匹配的选项，否则选择第一个
+                            let targetIdx = 0;
+                            for (let i = 0; i < options.length; i++) {
+                                if (options[i].textContent.includes(ipAddr)) {
+                                    targetIdx = i;
+                                    break;
+                                }
+                            }
+
+                            // 6. 点击选项
+                            options[targetIdx].click();
+
+                            // 7. 等待选择生效
+                            setTimeout(() => {
+                                const input = ipItem.querySelector('.el-input__inner');
+                                resolve({
+                                    success: true,
+                                    selected: input ? input.value : 'unknown',
+                                    texts: texts,
+                                    targetIdx: targetIdx
+                                });
+                            }, 500);
+                        }, 1500);
+                    });
+                }''',
+                ip_addr,
+            )
+            self.logger.info(f"JS IP选择结果: {result}")
+            if isinstance(result, dict) and result.get("error"):
+                raise AssertionError(f"IP地址选择失败: {result['error']}")
+            if isinstance(result, dict) and not result.get("success"):
+                raise AssertionError(f"IP地址选择未成功: {result}")
+
+        if not is_high_edition:
+            with allure_step_log("选择资源池"):
+                self._click_dropdown_by_label("资源池", resource_pool)
+                # 资源池选择后异步加载IP列表，需充分等待
+                self.page.wait_for_timeout(5000)
+
+            with allure_step_log("选择IP地址"):
+                if fip_address:
+                    try:
+                        _select_ip_from_dropdown(fip_address)
+                    except Exception as e:
+                        self.logger.warning(f"IP地址选择失败: {e}")
 
         # SSL类型特有字段：客户端网段
         if vpn_type == "SSL" and client_subnet:
             with allure_step_log("填写客户端网段"):
                 try:
-                    # 通过标签定位客户端网段输入框
                     form_item = ctx.locator(".el-form-item").filter(has_text="客户端网段").first
                     subnet_input = form_item.locator("input").first
                     subnet_input.fill(client_subnet)
@@ -257,10 +359,31 @@ class VpnMixin(BasePage):
         with allure_step_log(f"选择连接类型: {connection_type}"):
             self._select_connection_type(connection_type)
 
+        # 连接类型切换后表单可能重新渲染，刷新上下文
+        ctx = self._get_form_context()
+        self.page.wait_for_timeout(1500)
+
+        # 连接类型切换后IP地址会被重置，需要重新选择（仅基础版）
+        if not is_high_edition and fip_address:
+            with allure_step_log("重新选择IP地址"):
+                try:
+                    _select_ip_from_dropdown(fip_address)
+                except Exception as e:
+                    self.logger.warning(f"IP地址重新选择失败: {e}")
+
+        # 连接类型切换后客户端网段可能被重置，重新填充
+        if vpn_type == "SSL" and client_subnet:
+            with allure_step_log("重新填写客户端网段"):
+                try:
+                    form_item = ctx.locator(".el-form-item").filter(has_text="客户端网段").first
+                    subnet_input = form_item.locator("input").first
+                    subnet_input.fill(client_subnet)
+                except Exception:
+                    self.logger.info("客户端网段重新输入框未找到，可能不需要")
+
         if vpc_name and connection_type == "虚拟私有云":
             with allure_step_log("选择虚拟私有云"):
                 try:
-                    # 直接通过placeholder找到VPC下拉框
                     vpc_select = ctx.get_by_placeholder("请选择虚拟私有云").first
                     vpc_select.click()
                     self.page.wait_for_timeout(500)
@@ -268,11 +391,89 @@ class VpnMixin(BasePage):
                     expect(dropdown).to_be_visible(timeout=10000)
                     options = dropdown.locator(".el-select-dropdown__item")
                     expect(options.first).to_be_visible(timeout=10000)
-                    # 使用前缀匹配查找VPC名称
                     dropdown.get_by_text(vpc_name, exact=False).first.click()
                     self.page.wait_for_timeout(500)
                 except Exception as e:
                     self.logger.info(f"VPC选择失败: {e}")
+
+        if er_name and connection_type == "企业路由器":
+            with allure_step_log("选择企业路由器"):
+                try:
+                    self.page.wait_for_timeout(2000)
+                    er_form_item = None
+                    all_form_items = self.page.locator(".el-form-item")
+                    for i in range(all_form_items.count()):
+                        item = all_form_items.nth(i)
+                        try:
+                            label_elem = item.locator(".el-form-item__label").first
+                            if label_elem.count() > 0:
+                                label_text = label_elem.inner_text(timeout=2000).strip().lstrip("*").strip()
+                                if label_text == "企业路由器":
+                                    er_form_item = item
+                                    break
+                        except Exception:
+                            continue
+                    if er_form_item is None:
+                        raise AssertionError("未找到标签为'企业路由器'的表单项")
+                    expect(er_form_item).to_be_visible(timeout=10000)
+                    er_select = er_form_item.locator(".el-select").first
+                    er_select.evaluate("el => el.scrollIntoView({behavior: 'instant', block: 'center'})")
+                    self.page.wait_for_timeout(500)
+                    try:
+                        er_select.click()
+                    except Exception:
+                        er_select.evaluate(
+                            "el => el.dispatchEvent(new MouseEvent('click',"
+                            " { bubbles: true, cancelable: true }))"
+                        )
+                    self.page.wait_for_timeout(500)
+                    dropdown = self.page.locator(".el-select-dropdown:visible")
+                    expect(dropdown).to_be_visible(timeout=10000)
+                    options = dropdown.locator(".el-select-dropdown__item")
+                    for _ in range(30):
+                        if options.count() > 0:
+                            break
+                        self.page.wait_for_timeout(500)
+                    expect(options.first).to_be_visible(timeout=10000)
+                    target_option = None
+                    for i in range(options.count()):
+                        opt = options.nth(i)
+                        opt_text = opt.inner_text()
+                        if er_name in opt_text:
+                            target_option = opt
+                            break
+                    if target_option is None:
+                        raise AssertionError(
+                            f"ER下拉选项中未找到 '{er_name}'")
+                    target_option.evaluate(
+                        "el => el.dispatchEvent(new MouseEvent('click',"
+                        " { bubbles: true, cancelable: true }))"
+                    )
+                    self.page.wait_for_timeout(500)
+                    if dropdown.count() > 0:
+                        target_option.click()
+                    try:
+                        expect(dropdown).to_have_count(0, timeout=5000)
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(2000)
+                    er_input = er_form_item.locator(
+                        ".el-select .el-input__inner").first
+                    input_value = er_input.input_value()
+                    if er_name not in input_value:
+                        self.logger.warning(
+                            f"ER选择后验证失败: 期望包含 '{er_name}',"
+                            f" 实际值: '{input_value}'")
+                        try:
+                            self.page.get_by_text(
+                                er_name, exact=False).first.click()
+                            self.page.wait_for_timeout(2000)
+                        except Exception as retry_err:
+                            self.logger.warning(f"ER重选失败: {retry_err}")
+                    else:
+                        self.logger.info(f"ER选择验证通过: '{input_value}'")
+                except Exception as e:
+                    self.logger.warning(f"企业路由器选择失败: {e}")
 
         with allure_step_log("选择规格"):
             try:
@@ -312,26 +513,8 @@ class VpnMixin(BasePage):
             self.click_action(name, "删除")
 
         with allure_step_log("确认删除"):
-            # 尝试多种对话框选择器
-            dialog_selectors = [
-                ".el-dialog__wrapper:visible",
-                ".sugon-dialog:visible",
-                ".el-dialog:visible",
-                ".el-dialog__wrapper",
-                ".sugon-dialog",
-            ]
-            dialog = None
-            for sel in dialog_selectors:
-                dialog = self.page.locator(sel).first
-                if dialog.count() > 0 and dialog.is_visible():
-                    break
-            if dialog is None or dialog.count() == 0:
-                # 兜底：直接找包含"确定"的可见按钮
-                pass
-            else:
-                expect(dialog).to_be_visible(timeout=10000)
-            # 点击确定按钮
-            self.page.get_by_text("确定", exact=True).first.click()
+            # 使用 dialog_confirm 定位弹窗内的确定按钮，避免点到页面其他"确定"
+            self.dialog_confirm.click()
             self.page.wait_for_timeout(1000)
 
     def open_vpn_gateway_detail(self, name: str):
@@ -343,14 +526,16 @@ class VpnMixin(BasePage):
         with allure_step_log(f"点击VPN网关名称 '{name}' 进入详情页"):
             self.wait_for_page_ready()
             self.page.wait_for_timeout(1000)
-            # 先定位到目标行，再在行内点击名称，避免匹配到页面其他区域的同名文本
+            # 先定位到目标行，滚动到可视区域后再点击名称链接
             row = self.get_row_by_name(name)
-            name_elem = row.get_by_text(name, exact=True).first
-            try:
-                name_elem.click()
-            except Exception:
-                # 兜底：使用JS点击绕过可见性检查
-                name_elem.evaluate("el => el.click()")
+            row.scroll_into_view_if_needed()
+            # 名称列渲染为 <a><span>name</span></a>，但 <span>/<a> 都可能因表格
+            # overflow 被 Playwright 判定为不可见，故统一用 JS 点击触发导航
+            name_link = row.locator("a").filter(has_text=name).first
+            if name_link.count() > 0:
+                name_link.evaluate("el => el.click()")
+            else:
+                row.get_by_text(name, exact=True).first.evaluate("el => el.click()")
             self.wait_for_page_ready()
             self.page.wait_for_timeout(2000)
 
@@ -378,6 +563,10 @@ class VpnMixin(BasePage):
                         "网络类型","客户端连接数","客户端网段","公网IP地址","已创建",
                         "实例信息","专有网络","基本配置","详情","VPN网关"];
 
+                    function normalizeText(text) {{
+                        return text.replace(/\\s+/g, ' ').trim();
+                    }}
+
                     // 遍历所有文本节点
                     const walker = document.createTreeWalker(
                         document.querySelector("#cloud-container-content") || document.body,
@@ -387,14 +576,15 @@ class VpnMixin(BasePage):
                     );
                     let node;
                     while (node = walker.nextNode()) {{
-                        if (node.textContent.trim() === label) {{
+                        if (normalizeText(node.textContent) === label) {{
                             const parent = node.parentElement;
-                            const container = parent.closest(".el-descriptions__cell, .info-item, .detail-item, [class*='detail'], [class*='info'], [class*='descriptions']") || parent.parentElement;
-                            const texts = Array.from(container.querySelectorAll("*")).map(el => el.innerText.trim()).filter(t => t && t !== label);
+                            const container = parent.closest(".el-descriptions__cell, .info-item, .detail-item, [class*='detail'], [class*='info'], [class*='descriptions'], .el-form-item, .el-row") || parent.parentElement;
+                            const texts = Array.from(container.querySelectorAll("*")).map(el => el.innerText.trim()).filter(t => t && normalizeText(t) !== label);
                             // 去重并保持顺序
                             const unique = [];
                             for (const t of texts) {{
-                                if (!unique.includes(t) && t !== label) unique.push(t);
+                                const nt = normalizeText(t);
+                                if (nt && !unique.includes(nt) && nt !== label) unique.push(nt);
                             }}
                             if (unique.length > 0) {{
                                 // 过滤掉已知label

@@ -204,6 +204,7 @@ def test_example(eip):
 | `testcase/network/conftest.py` | `vpc`     | `count`: 创建数量（默认1） `name`: VPC名称 `subnet_name`: 子网名称 `cidr`: CIDR `network_type`: 网络类型 `enable_ipv6`: 是否启用IPv6 | **核心fixture**：创建VPC并自动清理。count=1返回字典，count>1返回列表。返回包含name、subnet_name、cidr等信息。 |
 | `testcase/network/conftest.py` | `vip`     | 无（依赖vpc fixture）                                                                                               | 在vpc的子网中创建虚拟IP                                                                 |
 | `testcase/network/conftest.py` | `port`    | `count`: 创建数量（默认1）                                                                                             | 在vpc的子网中创建端口，返回端口IP列表                                                          |
+| `testcase/network/_vpn_gateway_er_fixtures.py` | `er_for_vpn_gateway` | 无（依赖er_page fixture） | 创建开启HA的企业路由器并自动清理；teardown等待40秒确保VPN网关释放后再删ER，供VPN网关连接ER场景使用（需显式import） |
 
 
 ---

@@ -358,7 +358,6 @@ def eip(vpc_page, request):
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     yield created_ips[0] if count == 1 else created_ips
 
