@@ -3,7 +3,26 @@ import os
 import allure
 import pytest
 
-from sugon_web.utils.logger import allure_step_log
+from sugon_web.testcase.storage._obs_backsource_helpers import (
+    _access_with_retry,
+    _close_page_silent,
+    _verify_source_public_read,
+)
+from sugon_web.utils.logger import allure_step_log, logger
+
+
+def _goto_bucket_list(obs_page):
+    """从任意 OBS 页面强制回到桶列表。
+
+    obs_page.goto_service 会复用当前已在对象存储服务下的页面，
+    但在 ACL/数据回源配置页等子页面中左侧菜单可能缺失，
+    goto_submenu 无法完成导航。此处使用直达桶列表 URL 的兜底方式。
+    """
+    from sugon_web.config.config import Config
+
+    base_url = Config.get("base_url").rstrip("/")
+    obs_page.page.goto(f"{base_url}/obs/#/store/list")
+    obs_page.wait_for_page_ready()
 
 
 @allure.epic('存储服务')
@@ -34,15 +53,14 @@ class TestOBSMirrorBacksource:
             obs_page.obs_bucket_enter_detail(bucket01["name"])
             obs_page.obs_object_tab_click()
             obs_page.obs_object_upload(test_file_path)
-            obs_page.page.wait_for_timeout(3000)
+            obs_page.wait_for_page_ready()
             obs_page.assert_object_list_contain(test_file_name)
 
         # ------------------ 步骤2：获取 bucket01 EndPoint ------------------
         with allure_step_log("步骤2: 获取 bucket01 的 EndPoint HTTPS URL"):
-            # 返回桶详情页获取 EndPoint
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket01["name"])
-            obs_page.page.wait_for_timeout(3000)
+            obs_page.wait_for_page_ready()
             endpoint_text = obs_page.obs_bucket_endpoint_get()
             source_domain, source_port, _ = obs_page.obs_bucket_endpoint_url_extract(
                 endpoint_text
@@ -59,7 +77,7 @@ class TestOBSMirrorBacksource:
 
         # ------------------ 步骤4：开启 bucket02 公共读权限 ------------------
         with allure_step_log("步骤4: 开启 bucket02 桶ACLs公共访问权限"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_acl_config_click()
             obs_page.obs_bucket_acl_public_edit(
@@ -69,7 +87,7 @@ class TestOBSMirrorBacksource:
 
         # ------------------ 步骤5：为 bucket02 配置镜像回源规则 ------------------
         with allure_step_log("步骤5: 为 bucket02 配置镜像回源规则"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_datasource_config_click()
             obs_page.obs_datasource_mirror_rule_create(
@@ -81,30 +99,52 @@ class TestOBSMirrorBacksource:
                 rule_type="镜像回源", source_type="公有类型"
             )
 
-        # ------------------ 步骤6：测试镜像回源规则生效 ------------------
-        with allure_step_log("步骤6: 通过 URL 访问触发镜像回源"):
-            # 构造访问 URL: https://步骤1记录的URL/bucket02桶名称/bucket01桶内对象test1名称
-            # endpoint_text 格式如 https://obs.xxx.com:20480
-            mirror_url = (
-                f"{endpoint_text}/{bucket02['name']}/{test_file_name}"
+        # ------------------ 步骤6：诊断源站公共读权限 ------------------
+        with allure_step_log("步骤6-诊断: 验证源站 bucket01 公共读权限是否生效"):
+            source_direct_url = f"{endpoint_text}/{bucket01['name']}/{test_file_name}"
+            anonymous_status, auth_status = _verify_source_public_read(
+                page.context.browser, page.context, source_direct_url
             )
-            # 使用 API 请求访问（避免浏览器下载触发导航中止）
-            response = obs_page.page.request.get(mirror_url)
-            # 验证响应状态为 200 或触发下载
-            assert response.status in [200, 204, 206], (
-                f"镜像回源访问失败，状态码: {response.status}"
+            logger.info(
+                f"匿名访问源站 {bucket01['name']}/{test_file_name} 状态码: {anonymous_status}"
+            )
+            logger.info(
+                f"登录态访问源站 {bucket01['name']}/{test_file_name} 状态码: {auth_status}"
             )
 
-        # ------------------ 步骤7：验证 bucket02 对象列表存在回源对象 ------------------
-        with allure_step_log("步骤7: 验证 bucket02 对象列表中存在回源对象"):
-            obs_page.goto_submenu("桶列表")
+        # ------------------ 步骤7：测试镜像回源规则生效 ------------------
+        with allure_step_log("步骤7: 通过浏览器新页面访问触发镜像回源"):
+            mirror_url = f"{endpoint_text}/{bucket02['name']}/{test_file_name}"
+            mirror_status, mirror_pages = _access_with_retry(
+                page.context.browser,
+                mirror_url,
+                max_attempts=5,
+                initial_delay=30,
+                retry_delay=15,
+            )
+            assert mirror_status in [200, 204, 206], (
+                f"镜像回源访问失败，状态码: {mirror_status}"
+                f"(匿名访问源站状态码: {anonymous_status}, "
+                f"登录态访问源站状态码: {auth_status})"
+            )
+
+        # ------------------ 步骤8：验证 bucket02 对象列表存在回源对象 ------------------
+        with allure_step_log("步骤8: 验证 bucket02 对象列表中存在回源对象"):
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_object_tab_click()
             obs_page.assert_object_list_contain(test_file_name)
 
+        # ------------------ 清理：关闭所有新创建的页面实例 ------------------
+        for p in mirror_pages:
+            _close_page_silent(p)
+
         # ------------------ 清理：删除 bucket02 的数据回源规则 ------------------
         with allure_step_log("清理: 删除 bucket02 的镜像回源规则"):
-            obs_page.goto_submenu("桶列表")
+            _goto_bucket_list(obs_page)
             obs_page.obs_bucket_enter_detail(bucket02["name"])
             obs_page.obs_bucket_datasource_config_click()
             obs_page.obs_datasource_rule_delete(rule_type="镜像回源")
+            # 删除规则后页面停留在数据回源配置页，左侧菜单可能缺失；
+            # 回到桶列表，确保 fixture teardown 能正常定位并清理桶。
+            _goto_bucket_list(obs_page)
