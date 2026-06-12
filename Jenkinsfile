@@ -77,7 +77,7 @@ key 是环境别名，value 是该环境的 host/stor/user/pwd。''')
                             return [:]
                         }
                         try {
-                            return new groovy.json.JsonSlurperClassic().parseText(value.trim())
+                            return readJSON text: value.trim()
                         } catch (Exception e) {
                             error "${paramName} 不是合法 JSON：${e.message}"
                         }
