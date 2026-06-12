@@ -7,15 +7,21 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。为空时按原逻辑运行整个 testcase')
-        text(name: 'ENV_CONFIGS', defaultValue: '''bigdata_env|172.22.1.190|ceph|admin|keystone_sugon
-middleware_env|172.22.1.190|usan|admin|keystone_sugon
-special_env|172.22.1.191|ceph|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
-格式：环境别名|host|stor|user|pwd''')
-        text(name: 'MODULE_ENV_MAP', defaultValue: '''bigdata=bigdata_env
-middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
+        text(name: 'ENV_CONFIGS', defaultValue: '''{
+  "bigdata_env": {"host": "172.22.1.190", "stor": "ceph", "user": "admin", "pwd": "keystone_sugon"},
+  "middleware_env": {"host": "172.22.1.190", "stor": "usan", "user": "admin", "pwd": "keystone_sugon"},
+  "special_env": {"host": "172.22.1.191", "stor": "ceph", "user": "admin", "pwd": "keystone_sugon"}
+}''', description: '''页面维护的环境池，JSON 格式。模块未指定环境时使用上面的 HOST/STOR/USER/PWD。
+key 是环境别名，value 是该环境的 host/stor/user/pwd。''')
+        text(name: 'MODULE_ENV_MAP', defaultValue: '''{
+  "bigdata": "bigdata_env",
+  "middleware": "middleware_env"
+}''', description: '''模块绑定环境别名，JSON 格式。key 是 testcase 下的模块目录名，value 是 ENV_CONFIGS 里的环境别名。
 示例：
-bigdata=bigdata_env
-middleware=middleware_env''')
+{
+  "bigdata": "bigdata_env",
+  "middleware": "middleware_env"
+}''')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
@@ -66,45 +72,25 @@ middleware=middleware_env''')
                         pwd : params.PWD
                     ]
 
-                    def parseEnvConfigs = { String value ->
-                        def result = [:]
-                        value?.split('\n')?.eachWithIndex { rawLine, index ->
-                            def line = rawLine.trim()
-                            if (!line || line.startsWith('#')) {
-                                return
-                            }
-                            def parts = line.split('\\|', -1).collect { it.trim() }
-                            if (parts.size() != 5) {
-                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
-                            }
-                            result[parts[0]] = [
-                                host: parts[1],
-                                stor: parts[2],
-                                user: parts[3],
-                                pwd : parts[4]
-                            ]
+                    def parseJsonParam = { String value, String paramName ->
+                        if (!value?.trim()) {
+                            return [:]
                         }
-                        return result
+                        try {
+                            return readJSON(text: value.trim())
+                        } catch (Exception e) {
+                            error "${paramName} 不是合法 JSON：${e.message}"
+                        }
                     }
 
-                    def parseModuleEnvMap = { String value ->
-                        def result = [:]
-                        value?.split('\n')?.eachWithIndex { rawLine, index ->
-                            def line = rawLine.trim()
-                            if (!line || line.startsWith('#')) {
-                                return
-                            }
-                            def parts = line.split('=', -1).collect { it.trim() }
-                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
-                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
-                            }
-                            result[parts[0]] = parts[1]
-                        }
-                        return result
-                    }
+                    def envConfigs = parseJsonParam(params.ENV_CONFIGS, 'ENV_CONFIGS')
+                    def moduleEnvMap = parseJsonParam(params.MODULE_ENV_MAP, 'MODULE_ENV_MAP')
 
-                    def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
-                    def moduleEnvMap = parseModuleEnvMap(params.MODULE_ENV_MAP)
+                    envConfigs.each { envName, envCfg ->
+                        if (!(envCfg instanceof Map)) {
+                            error "ENV_CONFIGS.${envName} 必须是对象，示例：{\"host\":\"172.22.1.190\",\"stor\":\"ceph\"}"
+                        }
+                    }
 
                     def modules = []
                     if (params.MODULES?.trim()) {
