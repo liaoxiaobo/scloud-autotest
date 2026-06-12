@@ -147,7 +147,7 @@ class TablesMixin:
         return rows
 
     def get_row_by_name(self, name: str) -> Locator:
-        """公共方法: 根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
+        """公共方法: 根据名称查找数据行,用于获取单个或最后一个匹配的行(前缀匹配优先)"""
         t_body = self.locator(".el-table__body-wrapper")
         if t_body.count() == 0:
             t_body = self
@@ -157,46 +157,48 @@ class TablesMixin:
             target_rows = t_body.locator("tr").filter(has_text=pattern)
             if target_rows.count() > 0:
                 self.logger.debug(f"找到精确匹配 {name} 的数据行(空白字符)")
-                return target_rows.first
+                return target_rows.last
 
             pattern2 = re.compile(rf"^{re.escape(name)}:\w+")
             target_rows = t_body.locator("tr").filter(has_text=pattern2)
             if target_rows.count() > 0:
                 self.logger.debug(f"找到带ID的匹配 {name} 的数据行(冒号)")
-                return target_rows.first
+                return target_rows.last
 
             pattern3 = re.compile(rf"^{re.escape(name)}/\w+")
             target_rows = t_body.locator("tr").filter(has_text=pattern3)
             if target_rows.count() > 0:
                 self.logger.debug(f"找到带ID的匹配 {name} 的数据行(斜杠)")
-                return target_rows.first
+                return target_rows.last
 
         except Exception as e:
             self.logger.debug(f"正则匹配失败: {e}")
 
         try:
             target_rows = t_body.locator("tr")
-            for i in range(target_rows.count()):
+            total = target_rows.count()
+            # 从后往前遍历，取最后一条匹配
+            for i in range(total - 1, -1, -1):
                 current_row = target_rows.nth(i)
                 try:
                     cells = current_row.locator("td")
                     for j in range(cells.count()):
                         cell_text = cells.nth(j).text_content()
                         if cell_text and cell_text.strip() == name:
-                            self.logger.info(f"通过遍历找到 '{name}' 的精确匹配行")
+                            self.logger.info(f"通过遍历找到 '{name}' 的精确匹配行(第{i}行)")
                             return current_row
                 except Exception as e:
                     self.logger.debug(f"检查行 {i} 时出错: {e}")
                     continue
 
-            for i in range(target_rows.count()):
+            for i in range(total - 1, -1, -1):
                 current_row = target_rows.nth(i)
                 try:
                     cells = current_row.locator("td")
                     for j in range(cells.count()):
                         cell_text = cells.nth(j).text_content()
                         if cell_text and cell_text.strip().startswith(name):
-                            self.logger.info(f"通过遍历找到 '{name}' 的前缀匹配行(单元格: {cell_text.strip()})")
+                            self.logger.info(f"通过遍历找到 '{name}' 的前缀匹配行(单元格: {cell_text.strip()}, 第{i}行)")
                             return current_row
                 except Exception as e:
                     self.logger.debug(f"检查行 {i} 时出错: {e}")

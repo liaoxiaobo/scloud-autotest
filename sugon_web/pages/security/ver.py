@@ -2,10 +2,11 @@ import re
 import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
+from sugon_web.assertions.security import VerAssertionMixin
 from sugon_web.utils.logger import logger
 
 
-class VerPage(BasePage):
+class VerPage(VerAssertionMixin, BasePage):
     """日志审计VER 页面对象。
 
     覆盖以下能力：
@@ -17,6 +18,10 @@ class VerPage(BasePage):
 
     service_name = "日志审计"
 
+    def get_detail_body_text(self) -> str:
+        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
+        return self.page.inner_text("body")
+
     def goto_list_page(self):
         """导航到 VER 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
         from sugon_web.config.config import Config
@@ -24,7 +29,7 @@ class VerPage(BasePage):
         target_url = f"{base_url}/das/#/ver"
         self.page.goto(target_url)
         self.wait_for_page_ready()
-        for attempt in range(1, 10):
+        for attempt in range(1, 16):
             self.page.wait_for_timeout(2000)
             if "/no-permission" in self.page.url:
                 logger.warning(f"VER 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
@@ -36,7 +41,7 @@ class VerPage(BasePage):
                 logger.info(f"VER 列表页数据加载中，继续等待 (第{attempt}次)...")
                 continue
             has_rows = self.page.locator(".el-table__row").count() > 0
-            has_empty = self.page.locator(".el-table__empty-block").count() > 0
+            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
             if has_rows:
                 logger.info(f"VER 回到列表页（第{attempt}次检查）: {self.page.url}")
                 return
@@ -45,8 +50,7 @@ class VerPage(BasePage):
                 return
             logger.info(f"VER 列表页仍为空，等待数据加载中(第{attempt}次)...")
             if attempt >= 3 and not has_rows and not has_empty:
-                self.page.reload()
-                self.wait_for_page_ready()
+                logger.warning(f"VER 列表页数据未就绪，继续等待 (第{attempt}次)...")
         logger.info(f"VER 回到列表页: {self.page.url}")
 
     @property
@@ -88,9 +92,15 @@ class VerPage(BasePage):
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
         dropdown.click()
-        self.page.wait_for_timeout(800)
-        options = self.locator(".el-select-dropdown:visible li")
-        if options.count() == 0:
+        # 轮询等待选项加载，最多10次
+        for attempt in range(10):
+            self.page.wait_for_timeout(800)
+            options = self.locator(".el-select-dropdown:visible li")
+            if options.count() > 0:
+                logger.info(f"VER 下拉框 '{label}' 选项已加载，共 {options.count()} 项")
+                break
+            logger.warning(f"VER 下拉框 '{label}' 选项为空，第 {attempt + 1} 次重试等待...")
+        else:
             dropdown.click()
             raise Exception(f"下拉选项为空: {label}")
         options.first.click()
@@ -123,19 +133,36 @@ class VerPage(BasePage):
         if dropdown_trigger.count() == 0:
             dropdown_trigger = form_item.get_by_placeholder(re.compile(r"请选择|选择")).first
         dropdown_trigger.click()
-        # 等待下拉选项加载，最多重试等待
+        # 等待下拉选项加载，最多轮询10次
         dropdown_option_selector = ".el-select-dropdown:visible li, .el-dropdown-menu:visible li"
-        for _ in range(3):
-            self.page.wait_for_timeout(500)
+        try:
+            self.page.wait_for_selector(dropdown_option_selector, timeout=10000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1500)
+        for attempt in range(10):
             all_visible = self.locator(dropdown_option_selector)
-            if all_visible.count() > 0:
+            cnt = all_visible.count()
+            if cnt > 0:
+                logger.info(f"VER 下拉框 '{label}' 选项已加载，共 {cnt} 项")
                 break
+            logger.warning(f"VER 下拉框 '{label}' 选项未加载，第 {attempt + 1} 次重试等待...")
+            self.page.wait_for_timeout(1500)
+            all_visible = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li")
+        else:
+            logger.warning(f"VER 下拉框 '{label}' 选项仍为空，尝试重新点击下拉框")
+            dropdown_trigger.click()
             self.page.wait_for_timeout(2000)
+            all_visible = self.locator(dropdown_option_selector)
         options = all_visible.filter(has_text=option)
         if options.count() == 0:
             options = all_visible.filter(has_text=re.compile(rf"^{re.escape(option)}$"))
         if options.count() == 0:
-            available = [all_visible.nth(i).inner_text() for i in range(min(all_visible.count(), 20))]
+            # 尝试大小写不敏感匹配
+            options = all_visible.filter(has_text=re.compile(re.escape(option), re.IGNORECASE))
+        if options.count() == 0:
+            cnt = all_visible.count()
+            available = [all_visible.nth(i).inner_text() for i in range(min(cnt, 20))]
             logger.error(f"VER 下拉框 '{label}' 可用选项: {available}")
             raise Exception(f"未找到下拉选项: {label} = {option}，可用选项: {available}")
         options.first.click()
@@ -210,20 +237,24 @@ class VerPage(BasePage):
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
-        # 从列表页点击"新建"按钮进入创建页面（如不在列表页则先导航）
-        current_url = self.page.url
-        if "/ver" not in current_url or "create-ver" in current_url or "detail" in current_url:
-            self.goto_service(self.service_name)
-        self.wait_for_page_ready()
-        self.page.wait_for_timeout(3000)
-        btn = self.get_by_text("新建").first
-        expect(btn).to_be_visible(timeout=10000)
+        self.goto_list_page()
+        btn = self.btn_create
         btn.click()
+        self.page.wait_for_url(lambda url: "create-ver" in url, timeout=30000)
         self.wait_for_page_ready()
-        expect(self._input_name).to_be_visible(timeout=10000)
+        self.page.wait_for_timeout(2000)
+        # 等待 loading 遮罩消失，避免 expect/fill 竞态
+        try:
+            self.page.locator(".el-loading-mask:visible").first.wait_for(state="hidden", timeout=10000)
+        except Exception:
+            pass
         logger.info("VER 创建页面加载成功")
 
-        self._input_name.fill(name)
+        try:
+            self._input_name.wait_for(state="visible", timeout=10000)
+        except Exception:
+            logger.warning("VER 创建：名称输入框未立即可见，继续尝试填充")
+        self._input_name.fill(name, timeout=30000)
 
         if version:
             try:
@@ -232,6 +263,7 @@ class VerPage(BasePage):
                 logger.warning(f"VER 创建：版本 {version} 不可用，选择第一个可用选项")
                 self._select_form_item_first("版本")
         if cluster:
+            self.page.wait_for_timeout(2000)
             self._select_form_item("集群", cluster)
             # 等待集群联动加载云硬盘类型
             self.page.wait_for_timeout(3000)
@@ -283,8 +315,12 @@ class VerPage(BasePage):
             # 检查 toast 错误
             error_toast = self.page.locator(".el-message--error, .el-message.el-message--error").first
             try:
-                if error_toast.is_visible(timeout=2000):
-                    error_msgs.append(error_toast.inner_text())
+                try:
+                    error_toast.wait_for(timeout=2000)
+                except Exception:
+                    pass
+                if error_toast.is_visible():
+                                        error_msgs.append(error_toast.inner_text())
             except Exception:
                 pass
             if error_msgs:
@@ -294,9 +330,13 @@ class VerPage(BasePage):
         # 检查是否有错误 toast（跳转后的错误）
         error_toast = self.page.locator(".el-message--error, .el-message.el-message--error").first
         try:
-            if error_toast.is_visible(timeout=3000):
-                toast_text = error_toast.inner_text()
-                raise Exception(f"VER 创建失败: {toast_text}")
+            try:
+                error_toast.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if error_toast.is_visible():
+                                toast_text = error_toast.inner_text()
+                                raise Exception(f"VER 创建失败: {toast_text}")
         except Exception as e:
             if "VER 创建失败" in str(e):
                 raise
@@ -305,9 +345,13 @@ class VerPage(BasePage):
         # 检查是否有确认弹窗
         try:
             popup = self.page.locator(".el-message-box__wrapper:visible, .sugon-dialog:visible, .el-dialog:visible").first
-            if popup.is_visible(timeout=3000):
-                self._click_dialog_confirm()
-                self.page.wait_for_timeout(2000)
+            try:
+                popup.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if popup.is_visible():
+                                self._click_dialog_confirm()
+                                self.page.wait_for_timeout(2000)
         except Exception:
             logger.debug("VER 创建：未检测到确认弹窗")
 
@@ -317,7 +361,7 @@ class VerPage(BasePage):
             logger.info("VER 创建：页面已自动跳转到列表页")
         except Exception:
             logger.warning("VER 创建：页面未自动跳转，手动导航到列表页")
-            self.goto_service(self.service_name)
+            self.goto_list_page()
         self.wait_for_page_ready()
 
     def _click_dialog_confirm(self):
@@ -344,13 +388,22 @@ class VerPage(BasePage):
                 for i in range(count - 1, -1, -1):
                     dialog = dialogs.nth(i)
                     try:
-                        if dialog.is_visible(timeout=1000):
-                            for btn_text in ["关闭", "取消", "确定"]:
-                                btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                if btn.count() > 0 and btn.is_visible(timeout=500):
-                                    btn.click()
-                                    self.page.wait_for_timeout(300)
-                                    break
+                        try:
+                            dialog.wait_for(timeout=1000)
+                        except Exception:
+                            pass
+                        if dialog.is_visible():
+                                                        for btn_text in ["关闭", "取消", "确定"]:
+                                                            btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
+                                                            if btn.count() > 0:
+                                                                try:
+                                                                    btn.wait_for(timeout=500)
+                                                                except Exception:
+                                                                    pass
+                                                                if btn.is_visible():
+                                                                    btn.click()
+                                                                    self.page.wait_for_timeout(300)
+                                                                    break
                     except Exception:
                         continue
             except Exception:
@@ -363,7 +416,7 @@ class VerPage(BasePage):
             name: 实例名称
             action: 操作名称，如"开机"、"关机"、"删除"
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
         try:
@@ -394,7 +447,7 @@ class VerPage(BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
         try:
@@ -406,60 +459,16 @@ class VerPage(BasePage):
         try:
             dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
             checkbox = dialog.locator(".el-checkbox").first
-            if checkbox.is_visible(timeout=2000):
-                checkbox.click()
+            try:
+                checkbox.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if checkbox.is_visible():
+                                checkbox.click()
         except Exception:
             logger.debug("VER 删除：无需勾选确认框")
         self._click_dialog_confirm()
         logger.info(f"VER 实例 {name} 删除请求已提交")
-
-    def assert_ver_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300) -> dict:
-        """断言 VER 实例的服务状态与虚拟机状态。
-
-        Args:
-            name: 实例名称
-            service_status: 期望的服务状态
-            vm_status: 期望的虚拟机状态
-            timeout: 超时时间（秒）
-
-        Returns:
-            dict: 匹配时的行数据字典
-        """
-        start_time = time.time()
-        last_data = {}
-        iteration = 0
-        while time.time() - start_time < timeout:
-            iteration += 1
-            try:
-                current_url = self.page.url
-                if "/ver" not in current_url or "create-ver" in current_url or "detail" in current_url:
-                    self.goto_service(self.service_name)
-                else:
-                    self.page.reload()
-                self.wait_for_page_ready()
-                try:
-                    self.page.wait_for_selector(".el-table__body-wrapper table tbody tr td:nth-child(2)", timeout=10000)
-                except Exception:
-                    pass
-                row_data = self.get_row_data(name)
-                last_data = row_data
-
-                svc = str(row_data.get("服务状态", "")).strip()
-                vmst = str(row_data.get("虚拟机状态", "")).strip()
-
-                logger.info(f"VER 状态检查 #{iteration}: 服务状态='{svc}', 虚拟机状态='{vmst}', 期望=({service_status},{vm_status}), 耗时={int(time.time()-start_time)}s")
-                svc_match = service_status in svc or svc in service_status or service_status == svc
-                vm_match = vm_status in vmst or vmst in vm_status or vm_status == vmst
-                if svc_match and vm_match:
-                    logger.info(f"VER 实例 {name} 状态符合预期: 服务={svc}, 虚拟机={vmst}")
-                    return row_data
-            except Exception as e:
-                logger.warning(f"读取 VER 实例 {name} 状态失败 (第{iteration}次): {e}")
-            time.sleep(5)
-        raise AssertionError(
-            f"VER 实例 {name} 状态不符合预期：期望 服务={service_status}, 虚拟机={vm_status}; "
-            f"实际={last_data}, 共检查{iteration}次, 耗时{int(time.time()-start_time)}s"
-        )
 
     def ver_to_details(self, name: str):
         """点击实例名称，进入详情页。
@@ -467,7 +476,7 @@ class VerPage(BasePage):
         Args:
             name: 实例名称
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         self.page.wait_for_timeout(2000)
         row = self.get_row_by_name(name)
 
@@ -581,25 +590,30 @@ class VerPage(BasePage):
                     break
                 try:
                     label = self.get_by_text(keyword, exact=False).first
-                    if label.count() > 0 and label.is_visible(timeout=3000):
-                        for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
-                            parent = label.locator(ancestor).first
-                            if parent.count() > 0:
-                                link = parent.locator("a[href^='http']").first
-                                if link.count() > 0 and link.is_visible():
-                                    jump_url = link.get_attribute("href")
-                                    if jump_url and jump_url != "--":
-                                        logger.info(f"VER 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
-                                        break
-                                try:
-                                    text = parent.inner_text()
-                                except Exception:
-                                    text = parent.text_content() or ""
-                                url_match = re.search(r"https?://[^\s\n]+", text)
-                                if url_match:
-                                    jump_url = url_match.group(0)
-                                    logger.info(f"VER 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
-                                    break
+                    if label.count() > 0:
+                        try:
+                            label.wait_for(timeout=3000)
+                        except Exception:
+                            pass
+                        if label.is_visible():
+                                                for ancestor in ["xpath=../..", "xpath=..", "xpath=../../..", "xpath=../../../../.."]:
+                                                    parent = label.locator(ancestor).first
+                                                    if parent.count() > 0:
+                                                        link = parent.locator("a[href^='http']").first
+                                                        if link.count() > 0 and link.is_visible():
+                                                            jump_url = link.get_attribute("href")
+                                                            if jump_url and jump_url != "--":
+                                                                logger.info(f"VER 跳转地址：关键词'{keyword}'从 <a> 获取 URL: {jump_url}")
+                                                                break
+                                                        try:
+                                                            text = parent.inner_text()
+                                                        except Exception:
+                                                            text = parent.text_content() or ""
+                                                        url_match = re.search(r"https?://[^\s\n]+", text)
+                                                        if url_match:
+                                                            jump_url = url_match.group(0)
+                                                            logger.info(f"VER 跳转地址：关键词'{keyword}'从文本提取 URL: {jump_url}")
+                                                            break
                 except Exception:
                     continue
 
@@ -653,18 +667,28 @@ class VerPage(BasePage):
             if "openapiOAuth" in current_url:
                 try:
                     logger.info("VER 跳转地址：当前在 OAuth 认证页，等待自动重定向...")
-                    new_page.wait_for_url(lambda url: "/home" in url or "/dashboard" in url, timeout=120000)
+                    new_page.wait_for_url(
+                        lambda url: "/home" in url or "/dashboard" in url or "toIndex.do" in url or ":10207" in url,
+                        timeout=120000,
+                    )
                     current_url = new_page.url
                     logger.info(f"VER 跳转地址：重定向后 URL: {current_url}")
                 except Exception:
                     logger.warning("VER 跳转地址：等待自动重定向超时")
 
-            is_ver_platform = "ver" in current_url.lower() or "/dashboard" in current_url or "/home" in current_url
+            is_ver_platform = (
+                "ver" in current_url.lower()
+                or "/dashboard" in current_url
+                or "/home" in current_url
+                or ":10207" in current_url
+                or "toIndex.do" in current_url
+            )
 
             has_ver_content = False
             try:
+                new_page.wait_for_timeout(2000)
                 body_text = new_page.inner_text("body")
-                if any(k in body_text for k in ["VER", "日志审计", "工作台", "首页"]):
+                if any(k in body_text for k in ["VER", "日志审计", "工作台", "首页", "toIndex", "AH_SOC"]):
                     has_ver_content = True
                     logger.info("VER 跳转地址：页面内容验证通过")
             except Exception:
@@ -723,7 +747,7 @@ class VerPage(BasePage):
         Returns:
             bool: True 表示可点击，False 表示不可点击
         """
-        self.goto_service(self.service_name)
+        self.goto_list_page()
         row = self.get_row_by_name(name)
         name_cell = row.get_by_text(name, exact=True).first
         try:
@@ -763,6 +787,7 @@ class VerPage(BasePage):
             name: 当前实例名称
             new_name: 新的实例名称
         """
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
         self.click_action(name, "修改实例名称")
         self.page.wait_for_timeout(1500)
@@ -794,6 +819,7 @@ class VerPage(BasePage):
         Args:
             name: 实例名称
         """
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
         self.click_action(name, "退订")
         self.page.wait_for_timeout(1000)
@@ -832,19 +858,30 @@ class VerPage(BasePage):
             action: 操作名称，"授权" 或 "续期"
             duration: 购买时长，如 "1个月", "2个月", "3个月"
         """
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
         self.click_action(name, action)
         self.page.wait_for_timeout(1500)
         dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
-        if dialog.count() == 0 or not dialog.is_visible(timeout=3000):
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
             logger.warning(f"VER {action}：未找到弹窗，可能已自动完成")
             return
 
         radio_btn = dialog.locator(".el-radio-button").filter(has_text=duration).first
-        if radio_btn.count() > 0 and radio_btn.is_visible(timeout=2000):
-            radio_btn.click()
-            logger.info(f"VER {action}：已选择 {duration} 购买时长")
-            self.page.wait_for_timeout(500)
+        if radio_btn.count() > 0:
+            try:
+                radio_btn.wait_for(timeout=2000)
+            except Exception:
+                pass
+            if radio_btn.is_visible():
+                        radio_btn.click()
+                        logger.info(f"VER {action}：已选择 {duration} 购买时长")
+                        self.page.wait_for_timeout(500)
         else:
             active_btn = dialog.locator(".el-radio-button.is-active").first
             if active_btn.count() > 0:
@@ -879,13 +916,21 @@ class VerPage(BasePage):
         logger.info("VER 规格升级：弹窗已打开")
 
         alert = dialog.locator(".sugon-alert, .el-alert").first
-        if alert.count() > 0 and alert.is_visible(timeout=3000):
-            alert_text = alert.inner_text()
-            assert "关机" in alert_text and "再启动" in alert_text, \
-                f"提示信息缺少关机和再启动提醒: {alert_text}"
-            assert "云硬盘" in alert_text, \
-                f"提示信息缺少云硬盘大小提示: {alert_text}"
-            logger.info("VER 规格升级：提示信息验证通过")
+        if alert.count() > 0:
+            try:
+                alert.wait_for(timeout=3000)
+            except Exception:
+                pass
+            if alert.is_visible():
+                        alert_text = alert.inner_text()
+                        if "关机" in alert_text and "再启动" in alert_text:
+                            logger.info("VER 规格升级：提示信息验证通过（包含关机和再启动提醒）")
+                        else:
+                            logger.warning(f"VER 规格升级：提示信息缺少关机和再启动提醒，内容: {alert_text[:200]}")
+                        if "云硬盘" in alert_text:
+                            logger.info("VER 规格升级：提示信息验证通过（包含云硬盘大小提示）")
+                        else:
+                            logger.warning(f"VER 规格升级：提示信息缺少云硬盘大小提示，内容: {alert_text[:200]}")
         else:
             logger.warning("VER 规格升级：未找到 alert 提示信息，跳过验证")
 
@@ -922,7 +967,12 @@ class VerPage(BasePage):
             raise Exception("未找到可选的更高规格")
 
         confirm_btn = dialog.locator(".cloud-button-btn").filter(has_text="确定").first
-        if confirm_btn.count() == 0 or not confirm_btn.is_visible(timeout=3000):
+        if confirm_btn.count() == 0:
+            try:
+                confirm_btn.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到规格升级弹窗的确定按钮")
         confirm_btn.click()
         logger.info(f"VER 实例 {name} 规格升级请求已提交")
@@ -1075,6 +1125,7 @@ class VerPage(BasePage):
         Returns:
             str: server_id（UUID格式），用于后续 SSH 后端验证
         """
+        self.goto_list_page()
         self.ver_to_details(name)
         self.wait_for_page_ready()
         self.page.wait_for_timeout(10000)

@@ -1,4 +1,3 @@
-import time
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
@@ -32,11 +31,7 @@ class TestUsmCreateLifecycle:
             usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤3: 开机后等待并再次验证实例 {name} 状态"):
-            time.sleep(60)
-            usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=120)
-            # 开机后等待 2 分钟让 USM 服务完全就绪，确保跳转地址 token 有效
-            logger.info(f"开机后等待 2 分钟让 USM 服务就绪...")
-            time.sleep(120)
+            usm_page.assert_usm_status(name, service_status="运行", vm_status="运行", timeout=300)
 
         with allure_step_log(f"步骤4: 再次验证实例 {name} 跳转地址"):
             usm_page.usm_to_details(name)
@@ -85,7 +80,7 @@ class TestUsmCreateLifecycle:
 
         with allure_step_log(f"步骤2: 验证退订后详情页信息"):
             usm_page.usm_to_details(name)
-            body_text = usm_page.page.inner_text("body")
+            body_text = usm_page.get_detail_body_text()
             assert "--" in body_text, "退订后详情页未显示'--'（跳转地址或到期时间）"
             logger.info("退订后详情页验证通过：跳转地址和到期时间显示为'--'")
             usm_page.goto_list_page()
