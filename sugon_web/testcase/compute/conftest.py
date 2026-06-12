@@ -143,12 +143,12 @@ def bms_regression_requires_instance(request):
     with allure_step_log("setup: 检查BMS回归实例前置"):
         bms_page._goto_submenu_safe("裸金属实例")
         bms_page.bms_search(instance_name)
-        row = bms_page._get_row_by_name(instance_name)
-        if not row:
+        row_data = bms_page.get_row_data(instance_name)
+        if not row_data:
             pytest.skip(f"BMS实例 '{instance_name}' 不存在，跳过依赖该实例的回归用例")
-        row_text = row.text_content() or ""
-        if any(status in row_text for status in ["删除", "错误"]):
-            pytest.skip(f"BMS实例 '{instance_name}' 状态异常，跳过回归用例: {row_text[:120]}")
+        status = str(row_data.get("状态", ""))
+        if any(bad in status for bad in ["删除", "错误"]):
+            pytest.skip(f"BMS实例 '{instance_name}' 状态异常，跳过回归用例: {status}")
 
 
 @pytest.fixture()

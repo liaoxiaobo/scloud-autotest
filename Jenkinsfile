@@ -49,6 +49,7 @@ pipeline {
                 docker{
                     image "playwright-sugon:${IMAGE_TAG}"
                     args '--rm'
+                    reuseNode true
                 }
             }
           steps{
