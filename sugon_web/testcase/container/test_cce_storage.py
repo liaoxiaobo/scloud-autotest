@@ -15,7 +15,7 @@ class TestCCEStorageClassAndVolume:
     @allure.title("集群管理-新建云硬盘存储类型(fstype={fstype})")
     def test_storage_class_create(self, cce_page, cce_cluster, ssh_host, ssh_vm, fstype):
         cluster_name = cce_cluster["name"]
-        mfip = cce_cluster.get("mfip", "")
+        mfip = cce_cluster.get("master_mfip", "")
         sc_name = f"evs-sc-{random_data(length=4)}"
 
         with allure_step_log("步骤1: 进入集群详情页-存储类型页面"):
@@ -86,7 +86,7 @@ class TestCCEStorageClassAndVolume:
     @allure.title("云硬盘类型存储卷-创建功能验证")
     def test_storage_volume_create(self, cce_page, cce_cluster, storage_class, ssh_host, ssh_vm):
         cluster_name = cce_cluster["name"]
-        mfip = cce_cluster.get("mfip", "")
+        mfip = cce_cluster.get("master_mfip", "")
         sc_name = storage_class["name"]
         pvc_name = f"pvc-{random_data(length=4)}"
 
@@ -173,7 +173,7 @@ class TestCCEStorageClassAndVolume:
     @allure.title("云硬盘类型存储卷-删除功能验证")
     def test_storage_volume_delete(self, cce_page, cce_cluster, storage_class, ssh_host, ssh_vm):
         cluster_name = cce_cluster["name"]
-        mfip = cce_cluster.get("mfip", "")
+        mfip = cce_cluster.get("master_mfip", "")
         sc_name = storage_class["name"]
         pvc_name = f"pvc-del-{random_data(length=4)}"
 

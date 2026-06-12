@@ -89,15 +89,14 @@ class OpsPage(BasePage):
                     ),
                     timeout=timeout
                 ):
-                    self.page.wait_for_timeout(1000)
-                    target_item.click()
+                    target_item.click(force=True)
                 logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
             except PlaywrightTimeoutError:
                 logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
-                target_item.click()
+                target_item.click(force=True)
         else:
-            self.page.wait_for_timeout(2000)
-            target_item.click()
+            self.page.wait_for_timeout(500)
+            target_item.click(force=True)
 
     @submenu("平台网络")
     def mfip_create(self, project: str, network: str, ip: str, exact: bool = True):

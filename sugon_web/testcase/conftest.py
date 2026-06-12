@@ -692,7 +692,9 @@ def _bind_vm_fixture_mfips(
             ops_page.mfip_create(vm_data["project"], network, vm_data["ip"])
             ops_page.assert_popup_success()
             ops_page.mfip_search(vm_data["ip"])
-            vm_data["mfip"] = ops_page.get_row_data(vm_data["ip"]).get("管理IP地址")
+            rows = ops_page.get_rows_by_text(vm_data["ip"])
+            last_row = rows.last
+            vm_data["mfip"] = ops_page.get_row_data_by_locator(last_row).get("管理IP地址")
     ecs_page.goto_service("弹性云服务器")
 
 
@@ -1151,6 +1153,11 @@ def pytest_configure(config):
 
     for tp in testpaths:
         base = Path(tp)
+        if not base.is_absolute():
+            base = Path(config.rootpath) / base
+        if not base.is_dir():
+            # PyCharm 从子目录启动单用例时，相对 testpaths 可能解析不到项目根。
+            base = Path(__file__).parent
         if not base.is_dir():
             continue
         for path in base.rglob("test_*.py"):

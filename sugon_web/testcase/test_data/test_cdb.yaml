@@ -163,3 +163,17 @@ es:
         - version: "6.8.23"
           disk_size: 20
           security_mode: true
+rabbitmq:
+    test_create_and_delete_rabbitmq:
+        - disk_type: "default"
+          disk_size: 10
+        - disk_type: "default"
+          disk_size: 20
+        - disk_type: "default"
+          disk_size: 30
+prometheus:
+    test_create_and_delete_prometheus:
+        - disk_type: "default"
+          disk_size: 10
+        - disk_type: "default"
+          disk_size: 20

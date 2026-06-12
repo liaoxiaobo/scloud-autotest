@@ -171,6 +171,82 @@ class EcsDetailMixin(BasePage):
         logger.info(f"{name}实例修改Agent版本设置为: {agent_conf}")
 
 
+    @submenu("弹性云服务器")
+    def ecs_nic_set_qos(self, vm_name, qos_name=None):
+        """在ECS详情页网卡列表中为第一张网卡设置QoS。
+
+        Args:
+            vm_name: 云服务器名称。
+            qos_name: QoS策略名称，传入None或"不限制"表示取消QoS限制。
+        """
+        self.ecs_to_details(vm_name)
+        self.wait_for_page_ready()
+
+        # 切换到"网卡列表"页签
+        tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(r"^\s*网卡列表\s*$")).first
+        # 移动鼠标到空白区域消除可能遮挡的 tooltip
+        self.page.mouse.move(0, 0)
+        self.page.wait_for_timeout(500)
+        tab.click()
+        self.wait_for_page_ready()
+
+        # 等待网卡列表表格加载
+        self.page.wait_for_timeout(2000)
+        first_row = self.page.locator(".el-table__body-wrapper .el-table__body tr").first
+        expect(first_row).to_be_visible(timeout=15000)
+
+        op_cell = first_row.locator("td").last
+        op_cell.scroll_into_view_if_needed()
+
+        btn = op_cell.locator("button").first
+        if btn.count() == 0 or not btn.is_visible():
+            btn = op_cell.get_by_text("更多")
+        if btn.count() == 0 or not btn.is_visible():
+            dropdown = op_cell.locator("[class*='dropdown']").first
+            if dropdown.count() > 0:
+                inner_btn = dropdown.locator("button").first
+                if inner_btn.count() > 0 and inner_btn.is_visible():
+                    btn = inner_btn
+                else:
+                    dropdown.click(force=True)
+                    self.page.wait_for_timeout(500)
+                    self.page.get_by_text("设置QoS").first.dispatch_event("click")
+                    dialog = self.get_by_role("dialog").filter(has_text="设置QoS").first
+                    expect(dialog).to_be_visible(timeout=5000)
+
+                    if qos_name and qos_name != "不限制":
+                        dialog.get_by_placeholder("QoS").click()
+                        self.page.wait_for_timeout(800)
+                        self.page.locator(".el-select-dropdown__item").filter(has_text=qos_name).first.click()
+                    else:
+                        dialog.get_by_placeholder("QoS").click()
+                        self.page.wait_for_timeout(800)
+                        self.page.get_by_text("不限制", exact=True).click()
+
+                    dialog.get_by_text("确定", exact=True).click()
+                    logger.info(f"云服务器 {vm_name} 网卡QoS设置完成: {qos_name or '不限制'}")
+                    return
+
+        btn.click()
+        self.page.wait_for_timeout(500)
+
+        self.page.get_by_text("设置QoS").first.dispatch_event("click")
+
+        dialog = self.get_by_role("dialog").filter(has_text="设置QoS").first
+        expect(dialog).to_be_visible(timeout=5000)
+
+        if qos_name and qos_name != "不限制":
+            dialog.get_by_placeholder("QoS").click()
+            self.page.wait_for_timeout(800)
+            self.page.locator(".el-select-dropdown__item").filter(has_text=qos_name).first.click()
+        else:
+            dialog.get_by_placeholder("QoS").click()
+            self.page.wait_for_timeout(800)
+            self.page.get_by_text("不限制", exact=True).click()
+
+        dialog.get_by_text("确定", exact=True).click()
+        logger.info(f"云服务器 {vm_name} 网卡QoS设置完成: {qos_name or '不限制'}")
+
     def ecs_back_to_list(self):
         """返回云服务器列表页
         """

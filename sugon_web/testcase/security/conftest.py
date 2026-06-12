@@ -2,11 +2,42 @@ import pytest
 from sugon_web.pages.security.apt import AptPage
 from sugon_web.pages.security.usm import UsmPage
 from sugon_web.pages.security.ver import VerPage
+from sugon_web.pages.security.vdb import VdbPage
 from sugon_web.utils.logger import logger
+from sugon_web.utils.data import random_data
 
 
 @pytest.fixture(scope="session")
-def usm_instance(browser, config):
+def security_vpc(browser, config):
+    """创建安全合规测试专用 VPC，session 级共享，所有 session fixture 结束后自动清理。"""
+    from sugon_web.conftest import _create_logged_in_page
+    from sugon_web.pages.network import VpcPage
+
+    context = browser.new_context(ignore_https_errors=True)
+    page = _create_logged_in_page(context, config)
+    vpc_page = VpcPage(page)
+    vpc_page.goto_service("虚拟私有云")
+
+    vpc_name = random_data().replace("autotest-", "autotest-vpc-")
+    subnet_name = random_data()
+    cidr = random_data("cidr")
+
+    vpc_page.vpc_create(name=vpc_name, subnet_name=subnet_name, cidr=cidr)
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    logger.info(f"安全合规专用 VPC 创建成功: {vpc_name}, CIDR={cidr}")
+
+    yield {"name": vpc_name, "subnet_name": subnet_name, "cidr": cidr}
+
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.vpc_delete(vpc_name)
+    vpc_page.assert_deleted(vpc_name)
+    logger.info(f"安全合规专用 VPC 已删除: {vpc_name}")
+    page.close()
+    context.close()
+
+
+@pytest.fixture(scope="session")
+def usm_instance(browser, config, security_vpc):
     """创建 USM 实例并自动清理（scope=session）。
 
     所有 USM 测试共享同一个实例，session 结束时自动删除。
@@ -22,13 +53,15 @@ def usm_instance(browser, config):
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
     usm_page_obj = UsmPage(page)
-    usm_page_obj.goto_service("云堡垒机高级版")
+    usm_page_obj.goto_list_page()
 
     name = random_data().replace("autotest-", "autotest-usm-")
     result = None
 
     try:
-        result = create_usm_instance(page, usm_page_obj, name)
+        result = create_usm_instance(page, usm_page_obj, name,
+                                     network=security_vpc["name"],
+                                     subnet=security_vpc["subnet_name"])
         yield result
     finally:
         if result is not None:
@@ -57,7 +90,7 @@ def usm_instance(browser, config):
 def apt_page(page):
     """初始化攻击预警APT页对象"""
     page_object = AptPage(page)
-    page_object.goto_service("攻击预警")
+    page_object.goto_list_page()
     return page_object
 
 
@@ -65,20 +98,12 @@ def apt_page(page):
 def usm_page(page):
     """初始化云堡垒机高级版USM页对象"""
     page_object = UsmPage(page)
-    page_object.goto_service("云堡垒机高级版")
-    # 等待列表数据加载完成，避免刚进入页面时表格为空导致查找失败
-    for _ in range(10):
-        if page.locator(".el-table__row").count() > 0:
-            break
-        page.wait_for_timeout(2000)
-    else:
-        page.wait_for_selector(".el-table__row", timeout=30000)
-    page.wait_for_timeout(2000)
+    page_object.goto_list_page()
     return page_object
 
 
 @pytest.fixture(scope="session")
-def ver_instance(browser, config):
+def ver_instance(browser, config, security_vpc):
     """创建 VER 实例并自动清理（scope=session）。
 
     所有 VER 测试共享同一个实例，session 结束时自动删除。
@@ -94,13 +119,15 @@ def ver_instance(browser, config):
     context = browser.new_context(ignore_https_errors=True)
     page = _create_logged_in_page(context, config)
     ver_page_obj = VerPage(page)
-    ver_page_obj.goto_service("日志审计")
+    ver_page_obj.goto_list_page()
 
     name = random_data().replace("autotest-", "autotest-ver-")
     result = None
 
     try:
-        result = create_ver_instance(page, ver_page_obj, name)
+        result = create_ver_instance(page, ver_page_obj, name,
+                                     network=security_vpc["name"],
+                                     subnet=security_vpc["subnet_name"])
         yield result
     finally:
         if result is not None:
@@ -125,10 +152,67 @@ def ver_instance(browser, config):
         context.close()
 
 
+@pytest.fixture(scope="session")
+def vdb_instance(browser, config, security_vpc):
+    """创建 VDB 实例并自动清理（scope=session）。
+
+    所有 VDB 操作类测试共享同一个实例，session 结束时自动删除。
+    测试方法声明 vdb_instance 参数即可接入，通过 vdb_instance["name"] 获取实例名。
+
+    Yields:
+        dict: 包含 name 字段的实例信息。
+    """
+    from sugon_web.conftest import _create_logged_in_page
+    from sugon_web.testcase.security._vdb_helpers import create_vdb_instance, delete_vdb_instance
+    from sugon_web.utils.data import random_data
+
+    context = browser.new_context(ignore_https_errors=True)
+    page = _create_logged_in_page(context, config)
+    vdb_page_obj = VdbPage(page)
+    vdb_page_obj.goto_list_page()
+
+    name = random_data().replace("autotest-", "autotest-vdb-")
+    result = None
+
+    try:
+        result = create_vdb_instance(page, vdb_page_obj, name,
+                                     network=security_vpc["name"],
+                                     subnet=security_vpc["subnet_name"])
+        yield result
+    finally:
+        if result is not None:
+            try:
+                delete_vdb_instance(page, vdb_page_obj, result["name"])
+            except Exception as e:
+                error_msg = str(e)
+                if "未找到名称为" in error_msg or "未找到名称" in error_msg:
+                    logger.warning(f"使用原 page 清理 VDB 实例失败（可能 session 过期）: {e}，尝试创建新 page 重新清理")
+                    try:
+                        new_page = _create_logged_in_page(context, config)
+                        new_vdb_page = VdbPage(new_page)
+                        delete_vdb_instance(new_page, new_vdb_page, result["name"])
+                        new_page.close()
+                    except Exception as e2:
+                        logger.error(f"使用新 page 清理 VDB 实例也失败: {e2}")
+                        raise e2 from e
+                else:
+                    logger.error(f"清理 VDB 实例失败: {e}")
+                    raise
+        page.close()
+        context.close()
+
+
 @pytest.fixture(scope="function")
 def ver_page(page):
     """初始化日志审计VER页对象"""
     page_object = VerPage(page)
-    page_object.goto_service("日志审计")
+    page_object.goto_list_page()
     return page_object
 
+
+@pytest.fixture(scope="function")
+def vdb_page(page):
+    """初始化数据库审计VDB页对象"""
+    page_object = VdbPage(page)
+    page_object.goto_list_page()
+    return page_object

@@ -43,12 +43,62 @@ class DialogsMixin(BaseElementMixin):
     def close_dialog_if_exists(self) -> None:
         """关闭可能存在的对话框。
 
-        通过点击对话框右上角的 Close 按钮关闭。
+        依次尝试：Close 按钮、取消/关闭文字按钮、Escape 键。
+        最多轮询 3 次，确保各类对话框（含无 Close 按钮的确认框）均被关闭。
         若当前没有对话框，静默通过不抛异常。
         """
-        if self.dialog_close.is_visible():
-            self.logger.info("发现未关闭的对话框，正在关闭...")
-            self.dialog_close.click()
+        for _ in range(3):
+            closed = False
+
+            # 1. 尝试 Close 按钮（右上角 X）
+            try:
+                if self.dialog_close.is_visible():
+                    self.logger.info("发现未关闭的对话框，正在关闭...")
+                    self.dialog_close.click(timeout=5000, force=True)
+                    self.page.wait_for_timeout(300)
+                    closed = True
+            except Exception:
+                pass
+
+            # 2. 尝试点击可见对话框中的"取消"或"关闭"按钮
+            if not closed:
+                try:
+                    dialogs = self.page.locator(
+                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                    )
+                    for i in range(min(dialogs.count(), 5)):
+                        dialog = dialogs.nth(i)
+                        for btn_text in ["取消", "关闭"]:
+                            btn = dialog.locator(
+                                "button, .el-button, .cloud-button-btn"
+                            ).filter(has=self.page.get_by_text(btn_text, exact=True)).first
+                            if btn.count() > 0 and btn.is_visible():
+                                btn.click(force=True)
+                                self.page.wait_for_timeout(300)
+                                closed = True
+                                break
+                        if closed:
+                            break
+                except Exception:
+                    pass
+
+            # 3. Escape 降级
+            if not closed:
+                try:
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(300)
+                except Exception:
+                    pass
+
+            # 检查是否还有可见对话框，没有则退出
+            try:
+                remaining = self.page.locator(
+                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                )
+                if remaining.count() == 0:
+                    break
+            except Exception:
+                break
 
     def _select_from_named_drawer(
         self,

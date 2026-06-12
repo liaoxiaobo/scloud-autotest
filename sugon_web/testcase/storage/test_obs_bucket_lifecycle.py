@@ -42,6 +42,7 @@ class TestOBSBucketLifecycle:
         with allure_step_log("步骤4: 验证生命周期规则列表"):
             # 生命周期管理页面使用 cl-table 组件，BasePage 表格方法不适用
             # 直接通过页面文本断言规则存在
+            obs_page.page.wait_for_timeout(3000)
             expect(
                 obs_page.page.get_by_text(rule_name, exact=True).first
             ).to_be_visible(timeout=10000)

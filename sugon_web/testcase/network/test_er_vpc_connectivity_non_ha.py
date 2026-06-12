@@ -33,7 +33,9 @@ def _create_vm_and_bind_mfip(ecs_page, ops_page, vm_name, vpc_name, subnet_name,
     ops_page.mfip_create("默认项目", vpc_name, vm_ip)
     ops_page.assert_popup_success()
     ops_page.mfip_search(vm_ip)
-    vm_mfip = ops_page.get_row_data(vm_ip).get("管理IP地址")
+    rows = ops_page.get_rows_by_text(vm_ip)
+    last_row = rows.last
+    vm_mfip = ops_page.get_row_data_by_locator(last_row).get("管理IP地址")
 
     return {"name": vm_name, "ip": vm_ip, "mfip": vm_mfip}
 
@@ -212,6 +214,7 @@ class TestERVPCConnectivityNonHA:
                     vpc_page.get_row_by_name(vpc1_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("174.4.4.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("174.4.4.0/24", column_name="目的地址")
                     logger.info("VPC1路由规则删除成功")
                 except Exception as e:
@@ -229,6 +232,7 @@ class TestERVPCConnectivityNonHA:
                     vpc_page.get_row_by_name(vpc2_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("173.3.3.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("173.3.3.0/24", column_name="目的地址")
                     logger.info("VPC2路由规则删除成功")
                 except Exception as e:
@@ -237,10 +241,11 @@ class TestERVPCConnectivityNonHA:
 
             with allure_step_log("清理: 删除ER连接"):
                 try:
-                    er_page._ensure_list_page()
-                    er_page.close_dialog_if_exists()
+                    er_page.goto_er_detail(er_name)
                     er_page.wait_for_page_ready()
-                    er_page.goto_connection_tab(er_name)
+                    er_page.get_by_role("tab", name="连接").click()
+                    er_page.wait_for_page_ready()
+                    er_page.page.wait_for_timeout(2000)
                     er_page.er_connection_delete(conn1_name)
                     er_page.assert_deleted(conn1_name, timeout=30)
                     er_page.er_connection_delete(conn2_name)
@@ -265,18 +270,17 @@ class TestERVPCConnectivityNonHA:
             with allure_step_log("清理: 删除VM"):
                 try:
                     ecs_page.goto_service("弹性云服务器")
-                    ecs_page.close_dialog_if_exists()
                     ecs_page.wait_for_page_ready()
+                    ecs_page._expand_page_size()
                     for vm_name in [vm1_name, vm2_name]:
                         try:
-                            ecs_page.close_dialog_if_exists()
+                            ecs_page.goto_submenu("弹性云服务器")
                             ecs_page.wait_for_page_ready()
+                            ecs_page._expand_page_size()
                             ecs_page.ecs_remove(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)
                             logger.info(f"VM {vm_name} 已移入回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.goto_submenu("回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.wait_for_page_ready()
                             ecs_page.ecs_delete(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)
