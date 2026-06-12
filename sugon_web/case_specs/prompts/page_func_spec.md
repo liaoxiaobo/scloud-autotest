@@ -19,6 +19,8 @@
 | 5 | `get_by_test_id(test_id)` | **最后手段**。无语义 role、无可见文本的元素（图表、图标）。 |
 | 6 | `locator("css")` / `locator("xpath")` | **避免使用**。仅无法修改的第三方组件例外。 |
 
+> **本项目重要例外（必读）**：曙光云大量使用 `cl-button` 等**自定义组件**，它们**没有原生 `role=button`**，`get_by_role("button", name=...)` 会**定位不到而超时**。遇到 `cl-button` 一律改用 `get_by_text("按钮文案")`（详见 §1.3）。所以"`get_by_role` 是默认"这条对本项目自定义组件不成立——先判断是不是自定义组件。
+
 ### 1.2 谨慎使用的反模式
 
 | 反模式 | 原因 | 正确做法 |
@@ -29,6 +31,18 @@
 | `page.wait_for_timeout(n)` | 假等待，既不保证就绪又拖慢执行 | 依赖自动等待，必要时用 `expect` 显式等待 |
 | `query_selector` / ElementHandle | 静态快照，可能指向已销毁的 DOM | 始终使用 Locator（惰性求值） |
 | 超长 CSS 链 `div > section > ul > li` | DOM 结构变化即失效 | 按区域拆分，链式 scoped 定位 |
+
+### 1.3 本项目自定义组件定位速查（高频陷阱，编码前必看）
+
+> 以下是实测在复杂用例阶段三反复返工的项目专属陷阱。**编码时直接按此写，不要再用通用默认方式踩坑**；仍不确定时用 `recon_page.py` 侦察真实渲染态。
+
+| 场景 | 错误（会超时/报错） | 正确做法 |
+|:---|:---|:---|
+| `cl-button` 自定义按钮（立即创建/下一步/确定/搜索/保存等） | `get_by_role("button", name="保存")` | `get_by_text("保存")`（不依赖 ARIA role） |
+| Element UI 下拉框，页面存在多个（含隐藏） | `.el-select-dropdown__wrap`（strict 多匹配） | `.el-select-dropdown:visible` 限定可见，或经 BasePage `_select_dropdown` 语义封装 |
+| 多步向导对话框（如监听器创建 = 3 步） | 当单页表单填完直接点"确定" | 按真实步数逐步：Step1 →"下一步"→ Step2 →"下一步"→ Step3 →"确定"；步数以侦察/前端为准 |
+| 详情页返回按钮（动态渲染） | 直接 click `el-icon-arrow-left` 或猜 `.sugon-back-button` | click 前 `expect(btn).to_be_enabled()`；**以 URL 变化判定返回成功**；多策略兜底（图标→面包屑→`go_back()`） |
+| 下拉选项文案 | 凭需求文档直译（如"云服务器实例"） | 以页面真实渲染文案为准（如"弹性云服务器 ECS"），不确定先侦察 |
 
 ---
 
@@ -52,9 +66,7 @@
 > 本节展示**按规范实现的最佳实践**。
 
 ```python
-import logging
-
-logger = logging.getLogger(__name__)
+from sugon_web.utils.logger import logger
 
 def lb_forward_rule_create(self, slb_name, rule_name):
     """创建 L7 转发规则。
