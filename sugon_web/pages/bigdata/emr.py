@@ -266,6 +266,22 @@ class EMRPage(BasePage):
             has_text=service_pattern
         ).first
 
+    def _has_service_card(self, service_name: str) -> bool:
+        return self.page.evaluate(
+            """serviceName => {
+                const service = serviceName.toLowerCase();
+                return Array.from(document.querySelectorAll(
+                    '.serve_content .serve_item, .serve_content .serve_item_disable, ' +
+                    '.el-tab-pane:not([aria-hidden="true"]) .serve_item, ' +
+                    '.el-tab-pane:not([aria-hidden="true"]) .serve_item_disable'
+                )).some(el => {
+                    const title = el.querySelector('.title_text')?.textContent?.trim().toLowerCase();
+                    return title === service;
+                });
+            }""",
+            service_name,
+        )
+
     def _wait_service_cards_loaded(self, timeout: int = 30):
         cards = self.page.locator(".el-tab-pane:not([aria-hidden='true']) .serve_item, "
                                   ".el-tab-pane:not([aria-hidden='true']) .serve_item_disable")
@@ -302,6 +318,7 @@ class EMRPage(BasePage):
     def assert_service_status(self, service_name: str, expected_status: str):
         text = self._get_service_card_text(service_name)
         if expected_status in text:
+            self.logger.info(f"服务状态断言通过: {service_name} 包含状态 {expected_status}")
             return
 
         services = self.page.evaluate(
@@ -318,23 +335,35 @@ class EMRPage(BasePage):
     @submenu("实例")
     def is_service_installed(self, name: str, service_name: str):
         self.ensure_detail_tab(name, "集群服务")
-        return self._service_card(service_name).count() > 0
+        return self._has_service_card(service_name)
 
     def wait_service_status(self, service_name: str, expected_status: str, timeout: int = 1800):
         for _ in range(max(1, timeout // 10)):
             self.page.reload()
             self._ensure_cluster_service_tab_active()
+            self._wait_service_cards_loaded()
             text = self._get_service_card_text(service_name)
             if expected_status in text:
-                self.assert_service_status(service_name, expected_status)
+                self.logger.info(f"服务状态等待通过: {service_name} 已变为 {expected_status}")
                 return
             sleep(10)
-        raise AssertionError(f"{service_name} 服务未在 {timeout} 秒内变为{expected_status}")
+        services = self.page.evaluate(
+            """() => Array.from(document.querySelectorAll('.serve_content .serve_item, .serve_content .serve_item_disable'))
+                .map(item => ({
+                    name: item.querySelector('.title_text')?.textContent?.trim() || '',
+                    text: item.innerText.replace(/\\s+/g, ' ').trim()
+                }))"""
+        )
+        raise AssertionError(f"{service_name} 服务未在 {timeout} 秒内变为{expected_status}，当前服务卡片: {services}")
 
     def wait_service_installing(self, service_name: str, timeout: int = 300):
         for _ in range(max(1, timeout // 5)):
             text = self._get_service_card_text(service_name)
-            if "安装中" in text or "正常" in text:
+            if "安装中" in text:
+                self.logger.info(f"服务状态等待通过: {service_name} 已进入 安装中")
+                return
+            if "正常" in text:
+                self.logger.info(f"服务状态等待通过: {service_name} 已直接变为 正常")
                 return
             sleep(5)
         raise AssertionError(f"{service_name} 服务未在 {timeout} 秒内进入安装中或正常状态")
@@ -342,11 +371,22 @@ class EMRPage(BasePage):
     def wait_service_running(self, service_name: str, timeout: int = 1800):
         self.wait_service_status(service_name, "正常", timeout=timeout)
 
+    def wait_service_absent(self, service_name: str, timeout: int = 300):
+        for _ in range(max(1, timeout // 10)):
+            self.page.reload()
+            self._ensure_cluster_service_tab_active()
+            self._wait_service_cards_loaded()
+            if not self._has_service_card(service_name):
+                self.logger.info(f"服务卸载断言通过: {service_name} 已不存在")
+                return
+            sleep(10)
+        raise AssertionError(f"{service_name} 服务未在 {timeout} 秒内卸载完成")
+
     @submenu("实例")
     def add_service(self, name: str, service_name: str = "HDFS"):
         self.ensure_detail_tab(name, "集群服务")
         self._wait_service_cards_loaded()
-        if self._service_card(service_name).count() > 0:
+        if self._has_service_card(service_name):
             self.wait_service_running(service_name, timeout=1800)
             return False
         self._active_detail_tab().get_by_text("添加服务", exact=True).click()
@@ -362,15 +402,23 @@ class EMRPage(BasePage):
         return True
 
     @submenu("实例")
-    def uninstall_service(self, name: str):
+    def uninstall_service(self, name: str, service_name: str = "Kafka"):
         self.ensure_detail_tab(name, "集群服务")
+        if not self._has_service_card(service_name):
+            self.logger.info(f"服务 {service_name} 不存在，跳过卸载")
+            return False
         tab = self._active_detail_tab()
         tab.get_by_text("卸载服务", exact=True).click()
-        checkbox = tab.locator("label.el-checkbox").first
+
+        service_card = tab.locator(".serve_item, .serve_item_disable").filter(
+            has_text=re.compile(re.escape(service_name), re.IGNORECASE)
+        ).first
+        checkbox = service_card.locator("label.el-checkbox, .el-checkbox").first
         checkbox.wait_for(state="visible", timeout=5000)
         checkbox.click()
         tab.get_by_text("确定", exact=True).click()
-        self.page.locator("div.el-dialog:visible").last.get_by_text("确定", exact=True).click()
+        self.dialog_confirm.click()
+        return True
 
     @submenu("实例")
     def operate_all_services(self, name: str, action: str):

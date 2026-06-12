@@ -35,16 +35,21 @@ class TestEMRBasic:
                 emr_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤三：等待并断言 Kafka 服务状态正常"):
+            emr_page.wait_service_installing("Kafka", timeout=300)
             emr_page.wait_service_running("Kafka", timeout=1800)
             emr_page.assert_service_status("Kafka", "正常")
 
     @allure.title("E-MapReduce-卸载服务")
     def test_uninstall_service(self, emr_page, emr):
-        with allure_step_log("步骤一：卸载服务"):
-            emr_page.uninstall_service(emr["name"])
+        with allure_step_log("步骤一：卸载 Kafka 服务"):
+            submitted = emr_page.uninstall_service(emr["name"], "Kafka")
 
         with allure_step_log("步骤二：验证卸载服务结果"):
-            emr_page.assert_popup_success()
+            if submitted:
+                emr_page.assert_popup_success("服务卸载任务提交完成")
+
+        with allure_step_log("步骤三：验证 Kafka 服务已卸载"):
+            emr_page.wait_service_absent("Kafka", timeout=300)
 
     @allure.title("E-MapReduce-停止所有服务")
     def test_stop_all_services(self, emr_page, emr):
@@ -76,7 +81,9 @@ class TestEMRBasic:
             emr_page.change_specification(emr["name"])
 
         with allure_step_log("步骤二：验证修改规格结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("提交成功")
+
+
 
     @allure.title("E-MapReduce-节点磁盘扩容")
     def test_expand_disk(self, emr_page, emr):

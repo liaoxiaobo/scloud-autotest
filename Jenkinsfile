@@ -153,15 +153,34 @@ middleware=middleware_env''')
     }
     post('Send Report') {
         always {
+            sh "mkdir -p allure-result"
             // 保留allure历史数据
             sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
-            // 生成 Allure 报告
-            allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+            // Jenkins Allure 插件发布报告；失败时继续生成静态报告产物，避免报告完全不可看
+            script {
+                try {
+                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+                } catch (err) {
+                    echo "Allure 插件发布失败，继续归档静态报告: ${err}"
+                }
+            }
 
-            // 清理临时文件
-            sh "rm -f allure-result/* || true"
+            // 生成可下载的静态 Allure 报告压缩包
+            sh """
+                if [ -d allure-result ] && find allure-result -type f | grep -q .; then
+                    docker run --rm -v "\$WORKSPACE:/work" -w /work playwright-sugon:${IMAGE_TAG} \\
+                        allure generate allure-result -o allure-report -c || true
+                    if [ -d allure-report ]; then
+                        zip -qr allure-report.zip allure-report || true
+                    fi
+                else
+                    echo "allure-result 为空，跳过静态报告生成"
+                fi
+            """
+
+            archiveArtifacts artifacts: 'allure-report.zip, allure-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
