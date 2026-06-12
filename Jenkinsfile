@@ -16,6 +16,10 @@ middleware=middleware_env''', description: '''模块绑定环境别名，一行�
 示例：
 bigdata=bigdata_env
 middleware=middleware_env''')
+        text(name: 'MODULE_MARK_MAP', defaultValue: '', description: '''模块绑定 pytest mark，一行一个映射。优先级高于全局 MARK。
+示例：
+database=mysql
+middleware=redis''')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
@@ -105,13 +109,14 @@ middleware=middleware_env''')
 
                     def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
                     def moduleEnvMap = parseModuleEnvMap(params.MODULE_ENV_MAP)
+                    def moduleMarkMap = parseModuleEnvMap(params.MODULE_MARK_MAP)
 
                     def modules = []
                     if (params.MODULES?.trim()) {
                         modules = params.MODULES.split(',').collect { it.trim() }.findAll { it }
                     }
 
-                    def runPytest = { String casePath, Map envCfg ->
+                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
                         def pytestCommand = "pytest --headless=true " +
                             "--host=${envCfg.host ?: defaultEnv.host} " +
                             "--stor=${envCfg.stor ?: defaultEnv.stor} " +
@@ -119,10 +124,10 @@ middleware=middleware_env''')
                             "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
                             "-n ${params.PARALLEL_COUNT} --dist=loadscope " +
                             "${casePath} " +
-                            "--alluredir ${dir}/allure-result"
+                            "--alluredir ${dir}/allure-result/${resultName}"
 
-                        if (params.MARK) {
-                            pytestCommand += " -m '${params.MARK}'"
+                        if (markExpr) {
+                            pytestCommand += " -m '${markExpr}'"
                         }
                         if (params.RUN_LAST_FAILED) {
                             pytestCommand += " --lf"
@@ -140,11 +145,12 @@ middleware=middleware_env''')
                             if (envName && !envConfigs[envName]) {
                                 error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
                             }
-                            echo "Run module ${moduleName} on ${envCfg.host}, stor=${envCfg.stor}, env=${envName ?: 'default'}"
-                            runPytest(casePath, envCfg)
+                            def markExpr = moduleMarkMap[moduleName] ?: params.MARK
+                            echo "Run module ${moduleName} on ${envCfg.host}, stor=${envCfg.stor}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
+                            runPytest(casePath, envCfg, moduleName, markExpr)
                         }
                     } else {
-                        runPytest("${dir}/sugon_web/testcase/", defaultEnv)
+                        runPytest("${dir}/sugon_web/testcase/", defaultEnv, "all", params.MARK)
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
@@ -153,34 +159,24 @@ middleware=middleware_env''')
     }
     post('Send Report') {
         always {
-            sh "mkdir -p allure-result"
+            sh "mkdir -p allure-result allure-merged-result"
             // 保留allure历史数据
-            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
+            sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
+
+            // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
+            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
 
             // Jenkins Allure 插件发布报告；失败时继续生成静态报告产物，避免报告完全不可看
             script {
                 try {
-                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-merged-result']]
                 } catch (err) {
-                    echo "Allure 插件发布失败，继续归档静态报告: ${err}"
+                    echo "Allure 插件发布失败: ${err}"
                 }
             }
 
-            // 生成可下载的静态 Allure 报告压缩包
-            sh """
-                if [ -d allure-result ] && find allure-result -type f | grep -q .; then
-                    docker run --rm -v "\$WORKSPACE:/work" -w /work playwright-sugon:${IMAGE_TAG} \\
-                        allure generate allure-result -o allure-report -c || true
-                    if [ -d allure-report ]; then
-                        zip -qr allure-report.zip allure-report || true
-                    fi
-                else
-                    echo "allure-result 为空，跳过静态报告生成"
-                fi
-            """
-
-            archiveArtifacts artifacts: 'allure-report.zip, allure-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
+            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
