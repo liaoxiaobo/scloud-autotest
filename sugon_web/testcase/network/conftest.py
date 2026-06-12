@@ -3,7 +3,12 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
+from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
+from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
+from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
+from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -1043,14 +1048,6 @@ def lb_pool_candidate_vms(browser_context, config, request):
             for vm in lb_pool_candidate_vms:
                 print(f"VM: {vm['name']}, IP: {vm['ip']}")
     """
-    from sugon_web.pages.compute import EcsPage
-    from sugon_web.testcase.conftest import (
-        _build_vm_create_request,
-        _build_vm_fixture_names,
-        _create_vm_resources,
-        _collect_vm_fixture_metadata,
-        _cleanup_vm_resources,
-    )
 
     params = getattr(request, "param", {})
     count = params.get("count", 2)

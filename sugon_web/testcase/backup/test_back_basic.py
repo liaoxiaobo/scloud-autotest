@@ -2,8 +2,10 @@ import random
 import time
 import pytest
 import allure
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.config.config import Config
 from sugon_web.testcase.backup._backup_helpers import _execute_full_backup_and_collect_data
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data
 
@@ -232,7 +234,7 @@ class TestResumeCreate:
     @allure.title("恢复任务-创建和恢复")
     # @pytest.mark.slow
     @pytest.mark.parametrize("data", load_data('test_resume_create_scenario', 'test_backup.yaml'))
-    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ops_page, ssh_vm, cleanup_resume_data, data):
+    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data, browser, config, ssh_host):
         """测试创建恢复任务的各种场景"""
         allure.dynamic.title(f"恢复任务-创建和恢复（{data['用例名称']}）")
         backup_page.goto_service('备份')
@@ -281,8 +283,11 @@ class TestResumeCreate:
             assert row_data.get("架构") == backup_task.get("source_arch"), "架构与原始虚机不一致"
 
             # 获取新虚机的 IP 并建立 SSH 连接
-            new_vm_ip = ecs_page.get_row_data(re_vm).get("IP地址").split('固定:')[1].strip()
-            new_mfip = ops_page.bind_mfip(new_vm_ip.strip())
+            re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
+            new_mfip = MfipHelper.bind_mfip_with_admin_context(
+                browser, config, re_meta["port_id"],
+                project_id=re_meta.get("project_id", "admin-inner-project"),
+            )
             mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
             login_pwd = mgmt_config.get("登录密码", "admin1234@sugon")
             ssh_vm.connect(new_mfip, pwd=login_pwd)
@@ -319,11 +324,13 @@ class TestResumeCreate:
             self,
             backup_page,
             ecs_page,
-            ops_page,
             ssh_vm,
             backup_task,
             cleanup_resume_data,
-            data
+            data,
+            browser,
+            config,
+            ssh_host
     ):
         """测试恢复的各种数据准备场景（新建资源/覆盖原始）"""
 
@@ -422,8 +429,11 @@ class TestResumeCreate:
                 assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
                 assert row_data.get("架构") == original_arch, "架构与原始虚机不一致"
 
-                new_vm_ip = row_data.get("IP地址").split('固定:')[1].strip()
-                new_mfip = ops_page.bind_mfip(new_vm_ip.strip())
+                re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
+                new_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    browser, config, re_meta["port_id"],
+                    project_id=re_meta.get("project_id", "admin-inner-project"),
+                )
                 mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
                 login_pwd = mgmt_config.get("登录密码", "sugon@20")
                 ssh_vm.connect(new_mfip, pwd=login_pwd)

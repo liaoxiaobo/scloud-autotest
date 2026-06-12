@@ -20,13 +20,11 @@ from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
-from sugon_web.testcase.conftest import (
-    _bind_vm_fixture_mfips,
-    _build_vm_fixture_names,
-    _cleanup_vm_resources,
-    _collect_vm_fixture_metadata,
-    _create_vm_resources,
-)
+from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
+from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
+from sugon_web.testcase.compute.vm_fixture.mfip_binder import _bind_vm_fixture_mfips
+from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
+
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 

@@ -59,7 +59,7 @@ class TestLbPeerConnectScenario:
         vpc2_real_server = lb_peer_vms["vpc2"][0]  # ecs2-1
         vpc2_client = lb_peer_vms["vpc2"][1]  # ecs2-2
 
-        slb_name = slbv2_in_vpc1
+        slb_name = slb_peer_in_vpc1
         lb_name = f"tcp-{random_data()}"
         pool_name = f"pool-{random_data()}"
         peer_name = f"pc-{random_data()}"

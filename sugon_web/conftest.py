@@ -25,7 +25,7 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from sugon_web.utils.logger import logger, allure_step_log
+from sugon_web.utils.logger import logger
 from sugon_web.utils.data import get_file_abspath
 from sugon_web.utils.hooks import capture_failure_screenshot, get_page_from_item
 from sugon_web.common.remote.ssh import SSH
@@ -231,31 +231,29 @@ def browser_context(browser, request):
 
 def _create_logged_in_page(browser_context, config):
     """基于给定的 context 创建并返回一个已登录页面。"""
+    from sugon_web.common.auth import prepare_page_session
+
     base_url = config.get("base_url")
-    username = config.get("username")
-    password = config.get("password")
 
     logger.info("创建新页面...")
     page = browser_context.new_page()
     logger.info("页面创建成功")
 
-    logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url, wait_until="domcontentloaded")
-    logger.info(f"页面导航完成，当前URL: {page.url}")
+    prepare_page_session(page, config)
 
-    try:
-        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
-    except Exception:
-        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
-    logger.info(f"页面导航完成，当前URL: {page.url}")
+    # 安全网：若URL异常（如 no-permission），重新加载以恢复
+    if "no-permission" in page.url:
+        logger.info(f"页面在 no-permission，尝试重新加载恢复...")
+        try:
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+        except Exception as e:
+            logger.warning(f"重新加载失败: {e}")
 
-    if not _is_logged_in(page):
-        _login(page, {"username": username, "password": password})
-        logger.info("登录成功")
-
-        base_page_obj = BasePage(page)
-        base_page_obj.close_dialog_if_exists()
+    base_page_obj = BasePage(page)
+    base_page_obj.close_dialog_if_exists()
 
     # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
     _orig_close = page.close
@@ -454,76 +452,6 @@ def ssh_vm(jump_host):
         yield ssh
     finally:
         ssh.close()
-
-def _is_logged_in(page):
-    """检查是否已登录"""
-    current_url = page.url or ""
-    return ("/#/index" in current_url or "/#/console-page" in current_url or "/#" in current_url) and "login" not in current_url
-
-
-def _login(page, config, max_retries=3):
-    """
-    执行登录操作，带轮询重试机制
-
-    Args:
-        page: Playwright page 对象
-        config: 配置字典，包含 username 和 password
-        max_retries: 最大重试次数，默认3次
-
-    Returns:
-        bool: 登录成功返回 True
-
-    Raises:
-        Exception: 超过最大重试次数后抛出异常
-    """
-    username = config.get("username")
-    password = config.get("password")
-
-    if not username or not password:
-        raise ValueError("环境配置中缺少用户名或密码")
-
-    with allure_step_log("尝试登录"):
-        for attempt in range(1, max_retries + 1):
-            if attempt > 1:
-                logger.info(f"\n{'=' * 40}")
-                logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
-                logger.info(f"{'=' * 40}")
-
-            try:
-                # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
-                for _close_attempt in range(3):
-                    try:
-                        dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
-                            dialog_btn.click()
-                            page.wait_for_timeout(500)
-                            continue
-                    except Exception:
-                        pass
-                    break
-
-                # 填写登录信息
-                page.get_by_placeholder("请输入登录账号").fill(username)
-                page.get_by_placeholder("请输入登录密码").fill(password)
-                page.get_by_text("登 录").click()
-
-                # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
-                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=10000)
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_load_state("load")
-
-                if _is_logged_in(page):
-                    return True
-
-                raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
-
-            except Exception as e:
-                logger.info(f"第{attempt}次登录未成功: {e}")
-                if attempt == max_retries:
-                    raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
-                continue
-
-        return False
 
 @pytest.fixture(scope="session", autouse=True)
 def check_compute_nodes(ssh_host, config):
