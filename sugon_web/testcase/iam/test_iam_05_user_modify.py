@@ -32,12 +32,13 @@ class TestIamUserModify:
     def test_iam_modify_user_phone(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.2：修改手机号，验证列表页手机号字段更新。"""
         child_org = iam_shared_child_org["child_name"]
-        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        account = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or account
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         new_phone = "138" + "".join(str(random.randint(0, 9)) for _ in range(8))
 
         with allure_step_log(f"步骤1: 修改用户 {disp} 的手机号为 {new_phone}"):
-            iam_page.iam_modify_user(disp, target_org=child_org, phone=new_phone)
+            iam_page.iam_modify_user(account, target_org=child_org, phone=new_phone)
 
         with allure_step_log(f"步骤2: 验证详情页手机号已更新"):
             iam_page.iam_open_user_detail(disp, target_org=child_org)
@@ -50,12 +51,13 @@ class TestIamUserModify:
     def test_iam_modify_user_email(self, iam_page, iam_shared_user, iam_shared_child_org):
         """场景3.3：修改邮箱，验证列表页邮箱字段更新。"""
         child_org = iam_shared_child_org["child_name"]
-        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
+        account = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or account
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
         new_email = f"{random_data().replace('autotest-', 'autotest-iam-')}@sugon.com"
 
         with allure_step_log(f"步骤1: 修改用户 {disp} 的邮箱为 {new_email}"):
-            iam_page.iam_modify_user(disp, target_org=child_org, email=new_email)
+            iam_page.iam_modify_user(account, target_org=child_org, email=new_email)
 
         with allure_step_log(f"步骤2: 验证详情页邮箱已更新"):
             iam_page.iam_open_user_detail(disp, target_org=child_org)

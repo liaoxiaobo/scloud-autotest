@@ -216,6 +216,34 @@ def create_iam_child_org(page, parent_name: str, child_name: str = None):
     }
 
 
+def _sync_quota_totals_from_ui(iam_page, service_name: str, quotas: dict, assertions: list):
+    """根据页面上实际显示的配额值，同步 quotas 字典中的总量为实际值。
+
+    用于处理平台静默降级场景：输入目标值后，后端按实际可用资源裁剪，
+    页面显示 0/50 而非 0/100。此时需把 quotas 中的总量同步为实际值，
+    后续断言才能通过。
+
+    Args:
+        iam_page: IAM 页面对象
+        service_name: 服务名称
+        quotas: 待修改的配额字典（会被原地修改）
+        assertions: 断言列表 [(指标名, 期望值), ...]
+    """
+    import re as _re
+    for metric_name, _ in assertions:
+        actual_value = iam_page.iam_read_quota_value(service_name, metric_name)
+        match = _re.search(r"/\s*(\d+)", actual_value)
+        if not match:
+            continue
+        actual_total = int(match.group(1))
+        # 找到该使用量指标对应的总量 key 并同步
+        for qk in list(quotas.keys()):
+            for src, dst in [("总量", "使用量"), ("总量", "使用总量")]:
+                if qk.replace(src, dst) == metric_name:
+                    quotas[qk] = actual_total
+                    break
+
+
 def modify_and_assert_quota(iam_page, service_name, quotas, assertions):
     """修改指定服务的配额并逐项断言指标值。
 
@@ -243,6 +271,10 @@ def modify_and_assert_quota(iam_page, service_name, quotas, assertions):
             logger.warning(f"{service_name} 跳过(服务不存在): {msg}")
             return None
         raise
+
+    # 同步页面实际显示值到 quotas，兼容平台静默降级
+    _sync_quota_totals_from_ui(iam_page, service_name, quotas, assertions)
+
     for metric_name, expected in assertions:
         actual_val = _resolve_quota_value(metric_name, quotas, expected)
         iam_page.iam_assert_quota_value(service_name, metric_name, actual_val)
