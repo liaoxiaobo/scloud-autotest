@@ -48,6 +48,7 @@ middleware=redis''')
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
                     dir = "$workspace"  // 记录工作目录,供后续stage使用（容器内执行测试时需知道代码路径）
+                    sh "rm -rf allure-result allure-merged-result allure-report"
                     sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
@@ -132,6 +133,7 @@ middleware=redis''')
                             pytestCommand += " --lf"
                         }
 
+                        echo "Pytest command: ${pytestCommand}"
                         sh pytestCommand
                     }
 
@@ -145,10 +147,11 @@ middleware=redis''')
                                 error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
                             }
                             def markExpr = moduleMarkMap[moduleName] ?: params.MARK
-                            echo "Run module ${moduleName} on ${envCfg.host}, stor=${envCfg.stor}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
+                            echo "Resolved module ${moduleName}: host=${envCfg.host}, stor=${envCfg.stor}, user=${envCfg.user}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
                             runPytest(casePath, envCfg, moduleName, markExpr)
                         }
                     } else {
+                        echo "Resolved all testcase: host=${defaultEnv.host}, stor=${defaultEnv.stor}, user=${defaultEnv.user}, mark=${params.MARK ?: 'default'}"
                         runPytest("${dir}/sugon_web/testcase/", defaultEnv, "all", params.MARK)
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
