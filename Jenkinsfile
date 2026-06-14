@@ -115,6 +115,7 @@ middleware=redis''')
                     if (params.MODULES?.trim()) {
                         modules = params.MODULES.split(',').collect { it.trim() }.findAll { it }
                     }
+                    def failedModules = []
 
                     def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
                         def pytestCommand = "pytest --headless=true " +
@@ -148,7 +149,16 @@ middleware=redis''')
                             }
                             def markExpr = moduleMarkMap[moduleName] ?: params.MARK
                             echo "Resolved module ${moduleName}: host=${envCfg.host}, stor=${envCfg.stor}, user=${envCfg.user}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
-                            runPytest(casePath, envCfg, moduleName, markExpr)
+                            try {
+                                runPytest(casePath, envCfg, moduleName, markExpr)
+                            } catch (err) {
+                                failedModules.add(moduleName)
+                                currentBuild.result = 'FAILURE'
+                                echo "模块 ${moduleName} 执行失败，继续执行后续模块: ${err}"
+                            }
+                        }
+                        if (failedModules) {
+                            error "以下模块执行失败: ${failedModules.join(', ')}"
                         }
                     } else {
                         echo "Resolved all testcase: host=${defaultEnv.host}, stor=${defaultEnv.stor}, user=${defaultEnv.user}, mark=${params.MARK ?: 'default'}"
