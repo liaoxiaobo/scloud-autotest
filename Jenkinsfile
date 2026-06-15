@@ -131,6 +131,14 @@ middleware=redis''')
                     if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
                     }
+                    if (!modules && !isBmsRun) {
+                        def moduleText = sh(
+                            script: "find '${baseWorkspace}/sugon_web/testcase' -mindepth 2 -maxdepth 2 -name 'test_*.py' -print | awk -F/ '{print \$(NF-1)}' | sort -u",
+                            returnStdout: true
+                        ).trim()
+                        modules = moduleText ? moduleText.split('\n').collect { it.trim() }.findAll { it } : []
+                        echo "MODULES 为空，自动扫描到模块: ${modules.join(', ')}"
+                    }
 
                     def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
                         def pytestCommand = "pytest --headless=true " +
