@@ -38,8 +38,8 @@ pipeline {
                 script{
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
+                    env.IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    sh "docker build -t playwright-sugon:${env.IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
           }
@@ -47,7 +47,7 @@ pipeline {
         stage('Run Tests'){
             agent{
                 docker{
-                    image "playwright-sugon:${IMAGE_TAG}"
+                    image "playwright-sugon:${env.IMAGE_TAG}"
                     args '--rm'
                     reuseNode true
                 }
@@ -122,6 +122,7 @@ pipeline {
             // deleteDir()  // clean up our workspace
 
             // Docker 系统清理
+            sh "docker rmi playwright-sugon:${env.IMAGE_TAG} || true" // 删除本次构建的临时镜像
             sh "docker system prune -f"
 
             // 发送报告到飞书
