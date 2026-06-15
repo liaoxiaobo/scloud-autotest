@@ -7,6 +7,7 @@ pipeline {
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         string(name: 'MARK', defaultValue: 'preflight-all', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
+        text(name: 'ENV_MATRIX', defaultValue: '', description: '多环境串行前置检查 JSON。留空则使用 HOST/STOR 单环境。示例：[{"name":"env-a","host":"172.22.3.140","stor":"xstor"},{"name":"env-b","host":"172.22.3.150","stor":"xstor"}]')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
         string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
@@ -60,6 +61,7 @@ pipeline {
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
                     def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'daily-backend', 'preflight-all', 'all-checks']
                     def isPreflightSuite = preflightSuites.contains(markFilter)
+                    def envMatrixText = (params.ENV_MATRIX ?: '').trim()
                     def preflightMarkExpression = 'preflight'
                     if (markFilter == 'frontend') {
                         preflightMarkExpression = 'preflight_frontend'
@@ -81,49 +83,84 @@ pipeline {
                     }
 
                     def testTarget = isPreflightSuite ? "sugon_web/testcase/preflight/test_environment_health.py" : (isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/")
-
-                    // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
-                    if (params.BMS_INSTANCE_NAME?.trim()) {
-                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
-                    }
-                    if (params.BMS_BMC_IP?.trim()) {
-                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
-                    }
-                    if (params.BMS_PREFERRED_NODE?.trim()) {
-                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
-                    }
-                    if (params.BMS_NETWORK_NAME?.trim()) {
-                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
-                    }
-                    if (params.BMS_PASSWORD?.trim()) {
-                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
-                    }
-                    if (effectiveParallelCount != '1') {
-                        pytestCommand += " -n ${effectiveParallelCount} --dist=loadscope"
-                    }
-
-                    // 标签筛选逻辑（-m 参数）
-                    if (isPreflightSuite) {
-                        pytestCommand += " -m '${preflightMarkExpression}'"
-                    } else if (params.MARK) {
-                        pytestCommand += " -m '${params.MARK}'"
-                    }
-                    // 添加 RUN_LAST_FAILED 参数
-                    if (params.RUN_LAST_FAILED) {
-                        pytestCommand += " --lf"
+                    def buildPytestCommand = { targetHost, targetStor, targetUser, targetPwd ->
+                        def cmd = "pytest --headless=true --host=${targetHost} --stor=${targetStor} --username=${targetUser} --password=${targetPwd} ${testTarget} --alluredir allure-result"
+                        if (params.BMS_INSTANCE_NAME?.trim()) {
+                            cmd += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                        }
+                        if (params.BMS_BMC_IP?.trim()) {
+                            cmd += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                        }
+                        if (params.BMS_PREFERRED_NODE?.trim()) {
+                            cmd += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                        }
+                        if (params.BMS_NETWORK_NAME?.trim()) {
+                            cmd += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                        }
+                        if (params.BMS_PASSWORD?.trim()) {
+                            cmd += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                        }
+                        if (effectiveParallelCount != '1') {
+                            cmd += " -n ${effectiveParallelCount} --dist=loadscope"
+                        }
+                        if (isPreflightSuite) {
+                            cmd += " -m '${preflightMarkExpression}'"
+                        } else if (params.MARK) {
+                            cmd += " -m '${params.MARK}'"
+                        }
+                        if (params.RUN_LAST_FAILED) {
+                            cmd += " --lf"
+                        }
+                        return cmd
                     }
 
-                    if (isPreflightSuite) {
-                        def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} ${pytestCommand}", returnStatus: true)
+                    if (isPreflightSuite && envMatrixText) {
+                        def envMatrix = new groovy.json.JsonSlurperClassic().parseText(envMatrixText)
+                        if (!(envMatrix instanceof List) || envMatrix.isEmpty()) {
+                            error "ENV_MATRIX 必须是非空 JSON 数组"
+                        }
+                        def healthFiles = []
+                        def failedEnvs = []
+                        envMatrix.eachWithIndex { envCfg, index ->
+                            def envName = (envCfg.name ?: envCfg.host ?: "env-${index + 1}").toString()
+                            def envHost = (envCfg.host ?: '').toString()
+                            if (!envHost) {
+                                error "ENV_MATRIX 第 ${index + 1} 项缺少 host"
+                            }
+                            def envStor = (envCfg.stor ?: params.STOR).toString()
+                            def envUser = (envCfg.user ?: params.USER).toString()
+                            def envPwd = (envCfg.pwd ?: envCfg.password ?: params.PWD).toString()
+                            def safeEnv = envName.replaceAll('[^A-Za-z0-9_.-]', '_')
+                            echo "开始前置检查环境: ${envName} (${envHost})"
+
+                            def pytestCommand = buildPytestCommand(envHost, envStor, envUser, envPwd)
+                            def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} PREFLIGHT_ENV_NAME=${safeEnv} ${pytestCommand}", returnStatus: true)
+                            def healthJson = "preflight-results/health_${safeEnv}.json"
+                            def healthStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}", returnStatus: true)
+                            sh "mkdir -p allure-result/preflight-${safeEnv}; if [ -d allure-result/preflight/test_environment_health ]; then find allure-result/preflight/test_environment_health -maxdepth 1 -type f -exec cp -n {} allure-result/preflight-${safeEnv}/ \\; ; fi"
+                            healthFiles << healthJson
+                            if (pytestStatus != 0 || healthStatus != 0) {
+                                failedEnvs << "${envName}(pytest=${pytestStatus}, health=${healthStatus})"
+                            }
+                        }
+                        def matrixJson = "preflight-results/health_matrix.json"
+                        def mergeInputs = healthFiles.collect { "'${it}'" }.join(' ')
+                        def mergeStatus = sh(script: "python -m sugon_web.tools.preflight.merge_health --output ${matrixJson} ${mergeInputs}", returnStatus: true)
+                        def matrixStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${matrixJson}", returnStatus: true)
+                        if (failedEnvs || mergeStatus != 0 || matrixStatus != 0) {
+                            error "多环境前置检查失败: failedEnvs=${failedEnvs}, mergeStatus=${mergeStatus}, matrixStatus=${matrixStatus}"
+                        }
+                    } else if (isPreflightSuite) {
+                        def pytestCommand = buildPytestCommand(params.HOST, params.STOR, params.USER, params.PWD)
                         def safeHost = params.HOST.replace(':', '_').replace('/', '_').replace('\\\\', '_')
+                        def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} PREFLIGHT_ENV_NAME=${safeHost} ${pytestCommand}", returnStatus: true)
                         def healthJson = "preflight-results/health_${safeHost}.json"
                         def healthStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}", returnStatus: true)
                         if (pytestStatus != 0 || healthStatus != 0) {
                             error "前置环境检查失败: pytestStatus=${pytestStatus}, healthStatus=${healthStatus}"
                         }
                     } else {
-                        sh pytestCommand
+                        sh buildPytestCommand(params.HOST, params.STOR, params.USER, params.PWD)
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }

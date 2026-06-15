@@ -84,6 +84,24 @@ python -m sugon_web.tools.preflight.health_check --suite frontend --health-json 
 pytest sugon_web/testcase/preflight/test_environment_health.py -m preflight --host <env-host>
 ```
 
+合并多个环境的健康结果：
+
+```powershell
+python -m sugon_web.tools.preflight.merge_health `
+  --output preflight-results/health_matrix.json `
+  preflight-results/health_env-a.json `
+  preflight-results/health_env-b.json
+```
+
+Jenkins 串行多环境检查可填写 `ENV_MATRIX`：
+
+```json
+[
+  {"name": "env-a", "host": "172.22.3.140", "stor": "xstor"},
+  {"name": "env-b", "host": "172.22.3.150", "stor": "xstor"}
+]
+```
+
 ## 输入格式
 
 单环境文件支持直接写可用值，也支持 `available/free/remaining` 或 `total-used`：

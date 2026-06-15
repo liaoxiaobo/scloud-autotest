@@ -23,8 +23,9 @@ def cms_page(page):
 def preflight_health_file(config):
     """当前环境健康快照输出文件。"""
     host = config.get("host") or "default"
-    safe_host = str(host).replace(":", "_").replace("/", "_").replace("\\", "_")
-    output = Path("preflight-results") / f"health_{safe_host}.json"
+    env_name = os.environ.get("PREFLIGHT_ENV_NAME", "").strip() or str(host)
+    safe_env_name = _safe_name(env_name)
+    output = Path("preflight-results") / f"health_{safe_env_name}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
         output.unlink()
@@ -38,7 +39,12 @@ def preflight_health_file(config):
 def test_preflight_selected_suite(config, preflight_health_file):
     """占位展示当前执行的前置检查关键词。"""
     suite_name = os.environ.get("PREFLIGHT_SUITE", "preflight-all").strip() or "preflight-all"
-    snapshot = _update_snapshot(preflight_health_file, {"suite": suite_name})
+    env_name = os.environ.get("PREFLIGHT_ENV_NAME", "").strip() or str(config.get("host") or "default")
+    snapshot = _update_snapshot(preflight_health_file, {
+        "suite": suite_name,
+        "env_name": env_name,
+        "host": config.get("host"),
+    })
     _attach_snapshot("前置检查关键词", snapshot)
     assert suite_name
 
@@ -192,3 +198,13 @@ def _to_int_or_none(value: Any) -> int | None:
         return int(float(text.splitlines()[-1].strip()))
     except ValueError:
         return None
+
+
+def _safe_name(value: str) -> str:
+    safe_chars = []
+    for char in value:
+        if char.isalnum() or char in {"_", "-", "."}:
+            safe_chars.append(char)
+        else:
+            safe_chars.append("_")
+    return "".join(safe_chars).strip("_") or "default"
