@@ -21,6 +21,21 @@ class InspectionMixin(BasePage):
 
     inspection_menu_keywords = ("一键巡检",)
     inspection_start_keywords = ("开始巡检", "重新执行巡检", "重新巡检", "立即巡检", "执行巡检")
+    critical_inspection_keywords = (
+        "管理节点系统盘已用容量检查",
+        "管理节点缓存盘已用容量检查",
+        "核心Pod检查",
+        "AnhanDB检查",
+        "ETCD检查",
+        "HAProxy状态检查",
+        "kubelet状态检查",
+        "ipmitool检查",
+        "防火墙状态检查",
+        "物理机管理网丢包检查",
+        "物理机业务网丢包检查",
+        "管理网VIP检查",
+        "存储池容量检查",
+    )
 
     def goto_one_click_inspection(self) -> None:
         """进入运维一键巡检页面。"""
@@ -90,16 +105,27 @@ class InspectionMixin(BasePage):
             """
         )
 
-        page_text = self.page.locator("body").inner_text(timeout=10_000)
-        failed = self._count_rows_by_keywords(rows, ("失败", "异常", "不通过", "Fail", "ERROR"))
-        warnings = self._count_rows_by_keywords(rows, ("告警", "警告", "Warning", "WARN"))
-        passed = self._count_rows_by_keywords(rows, ("成功", "正常", "通过", "Pass", "OK"))
+        abnormal_items = self._collect_abnormal_inspection_items()
+        critical_failed_items = [
+            item for item in abnormal_items
+            if self._is_critical_inspection_item(item)
+        ]
+        ignored_failed_items = [
+            item for item in abnormal_items
+            if not self._is_critical_inspection_item(item)
+        ]
 
-        if failed > 0 or re.search(r"失败|异常|不通过|ERROR", page_text, re.I):
+        raw_failed = self._count_rows_by_keywords(rows, ("失败", "异常", "不通过", "Fail", "ERROR"))
+        row_warnings = self._count_rows_by_keywords(rows, ("告警", "警告", "Warning", "WARN"))
+        passed = self._count_rows_by_keywords(rows, ("成功", "正常", "通过", "Pass", "OK"))
+        failed = len(critical_failed_items)
+        warnings = len(ignored_failed_items) + row_warnings
+
+        if critical_failed_items:
             status = "failed"
-        elif warnings > 0 or re.search(r"告警|警告|WARN", page_text, re.I):
+        elif ignored_failed_items or warnings > 0:
             status = "warning"
-        elif passed > 0 or re.search(r"成功|正常|通过|OK", page_text, re.I):
+        elif passed > 0 or raw_failed == 0:
             status = "passed"
         else:
             status = "unknown"
@@ -110,6 +136,11 @@ class InspectionMixin(BasePage):
             "passed": passed,
             "failed": failed,
             "warnings": warnings,
+            "raw_failed": raw_failed,
+            "critical_failed_items": critical_failed_items,
+            "ignored_failed_items": ignored_failed_items,
+            "abnormal_items": abnormal_items,
+            "critical_items": list(self.critical_inspection_keywords),
             "items": rows,
         }
 
@@ -258,3 +289,46 @@ class InspectionMixin(BasePage):
             if pattern.search(" ".join(str(value) for value in row.values())):
                 count += 1
         return count
+
+    def _collect_abnormal_inspection_items(self) -> list[str]:
+        """采集异常项页签下的巡检项名称。"""
+        try:
+            abnormal_tab = self.page.get_by_text(re.compile(r"异常项\s*\(\d+\)|异常项")).first
+            if abnormal_tab.count() > 0 and abnormal_tab.is_visible(timeout=2000):
+                abnormal_tab.click()
+                self.page.wait_for_timeout(800)
+        except Exception as exc:
+            self.logger.warning(f"切换一键巡检异常项页签失败，继续从当前页面采集: {exc}")
+
+        items = self.page.evaluate(
+            """
+            () => {
+                const names = new Set();
+                const visible = (el) => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const pattern = /[\\u4e00-\\u9fa5A-Za-z0-9（）()\\-]+检查/g;
+                for (const el of document.querySelectorAll('span, div, li, td, label, p')) {
+                    if (!visible(el)) continue;
+                    const text = (el.innerText || el.textContent || '').replace(/\\s+/g, '');
+                    if (!text || text.length > 120 || !text.includes('检查')) continue;
+                    const matches = text.match(pattern) || [];
+                    for (const name of matches) {
+                        if (name.length >= 4 && name.length <= 40) {
+                            names.add(name);
+                        }
+                    }
+                }
+                return Array.from(names);
+            }
+            """
+        )
+        return sorted(set(str(item).strip() for item in items if str(item).strip()))
+
+    def _is_critical_inspection_item(self, item_name: str) -> bool:
+        return any(keyword in item_name for keyword in self.critical_inspection_keywords)

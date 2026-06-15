@@ -84,6 +84,8 @@ python -m sugon_web.tools.preflight.health_check --suite frontend --health-json 
 python -m sugon_web.tools.preflight.health_check --suite storage-health --health-json sugon_web/tools/preflight/profiles/health.example.json
 ```
 
+一键巡检按关键项门禁：管理节点系统盘、管理节点缓存盘、核心 Pod、AnhanDB、ETCD、HAProxy、kubelet、ipmitool、防火墙、物理机管理/业务网丢包、管理网 VIP、存储池容量异常会判失败；其它巡检异常会记录为 warning。
+
 通过页面执行运维一键巡检：
 
 ```powershell

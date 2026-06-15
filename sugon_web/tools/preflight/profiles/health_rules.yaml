@@ -31,7 +31,7 @@ checks:
 
   inspection_status:
     paths: [inspection.status, status]
-    one_of: [passed, success, ok, normal]
+    one_of: [passed, success, ok, normal, warning]
     required: true
 
   inspection_failed:
