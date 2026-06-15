@@ -52,6 +52,8 @@ middleware=redis''')
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    env.WORKSPACE_DIR = "${env.WORKSPACE}"
+                    sh "rm -rf allure-result allure-merged-result allure-report"
                     sh "docker build -t playwright-sugon:${env.IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
@@ -67,34 +69,48 @@ middleware=redis''')
             }
           steps{
                 script {
-                    def markFilter = (params.MARK ?: '').trim().toLowerCase()
-                    def jobName = (env.JOB_NAME ?: '').toLowerCase()
-                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
-                    def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+                    def defaultEnv = [
+                        host: params.HOST,
+                        stor: params.STOR,
+                        user: params.USER,
+                        pwd : params.PWD
+                    ]
 
-                    if (isBmsRun && effectiveParallelCount != '1') {
-                        echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
-                        effectiveParallelCount = '1'
+                    def parseEnvConfigs = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('\\|', -1).collect { it.trim() }
+                            if (parts.size() != 5) {
+                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
+                            }
+                            result[parts[0]] = [
+                                host: parts[1],
+                                stor: parts[2],
+                                user: parts[3],
+                                pwd : parts[4]
+                            ]
+                        }
+                        return result
                     }
 
-                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
-
-                    // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
-                    if (params.BMS_INSTANCE_NAME?.trim()) {
-                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
-                    }
-                    if (params.BMS_BMC_IP?.trim()) {
-                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
-                    }
-                    if (params.BMS_PREFERRED_NODE?.trim()) {
-                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
-                    }
-                    if (params.BMS_NETWORK_NAME?.trim()) {
-                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
-                    }
-                    if (params.BMS_PASSWORD?.trim()) {
-                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                    def parseModuleEnvMap = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('=', -1).collect { it.trim() }
+                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
+                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
+                            }
+                            result[parts[0]] = parts[1]
+                        }
+                        return result
                     }
 
                     def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
@@ -106,6 +122,15 @@ middleware=redis''')
                         modules = params.MODULES.split(',').collect { it.trim() }.findAll { it }
                     }
                     def failedModules = []
+                    def baseWorkspace = env.WORKSPACE_DIR ?: env.WORKSPACE
+                    def markFilter = (params.MARK ?: '').trim().toLowerCase()
+                    def jobName = (env.JOB_NAME ?: '').toLowerCase()
+                    def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+                    def effectiveParallelCount = (isBmsRun ? '1' : (params.PARALLEL_COUNT ?: '2').trim())
+
+                    if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
+                        echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
+                    }
 
                     def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
                         def pytestCommand = "pytest --headless=true " +
@@ -113,18 +138,31 @@ middleware=redis''')
                             "--stor=${envCfg.stor ?: defaultEnv.stor} " +
                             "--username=${envCfg.user ?: defaultEnv.user} " +
                             "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
-                            "-n ${params.PARALLEL_COUNT} --dist=loadscope " +
+                            "-n ${effectiveParallelCount} --dist=loadscope " +
                             "${casePath} " +
-                            "--alluredir ${dir}/allure-result/${resultName}"
+                            "--alluredir ${baseWorkspace}/allure-result/${resultName}"
 
-                         // 标签筛选逻辑（-m 参数）
-                    if (params.MARK) {
-                        pytestCommand += " -m '${params.MARK}'"
-                    }
-                    // 添加 RUN_LAST_FAILED 参数
-                    if (params.RUN_LAST_FAILED) {
-                        pytestCommand += " --lf"
-                    }
+                        if (params.BMS_INSTANCE_NAME?.trim()) {
+                            pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                        }
+                        if (params.BMS_BMC_IP?.trim()) {
+                            pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                        }
+                        if (params.BMS_PREFERRED_NODE?.trim()) {
+                            pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                        }
+                        if (params.BMS_NETWORK_NAME?.trim()) {
+                            pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                        }
+                        if (params.BMS_PASSWORD?.trim()) {
+                            pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                        }
+                        if (markExpr) {
+                            pytestCommand += " -m '${markExpr}'"
+                        }
+                        if (params.RUN_LAST_FAILED) {
+                            pytestCommand += " --lf"
+                        }
 
                         echo "Pytest command: ${pytestCommand}"
                         sh pytestCommand
@@ -132,7 +170,7 @@ middleware=redis''')
 
                     if (modules) {
                         modules.each { moduleName ->
-                            def casePath = "${dir}/sugon_web/testcase/${moduleName}"
+                            def casePath = "${baseWorkspace}/sugon_web/testcase/${moduleName}"
                             sh "test -d '${casePath}'"
                             def envName = moduleEnvMap[moduleName]
                             def envCfg = defaultEnv + (envName ? (envConfigs[envName] ?: [:]) : [:])
@@ -154,7 +192,8 @@ middleware=redis''')
                         }
                     } else {
                         echo "Resolved all testcase: host=${defaultEnv.host}, stor=${defaultEnv.stor}, user=${defaultEnv.user}, mark=${params.MARK ?: 'default'}"
-                        runPytest("${dir}/sugon_web/testcase/", defaultEnv, "all", params.MARK)
+                        def testTarget = isBmsRun ? "${baseWorkspace}/sugon_web/testcase/compute/test_bms_*.py" : "${baseWorkspace}/sugon_web/testcase/"
+                        runPytest(testTarget, defaultEnv, "all", params.MARK)
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
@@ -163,19 +202,24 @@ middleware=redis''')
     }
     post('Send Report') {
         always {
-            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
-            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
-            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
-
+            sh "mkdir -p allure-result allure-merged-result"
             // 保留allure历史数据
-            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
+            sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
-            // 生成 Allure 报告
-            allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+            // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
+            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
 
-            // 清理临时文件
-            sh "rm -rf allure-result/* || true"
+            // Jenkins Allure 插件发布报告；失败时继续归档结果，避免报告完全不可看
+            script {
+                try {
+                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-merged-result']]
+                } catch (err) {
+                    echo "Allure 插件发布失败: ${err}"
+                }
+            }
+
+            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
