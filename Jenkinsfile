@@ -6,7 +6,7 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'MARK', defaultValue: 'preflight-all', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
+        string(name: 'MARK', defaultValue: 'preflight-all', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/storage-health/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         text(name: 'ENV_MATRIX', defaultValue: '', description: '多环境串行前置检查 JSON。留空则使用 HOST/STOR 单环境。示例：[{"name":"env-a","host":"172.22.3.140","stor":"xstor"},{"name":"env-b","host":"172.22.3.150","stor":"xstor"}]')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
@@ -59,7 +59,7 @@ pipeline {
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
                     def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
-                    def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'daily-backend', 'preflight-all', 'all-checks']
+                    def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'storage-health', 'daily-backend', 'preflight-all', 'all-checks']
                     def isPreflightSuite = preflightSuites.contains(markFilter)
                     def envMatrixText = (params.ENV_MATRIX ?: '').trim()
                     def preflightMarkExpression = 'preflight'
@@ -69,6 +69,8 @@ pipeline {
                         preflightMarkExpression = 'preflight_backend'
                     } else if (markFilter == 'inspection') {
                         preflightMarkExpression = 'preflight_inspection'
+                    } else if (markFilter == 'storage-health') {
+                        preflightMarkExpression = 'preflight_storage'
                     } else if (markFilter == 'daily-backend') {
                         preflightMarkExpression = 'preflight_backend or preflight_inspection'
                     }

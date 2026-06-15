@@ -64,6 +64,17 @@ suites:
       - preflight_health
       - preflight_inspection
 
+  storage-health:
+    resource_modules: []
+    health_checks:
+      - storage_pool_usable_count
+      - storage_pool_abnormal_count
+      - storage_pool_max_available_gib
+    pytest_marks:
+      - preflight
+      - preflight_health
+      - preflight_storage
+
   compute:
     resource_modules: [compute]
     health_checks: []

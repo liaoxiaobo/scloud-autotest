@@ -44,3 +44,19 @@ checks:
     max: 0
     required: false
     severity: warn
+
+  storage_pool_usable_count:
+    paths: [storage_pools.usable, storage_pools.running]
+    min: 1
+    required: true
+
+  storage_pool_abnormal_count:
+    paths: [storage_pools.abnormal]
+    max: 0
+    required: false
+    severity: warn
+
+  storage_pool_max_available_gib:
+    paths: [storage_pools.max_available_gib]
+    min: 100
+    required: true

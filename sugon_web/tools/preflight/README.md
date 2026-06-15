@@ -78,6 +78,12 @@ python -m sugon_web.tools.preflight.health_check --suite backend --health-json s
 python -m sugon_web.tools.preflight.health_check --suite frontend --health-json sugon_web/tools/preflight/profiles/health.example.json
 ```
 
+只展开存储池健康检查项：
+
+```powershell
+python -m sugon_web.tools.preflight.health_check --suite storage-health --health-json sugon_web/tools/preflight/profiles/health.example.json
+```
+
 通过页面执行运维一键巡检：
 
 ```powershell

@@ -15,6 +15,15 @@
       "passed": 48,
       "failed": 0,
       "warnings": 0
+    },
+    "storage_pools": {
+      "total": 2,
+      "running": 2,
+      "usable": 2,
+      "abnormal": 0,
+      "max_available_gib": 49039.36,
+      "running_names": ["xstor-test", "zbs-test"],
+      "abnormal_names": []
     }
   },
   "env-b": {
@@ -33,6 +42,15 @@
       "passed": 47,
       "failed": 0,
       "warnings": 1
+    },
+    "storage_pools": {
+      "total": 2,
+      "running": 1,
+      "usable": 1,
+      "abnormal": 1,
+      "max_available_gib": 2048,
+      "running_names": ["xstor-test"],
+      "abnormal_names": ["local-test"]
     }
   },
   "env-c": {
@@ -51,6 +69,15 @@
       "passed": 45,
       "failed": 3,
       "warnings": 0
+    },
+    "storage_pools": {
+      "total": 1,
+      "running": 0,
+      "usable": 0,
+      "abnormal": 1,
+      "max_available_gib": 0,
+      "running_names": [],
+      "abnormal_names": ["local-test"]
     }
   }
 }

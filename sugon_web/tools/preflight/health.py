@@ -71,6 +71,16 @@ def _evaluate_rule(check_name: str, snapshot: dict[str, Any], rule: dict[str, An
             return HealthFinding(check_name, "OK", actual=actual, expected=f"<= {max_value:g}")
         return HealthFinding(check_name, fail_status, actual=actual, expected=f"<= {max_value:g}", detail="超过阈值")
 
+    if "min" in rule:
+        min_value = float(rule["min"])
+        try:
+            actual_value = float(actual)
+        except (TypeError, ValueError):
+            return HealthFinding(check_name, "FAIL", actual=actual, expected=f">= {min_value:g}", detail="实际值不是数字")
+        if actual_value >= min_value:
+            return HealthFinding(check_name, "OK", actual=actual, expected=f">= {min_value:g}")
+        return HealthFinding(check_name, fail_status, actual=actual, expected=f">= {min_value:g}", detail="低于阈值")
+
     if "one_of" in rule:
         expected_values = rule["one_of"]
         if actual in expected_values:
@@ -102,6 +112,8 @@ def _expected_text(rule: dict[str, Any]) -> str:
         return str(rule["equals"])
     if "max" in rule:
         return f"<= {float(rule['max']):g}"
+    if "min" in rule:
+        return f">= {float(rule['min']):g}"
     if "one_of" in rule:
         return ", ".join(map(str, rule["one_of"]))
     return ""

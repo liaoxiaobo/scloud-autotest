@@ -98,6 +98,28 @@ def test_ops_one_click_inspection(cms_page, config, preflight_health_file):
     )
 
 
+@pytest.mark.preflight
+@pytest.mark.preflight_health
+@pytest.mark.preflight_storage
+@allure.feature("环境前置检查")
+@allure.story("存储池健康")
+def test_storage_pool_health(cms_page, config, preflight_health_file):
+    """检查存储池运行状态和剩余容量。"""
+    storage_pools = cms_page.collect_storage_pools()
+    snapshot = _update_snapshot(preflight_health_file, {"storage_pools": storage_pools})
+    _attach_snapshot("存储池健康检查结果", snapshot)
+    _assert_section_health(
+        config,
+        snapshot,
+        [
+            "storage_pool_usable_count",
+            "storage_pool_abnormal_count",
+            "storage_pool_max_available_gib",
+        ],
+        page=cms_page.page,
+    )
+
+
 def _collect_frontend_health(cms_page: CmsPage) -> dict[str, Any]:
     """采集前端登录和运维入口可用性。"""
     result = {
