@@ -9,7 +9,7 @@ class CceClusterMixin:
                    proxy_mode="ipvs", cluster="Autotest", desc="", vpc_network="Autotest",
                    vpc_subnet="Autotest", network_model="flannel", pod_cidr="10.0.0.0/16",
                    service_cidr="10.247.0.0/16", docker_cidr="172.17.0.1/16",
-                   volume_type="xbd-test", volume_size=50, flavor="4C8G"):
+                   volume_type="", volume_size=50, flavor="4C8G"):
         """创建CCE集群。
 
         Args:
@@ -26,7 +26,7 @@ class CceClusterMixin:
             pod_cidr: 容器组网段，默认"10.0.0.0/16"
             service_cidr: 服务发现网段，默认"10.247.0.0/16"
             docker_cidr: 容器运行时网段，默认"172.17.0.1/16"
-            volume_type: 云硬盘类型，默认"xbd-test"
+            volume_type: 云硬盘类型，未指定时自动从配置读取（如 ceph-type）
             volume_size: 云硬盘大小(GiB)，默认50
             flavor: 节点规格，默认"4C8G"
         """
@@ -78,7 +78,8 @@ class CceClusterMixin:
         # 且 CIDR 组件包含 disabled input 和 select，自动化填写复杂度高，故跳过。
 
         # 配置
-        # 云硬盘类型（label格式为"类型：name；存储池：xxx"，使用子串匹配）
+        # 云硬盘类型：未指定时从配置自动推导（参照 evs_create 模式）
+        volume_type = volume_type or self.volume_type
         self.page.locator(".el-form-item").filter(has_text="云硬盘类型").locator(".el-select").first.click()
         self._select_option(volume_type, exact=False)
 

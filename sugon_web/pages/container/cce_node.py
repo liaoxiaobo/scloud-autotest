@@ -1,6 +1,7 @@
 import re
 import time
 
+from sugon_web.common.playwright import expect
 
 
 class CceNodeMixin:
@@ -113,8 +114,8 @@ class CceNodeMixin:
                     btn.click()
                     break
 
-    def cce_node_flavor_change(self, node_name, target_flavor):
-        """修改指定节点的规格。
+    def cce_node_flavor_expand(self, node_name, target_flavor):
+        """扩容指定节点的规格。
 
         Args:
             node_name: 节点名称
@@ -126,12 +127,25 @@ class CceNodeMixin:
         self._select_flavor_in_dialog(dialog, target_flavor)
         dialog.get_by_text("确定").click()
 
-        # 处理可能出现的风险提示二次确认对话框（缩容场景）
+    def cce_node_flavor_shrink(self, node_name, target_flavor):
+        """缩容指定节点的规格（会触发风险提示二次确认）。
+
+        Args:
+            node_name: 节点名称
+            target_flavor: 目标规格名称
+        """
+        self.click_action(node_name, "修改规格")
+        dialog = self.page.locator(".el-dialog").filter(has_text="修改规格")
+        dialog.wait_for(state="visible", timeout=10000)
+        self._select_flavor_in_dialog(dialog, target_flavor)
+        dialog.get_by_text("确定").click()
+
+        # 缩容场景可能出现风险提示二次确认
         try:
             risk_dialog = self.page.locator(".el-dialog").filter(has_text="风险提示")
             risk_dialog.get_by_text("确认关机并重启").click()
         except TimeoutError:
-            pass  # 未出现风险提示，正常流程
+            pass
 
     def get_node_status(self, node_name):
         """获取指定节点的当前状态文本。
@@ -183,7 +197,7 @@ class CceNodeMixin:
         start_time = time.time()
 
         while True:
-            ip_locator = self.page.locator(".detail-info").filter(has_text="公网IP")
+            ip_locator = self.page.locator(".cloud-item-col").filter(has_text="公网IP")
             if ip_locator.count() > 0:
                 text = ip_locator.inner_text()
                 match = re.search(r"公网IP\s*[:：]?\s*(\S+)", text)
@@ -200,9 +214,22 @@ class CceNodeMixin:
                 return ip
 
             # 未超时：刷新页面后等待
-            self.btn_refresh.click()
             self.wait_for_page_ready()
             time.sleep(refresh_interval)
+
+    def assert_public_ip_displayed(self, displayed=True):
+        """断言页面详情中公网IP的显示状态。
+
+        解绑后页面仍保留"公网IP"字段（值显示为--），因此通过字段值而非元素存在性判断。
+
+        Args:
+            displayed: True 断言公网IP已绑定（值不为--），False 断言未绑定（值为--或空）
+        """
+        ip = self.get_public_ip_text()
+        if displayed:
+            assert ip and ip != "--", f"Expected public IP to be bound, but got: {ip!r}"
+        else:
+            assert not ip or ip == "--", f"Expected public IP to be unbound, but got: {ip!r}"
 
     def get_public_domain_text(self):
         """获取页面中公网域名的显示文本。
@@ -210,7 +237,7 @@ class CceNodeMixin:
         Returns:
             str: 公网域名，未绑定返回空字符串
         """
-        domain_locator = self.page.locator(".detail-info").filter(has_text="公网域名")
+        domain_locator = self.page.locator(".cloud-item-col").filter(has_text="公网域名")
         if domain_locator.count() == 0:
             return ""
         text = domain_locator.inner_text()
@@ -294,7 +321,7 @@ class CceNodeMixin:
     def cce_public_ip_unbind(self):
         """为集群解绑公网IP。"""
         self.page.get_by_text("解绑公网IP").first.click()
-        self.get_by_label("解绑公网IP").get_by_text("确定", exact=True).click()
+        self.get_by_label("解除绑定公网IP", exact=True).get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
 
     def cce_node_public_ip_bind(self, node_name, network="public_net(基础版)"):

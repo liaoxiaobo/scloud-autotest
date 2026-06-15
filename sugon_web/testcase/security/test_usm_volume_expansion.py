@@ -11,18 +11,17 @@ class TestUsmVolumeExpansion:
 
     @allure.title("USM-xbd存储池-云硬盘扩容验证")
     @only_stor("xbd")
-    def test_usm_volume_expansion(self, usm_page, ssh_host):
-        """xbd 存储池环境下，使用页面上已有的 USM 实例，
-        执行云硬盘从 300GiB 扩容到 350GiB，通过 SSH 后端验证扩容结果。"""
+    def test_usm_volume_expansion(self, usm_instance, usm_page, ssh_host):
+        """通过 fixture 获取共享 USM 实例，执行云硬盘从 300GiB 扩容到 350GiB，
+        通过 SSH 后端验证扩容结果。"""
 
-        with allure_step_log("步骤1: 获取列表中已有的 USM 实例"):
-            name = usm_page.get_first_usm_name()
-            logger.info(f"使用页面上已有的 USM 实例: {name}")
+        name = usm_instance["name"]
+        logger.info(f"USM 实例 {name} 已就绪")
 
         with allure_step_log("步骤2: 进入详情页查看当前云硬盘大小"):
             usm_page.usm_to_details(name)
-            usm_page._wait_for_detail_page_ready()
-            body_text = usm_page.page.inner_text("body")
+            usm_page.wait_for_detail_page_ready()
+            body_text = usm_page.get_detail_body_text()
             vol_match = re.search(r"(\d+)\s*GiB", body_text)
             current_size = int(vol_match.group(1)) if vol_match else None
             logger.info(f"USM 实例 {name} 当前云硬盘大小: {current_size}GiB")

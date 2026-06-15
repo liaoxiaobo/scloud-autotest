@@ -3,7 +3,7 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
-from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, VpnPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, VpnPage, CfwPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -30,6 +30,19 @@ def vpc_page(page):
             vpc_page.vpc_create(name="test-vpc", cidr="10.0.0.0/24")
     """
     return VpcPage(page)
+
+
+@pytest.fixture(scope="function")
+def cfw_page(page):
+    """初始化云防火墙页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        CfwPage: 云防火墙页面对象实例。
+    """
+    return CfwPage(page)
 
 
 @pytest.fixture(scope="function")
@@ -609,6 +622,54 @@ def nat(vpc_page, vpc, request):
             logger.info(f"NAT网关 {current_name} 删除成功")
         except Exception as e:
             logger.warning(f"清理NAT网关时出错: {e}")
+
+
+@pytest.fixture(scope="function")
+def cfw(cfw_page, request):
+    """创建并返回云防火墙。
+
+    本 fixture 仅负责创建云防火墙，创建成功后即交由测试使用，
+    测试结束后不执行删除（按业务需求保留实例）。
+
+    Args:
+        cfw_page: 云防火墙页面对象，由 cfw_page fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        name (str): 云防火墙名称，默认自动生成。
+        version (str): 防火墙版本，默认"山石引擎-5.5"。
+        cluster (str): 部署集群，默认"Autotest"。
+        protected_resource (str): 待防护资源标识，可选。
+
+    Yields:
+        dict: 云防火墙信息字典，包含：
+            - name (str): 云防火墙名称
+
+    Example:
+        @pytest.mark.parametrize("cfw", [{"version": "山石引擎-5.5", "cluster": "Autotest"}], indirect=True)
+        def test_cfw_with_cluster(cfw):
+            print(f"云防火墙: {cfw['name']}")
+    """
+    params = getattr(request, 'param', {})
+    name = params.get('name', random_data())
+    version = params.get('version', '山石引擎-5.5')
+    cluster = params.get('cluster', 'Autotest')
+    protected_resource = params.get('protected_resource')
+
+    with allure_step_log(f"Setup: 创建云防火墙 {name}"):
+        cfw_page.cfw_create(
+            name=name,
+            version=version,
+            cluster=cluster,
+            protected_resource=protected_resource,
+        )
+        logger.info(f"云防火墙 {name} 创建成功")
+
+    with allure_step_log(f"Setup: 等待云防火墙 {name} 状态变为运行中"):
+        cfw_page.assert_status(name, status="运行中", timeout=1200, refresh=True, refresh_interval=10)
+
+    yield {"name": name}
+
 
 @pytest.fixture(scope="function")
 def qos(vpc_page):

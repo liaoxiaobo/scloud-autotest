@@ -291,6 +291,7 @@ def test_example(eip):
 | `testcase/compute/conftest.py` | `pool`     | `node`: 物理机节点 `storage_type`: 存储类型          | 创建存储池并自动清理     |
 | `testcase/compute/conftest.py` | `labels`   | `count`: 创建数量 `prefix`: 名称前缀                | 创建标签并自动清理      |
 | `testcase/compute/conftest.py` | `affinity` | `count`: 创建数量 `prefix`: 名称前缀                | 创建亲和组标签        |
+| `testcase/storage/conftest.py` | `bucket`   | `count`: 创建数量 `name`: 自定义名称 `capacity`: 桶容量 | 创建对象存储桶并自动清理，优先复用 autotest-* 空桶 |
 | `testcase/storage/conftest.py` | `kms_key`  | 可通过indirect传入engine参数                       | 创建密钥并自动清理      |
 
 

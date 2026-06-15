@@ -47,7 +47,7 @@ class ButtonsMixin(BaseElementMixin):
             self.locator("button").filter(has_text="新建"),
             self.get_by_role("button", name="新建")
         ]
-        return self._find_element(locators, "新建按钮")
+        return self._find_element(locators, "新建按钮", timeout=15000)
 
     @property
     def btn_submit(self) -> Locator:

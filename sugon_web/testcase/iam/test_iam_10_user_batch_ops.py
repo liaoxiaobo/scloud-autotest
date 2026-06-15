@@ -17,7 +17,7 @@ class TestIamUserBatchOps:
         password = iam_batch_users[0]["password"]
         target_org = iam_shared_child_org["child_name"]
 
-        with allure_step_log(f"步骤1: 批量禁用5个用户"):
+        with allure_step_log(f"步骤1: 批量禁用2个用户"):
             iam_page.iam_batch_modify_status(names, enabled=False, target_org=target_org)
 
         with allure_step_log("步骤2: 验证列表状态列均显示'禁用'"):
@@ -29,7 +29,7 @@ class TestIamUserBatchOps:
             for username in username_list:
                 assert verify_login(iam_page.page, username, password, expect_success=False)
 
-        with allure_step_log("步骤4: 批量启用5个用户"):
+        with allure_step_log("步骤4: 批量启用2个用户"):
             iam_page.iam_batch_modify_status(names, enabled=True, target_org=target_org)
 
         with allure_step_log("步骤5: 验证列表状态列均显示'激活'"):
@@ -50,7 +50,7 @@ class TestIamUserBatchOps:
         new_password = "NewPwd@5678"
         target_org = iam_shared_child_org["child_name"]
 
-        with allure_step_log("步骤1: 批量重置5个用户的密码"):
+        with allure_step_log("步骤1: 批量重置2个用户的密码"):
             iam_page.iam_batch_reset_password(names, new_password, target_org=target_org)
 
         # 更新密码记录
@@ -82,6 +82,8 @@ class TestIamUserBatchOps:
             for name in names:
                 row = iam_page.get_row_by_name(name)
                 assert row.count() > 0
+                row_text = row.first.inner_text()
+                assert yesterday in row_text, f"用户 {name} 列表未显示过期时间 {yesterday}，实际: {row_text}"
 
         with allure_step_log("步骤3: 依次验证5个过期用户登录失败"):
             for username in username_list:
@@ -90,12 +92,15 @@ class TestIamUserBatchOps:
         with allure_step_log("步骤4: 批量清除过期时间"):
             iam_page.iam_batch_set_expiry(names, "", target_org=target_org)
 
-        with allure_step_log("步骤5: 验证列表用户行存在"):
+        with allure_step_log("步骤5: 验证列表过期时间已清除"):
             for name in names:
                 row = iam_page.get_row_by_name(name)
                 assert row.count() > 0
+                row_text = row.first.inner_text()
+                assert "无限制" in row_text or yesterday not in row_text, \
+                    f"用户 {name} 过期时间未清除，实际: {row_text}"
 
-        with allure_step_log("步骤6: 依次验证5个用户登录成功"):
+        with allure_step_log("步骤6: 依次验证2个用户登录成功"):
             for username in username_list:
                 assert verify_login(iam_page.page, username, password, expect_success=True)
 
