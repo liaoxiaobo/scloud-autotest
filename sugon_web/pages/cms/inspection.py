@@ -15,29 +15,21 @@ from sugon_web.config.config import Config
 class InspectionMixin(BasePage):
     """运维一键巡检页面能力。
 
-    该页面在不同版本中的路由和按钮文案可能略有差异，因此这里优先走菜单文本，
-    再用常见 hash 路由兜底。
+    正常路径为：登录后进入“运维”服务，点击左侧“一键巡检”，再点击
+    “重新执行巡检”。这里避免使用“巡检”这类宽泛文本，防止误入巡检大盘。
     """
 
-    inspection_menu_keywords = ("一键巡检", "健康巡检", "巡检中心", "巡检")
-    inspection_start_keywords = ("一键巡检", "开始巡检", "立即巡检", "执行巡检", "重新巡检")
+    inspection_menu_keywords = ("一键巡检",)
+    inspection_start_keywords = ("重新执行巡检", "重新巡检", "开始巡检", "立即巡检", "执行巡检")
 
     def goto_one_click_inspection(self) -> None:
-        """进入运维巡检页面。"""
-        self.goto_service("运维")
+        """进入运维一键巡检页面。"""
+        self.goto_service("运维", force=True)
         self.close_dialog_if_exists()
         self.wait_for_page_ready()
 
-        for keyword in self.inspection_menu_keywords:
-            locator = self.page.get_by_text(keyword, exact=False).first
-            try:
-                if locator.count() > 0 and locator.is_visible(timeout=3000):
-                    locator.click()
-                    self.page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    self.page.wait_for_timeout(2000)
-                    return
-            except Exception:
-                continue
+        if self._click_one_click_inspection_menu():
+            return
 
         base_url = Config.get("base_url").rstrip("/")
         candidates = (
@@ -50,7 +42,7 @@ class InspectionMixin(BasePage):
             self.page.goto(url)
             self.page.wait_for_load_state("domcontentloaded", timeout=10000)
             self.page.wait_for_timeout(2000)
-            if self._has_inspection_signals():
+            if self._is_one_click_inspection_page():
                 return
 
         raise AssertionError(f"未找到运维一键巡检入口，当前URL: {self.page.url}")
@@ -68,6 +60,7 @@ class InspectionMixin(BasePage):
             try:
                 if button.count() > 0 and button.is_visible(timeout=3000):
                     button.click()
+                    self._confirm_inspection_dialog_if_exists()
                     clicked = True
                     break
             except Exception:
@@ -139,12 +132,66 @@ class InspectionMixin(BasePage):
         target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         return target
 
-    def _has_inspection_signals(self) -> bool:
+    def _click_one_click_inspection_menu(self) -> bool:
+        """点击左侧菜单中的“一键巡检”。"""
+        try:
+            self.goto_submenu("一键巡检")
+            if self._is_one_click_inspection_page():
+                return True
+        except Exception as exc:
+            self.logger.warning(f"通过标准子菜单进入一键巡检失败: {exc}")
+
+        try:
+            menu_left = self.page.locator("#cloud-menu-left")
+            if menu_left.count() > 0:
+                # 展开所有可展开父节点，确保“一键巡检”不被折叠隐藏。
+                parents = menu_left.locator(".one-tree-parent-node")
+                for index in range(parents.count()):
+                    parent = parents.nth(index)
+                    try:
+                        if not parent.evaluate("el => el.classList.contains('one-tree-expand')"):
+                            parent.click()
+                            self.page.wait_for_timeout(300)
+                    except Exception:
+                        continue
+
+                item = menu_left.get_by_text("一键巡检", exact=True).first
+                if item.count() > 0 and item.is_visible(timeout=5000):
+                    item.click()
+                    self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    self.page.wait_for_timeout(2000)
+                    return self._is_one_click_inspection_page()
+        except Exception as exc:
+            self.logger.warning(f"点击左侧一键巡检菜单失败: {exc}")
+
+        return False
+
+    def _is_one_click_inspection_page(self) -> bool:
         try:
             text = self.page.locator("body").inner_text(timeout=3000)
         except Exception:
             return False
-        return any(keyword in text for keyword in self.inspection_menu_keywords)
+        return "一键巡检" in text and (
+            "重新执行巡检" in text
+            or "执行巡检" in text
+            or "巡检结果" in text
+            or "巡检项" in text
+        )
+
+    def _confirm_inspection_dialog_if_exists(self) -> None:
+        """确认重新执行巡检弹窗。"""
+        dialog = self.page.locator(".el-message-box:visible, .el-dialog:visible, [role='dialog']:visible").last
+        try:
+            if dialog.count() == 0 or not dialog.is_visible(timeout=2000):
+                return
+            confirm = dialog.locator("button, .cloud-button-btn").filter(
+                has_text=re.compile(r"确定|确认|执行|重新执行")
+            ).last
+            if confirm.count() > 0 and confirm.is_visible(timeout=2000):
+                confirm.click()
+                self.page.wait_for_timeout(1000)
+        except Exception as exc:
+            self.logger.warning(f"确认重新执行巡检弹窗失败，继续等待巡检结果: {exc}")
 
     def _wait_inspection_finished(self, timeout: int) -> None:
         deadline = time.time() + timeout / 1000
