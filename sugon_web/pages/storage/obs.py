@@ -1,4 +1,6 @@
 import re
+import time
+
 from playwright.sync_api import expect
 from sugon_web.assertions.storage import ObsAssertionMixin
 from sugon_web.common.base import BasePage, submenu
@@ -2123,17 +2125,45 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.page.wait_for_timeout(3000)
         self.wait_for_page_ready()
 
-    def obs_storage_policy_assert_contain(self, rule_name):
+    def obs_storage_policy_assert_contain(self, rule_name, timeout=30):
         """断言存储策略列表中包含指定策略名称。
+
+        针对 Jenkins 等慢环境做轮询等待：创建策略后表格异步刷新，
+        可能晚于单次 10 秒可见性断言才出现目标行。
 
         Args:
             rule_name: 策略名称
+            timeout: 最长等待秒数，默认 30
         """
-        table = self.page.locator(
-            ".cl-table-body, .el-table__body-wrapper"
-        ).first
-        rows = table.locator("tr").filter(has_text=rule_name)
-        expect(rows.first).to_be_visible(timeout=10000)
+        self.logger.info(f"等待存储策略列表中出现 '{rule_name}'")
+        start_time = time.time()
+        last_error = None
+        while time.time() - start_time < timeout:
+            try:
+                table = self.page.locator(
+                    ".cl-table-body, .el-table__body-wrapper"
+                ).first
+                rows = table.locator("tr").filter(has_text=rule_name)
+                if rows.count() > 0:
+                    expect(rows.first).to_be_visible(timeout=1000)
+                    self.logger.info(f"存储策略列表中包含 '{rule_name}'")
+                    return
+            except Exception as e:
+                last_error = e
+            self.page.wait_for_timeout(1000)
+
+        # 失败前打印最终表格快照用于诊断
+        try:
+            final_text = self.page.locator(
+                ".cl-table-body, .el-table__body-wrapper"
+            ).first.evaluate("el => el.innerText")
+            self.logger.error(f"最终策略列表文本: {final_text[:1000]}")
+        except Exception as dump_error:
+            self.logger.error(f"最终表格文本 dump 失败: {dump_error}")
+
+        raise AssertionError(
+            f"存储策略列表中未找到 '{rule_name}'"
+        ) from last_error
 
     def obs_storage_policy_get_row_data(self, rule_name):
         """获取存储策略列表中指定策略名称的行数据。
