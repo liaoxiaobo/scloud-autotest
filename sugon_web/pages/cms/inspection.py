@@ -20,7 +20,7 @@ class InspectionMixin(BasePage):
     """
 
     inspection_menu_keywords = ("一键巡检",)
-    inspection_start_keywords = ("重新执行巡检", "重新巡检", "开始巡检", "立即巡检", "执行巡检")
+    inspection_start_keywords = ("开始巡检", "重新执行巡检", "重新巡检", "立即巡检", "执行巡检")
 
     def goto_one_click_inspection(self) -> None:
         """进入运维一键巡检页面。"""
@@ -52,22 +52,10 @@ class InspectionMixin(BasePage):
         self.goto_one_click_inspection()
         before_url = self.page.url
 
-        clicked = False
-        for keyword in self.inspection_start_keywords:
-            button = self.page.locator("button, .cloud-button-btn, a, span").filter(
-                has_text=re.compile(keyword)
-            ).first
-            try:
-                if button.count() > 0 and button.is_visible(timeout=3000):
-                    button.click()
-                    self._confirm_inspection_dialog_if_exists()
-                    clicked = True
-                    break
-            except Exception:
-                continue
+        clicked = self._click_inspection_start_button()
 
         if not clicked:
-            self.logger.warning("未找到巡检启动按钮，将尝试直接读取当前页面已有巡检结果")
+            raise AssertionError(f"未找到一键巡检启动按钮，当前URL: {self.page.url}")
 
         self._wait_inspection_finished(timeout=timeout)
         result = self.collect_inspection_result()
@@ -172,11 +160,63 @@ class InspectionMixin(BasePage):
         except Exception:
             return False
         return "一键巡检" in text and (
-            "重新执行巡检" in text
+            "开始巡检" in text
+            or "重新执行巡检" in text
             or "执行巡检" in text
             or "巡检结果" in text
             or "巡检项" in text
         )
+
+    def _click_inspection_start_button(self) -> bool:
+        """点击“开始巡检”或“重新执行巡检”按钮。"""
+        for keyword in self.inspection_start_keywords:
+            candidates = (
+                self.page.get_by_role("button", name=re.compile(keyword)).first,
+                self.page.locator("button, .cloud-button-btn").filter(has_text=re.compile(keyword)).first,
+                self.page.get_by_text(keyword, exact=True).first,
+            )
+            for candidate in candidates:
+                try:
+                    if candidate.count() > 0 and candidate.is_visible(timeout=3000):
+                        candidate.click()
+                        self._confirm_inspection_dialog_if_exists()
+                        self.logger.info(f"已点击一键巡检启动按钮: {keyword}")
+                        return True
+                except Exception:
+                    continue
+
+        clicked = self.page.evaluate(
+            """(keywords) => {
+                const selectors = ['button', '.cloud-button-btn', 'a', 'span'];
+                for (const keyword of keywords) {
+                    for (const selector of selectors) {
+                        for (const el of document.querySelectorAll(selector)) {
+                            const text = (el.innerText || el.textContent || '').trim();
+                            if (text === keyword || text.includes(keyword)) {
+                                const style = window.getComputedStyle(el);
+                                const rect = el.getBoundingClientRect();
+                                if (
+                                    style.display !== 'none' &&
+                                    style.visibility !== 'hidden' &&
+                                    rect.width > 0 &&
+                                    rect.height > 0
+                                ) {
+                                    el.click();
+                                    return keyword;
+                                }
+                            }
+                        }
+                    }
+                }
+                return null;
+            }""",
+            list(self.inspection_start_keywords),
+        )
+        if clicked:
+            self._confirm_inspection_dialog_if_exists()
+            self.logger.info(f"已通过 DOM 兜底点击一键巡检启动按钮: {clicked}")
+            return True
+        return False
 
     def _confirm_inspection_dialog_if_exists(self) -> None:
         """确认重新执行巡检弹窗。"""
