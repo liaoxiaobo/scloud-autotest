@@ -53,7 +53,12 @@ def test_frontend_health(cms_page, config, preflight_health_file):
     frontend = _collect_frontend_health(cms_page)
     snapshot = _update_snapshot(preflight_health_file, {"frontend": frontend})
     _attach_snapshot("前端健康检查结果", snapshot)
-    _assert_section_health(config, snapshot, ["frontend_reachable", "login_ok", "ops_page_ok"])
+    _assert_section_health(
+        config,
+        snapshot,
+        ["frontend_reachable", "login_ok", "ops_page_ok"],
+        page=cms_page.page,
+    )
 
 
 @pytest.mark.preflight
@@ -83,6 +88,7 @@ def test_ops_one_click_inspection(cms_page, config, preflight_health_file):
         config,
         snapshot,
         ["inspection_status", "inspection_failed", "inspection_warnings"],
+        page=cms_page.page,
     )
 
 
@@ -104,11 +110,18 @@ def _collect_frontend_health(cms_page: CmsPage) -> dict[str, Any]:
     return result
 
 
-def _assert_section_health(config, snapshot: dict[str, Any], check_names: list[str]) -> None:
+def _assert_section_health(
+    config,
+    snapshot: dict[str, Any],
+    check_names: list[str],
+    page=None,
+) -> None:
     rules = filter_health_rules(load_health_rules(), check_names)
     host = config.get("host") or "default"
     health_result = evaluate_health_env(str(host), snapshot, rules)
     failures = health_result.failed + health_result.unknown
+    if failures and page is not None:
+        _attach_page_screenshot(page, "前置检查失败截图")
     assert not failures, "环境健康检查不通过: " + "; ".join(
         f"{finding.check}={finding.actual}, 期望 {finding.expected}, {finding.detail}"
         for finding in failures
@@ -148,6 +161,27 @@ def _attach_snapshot(name: str, snapshot: dict[str, Any]) -> None:
         name=name,
         attachment_type=allure.attachment_type.JSON,
     )
+
+
+def _attach_page_screenshot(page, name: str) -> None:
+    try:
+        screenshot = page.screenshot(full_page=True)
+        allure.attach(
+            screenshot,
+            name=name,
+            attachment_type=allure.attachment_type.PNG,
+        )
+        allure.attach(
+            page.url or "",
+            name="失败时页面 URL",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+    except Exception as exc:
+        allure.attach(
+            f"截图失败: {exc}",
+            name="截图失败信息",
+            attachment_type=allure.attachment_type.TEXT,
+        )
 
 
 def _to_int_or_none(value: Any) -> int | None:
