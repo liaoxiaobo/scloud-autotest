@@ -6,7 +6,7 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'MARK', defaultValue: '', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
+        string(name: 'MARK', defaultValue: 'preflight-all', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
         string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
