@@ -20,7 +20,12 @@ middleware=middleware_env''')
 database=mysql
 middleware=redis''')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
-        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
+        string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
+        string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
+        string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
+        string(name: 'BMS_NETWORK_NAME', defaultValue: '', description: 'BMS网络名称（留空使用配置文件）')
+        string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
+        string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -46,10 +51,8 @@ middleware=redis''')
                 script{
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    dir = "$workspace"  // 记录工作目录,供后续stage使用（容器内执行测试时需知道代码路径）
-                    sh "rm -rf allure-result allure-merged-result allure-report"
-                    sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
+                    env.IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    sh "docker build -t playwright-sugon:${env.IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
           }
@@ -57,54 +60,41 @@ middleware=redis''')
         stage('Run Tests'){
             agent{
                 docker{
-                    image "playwright-sugon:${IMAGE_TAG}"
+                    image "playwright-sugon:${env.IMAGE_TAG}"
                     args '--rm'
+                    reuseNode true
                 }
             }
           steps{
                 script {
-                    def defaultEnv = [
-                        host: params.HOST,
-                        stor: params.STOR,
-                        user: params.USER,
-                        pwd : params.PWD
-                    ]
+                    def markFilter = (params.MARK ?: '').trim().toLowerCase()
+                    def jobName = (env.JOB_NAME ?: '').toLowerCase()
+                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
+                    def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
 
-                    def parseEnvConfigs = { String value ->
-                        def result = [:]
-                        value?.split('\n')?.eachWithIndex { rawLine, index ->
-                            def line = rawLine.trim()
-                            if (!line || line.startsWith('#')) {
-                                return
-                            }
-                            def parts = line.split('\\|', -1).collect { it.trim() }
-                            if (parts.size() != 5) {
-                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
-                            }
-                            result[parts[0]] = [
-                                host: parts[1],
-                                stor: parts[2],
-                                user: parts[3],
-                                pwd : parts[4]
-                            ]
-                        }
-                        return result
+                    if (isBmsRun && effectiveParallelCount != '1') {
+                        echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
+                        effectiveParallelCount = '1'
                     }
 
-                    def parseModuleEnvMap = { String value ->
-                        def result = [:]
-                        value?.split('\n')?.eachWithIndex { rawLine, index ->
-                            def line = rawLine.trim()
-                            if (!line || line.startsWith('#')) {
-                                return
-                            }
-                            def parts = line.split('=', -1).collect { it.trim() }
-                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
-                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
-                            }
-                            result[parts[0]] = parts[1]
-                        }
-                        return result
+                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
+
+                    // 构建 pytest 命令（核心测试逻辑）
+                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
+                    if (params.BMS_INSTANCE_NAME?.trim()) {
+                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                    }
+                    if (params.BMS_BMC_IP?.trim()) {
+                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                    }
+                    if (params.BMS_PREFERRED_NODE?.trim()) {
+                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                    }
+                    if (params.BMS_NETWORK_NAME?.trim()) {
+                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                    }
+                    if (params.BMS_PASSWORD?.trim()) {
+                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
                     }
 
                     def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
@@ -127,12 +117,14 @@ middleware=redis''')
                             "${casePath} " +
                             "--alluredir ${dir}/allure-result/${resultName}"
 
-                        if (markExpr) {
-                            pytestCommand += " -m '${markExpr}'"
-                        }
-                        if (params.RUN_LAST_FAILED) {
-                            pytestCommand += " --lf"
-                        }
+                         // 标签筛选逻辑（-m 参数）
+                    if (params.MARK) {
+                        pytestCommand += " -m '${params.MARK}'"
+                    }
+                    // 添加 RUN_LAST_FAILED 参数
+                    if (params.RUN_LAST_FAILED) {
+                        pytestCommand += " --lf"
+                    }
 
                         echo "Pytest command: ${pytestCommand}"
                         sh pytestCommand
@@ -171,29 +163,25 @@ middleware=redis''')
     }
     post('Send Report') {
         always {
-            sh "mkdir -p allure-result allure-merged-result"
+            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
+            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
+            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
+
             // 保留allure历史数据
-            sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
+            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
-            // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
-            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
+            // 生成 Allure 报告
+            allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
 
-            // Jenkins Allure 插件发布报告；失败时继续生成静态报告产物，避免报告完全不可看
-            script {
-                try {
-                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-merged-result']]
-                } catch (err) {
-                    echo "Allure 插件发布失败: ${err}"
-                }
-            }
-
-            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
+            // 清理临时文件
+            sh "rm -rf allure-result/* || true"
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
 
             // Docker 系统清理
+            sh "docker rmi playwright-sugon:${env.IMAGE_TAG} || true" // 删除本次构建的临时镜像
             sh "docker system prune -f"
 
             // 发送报告到飞书
