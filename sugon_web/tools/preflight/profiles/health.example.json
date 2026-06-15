@@ -1,0 +1,56 @@
+{
+  "env-a": {
+    "frontend": {
+      "reachable": true,
+      "login": true,
+      "ops_page": true
+    },
+    "backend": {
+      "system_disk_usage_pct": 72,
+      "pods_abnormal": 0
+    },
+    "inspection": {
+      "status": "passed",
+      "total": 48,
+      "passed": 48,
+      "failed": 0,
+      "warnings": 0
+    }
+  },
+  "env-b": {
+    "frontend": {
+      "reachable": true,
+      "login": true,
+      "ops_page": true
+    },
+    "backend": {
+      "system_disk_usage_pct": 88,
+      "pods_abnormal": 0
+    },
+    "inspection": {
+      "status": "warning",
+      "total": 48,
+      "passed": 47,
+      "failed": 0,
+      "warnings": 1
+    }
+  },
+  "env-c": {
+    "frontend": {
+      "reachable": true,
+      "login": false,
+      "ops_page": false
+    },
+    "backend": {
+      "system_disk_usage_pct": 66,
+      "pods_abnormal": 3
+    },
+    "inspection": {
+      "status": "failed",
+      "total": 48,
+      "passed": 45,
+      "failed": 3,
+      "warnings": 0
+    }
+  }
+}

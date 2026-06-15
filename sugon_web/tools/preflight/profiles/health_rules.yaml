@@ -1,0 +1,46 @@
+# 自动化运行前环境健康巡检规则。
+#
+# 输入既可以来自运维一键巡检页面，也可以来自后台命令/API 采集。
+# paths 支持多个候选字段，便于不同采集器复用同一套规则。
+
+checks:
+  frontend_reachable:
+    paths: [frontend.reachable, frontend_ok]
+    equals: true
+    required: true
+
+  login_ok:
+    paths: [frontend.login, login_ok]
+    equals: true
+    required: true
+
+  ops_page_ok:
+    paths: [frontend.ops_page, ops_page_ok]
+    equals: true
+    required: true
+
+  system_disk_usage_pct:
+    paths: [backend.system_disk_usage_pct, system_disk_usage_pct]
+    max: 85
+    required: true
+
+  pods_abnormal:
+    paths: [backend.pods_abnormal, pods_abnormal]
+    max: 0
+    required: true
+
+  inspection_status:
+    paths: [inspection.status, status]
+    one_of: [passed, success, ok, normal]
+    required: true
+
+  inspection_failed:
+    paths: [inspection.failed, failed, inspection_failed]
+    max: 0
+    required: true
+
+  inspection_warnings:
+    paths: [inspection.warnings, warnings, inspection_warnings]
+    max: 0
+    required: false
+    severity: warn

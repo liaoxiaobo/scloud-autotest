@@ -6,7 +6,7 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
+        string(name: 'MARK', defaultValue: '', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
         string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
@@ -58,13 +58,19 @@ pipeline {
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
                     def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+                    def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'daily-backend', 'preflight-all', 'all-checks']
+                    def isPreflightSuite = preflightSuites.contains(markFilter)
 
                     if (isBmsRun && effectiveParallelCount != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
                         effectiveParallelCount = '1'
                     }
+                    if (isPreflightSuite && effectiveParallelCount != '1') {
+                        echo "前置检查按环境串行执行，避免多个巡检同时操作同一运维页面。"
+                        effectiveParallelCount = '1'
+                    }
 
-                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
+                    def testTarget = isPreflightSuite ? "sugon_web/testcase/preflight/test_environment_health.py" : (isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/")
 
                     // 构建 pytest 命令（核心测试逻辑）
                     def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
@@ -88,7 +94,9 @@ pipeline {
                     }
 
                     // 标签筛选逻辑（-m 参数）
-                    if (params.MARK) {
+                    if (isPreflightSuite) {
+                        pytestCommand += " -m 'preflight'"
+                    } else if (params.MARK) {
                         pytestCommand += " -m '${params.MARK}'"
                     }
                     // 添加 RUN_LAST_FAILED 参数
@@ -96,7 +104,17 @@ pipeline {
                         pytestCommand += " --lf"
                     }
 
-                    sh pytestCommand
+                    if (isPreflightSuite) {
+                        sh "PREFLIGHT_SUITE=${markFilter} ${pytestCommand}"
+                    } else {
+                        sh pytestCommand
+                    }
+
+                    if (isPreflightSuite) {
+                        def safeHost = params.HOST.replace(':', '_').replace('/', '_').replace('\\\\', '_')
+                        def healthJson = "preflight-results/health_${safeHost}.json"
+                        sh "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}"
+                    }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
           }
