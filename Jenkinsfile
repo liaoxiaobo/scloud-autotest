@@ -60,6 +60,16 @@ pipeline {
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
                     def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'daily-backend', 'preflight-all', 'all-checks']
                     def isPreflightSuite = preflightSuites.contains(markFilter)
+                    def preflightMarkExpression = 'preflight'
+                    if (markFilter == 'frontend') {
+                        preflightMarkExpression = 'preflight_frontend'
+                    } else if (markFilter == 'backend') {
+                        preflightMarkExpression = 'preflight_backend'
+                    } else if (markFilter == 'inspection') {
+                        preflightMarkExpression = 'preflight_inspection'
+                    } else if (markFilter == 'daily-backend') {
+                        preflightMarkExpression = 'preflight_backend or preflight_inspection'
+                    }
 
                     if (isBmsRun && effectiveParallelCount != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
@@ -95,7 +105,7 @@ pipeline {
 
                     // 标签筛选逻辑（-m 参数）
                     if (isPreflightSuite) {
-                        pytestCommand += " -m 'preflight'"
+                        pytestCommand += " -m '${preflightMarkExpression}'"
                     } else if (params.MARK) {
                         pytestCommand += " -m '${params.MARK}'"
                     }
@@ -105,15 +115,15 @@ pipeline {
                     }
 
                     if (isPreflightSuite) {
-                        sh "PREFLIGHT_SUITE=${markFilter} ${pytestCommand}"
-                    } else {
-                        sh pytestCommand
-                    }
-
-                    if (isPreflightSuite) {
+                        def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} ${pytestCommand}", returnStatus: true)
                         def safeHost = params.HOST.replace(':', '_').replace('/', '_').replace('\\\\', '_')
                         def healthJson = "preflight-results/health_${safeHost}.json"
-                        sh "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}"
+                        def healthStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}", returnStatus: true)
+                        if (pytestStatus != 0 || healthStatus != 0) {
+                            error "前置环境检查失败: pytestStatus=${pytestStatus}, healthStatus=${healthStatus}"
+                        }
+                    } else {
+                        sh pytestCommand
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }

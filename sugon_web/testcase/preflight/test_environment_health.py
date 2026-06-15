@@ -10,7 +10,7 @@ import pytest
 
 from sugon_web.pages.cms import CmsPage
 from sugon_web.tools.preflight.health import evaluate_health_env, load_health_rules
-from sugon_web.tools.preflight.suites import filter_health_rules, load_suites, resolve_suite
+from sugon_web.tools.preflight.suites import filter_health_rules
 
 
 @pytest.fixture(scope="function")
@@ -19,39 +19,94 @@ def cms_page(page):
     return CmsPage(page)
 
 
-@pytest.mark.preflight
-@pytest.mark.preflight_health
-@pytest.mark.preflight_frontend
-@pytest.mark.preflight_backend
-@pytest.mark.preflight_inspection
-@allure.feature("环境前置检查")
-@allure.story("运维一键巡检")
-def test_ops_one_click_inspection(cms_page, config, ssh_host):
-    """运行运维一键巡检，采集后台健康项，并保存统一结果。"""
-    inspection = cms_page.run_one_click_inspection()
-    backend = _collect_backend_health(ssh_host)
-    snapshot = {
-        "frontend": {
-            "reachable": True,
-            "login": True,
-            "ops_page": inspection.get("status") != "unknown",
-        },
-        "backend": backend,
-        "inspection": inspection,
-    }
-
+@pytest.fixture(scope="session")
+def preflight_health_file(config):
+    """当前环境健康快照输出文件。"""
     host = config.get("host") or "default"
     safe_host = str(host).replace(":", "_").replace("/", "_").replace("\\", "_")
     output = Path("preflight-results") / f"health_{safe_host}.json"
-    cms_page.write_inspection_result(output, snapshot)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        output.unlink()
+    return output
 
-    allure.attach(
-        json.dumps(snapshot, ensure_ascii=False, indent=2),
-        name="环境健康巡检结果",
-        attachment_type=allure.attachment_type.JSON,
+
+@pytest.mark.preflight
+@pytest.mark.preflight_health
+@allure.feature("环境前置检查")
+@allure.story("完整前置检查")
+def test_preflight_selected_suite(config, preflight_health_file):
+    """占位展示当前执行的前置检查关键词。"""
+    suite_name = os.environ.get("PREFLIGHT_SUITE", "preflight-all").strip() or "preflight-all"
+    snapshot = _update_snapshot(preflight_health_file, {"suite": suite_name})
+    _attach_snapshot("前置检查关键词", snapshot)
+    assert suite_name
+
+
+@pytest.mark.preflight
+@pytest.mark.preflight_health
+@pytest.mark.preflight_frontend
+@allure.feature("环境前置检查")
+@allure.story("前端可用性")
+def test_frontend_health(cms_page, config, preflight_health_file):
+    """检查前端登录态和运维入口是否可访问。"""
+    frontend = _collect_frontend_health(cms_page)
+    snapshot = _update_snapshot(preflight_health_file, {"frontend": frontend})
+    _attach_snapshot("前端健康检查结果", snapshot)
+    _assert_section_health(config, snapshot, ["frontend_reachable", "login_ok", "ops_page_ok"])
+
+
+@pytest.mark.preflight
+@pytest.mark.preflight_health
+@pytest.mark.preflight_backend
+@allure.feature("环境前置检查")
+@allure.story("后台健康")
+def test_backend_health(config, ssh_host, preflight_health_file):
+    """检查后台系统盘和 Pod 状态。"""
+    backend = _collect_backend_health(ssh_host)
+    snapshot = _update_snapshot(preflight_health_file, {"backend": backend})
+    _attach_snapshot("后台健康检查结果", snapshot)
+    _assert_section_health(config, snapshot, ["system_disk_usage_pct", "pods_abnormal"])
+
+
+@pytest.mark.preflight
+@pytest.mark.preflight_health
+@pytest.mark.preflight_inspection
+@allure.feature("环境前置检查")
+@allure.story("运维一键巡检")
+def test_ops_one_click_inspection(cms_page, config, preflight_health_file):
+    """运行运维一键巡检并保存结果。"""
+    inspection = cms_page.run_one_click_inspection()
+    snapshot = _update_snapshot(preflight_health_file, {"inspection": inspection})
+    _attach_snapshot("运维一键巡检结果", snapshot)
+    _assert_section_health(
+        config,
+        snapshot,
+        ["inspection_status", "inspection_failed", "inspection_warnings"],
     )
 
-    rules = _resolve_rules_for_suite()
+
+def _collect_frontend_health(cms_page: CmsPage) -> dict[str, Any]:
+    """采集前端登录和运维入口可用性。"""
+    result = {
+        "reachable": False,
+        "login": False,
+        "ops_page": False,
+    }
+    try:
+        result["reachable"] = True
+        result["login"] = "login" not in (cms_page.page.url or "")
+        cms_page.goto_service("运维", force=True)
+        cms_page.wait_for_page_ready()
+        result["ops_page"] = "/cms" in cms_page.page.url
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
+
+
+def _assert_section_health(config, snapshot: dict[str, Any], check_names: list[str]) -> None:
+    rules = filter_health_rules(load_health_rules(), check_names)
+    host = config.get("host") or "default"
     health_result = evaluate_health_env(str(host), snapshot, rules)
     failures = health_result.failed + health_result.unknown
     assert not failures, "环境健康检查不通过: " + "; ".join(
@@ -77,21 +132,22 @@ def _collect_backend_health(ssh_host) -> dict[str, Any]:
     }
 
 
-def _resolve_rules_for_suite() -> dict[str, Any]:
-    rules = load_health_rules()
-    suite_name = os.environ.get("PREFLIGHT_SUITE", "").strip()
-    if not suite_name:
-        return rules
+def _update_snapshot(path: Path, partial: dict[str, Any]) -> dict[str, Any]:
+    if path.exists():
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        snapshot = {}
+    snapshot.update(partial)
+    path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    return snapshot
 
-    expanded = resolve_suite(
-        suite_name,
-        load_suites(),
-        available_modules=[],
-        available_checks=list(rules.get("checks", {})),
+
+def _attach_snapshot(name: str, snapshot: dict[str, Any]) -> None:
+    allure.attach(
+        json.dumps(snapshot, ensure_ascii=False, indent=2),
+        name=name,
+        attachment_type=allure.attachment_type.JSON,
     )
-    if not expanded["health_checks"]:
-        return rules
-    return filter_health_rules(rules, expanded["health_checks"])
 
 
 def _to_int_or_none(value: Any) -> int | None:
