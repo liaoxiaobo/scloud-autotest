@@ -29,6 +29,9 @@ model: opus
 ## 编码高频易错·交付前必查（架构新增·依据 test_case_codegen_prompt.md，命中即返工）
 
 > **编码前先做（治返工之源）**：本次若**新建 Page Object**、或交互含**多步向导 / `cl-button` 自定义组件 / 多 dropdown / 动态渲染**，**编码前必须先跑 `recon_page.py` 侦察真实渲染态**（按钮文案、向导步数、下拉选项、容器类名），按 `page_func_spec.md` §1.3 速查表写定位，**严禁凭需求文案猜选择器/猜流程**（实测复杂用例阶段三返工几乎全源于此）。
+> - **点击/导航类定位有疑问时，写进 Page Object 前必须先用交互探针验证**（与"必须带 `--log-file`"同级的机械步骤，秒级、不必跑全量 pytest）：
+>   `python .claude/skills/test-script-dev/scripts/recon_page.py --service "<服务>" [--submenu "<子菜单>"] --probe-click "<目标文案>"`
+>   看输出：命中数（>1 要 scope 限定）、原生 `.click()` 后 URL/DOM 是否变化。**确认原生点击有效再写**，严禁未验证就用 `evaluate` 合成 `MouseEvent`（触发不了 Vue 路由）。
 >
 > 实测最易漏的几类违规，交付前逐条核对（规则细节见 codegen 规范 §8/§9/§13/§15，此处只列速查、不重复）：
 > - **重复导航**：业务方法已带 `@submenu` 的，测试层/方法体不得再写 `goto_service`/`goto_submenu`，也不另封装导航方法。
