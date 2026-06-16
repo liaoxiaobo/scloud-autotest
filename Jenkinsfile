@@ -4,22 +4,15 @@ pipeline {
 //         string(name: 'BRANCH', defaultValue: 'develop', description: '请输入正确Git分支名（如main、develop)', trim: true)
         string(name: 'HOST', defaultValue: '172.22.1.190', description: '请输入环境的管理VIP')
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
-        string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
-        string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
         booleanParam(name: 'STORAGE_DEDICATED_ENV', defaultValue: true, description: 'storage 模块是否使用独立环境')
         string(name: 'STORAGE_HOST', defaultValue: '172.22.3.150', description: 'storage 模块专用管理 VIP')
         choice(name: 'STORAGE_STOR', choices: ["zbs", "xstor", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: 'storage 模块专用存储池类型')
-        string(name: 'STORAGE_USER', defaultValue: 'admin', description: 'storage 模块专用登录用户名')
-        string(name: 'STORAGE_PWD', defaultValue: 'keystone_sugon', description: 'storage 模块专用登录密码')
         booleanParam(name: 'SECURITY_DEDICATED_ENV', defaultValue: true, description: 'security 模块是否使用独立环境')
         string(name: 'SECURITY_HOST', defaultValue: '172.22.3.140', description: 'security 模块专用管理 VIP')
-        choice(name: 'SECURITY_STOR', choices: ["zbs", "xstor", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: 'security 模块专用存储池类型')
-        string(name: 'SECURITY_USER', defaultValue: 'admin', description: 'security 模块专用登录用户名')
-        string(name: 'SECURITY_PWD', defaultValue: 'keystone_sugon', description: 'security 模块专用登录密码')
         string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。支持虚拟模块 compute_non_bms、bms；填写后覆盖 RUN_PLAN。')
-        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
-middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
-格式：环境别名|host|stor|user|pwd''')
+        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph
+middleware_env|172.22.1.189|usan''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
+格式：环境别名|host|stor。兼容旧格式：环境别名|host|stor|user|pwd''')
         text(name: 'MODULE_ENV_MAP', defaultValue: '''database=database_env
 middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
 示例：
@@ -95,25 +88,27 @@ middleware=redis''')
             }
           steps{
                 script {
+                    def defaultUser = 'admin'
+                    def defaultPwd = 'keystone'
                     def defaultEnv = [
                         host: params.HOST,
                         stor: params.STOR,
-                        user: params.USER,
-                        pwd : params.PWD
+                        user: defaultUser,
+                        pwd : defaultPwd
                     ]
                     def storageDedicatedEnv = (params.STORAGE_DEDICATED_ENV == null) ? true : params.STORAGE_DEDICATED_ENV
                     def storageEnv = [
                         host: params.STORAGE_HOST ?: defaultEnv.host,
                         stor: params.STORAGE_STOR ?: defaultEnv.stor,
-                        user: params.STORAGE_USER ?: defaultEnv.user,
-                        pwd : params.STORAGE_PWD ?: defaultEnv.pwd
+                        user: defaultUser,
+                        pwd : defaultPwd
                     ]
                     def securityDedicatedEnv = (params.SECURITY_DEDICATED_ENV == null) ? true : params.SECURITY_DEDICATED_ENV
                     def securityEnv = [
                         host: params.SECURITY_HOST ?: defaultEnv.host,
-                        stor: params.SECURITY_STOR ?: defaultEnv.stor,
-                        user: params.SECURITY_USER ?: defaultEnv.user,
-                        pwd : params.SECURITY_PWD ?: defaultEnv.pwd
+                        stor: 'xbd',
+                        user: defaultUser,
+                        pwd : defaultPwd
                     ]
 
                     def parseEnvConfigs = { String value ->
@@ -124,14 +119,14 @@ middleware=redis''')
                                 return
                             }
                             def parts = line.split('\\|', -1).collect { it.trim() }
-                            if (parts.size() != 5) {
-                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
+                            if (!(parts.size() in [3, 5])) {
+                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor，兼容旧格式：环境别名|host|stor|user|pwd"
                             }
                             result[parts[0]] = [
                                 host: parts[1],
                                 stor: parts[2],
-                                user: parts[3],
-                                pwd : parts[4]
+                                user: parts.size() == 5 ? parts[3] : defaultUser,
+                                pwd : parts.size() == 5 ? parts[4] : defaultPwd
                             ]
                         }
                         return result
