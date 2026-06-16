@@ -6,6 +6,19 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
+        string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。为空时按原逻辑运行整个 testcase')
+        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
+middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
+格式：环境别名|host|stor|user|pwd''')
+        text(name: 'MODULE_ENV_MAP', defaultValue: '''database=database_env
+middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
+示例：
+database=database_env
+middleware=middleware_env''')
+        text(name: 'MODULE_MARK_MAP', defaultValue: '', description: '''模块绑定 pytest mark，一行一个映射。优先级高于全局 MARK。
+示例：
+database=mysql
+middleware=redis''')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
@@ -38,8 +51,10 @@ pipeline {
                 script{
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
+                    env.IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    env.WORKSPACE_DIR = "${env.WORKSPACE}"
+                    sh "rm -rf allure-result allure-merged-result allure-report"
+                    sh "docker build -t playwright-sugon:${env.IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
           }
@@ -47,56 +62,147 @@ pipeline {
         stage('Run Tests'){
             agent{
                 docker{
-                    image "playwright-sugon:${IMAGE_TAG}"
+                    image "playwright-sugon:${env.IMAGE_TAG}"
                     args '--rm'
                     reuseNode true
                 }
             }
           steps{
                 script {
+                    def defaultEnv = [
+                        host: params.HOST,
+                        stor: params.STOR,
+                        user: params.USER,
+                        pwd : params.PWD
+                    ]
+
+                    def parseEnvConfigs = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('\\|', -1).collect { it.trim() }
+                            if (parts.size() != 5) {
+                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
+                            }
+                            result[parts[0]] = [
+                                host: parts[1],
+                                stor: parts[2],
+                                user: parts[3],
+                                pwd : parts[4]
+                            ]
+                        }
+                        return result
+                    }
+
+                    def parseModuleEnvMap = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('=', -1).collect { it.trim() }
+                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
+                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
+                            }
+                            result[parts[0]] = parts[1]
+                        }
+                        return result
+                    }
+
+                    def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
+                    def moduleEnvMap = parseModuleEnvMap(params.MODULE_ENV_MAP)
+                    def moduleMarkMap = parseModuleEnvMap(params.MODULE_MARK_MAP)
+
+                    def modules = []
+                    if (params.MODULES?.trim()) {
+                        modules = params.MODULES.split(',').collect { it.trim() }.findAll { it }
+                    }
+                    def failedModules = []
+                    def baseWorkspace = env.WORKSPACE_DIR ?: env.WORKSPACE
                     def markFilter = (params.MARK ?: '').trim().toLowerCase()
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
-                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+                    def effectiveParallelCount = (isBmsRun ? '1' : (params.PARALLEL_COUNT ?: '2').trim())
 
-                    if (isBmsRun && effectiveParallelCount != '1') {
+                    if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
-                        effectiveParallelCount = '1'
+                    }
+                    if (!modules && !isBmsRun) {
+                        def moduleText = sh(
+                            script: "find '${baseWorkspace}/sugon_web/testcase' -mindepth 2 -maxdepth 2 -name 'test_*.py' -print | awk -F/ '{print \$(NF-1)}' | sort -u",
+                            returnStdout: true
+                        ).trim()
+                        modules = moduleText ? moduleText.split('\n').collect { it.trim() }.findAll { it } : []
+                        echo "MODULES 为空，自动扫描到模块: ${modules.join(', ')}"
                     }
 
-                    def testTarget = isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/"
+                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
+                        def pytestCommand = "pytest --headless=true " +
+                            "--host=${envCfg.host ?: defaultEnv.host} " +
+                            "--stor=${envCfg.stor ?: defaultEnv.stor} " +
+                            "--username=${envCfg.user ?: defaultEnv.user} " +
+                            "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
+                            "-n ${effectiveParallelCount} --dist=loadscope " +
+                            "${casePath} " +
+                            "--alluredir ${baseWorkspace}/allure-result/${resultName}"
 
-                    // 构建 pytest 命令（核心测试逻辑）
-                    def pytestCommand = "pytest --headless=true --host=${params.HOST} --stor=${params.STOR} --username=${params.USER} --password=${params.PWD} ${testTarget} --alluredir allure-result"
-                    if (params.BMS_INSTANCE_NAME?.trim()) {
-                        pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
-                    }
-                    if (params.BMS_BMC_IP?.trim()) {
-                        pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
-                    }
-                    if (params.BMS_PREFERRED_NODE?.trim()) {
-                        pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
-                    }
-                    if (params.BMS_NETWORK_NAME?.trim()) {
-                        pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
-                    }
-                    if (params.BMS_PASSWORD?.trim()) {
-                        pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
-                    }
-                    if (effectiveParallelCount != '1') {
-                        pytestCommand += " -n ${effectiveParallelCount} --dist=loadscope"
+                        if (params.BMS_INSTANCE_NAME?.trim()) {
+                            pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                        }
+                        if (params.BMS_BMC_IP?.trim()) {
+                            pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                        }
+                        if (params.BMS_PREFERRED_NODE?.trim()) {
+                            pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                        }
+                        if (params.BMS_NETWORK_NAME?.trim()) {
+                            pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                        }
+                        if (params.BMS_PASSWORD?.trim()) {
+                            pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                        }
+                        if (markExpr) {
+                            pytestCommand += " -m '${markExpr}'"
+                        }
+                        if (params.RUN_LAST_FAILED) {
+                            pytestCommand += " --lf"
+                        }
+
+                        echo "Pytest command: ${pytestCommand}"
+                        sh pytestCommand
                     }
 
-                    // 标签筛选逻辑（-m 参数）
-                    if (params.MARK) {
-                        pytestCommand += " -m '${params.MARK}'"
+                    if (modules) {
+                        modules.each { moduleName ->
+                            def casePath = "${baseWorkspace}/sugon_web/testcase/${moduleName}"
+                            sh "test -d '${casePath}'"
+                            def envName = moduleEnvMap[moduleName]
+                            def envCfg = defaultEnv + (envName ? (envConfigs[envName] ?: [:]) : [:])
+                            if (envName && !envConfigs[envName]) {
+                                error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
+                            }
+                            def markExpr = moduleMarkMap[moduleName] ?: params.MARK
+                            echo "Resolved module ${moduleName}: host=${envCfg.host}, stor=${envCfg.stor}, user=${envCfg.user}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
+                            try {
+                                runPytest(casePath, envCfg, moduleName, markExpr)
+                            } catch (err) {
+                                failedModules.add(moduleName)
+                                currentBuild.result = 'FAILURE'
+                                echo "模块 ${moduleName} 执行失败，继续执行后续模块: ${err}"
+                            }
+                        }
+                        if (failedModules) {
+                            error "以下模块执行失败: ${failedModules.join(', ')}"
+                        }
+                    } else {
+                        echo "Resolved all testcase: host=${defaultEnv.host}, stor=${defaultEnv.stor}, user=${defaultEnv.user}, mark=${params.MARK ?: 'default'}"
+                        def testTarget = isBmsRun ? "${baseWorkspace}/sugon_web/testcase/compute/test_bms_*.py" : "${baseWorkspace}/sugon_web/testcase/"
+                        runPytest(testTarget, defaultEnv, "all", params.MARK)
                     }
-                    // 添加 RUN_LAST_FAILED 参数
-                    if (params.RUN_LAST_FAILED) {
-                        pytestCommand += " --lf"
-                    }
-
-                    sh pytestCommand
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
           }
@@ -104,24 +210,30 @@ pipeline {
     }
     post('Send Report') {
         always {
-            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
-            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
-            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
-
+            sh "mkdir -p allure-result allure-merged-result"
             // 保留allure历史数据
-            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
+            sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
-            // 生成 Allure 报告
-            allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+            // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
+            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
 
-            // 清理临时文件
-            sh "rm -rf allure-result/* || true"
+            // Jenkins Allure 插件发布报告；失败时继续归档结果，避免报告完全不可看
+            script {
+                try {
+                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-merged-result']]
+                } catch (err) {
+                    echo "Allure 插件发布失败: ${err}"
+                }
+            }
+
+            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
 
             // Docker 系统清理
+            sh "docker rmi playwright-sugon:${env.IMAGE_TAG} || true" // 删除本次构建的临时镜像
             sh "docker system prune -f"
 
             // 发送报告到飞书
