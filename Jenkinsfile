@@ -11,6 +11,11 @@ pipeline {
         choice(name: 'STORAGE_STOR', choices: ["zbs", "xstor", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: 'storage 模块专用存储池类型')
         string(name: 'STORAGE_USER', defaultValue: 'admin', description: 'storage 模块专用登录用户名')
         string(name: 'STORAGE_PWD', defaultValue: 'keystone_sugon', description: 'storage 模块专用登录密码')
+        booleanParam(name: 'SECURITY_DEDICATED_ENV', defaultValue: true, description: 'security 模块是否使用独立环境')
+        string(name: 'SECURITY_HOST', defaultValue: '172.22.3.140', description: 'security 模块专用管理 VIP')
+        choice(name: 'SECURITY_STOR', choices: ["zbs", "xstor", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: 'security 模块专用存储池类型')
+        string(name: 'SECURITY_USER', defaultValue: 'admin', description: 'security 模块专用登录用户名')
+        string(name: 'SECURITY_PWD', defaultValue: 'keystone_sugon', description: 'security 模块专用登录密码')
         string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。支持虚拟模块 compute_non_bms、bms；填写后覆盖 RUN_PLAN。')
         text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
 middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
@@ -102,6 +107,13 @@ middleware=redis''')
                         stor: params.STORAGE_STOR ?: defaultEnv.stor,
                         user: params.STORAGE_USER ?: defaultEnv.user,
                         pwd : params.STORAGE_PWD ?: defaultEnv.pwd
+                    ]
+                    def securityDedicatedEnv = (params.SECURITY_DEDICATED_ENV == null) ? true : params.SECURITY_DEDICATED_ENV
+                    def securityEnv = [
+                        host: params.SECURITY_HOST ?: defaultEnv.host,
+                        stor: params.SECURITY_STOR ?: defaultEnv.stor,
+                        user: params.SECURITY_USER ?: defaultEnv.user,
+                        pwd : params.SECURITY_PWD ?: defaultEnv.pwd
                     ]
 
                     def parseEnvConfigs = { String value ->
@@ -218,6 +230,12 @@ middleware=redis''')
                             return [
                                 envName: 'storage_dedicated',
                                 envCfg: defaultEnv + storageEnv
+                            ]
+                        }
+                        if (securityDedicatedEnv && cfg.envKey == 'security') {
+                            return [
+                                envName: 'security_dedicated',
+                                envCfg: defaultEnv + securityEnv
                             ]
                         }
                         def envName = moduleEnvMap[moduleName] ?: moduleEnvMap[cfg.envKey]
