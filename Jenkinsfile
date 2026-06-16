@@ -280,7 +280,7 @@ middleware=redis''')
                             return null
                         }
                         def collectCommand = appendCommonPytestOptions(buildBasePytestCommand(casePath, envCfg), markExpr, extraArgs)
-                        collectCommand += " --collect-only -q"
+                        collectCommand += " --collect-only -qq"
                         echo "Collect sample command (${resultName}, first ${sampleLimit}): ${collectCommand}"
                         def collectOutput = sh(script: collectCommand, returnStdout: true).trim()
                         def nodeIds = collectOutput.readLines()
