@@ -124,7 +124,9 @@ database|||2||''')
                             def moduleNames = modules as Set
                             def selectedModules = markParts.findAll { moduleNames.contains(it) }
                             if (selectedModules) {
-                                modules = modules.findAll { selectedModules.contains(it) }
+                                def overrideModules = moduleOverrides.keySet().findAll { moduleNames.contains(it) }
+                                def requestedModules = (selectedModules + overrideModules).unique()
+                                modules = modules.findAll { requestedModules.contains(it) }
                             }
                         }
                         echo "自动生成运行单元: ${modules.join(', ')}"
