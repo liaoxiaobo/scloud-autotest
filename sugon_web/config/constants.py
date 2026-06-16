@@ -35,6 +35,7 @@ SERVICE_PATH_MAP = {
     '监控服务': '/prom',
     'E-MapReduce': '/emr',
     '云容器引擎': '/cce',
+    '容器镜像服务SCR': '/scr',
     '交换机组': '/ops/#/exchange-unit-list',
     '基础设施': '/ops',
     '统一身份认证IAM': '/iam/#/departmentManage',
