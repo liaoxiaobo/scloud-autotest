@@ -32,7 +32,7 @@ middleware=redis''')
   {"lane":"lane-c","modules":["compute_non_bms","container","network","storage","middleware"]},
   {"lane":"lane-d","modules":["bms"]}
 ]''', description: '模块并发调度计划。lane 之间并行，lane 内模块按顺序串行执行。MODULES 非空时覆盖此计划。')
-        string(name: 'MODULE_PARALLEL_MAP', defaultValue: 'bigdata=1,database=2,compute_non_bms=2,container=2,backup=2,iam=4,security=4,network=1,storage=2,middleware=2,bms=1', description: '模块并发数配置，逗号分隔。BMS 会强制串行。')
+        string(name: 'MODULE_PARALLEL_MAP', defaultValue: 'bigdata=1,database=2,compute_non_bms=2,container=2,backup=2,iam=1,security=4,network=1,storage=2,middleware=2,bms=1', description: '模块并发数配置，逗号分隔。BMS 会强制串行。')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
