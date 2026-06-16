@@ -26,6 +26,7 @@ middleware=redis''')
         string(name: 'BMS_NETWORK_NAME', defaultValue: '', description: 'BMS网络名称（留空使用配置文件）')
         string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
+        string(name: 'SAMPLE_PER_MODULE', defaultValue: '5', description: '每个模块按 pytest 收集顺序抽取前 N 个用例执行。0 或留空表示跑完整模块。')
         text(name: 'RUN_PLAN', defaultValue: '''[
   {"lane":"lane-a","modules":["bigdata","backup"]},
   {"lane":"lane-b","modules":["database","iam","security"]},
@@ -129,6 +130,14 @@ middleware=redis''')
                     def markFilter = (params.MARK ?: '').trim().toLowerCase()
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
+                    def samplePerModule = (params.SAMPLE_PER_MODULE == null ? '5' : params.SAMPLE_PER_MODULE.trim())
+                    if (!samplePerModule) {
+                        samplePerModule = '0'
+                    }
+                    if (!(samplePerModule ==~ /^\d+$/)) {
+                        error "SAMPLE_PER_MODULE 必须是非负整数，当前值: ${samplePerModule}"
+                    }
+                    def sampleLimit = samplePerModule.toInteger()
 
                     if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
@@ -200,14 +209,57 @@ middleware=redis''')
                         return moduleMarkMap[moduleName] ?: moduleMarkMap[cfg.markKey] ?: params.MARK
                     }
 
-                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr, String parallelCount, String extraArgs ->
-                        def pytestCommand = "pytest --headless=true " +
+                    def shellQuote = { String value ->
+                        return "'" + value.replace("'", "'\"'\"'") + "'"
+                    }
+
+                    def buildBasePytestCommand = { String casePath, Map envCfg ->
+                        return "pytest --headless=true " +
                             "--host=${envCfg.host ?: defaultEnv.host} " +
                             "--stor=${envCfg.stor ?: defaultEnv.stor} " +
                             "--username=${envCfg.user ?: defaultEnv.user} " +
                             "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
-                            "${casePath} " +
-                            "--alluredir ${baseWorkspace}/allure-result/${resultName}"
+                            "${casePath}"
+                    }
+
+                    def appendCommonPytestOptions = { String pytestCommand, String markExpr, String extraArgs ->
+                        def cmd = pytestCommand
+                        if (extraArgs) {
+                            cmd += " ${extraArgs}"
+                        }
+                        if (markExpr) {
+                            cmd += " -m '${markExpr}'"
+                        }
+                        if (params.RUN_LAST_FAILED) {
+                            cmd += " --lf"
+                        }
+                        return cmd
+                    }
+
+                    def collectSampleNodeIds = { String casePath, Map envCfg, String resultName, String markExpr, String extraArgs ->
+                        if (sampleLimit <= 0) {
+                            return null
+                        }
+                        def collectCommand = appendCommonPytestOptions(buildBasePytestCommand(casePath, envCfg), markExpr, extraArgs)
+                        collectCommand += " --collect-only -q"
+                        echo "Collect sample command (${resultName}, first ${sampleLimit}): ${collectCommand}"
+                        def collectOutput = sh(script: collectCommand, returnStdout: true).trim()
+                        def nodeIds = collectOutput.readLines()
+                            .collect { it.trim() }
+                            .findAll { it && it.contains('::') && !it.startsWith('=') }
+                            .take(sampleLimit)
+                        echo "Sampled ${nodeIds.size()} test(s) for ${resultName}: ${nodeIds.join(', ')}"
+                        return nodeIds
+                    }
+
+                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr, String parallelCount, String extraArgs ->
+                        def sampleNodeIds = collectSampleNodeIds(casePath, envCfg, resultName, markExpr, extraArgs)
+                        if (sampleNodeIds != null && sampleNodeIds.isEmpty()) {
+                            error "模块 ${resultName} 开启 SAMPLE_PER_MODULE=${sampleLimit}，但未收集到可执行用例"
+                        }
+                        def pytestTarget = sampleNodeIds != null ? sampleNodeIds.collect { shellQuote(it) }.join(' ') : casePath
+                        def pytestCommand = buildBasePytestCommand(pytestTarget, envCfg) +
+                            " --alluredir ${baseWorkspace}/allure-result/${resultName}"
 
                         if (extraArgs) {
                             pytestCommand += " ${extraArgs}"
