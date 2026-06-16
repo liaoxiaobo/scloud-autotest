@@ -6,6 +6,11 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
+        booleanParam(name: 'STORAGE_DEDICATED_ENV', defaultValue: true, description: 'storage 模块是否使用独立环境')
+        string(name: 'STORAGE_HOST', defaultValue: '172.22.3.150', description: 'storage 模块专用管理 VIP')
+        choice(name: 'STORAGE_STOR', choices: ["zbs", "xstor", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: 'storage 模块专用存储池类型')
+        string(name: 'STORAGE_USER', defaultValue: 'admin', description: 'storage 模块专用登录用户名')
+        string(name: 'STORAGE_PWD', defaultValue: 'keystone_sugon', description: 'storage 模块专用登录密码')
         string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。支持虚拟模块 compute_non_bms、bms；填写后覆盖 RUN_PLAN。')
         text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
 middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
@@ -90,6 +95,13 @@ middleware=redis''')
                         stor: params.STOR,
                         user: params.USER,
                         pwd : params.PWD
+                    ]
+                    def storageDedicatedEnv = (params.STORAGE_DEDICATED_ENV == null) ? true : params.STORAGE_DEDICATED_ENV
+                    def storageEnv = [
+                        host: params.STORAGE_HOST ?: defaultEnv.host,
+                        stor: params.STORAGE_STOR ?: defaultEnv.stor,
+                        user: params.STORAGE_USER ?: defaultEnv.user,
+                        pwd : params.STORAGE_PWD ?: defaultEnv.pwd
                     ]
 
                     def parseEnvConfigs = { String value ->
@@ -202,6 +214,12 @@ middleware=redis''')
 
                     def resolveModuleEnv = { String moduleName ->
                         def cfg = resolveModuleConfig(moduleName)
+                        if (storageDedicatedEnv && cfg.envKey == 'storage') {
+                            return [
+                                envName: 'storage_dedicated',
+                                envCfg: defaultEnv + storageEnv
+                            ]
+                        }
                         def envName = moduleEnvMap[moduleName] ?: moduleEnvMap[cfg.envKey]
                         if (envName && !envConfigs[envName]) {
                             error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
