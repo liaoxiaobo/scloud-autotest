@@ -450,13 +450,42 @@ middleware=redis''')
     }
     post('Send Report') {
         always {
-            sh "mkdir -p allure-result allure-merged-result"
+            sh "rm -rf allure-merged-result && mkdir -p allure-result allure-merged-result"
             // 保留allure历史数据
             sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
             // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
-            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
+            sh "find allure-result -type f ! -name 'environment.properties' -exec cp {} allure-merged-result/ \\; || true"
+
+            script {
+                def defaultModules = 'iam,compute_non_bms,network,bigdata,database,middleware,bms,container,backup'
+                def defaultHost = params.HOST ?: '172.22.1.190'
+                def defaultStor = params.STOR ?: 'zbs'
+                def securityHost = params.SECURITY_DEDICATED_ENV ? (params.SECURITY_HOST ?: defaultHost) : defaultHost
+                def securityStor = params.SECURITY_DEDICATED_ENV ? 'xbd' : defaultStor
+                def storageHost = params.STORAGE_DEDICATED_ENV ? (params.STORAGE_HOST ?: defaultHost) : defaultHost
+                def storageStor = params.STORAGE_DEDICATED_ENV ? (params.STORAGE_STOR ?: defaultStor) : defaultStor
+                writeFile file: 'allure-merged-result/environment.properties', text: [
+                    "JOB=${env.JOB_NAME}",
+                    "BUILD=${env.BUILD_NUMBER}",
+                    "USER=admin",
+                    "DEFAULT_MODULES=${defaultModules}",
+                    "DEFAULT_HOST=${defaultHost}",
+                    "DEFAULT_URL=https://${defaultHost}:30000",
+                    "DEFAULT_STOR=${defaultStor}",
+                    "SECURITY_MODULE=security",
+                    "SECURITY_HOST=${securityHost}",
+                    "SECURITY_URL=https://${securityHost}:30000",
+                    "SECURITY_STOR=${securityStor}",
+                    "STORAGE_MODULE=storage",
+                    "STORAGE_HOST=${storageHost}",
+                    "STORAGE_URL=https://${storageHost}:30000",
+                    "STORAGE_STOR=${storageStor}",
+                    "SAMPLE_PER_MODULE=${params.SAMPLE_PER_MODULE ?: 'all'}",
+                    "PRIORITY_MODULES=${params.PRIORITY_MODULES ?: ''}"
+                ].join('\n') + '\n'
+            }
 
             // Jenkins Allure 插件发布报告；失败时继续归档结果，避免报告完全不可看
             script {
