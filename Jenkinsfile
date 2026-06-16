@@ -366,9 +366,23 @@ middleware=redis''')
                         }
                         def planText = (params.RUN_PLAN ?: '').trim()
                         if (planText) {
-                            def parsedPlan = new groovy.json.JsonSlurperClassic().parseText(planText)
-                            if (!(parsedPlan instanceof List) || parsedPlan.isEmpty()) {
-                                error "RUN_PLAN 必须是非空 JSON 数组"
+                            def parsedPlan = []
+                            def compactPlanText = planText.replace('\r', '').replace('\n', ' ')
+                            def lanePattern = /\{\s*"lane"\s*:\s*"([^"]+)"\s*,\s*"modules"\s*:\s*\[([^\]]*)\]\s*\}/
+                            def matcher = compactPlanText =~ lanePattern
+                            matcher.each { match ->
+                                def laneName = match[1].trim()
+                                def modules = match[2].split(',').collect { rawModule ->
+                                    def item = rawModule.trim()
+                                    if (!(item ==~ /^"[^"]+"$/)) {
+                                        error "RUN_PLAN 中 ${laneName} 的 modules 格式错误: ${item}"
+                                    }
+                                    return item.substring(1, item.length() - 1)
+                                }.findAll { it }
+                                parsedPlan.add([lane: laneName, modules: modules])
+                            }
+                            if (parsedPlan.isEmpty()) {
+                                error 'RUN_PLAN 必须是非空 JSON 数组，格式示例：[{"lane":"database","modules":["database"]}]'
                             }
                             return parsedPlan
                         }
