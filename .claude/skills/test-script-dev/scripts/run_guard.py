@@ -4,35 +4,47 @@
 
 为什么需要本脚本（根因）：
     阶段三的修复循环跑在【一次 phase3 子智能体派发内部】，编排层看不到"两轮之间"，
-    所以 loop_gate.py（设计给编排层在两轮间调用）根本没机会触发；而 5/7/15 轮上限、
-    状态冻结等又都是写在 agent 体内、靠模型【自觉执行】的软约束——实测 kimi 在长循环里
-    0 执行（运行报告里 global_fix_rounds 一直是 0，却跑了 40+ 次 pytest、耗时 10+ 小时）。
+    所以 loop_gate.py（设计给编排层在两轮间调用）根本没机会触发；而轮次上限、状态冻结
+    等又都是写在 agent 体内、靠模型【自觉执行】的软约束——实测 kimi 在长循环里 0 执行
+    （运行报告里轮次一直是 0，却跑了 40+ 次 pytest、耗时 10+ 小时）。
     结论：失控的 agent 不会自己停。刹车必须放在【绕不开的咽喉点】——每一次 pytest 调用。
 
 本脚本把"计数 / 熔断 / 冻结检测"从"模型的责任"变成"跑 pytest 这个动作的不可避免副作用"：
     无论模型是否自觉，只要它经本脚本跑测试，计数就被机械记录、超限就被机械拒绝。
     本脚本【不改变任何编码/定位/规范能力】，只拦"还能不能再跑一轮"。
 
-机械控制（全部确定性，不含 LLM 判断）：
-    1) 计数：每跑一次 +1，落盘到 state 文件（按测试目标分文件计数 + 全局计数）。
-    2) 硬熔断：单测试目标累计 >= --cap-file（默认 7，对齐"5 轮+进展奖励 2 轮"上限）
-              或全局 >= --cap-global（默认 15）→ 拒绝执行、退出码 3、不再跑 pytest。
-    3) 冻结检测：连续 2 轮"相同失败指纹"（同一 FAILED/ERROR 摘要）→ 拒绝下一轮、退出码 3。
-       （正治本次"同一处点击失败重复 40 轮"。）
+=== 计数单位的明确定义（务必读懂，避免理解错）===
+    本脚本的计数键 = 你传给 pytest 的"测试目标"：
+      · `pytest 文件.py -k test_xxx`  → 键 = 该【测试方法 test_xxx】（推荐：阶段三调试单个需求就这么跑）
+      · `pytest 文件.py`（不带 -k）   → 键 = 【整个 .py 文件】（首次整文件跑 / 最后整文件验证）
+    而"一个测试方法 def test_xxx"在本项目里就对应"测试需求 CSV 文件里的一行（一个测试需求/场景）"
+    （阶段二硬规则：一个 CSV 场景 = 一个独立 def test_ 方法）。
+    所以："单个用例最多跑 N 次" = "CSV 里的每一个测试需求（= 一个 def test_ 方法，用 -k 单独跑时）
+    最多跑 N 次 pytest"。它【不是】指整个 .py 脚本（一个 .py 往往含一个 CSV 文件的多个需求/多个
+    def test_ 方法），也【不是】指一次 pytest 命令。
+
+机械控制（全部确定性，不含 LLM 判断，口径极简：1 次 pytest = 1 次）：
+    1) 计数：每经本脚本跑一次 pytest，该测试目标计数 +1、全局计数 +1，落盘 state 文件。
+    2) 硬熔断（满足任一即退出码 3 拒绝执行）：
+         - 单测试目标累计 >= --cap-file（默认 30）
+         - 全局累计 >= --cap-global（默认随场景数缩放 = 场景数 × 30）
+         - 连续 FREEZE_LIMIT 次"相同失败指纹"（默认 10）→ 原地打转，停。
+    3) 冻结检测：连续 N 次失败摘要完全相同 → 判定无进展、拒绝下一轮；只要失败现象变化（有进展）
+       或某轮通过，冻结计数立即清零。
 
 退出码：
     0   pytest 通过（透传 pytest 退出码 0）
     1   pytest 失败（透传 pytest 非 0 退出码；未达熔断上限，可在修对根因后再跑）
-    3   被守卫拒绝（已达轮次上限 / 触发状态冻结）→ 必须停止该测试目标，标记"遗留问题·转人工"，
+    3   被守卫拒绝（已达次数上限 或 触发状态冻结）→ 必须停止该测试目标，标记"遗留问题·转人工"，
         严禁绕过本脚本裸跑 pytest 继续试。
     2   用法/环境错误。
 
 用法（阶段三所有 pytest 必须经本脚本跑，禁止裸跑 pytest）：
-    # 阶段三开始（首次执行该文件前）先重置本次任务的守卫状态：
-    python .claude/skills/test-script-dev/scripts/run_guard.py --reset --task <任务标识>
+    # 阶段三开始（首次执行该文件前）先重置本次任务的守卫状态（必须传 --cases 缩放全局上限）：
+    python .claude/skills/test-script-dev/scripts/run_guard.py --reset --task <任务标识> --cases <场景数>
     # 之后每次跑 pytest 都经本脚本（-- 之后原样就是平时的 pytest 命令与参数）：
     python .claude/skills/test-script-dev/scripts/run_guard.py --task <任务标识> -- \
-        pytest sugon_web/testcase/network/test_xxx.py --log-file=logs/xxx.log --log-file-level=DEBUG
+        pytest sugon_web/testcase/network/test_xxx.py -k test_xxx --log-file=logs/xxx.log --log-file-level=DEBUG
 """
 
 import argparse
@@ -44,9 +56,18 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_CAP_FILE = 7      # 单测试目标硬上限（对齐 5 + 进展奖励 2）
-DEFAULT_CAP_GLOBAL = 15   # 全局硬上限
-FREEZE_LIMIT = 2          # 连续相同失败达到该值 → 下一轮拒绝（对齐"连续2轮无变化"）
+# Windows 控制台默认 GBK，脚本含大量中文；不强制 UTF-8 会出现 `???` 乱码，
+# 让"按提示修复/补写"的反馈环失效。统一把 stdout/stderr 切到 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+DEFAULT_CAP_FILE = 30          # 单测试目标（= 一个 CSV 需求 / def test_ 方法）次数上限
+GLOBAL_PER_CASE = 30           # 全局上限按"每个场景 30 次"加总缩放：场景数 × 该值
+DEFAULT_CAP_GLOBAL = 30        # 全局上限下限（1 个场景时）
+FREEZE_LIMIT = 10              # 连续相同失败达到该值 → 下一轮拒绝（原地打转、无进展）
 
 
 def _project_root() -> Path:
@@ -83,7 +104,6 @@ def _target_key(pytest_args):
     """从 pytest 参数里提取"测试目标"作为计数键：优先 .py 路径（含 ::node），并附带 -k 表达式。"""
     target = None
     kexpr = None
-    it = iter(range(len(pytest_args)))
     for i in range(len(pytest_args)):
         a = pytest_args[i]
         if a == "-k" and i + 1 < len(pytest_args):
@@ -108,21 +128,27 @@ def _log_dir_from_args(pytest_args):
     return None
 
 
-def _count_real_logs(log_dir, started_at):
-    """统计日志目录下（含子目录）自 started_at 起的 *.log 数 = 真实 pytest 运行次数。
+def _count_real_logs(log_dir, started_at=0):
+    """统计日志目录下（含子目录）本次 reset 之后产生的 *.log 数 = 真实 pytest 运行次数。
 
-    这是"绕过审计"的依据：无论裸跑还是经 run_guard 跑，每次 pytest 都会落一个日志文件，
-    据此可回溯发现"未经 run_guard 的裸跑"，把实际运行数补算进上限，使绕过也逃不过熔断。
+    只数 mtime >= started_at 的日志：阶段三 --reset 之前就存在的旧日志（阶段二试跑、
+    上一次任务残留、同名带时间戳永不覆盖的累积日志）一律不计入本次额度，避免额度被陈旧
+    日志提前耗尽。started_at 落空（旧状态/未 reset）时退化为"全部计入"，宁紧勿松。
     """
     if not log_dir or not log_dir.exists():
         return None
     n = 0
     for p in log_dir.rglob("*.log"):
-        try:
-            if p.stat().st_mtime >= started_at - 1:
-                n += 1
-        except OSError:
+        if not p.is_file():
             continue
+        if started_at:
+            try:
+                # 留 2s 容差，避开 reset 与首个日志落盘之间的时钟抖动
+                if p.stat().st_mtime < (started_at - 2):
+                    continue
+            except OSError:
+                continue
+        n += 1
     return n
 
 
@@ -146,14 +172,26 @@ def _refuse(reason):
     sys.exit(3)
 
 
+def _ensure_file_entry(state, key):
+    """取/建某测试目标的计数项，并补齐字段（兼容旧 state 文件）。"""
+    f = state["files"].setdefault(key, {})
+    f.setdefault("runs", 0)
+    f.setdefault("freeze", 0)
+    f.setdefault("last_fp", None)
+    return f
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description="阶段三 pytest 执行守卫（机械硬熔断）", add_help=True)
     ap.add_argument("--task", default="default", help="本次任务标识（= 需求 MD 英文名去 .md）")
     ap.add_argument("--state", default=None, help="守卫状态文件路径（默认按 task 生成）")
-    ap.add_argument("--cap-file", type=int, default=DEFAULT_CAP_FILE, help=f"单测试目标轮次上限（默认 {DEFAULT_CAP_FILE}）")
-    ap.add_argument("--cap-global", type=int, default=DEFAULT_CAP_GLOBAL, help=f"全局轮次上限（默认 {DEFAULT_CAP_GLOBAL}）")
+    ap.add_argument("--cap-file", type=int, default=DEFAULT_CAP_FILE,
+                    help=f"单测试目标(= 一个 CSV 需求/def test_ 方法)次数上限（默认 {DEFAULT_CAP_FILE}）")
+    ap.add_argument("--cap-global", type=int, default=DEFAULT_CAP_GLOBAL,
+                    help=f"全局次数上限下限（默认 {DEFAULT_CAP_GLOBAL}）；实际取 max(该值, 场景数×{GLOBAL_PER_CASE})")
     ap.add_argument("--reset", action="store_true", help="重置本任务守卫状态（阶段三开始时调一次）")
-    ap.add_argument("--cases", type=int, default=None, help="本次测试场景数（test_ 方法数）；用于把全局上限缩放为 max(cap-global, 场景数×5)，阶段三开始 --reset 时传一次")
+    ap.add_argument("--cases", type=int, default=None,
+                    help=f"本次测试场景数（def test_ 方法数）；用于把全局上限缩放为 max(cap-global, 场景数×{GLOBAL_PER_CASE})，--reset 时传一次")
     ap.add_argument("--pytest-cmd", default="pytest", help="pytest 可执行命令（默认 pytest）")
     if "--" in argv:
         sep = argv.index("--")
@@ -169,11 +207,14 @@ def main(argv):
     sp = _state_path(args.task, args.state)
 
     if args.reset:
-        # 全局上限随场景数缩放：max(cap-global 下限, 场景数×5)；单用例与冻结不变
-        eff_global = max(args.cap_global, (args.cases or 0) * 5)
+        # 全局上限随场景数缩放 = max(下限, 场景数 × 每个场景 30 次)
+        eff_global = max(args.cap_global, (args.cases or 0) * GLOBAL_PER_CASE)
         _save(sp, {"global_runs": 0, "files": {}, "started_at": time.time(), "cap_global": eff_global})
         print(f"[run_guard] 已重置守卫状态：{sp}")
-        print(f"[run_guard] 全局轮次上限={eff_global}（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×5）；单用例上限={args.cap_file}、连续相同失败冻结={FREEZE_LIMIT} 不变")
+        print(f"[run_guard] 次数上限：单用例(= 一个 CSV 需求/def test_ 方法)={args.cap_file} 次、"
+              f"全局={eff_global} 次（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×{GLOBAL_PER_CASE})）；"
+              f"连续相同失败冻结={FREEZE_LIMIT} 次。")
+        print(f"[run_guard] 口径：1 次 pytest = 1 次；审计只数本次 reset 之后产生的日志，旧日志不污染额度。")
         if not pytest_args:
             return 0
 
@@ -182,37 +223,40 @@ def main(argv):
         return 2
 
     state = _load(sp)
+    state.setdefault("global_runs", 0)
     cap_global = state.get("cap_global", args.cap_global)
+    cap_file = args.cap_file
     key = _target_key(pytest_args)
-    f = state["files"].setdefault(key, {"runs": 0, "freeze": 0, "last_fp": None})
+    f = _ensure_file_entry(state, key)
 
     # ---- 绕过审计：按日志目录真实 .log 数补算（裸跑绕过也逃不过上限）----
+    # 只数 reset 之后的日志，旧日志不再污染额度。
     started_at = state.get("started_at", 0)
     log_dir = _log_dir_from_args(pytest_args)
     real = _count_real_logs(log_dir, started_at)
-    if real is not None and real > state["global_runs"]:
-        bypass = real - state["global_runs"]
-        print(f"[run_guard] [!] 绕过审计：日志目录实际有 {real} 次 pytest 运行，本守卫仅计 {state['global_runs']} 次"
-              f"——检测到约 {bypass} 次【未经 run_guard 的裸跑】。")
-        print("[run_guard] 已按实际运行数补算轮次：裸跑绕过不会逃过上限。此后所有 pytest 必须经 run_guard 跑。")
-        state["global_runs"] = real
-        f["runs"] = max(f["runs"], real)
+    if real is not None and real > f["runs"]:
+        bypass = real - f["runs"]
+        print(f"[run_guard] [!] 绕过审计：日志目录（本次 reset 后）实际有 {real} 次 pytest 运行，"
+              f"本守卫该目标仅计 {f['runs']} 次——检测到约 {bypass} 次【未经 run_guard 的裸跑】。")
+        print("[run_guard] 已按实际运行数补算：裸跑绕过不会逃过上限。此后所有 pytest 必须经 run_guard 跑。")
+        f["runs"] = real
+        state["global_runs"] = state["global_runs"] + bypass
 
     # ---- 执行前硬熔断检查 ----
     if state["global_runs"] >= cap_global:
-        _refuse(f"全局轮次已达上限（{state['global_runs']}/{cap_global}）。")
-    if f["runs"] >= args.cap_file:
-        _refuse(f"测试目标【{key}】轮次已达上限（{f['runs']}/{args.cap_file}）。")
+        _refuse(f"全局次数已达上限（{state['global_runs']}/{cap_global}）。")
+    if f["runs"] >= cap_file:
+        _refuse(f"测试目标【{key}】次数已达上限（{f['runs']}/{cap_file}）。")
     if f["freeze"] >= FREEZE_LIMIT:
-        _refuse(f"测试目标【{key}】触发状态冻结（连续 {f['freeze']} 轮相同失败）——"
-                f"同一根因反复试错无进展，按正文 3.3 停止。")
+        _refuse(f"测试目标【{key}】触发状态冻结（连续 {f['freeze']} 次相同失败 >= {FREEZE_LIMIT}）——"
+                f"同一处反复试错无进展，按正文 3.3 停止。")
 
     # ---- 计数 +1 并落盘（跑之前就记，确保即使 pytest 崩溃也已计数）----
     state["global_runs"] += 1
     f["runs"] += 1
     _save(sp, state)
-    print(f"[run_guard] 第 {f['runs']}/{args.cap_file} 轮（全局 {state['global_runs']}/{cap_global}）"
-          f" 目标：{key}")
+    print(f"[run_guard] 第 {f['runs']}/{cap_file} 次（全局 {state['global_runs']}/{cap_global}）"
+          f"｜目标：{key}")
 
     # ---- 跑 pytest，实时打印同时捕获用于指纹 ----
     try:
@@ -233,7 +277,7 @@ def main(argv):
         print(f"[run_guard] 本轮通过。目标【{key}】冻结计数已清零。")
         return 0
 
-    # 失败：更新冻结计数
+    # 失败：更新冻结计数（连续相同失败才累加，现象一变即清零）
     fp = _failure_fingerprint(output)
     if fp == f["last_fp"]:
         f["freeze"] += 1
@@ -241,9 +285,8 @@ def main(argv):
         f["freeze"] = 1
     f["last_fp"] = fp
     _save(sp, state)
-    remain_file = args.cap_file - f["runs"]
-    print(f"[run_guard] 本轮失败（失败指纹 {fp}，连续相同 {f['freeze']} 轮）。"
-          f"该目标剩余 {remain_file} 轮、全局剩余 {cap_global - state['global_runs']} 轮。")
+    print(f"[run_guard] 本轮失败（失败指纹 {fp}，连续相同 {f['freeze']}/{FREEZE_LIMIT} 次）。"
+          f"该目标剩余 {cap_file - f['runs']} 次、全局剩余 {cap_global - state['global_runs']} 次。")
     if f["freeze"] >= FREEZE_LIMIT:
         print("[run_guard] [!] 已连续相同失败达冻结线——下一轮将被拒绝。"
               "请勿再重复同一修复，改为零基复盘根因或标记遗留问题。")

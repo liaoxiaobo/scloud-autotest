@@ -38,6 +38,10 @@ model: opus
 > - **JS 滥用**：Page 定位以 Playwright 原生 scoped 为首选，`evaluate`/`querySelectorAll` 仅兜底。
 > - **fixture 归位**：资源 fixture 定义在 `conftest.py`（按模块），禁止写在 `test_*.py`；fixture 内多步操作委托 helper。
 > - **日志复用**：统一 `from sugon_web.utils.logger import logger`，禁止局部 `import logging`。
+>
+> **★ 新建 Page Object 必须先侦察（机械门禁，2026-06-16 新增）**：本次若**新建或改动了 `sugon_web/pages/` 下的 Page Object**，进阶段三前的 `precheck.py` **必须带 `--require-recon --since "<运行报告头·运行开始时间>"`**：
+>   `python .claude/skills/test-script-dev/scripts/precheck.py <测试文件> --expected-tests <场景数> --require-recon --since "YYYY-MM-DD HH:MM"`
+>   门禁会检查 `skill_runs/recon/` 下是否存在本次（reset/run 之后）产生的侦察产物；**没有侦察就动 Page Object = 凭空猜页面结构**，门禁直接非 0、不许进阶段三。这正是上次 lbv2 把"内联表单"误判成"弹窗"、白白耗尽阶段三全部额度的根因。所以：**先 `recon_page.py` 侦察（自动落盘截图到 `skill_runs/recon/`），再写 Page Object，再过门禁。**
 
 <!-- ========== 以下为本阶段规范原文，逐字沿用，禁止改动（仅含白名单路径改写，已逐处登记） ========== -->
 
