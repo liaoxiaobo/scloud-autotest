@@ -267,7 +267,7 @@ class InspectionMixin(BasePage):
     def _wait_inspection_finished(self, timeout: int) -> None:
         deadline = time.time() + timeout / 1000
         running_pattern = re.compile(r"巡检中|执行中|检查中|运行中|loading", re.I)
-        finished_pattern = re.compile(r"完成|成功|正常|异常|失败|告警|通过|不通过|OK|WARN|ERROR", re.I)
+        finished_pattern = re.compile(r"巡检完成|检查完成|执行完成|重新执行巡检|导出巡检报告", re.I)
 
         while time.time() < deadline:
             try:
@@ -276,6 +276,7 @@ class InspectionMixin(BasePage):
                 text = ""
 
             if finished_pattern.search(text) and not running_pattern.search(text):
+                self.page.wait_for_timeout(1500)
                 return
             self.page.wait_for_timeout(3000)
 
@@ -294,7 +295,7 @@ class InspectionMixin(BasePage):
         """采集异常项页签下的巡检项名称。"""
         try:
             abnormal_tab = self.page.get_by_text(re.compile(r"异常项\s*\(\d+\)|异常项")).first
-            if abnormal_tab.count() > 0 and abnormal_tab.is_visible(timeout=2000):
+            if abnormal_tab.count() > 0 and abnormal_tab.is_visible():
                 abnormal_tab.click()
                 self.page.wait_for_timeout(800)
         except Exception as exc:
@@ -312,7 +313,7 @@ class InspectionMixin(BasePage):
                         && rect.width > 0
                         && rect.height > 0;
                 };
-                const pattern = /[\\u4e00-\\u9fa5A-Za-z0-9（）()\\-]+检查/g;
+                const pattern = /[\\u4e00-\\u9fa5A-Za-z0-9（）()\\-]+?检查/g;
                 for (const el of document.querySelectorAll('span, div, li, td, label, p')) {
                     if (!visible(el)) continue;
                     const text = (el.innerText || el.textContent || '').replace(/\\s+/g, '');

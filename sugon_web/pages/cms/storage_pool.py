@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from sugon_web.common.base import BasePage
@@ -20,7 +21,12 @@ class StoragePoolMixin(BasePage):
         self.page.wait_for_load_state("domcontentloaded", timeout=10_000)
         self.wait_for_page_ready()
         self.close_dialog_if_exists()
-        self.page.wait_for_timeout(1500)
+        if not self._wait_storage_pool_page_ready(timeout=20):
+            self.logger.warning("存储池页面首次加载未完成，刷新后重试")
+            self.page.reload()
+            self.page.wait_for_load_state("domcontentloaded", timeout=10_000)
+            self.wait_for_page_ready()
+            self._wait_storage_pool_page_ready(timeout=20)
 
     def collect_storage_pools(self) -> dict[str, Any]:
         """采集存储池运行状态和容量摘要。"""
@@ -105,10 +111,31 @@ class StoragePoolMixin(BasePage):
             """
         )
 
+    def _wait_storage_pool_page_ready(self, timeout: int = 20) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            ready = self.page.evaluate(
+                """
+                () => {
+                    const text = document.body ? document.body.innerText : '';
+                    if (!text || text.includes('加载中')) return false;
+                    const hasHeader = text.includes('存储池') && text.includes('可用量') && text.includes('连接状态');
+                    const hasRows = Array.from(document.querySelectorAll('tbody tr'))
+                        .some(tr => (tr.innerText || '').trim());
+                    const hasEmpty = text.includes('暂无数据') || text.includes('没有查询到');
+                    return Boolean(hasHeader && (hasRows || hasEmpty));
+                }
+                """
+            )
+            if ready:
+                return True
+            self.page.wait_for_timeout(1000)
+        return False
+
     def _click_next_storage_pool_page(self) -> bool:
         next_button = self.page.locator(".el-pagination .btn-next, button.btn-next").last
         try:
-            if next_button.count() == 0 or not next_button.is_visible(timeout=1000):
+            if next_button.count() == 0 or not next_button.is_visible():
                 return False
             class_name = next_button.get_attribute("class") or ""
             disabled = next_button.get_attribute("disabled")
