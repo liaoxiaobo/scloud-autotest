@@ -496,7 +496,7 @@ middleware=redis''')
                 }
             }
 
-            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
+            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, allure-report/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
