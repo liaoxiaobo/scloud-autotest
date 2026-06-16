@@ -9,9 +9,9 @@ from sugon_web.utils.logger import allure_step_log, logger
 class TestBmsRebuild:
 
     @allure.title("裸金属BMS-重建实例")
-    def test_bms_rebuild(self, bms_page):
+    def test_bms_rebuild(self, bms_page, bms_instance_name):
         """验证裸金属实例重建功能正常。"""
-        instance_name = "bms-0430"
+        instance_name = bms_instance_name
 
         # 步骤1：搜索裸金属实例
         with allure_step_log("步骤1: 搜索裸金属实例"):
@@ -64,8 +64,7 @@ class TestBmsRebuild:
         # 步骤5：等待重建完成，状态恢复为运行中
         with allure_step_log("步骤5: 等待重建完成"):
             rebuild_ok = bms_page.bms_instance_wait_for_status(instance_name, "运行中", timeout=1800)
-            if not rebuild_ok:
-                pytest.skip("实例未在30分钟内恢复为运行中状态")
+            assert rebuild_ok, "实例未在30分钟内恢复为运行中状态"
 
         # 步骤6：验证列表状态
         with allure_step_log("步骤6: 验证列表状态"):

@@ -2,6 +2,7 @@ import pytest
 from sugon_web.common.playwright import expect
 from sugon_web.pages.kms import KmsPage
 from sugon_web.pages.storage.obs import ObsPage
+from sugon_web.pages.storage.oss import OssPage
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
@@ -37,15 +38,16 @@ def bucket(obs_page, request):
     capacity = params.get('capacity', '10')
 
     # 过滤控制参数，只保留业务参数传给 helper
-    create_params = {k: v for k, v in params.items() if k not in ('count', 'name')}
+    create_params = {k: v for k, v in params.items() if k not in ('count', 'name', 'capacity')}
 
     bucket_items = []
 
     with allure_step_log(f"创建/复用对象存储桶 (count={count})"):
         existing_buckets = prepare_bucket_list_page(obs_page)
 
-        # 优先复用已有的 autotest-* 桶（先清空对象）
-        autotest_buckets = [n for n in existing_buckets if n.startswith("autotest-")]
+        # 优先复用已有的 autotest-* / bucket-autotest-* 桶（先清空对象）
+        autotest_buckets = [n for n in existing_buckets
+                           if n.startswith("autotest-") or n.startswith("bucket-autotest-")]
         for old_name in autotest_buckets:
             if len(bucket_items) >= count:
                 break
@@ -71,8 +73,77 @@ def bucket(obs_page, request):
             try:
                 delete_bucket(obs_page, item["name"])
             except Exception as e:
-                logger.error(f"删除桶 {item['name']} 失败: {e}")
-                raise
+                # ACL变更可能导致桶无法通过UI访问，仅记录日志不抛异常
+                logger.warning(f"删除桶 {item['name']} 失败(可能因ACL限制): {e}")
+
+
+@pytest.fixture(scope="function")
+def oss_page(page):
+    """初始化对象存储OSS页对象并导航到服务页。"""
+    oss = OssPage(page)
+    oss.goto_service("对象存储")
+    return oss
+
+
+@pytest.fixture()
+def oss_bucket(oss_page, request):
+    """创建OSS对象存储桶并自动清理。
+
+    参数:
+        request.param: dict, 可选
+            - name: str, 自定义名称，默认使用 random_data()
+            - region: str, 区域，默认 "RegionOne"
+            - az_strategy: str, 数据冗余存储策略，默认 "MULTI_AZ"
+            - storage_class: str, 默认存储类别，默认 "标准存储"
+            - bucket_strategy: str, 桶策略，默认 "私有"
+            - is_encryption: bool, 是否开启默认加密，默认 True
+            - data_read: bool, 归档数据直读，默认 False
+            - tags: list[dict], 标签列表，默认 None
+
+    Yields:
+        dict: 包含 name 及所有实际使用的参数。
+    """
+    params = getattr(request, 'param', {}) or {}
+    name = params.get('name') or random_data()
+    region = params.get('region', 'RegionOne')
+    az_strategy = params.get('az_strategy', 'MULTI_AZ')
+    storage_class = params.get('storage_class', '标准存储')
+    bucket_strategy = params.get('bucket_strategy', '私有')
+    is_encryption = params.get('is_encryption', True)
+    data_read = params.get('data_read', False)
+    tags = params.get('tags')
+
+    with allure_step_log(f"创建OSS桶: {name}"):
+        oss_page.oss_bucket_create(
+            name=name,
+            region=region,
+            az_strategy=az_strategy,
+            storage_class=storage_class,
+            bucket_strategy=bucket_strategy,
+            is_encryption=is_encryption,
+            data_read=data_read,
+            tags=tags,
+        )
+
+    bucket_info = {
+        "name": name,
+        "region": region,
+        "az_strategy": az_strategy,
+        "storage_class": storage_class,
+        "bucket_strategy": bucket_strategy,
+        "is_encryption": is_encryption,
+        "data_read": data_read,
+        "tags": tags,
+    }
+    yield bucket_info
+
+    # 清理阶段
+    with allure_step_log(f"清理: 删除OSS桶 {name}"):
+        try:
+            oss_page.oss_bucket_delete(name)
+            oss_page.assert_deleted(name)
+        except Exception as e:
+            logger.warning(f"删除OSS桶 {name} 失败: {e}")
 
 
 @pytest.fixture()

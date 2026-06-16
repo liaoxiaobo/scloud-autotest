@@ -25,7 +25,7 @@ slow_mo: 0
 host: 172.22.1.190
 
 # 存储池类型 (ceph/usan/local/nfs/xstor等)
-stor: ceph
+stor: zbs
 
 # 默认测试数据
 data: Autotest
@@ -47,6 +47,21 @@ pkey: pkey_scloudadmin
 
 # 默认公网网络
 network: public_net(基础版)
+
+# -----------------------------------------------------------------------------
+# BMS 裸金属回归基线配置
+# -----------------------------------------------------------------------------
+bms:
+  # BMS 操作用例复用的实例名称
+  instance_name: bms-0430
+  # BMS 带外 IP
+  bmc_ip: 172.22.2.173
+  # BMS 优先使用的物理节点
+  preferred_node: master02.cloud.local
+  # BMS 网络名称
+  network_name: bms
+  # BMS 实例登录密码
+  password: admin1234@sugon
 
 # XStor存储配置
 xstor: |

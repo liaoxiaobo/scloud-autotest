@@ -14,13 +14,13 @@ from sugon_web.utils.data import random_data, get_file_abspath
 class TestBmsSoftCreate:
 
     @allure.title("裸金属BMS-软装版创建流程")
-    def test_bms_create_with_page_image(self, ops_page, bms_page, ssh_host, config, bms_instance):
+    def test_bms_create_with_page_image(self, ops_page, bms_page, ssh_host, config, bms_instance, bms_env):
         sg_name = f"test-bms-{random_data()}"
-        bms_network_name = "bms"
+        bms_network_name = bms_env["network_name"]
         discovery_name = f"bms-test-{random_data()}"
-        bmc_ip = "172.22.2.173"
-        preferred_node = "master02.cloud.local"
-        instance_name = "bms-0430"
+        bmc_ip = bms_env["bmc_ip"]
+        preferred_node = bms_env["preferred_node"]
+        instance_name = bms_env["instance_name"]
         skip_to_step14 = False  # 标记是否跳过到步骤14（已有实例复用）
 
         # === 步骤0: 清理（本次跳过，保留资源供后续测试使用） ===
@@ -106,15 +106,9 @@ class TestBmsSoftCreate:
         # === 步骤4: 注册代理 ===
         with allure_step_log("步骤4: 注册代理"):
             bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
-            bms_page.page.wait_for_timeout(3000)
-            bms_page._goto_submenu_safe("代理")
-            bms_page.search(actual_node)
-            agent_data = bms_page.get_row_data(actual_node)
-            assert agent_data is not None
-            agent_status = agent_data.get("状态", "")
-            if agent_status != "健康":
-                logger.warning(f"代理 {actual_node} 状态为 '{agent_status}'，不为健康，跳过测试")
-                pytest.skip(f"代理 {actual_node} 状态异常: {agent_status}，无法继续 BMS 流程")
+            agent_data = bms_page.bms_agent_wait_healthy(actual_node, max_wait=600, poll_interval=30)
+            if not agent_data:
+                pytest.skip(f"代理 {actual_node} 未在10分钟内变为健康，无法继续 BMS 流程")
 
         # === 步骤5: 安装PXE ===
         with allure_step_log("步骤5: 安装PXE"):
@@ -304,25 +298,42 @@ class TestBmsSoftCreate:
                 ssh_node.close()
                 pytest.skip("未找到bms-nic网卡")
 
-        # === 步骤9: 记录 ===
-        with allure_step_log("步骤9: 记录网卡名称"):
-            allure.attach(bms_nic_name, "BMS网卡", allure.attachment_type.TEXT)
+        try:
+            # === 步骤9: 记录 ===
+            with allure_step_log("步骤9: 记录网卡名称"):
+                allure.attach(bms_nic_name, "BMS网卡", allure.attachment_type.TEXT)
 
-        # === 步骤10: 检查/编辑trusted.xml ===
-        with allure_step_log("步骤10: 检查trusted.xml"):
-            r = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
-            if f'<interface name="{bms_nic_name}"/>' not in r:
-                ssh_node.run("sudo cp /etc/firewalld/zones/trusted.xml /etc/firewalld/zones/trusted.xml.bak")
-                # 使用 sed 在 </zone> 前插入网卡配置
-                insert_line = f'  <interface name="{bms_nic_name}"/>'
-                ssh_node.run(f"sudo sed -i 's|</zone>|{insert_line}\\n</zone>|' /etc/firewalld/zones/trusted.xml")
-            v = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
-            assert f'<interface name="{bms_nic_name}"/>' in v
+            # === 步骤10: 检查/编辑trusted.xml ===
+            with allure_step_log("步骤10: 检查trusted.xml"):
+                r = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
+                if f'<interface name="{bms_nic_name}"/>' not in r:
+                    ssh_node.run("sudo cp /etc/firewalld/zones/trusted.xml /etc/firewalld/zones/trusted.xml.bak")
+                    # 使用 sed 在 </zone> 前插入网卡配置
+                    insert_line = f'  <interface name="{bms_nic_name}"/>'
+                    ssh_node.run(f"sudo sed -i 's|</zone>|{insert_line}\\n</zone>|' /etc/firewalld/zones/trusted.xml")
+                v = ssh_node.run("cat /etc/firewalld/zones/trusted.xml")
+                assert f'<interface name="{bms_nic_name}"/>' in v
 
-        # === 步骤11: 重启防火墙 ===
-        with allure_step_log("步骤11: 重启防火墙"):
-            r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True)
-            assert r["rc"] == 0
+            # === 步骤11: 检查并重载防火墙 ===
+            with allure_step_log("步骤11: 检查并重载防火墙"):
+                status = ssh_node.run("sudo systemctl is-active firewalld", return_rc=True, return_stderr=True)
+                firewall_status = (status.get("stdout", "") or status.get("stderr", "")).strip()
+                if status["rc"] != 0 or firewall_status != "active":
+                    logger.warning(f"firewalld 当前状态为 {firewall_status or 'unknown'}，尝试启动 firewalld")
+                    start = ssh_node.run("sudo systemctl start firewalld", return_rc=True, return_stderr=True)
+                    start_output = f"{start.get('stdout', '')}\n{start.get('stderr', '')}"
+                    assert start["rc"] == 0, f"firewalld 启动失败: {start_output}"
+
+                    status = ssh_node.run("sudo systemctl is-active firewalld", return_rc=True, return_stderr=True)
+                    firewall_status = (status.get("stdout", "") or status.get("stderr", "")).strip()
+                    assert status["rc"] == 0 and firewall_status == "active", (
+                        f"firewalld 启动后状态异常: {firewall_status or status.get('stderr', '')}"
+                    )
+
+                r = ssh_node.run("sudo firewall-cmd --reload", return_rc=True, return_stderr=True)
+                firewall_output = f"{r.get('stdout', '')}\n{r.get('stderr', '')}"
+                assert r["rc"] == 0, f"防火墙重载失败: {firewall_output}"
+        finally:
             ssh_node.close()
 
         # === 步骤12: 注册物理机 ===
@@ -331,9 +342,18 @@ class TestBmsSoftCreate:
             bms_page.search(bmc_ip)
             rd = bms_page.get_row_data(bmc_ip)
             reg_status = str(rd.get("状态", "")) if rd else ""
-            if "已使用" in reg_status or "注册完成" in reg_status:
+            cpu = str(rd.get("CPU", "")) if rd else ""
+            mem = str(rd.get("内存", "")) if rd else ""
+            arch = str(rd.get("架构", "")) if rd else ""
+            # 即使状态为"注册完成"，如果关键信息缺失也需重新注册
+            info_complete = cpu and cpu != "--" and mem and mem != "--" and arch and arch != "--"
+            if "已使用" in reg_status:
                 logger.info(f"BMC {bmc_ip} 状态已为 '{reg_status}'，跳过重新注册")
+            elif "注册完成" in reg_status and info_complete:
+                logger.info(f"BMC {bmc_ip} 状态为'{reg_status}'且信息完整(CPU={cpu},内存={mem},架构={arch})，跳过重新注册")
             else:
+                if "注册完成" in reg_status and not info_complete:
+                    logger.info(f"BMC {bmc_ip} 状态为'{reg_status}'但信息不完整(CPU={cpu},内存={mem},架构={arch})，重新注册")
                 bms_page.bms_register_action(bmc_ip)
                 bms_page.page.wait_for_timeout(3000)
                 if not bms_page.bms_register_wait_status(bmc_ip, "就绪", poll_interval=30, max_wait=2400):

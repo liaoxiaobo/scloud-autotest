@@ -9,9 +9,9 @@ from sugon_web.utils.logger import allure_step_log, logger
 class TestBmsMonitor:
 
     @allure.title("裸金属BMS-查看监控")
-    def test_bms_view_monitor(self, bms_page):
+    def test_bms_view_monitor(self, bms_page, bms_instance_name):
         """验证裸金属实例监控页面显示正常。"""
-        instance_name = "bms-0430"
+        instance_name = bms_instance_name
 
         # 步骤1：搜索裸金属实例
         with allure_step_log("步骤1: 搜索裸金属实例"):

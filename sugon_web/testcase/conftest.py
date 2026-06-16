@@ -402,7 +402,7 @@ def eip(page: Any, request: pytest.FixtureRequest) -> Iterator[str | list[str]]:
         )
 
     count = params.get('count', 1)
-    pool = params.get('pool', 'public_net(基础版)')
+    pool = params.get('pool', Config.get('network'))
     method = params.get('method', '快速选择')
     ip = params.get('ip')
 
@@ -554,6 +554,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 import yaml
 
 _SERVICE_NAME_RE = re.compile(r"^test_([a-zA-Z0-9]+)_.*\.py$")
+_FILE_MARK_RE = re.compile(r"^test_([a-zA-Z0-9_]+)\.py$")
 
 
 _SERVICE_MARKS_CONFIG_PATH = Path(__file__).parent.parent / "config" / "service_marks.yaml"
@@ -592,6 +593,12 @@ def _resolve_service_mark(filename):
     return match.group(1) if match else None
 
 
+def _resolve_file_mark(filename):
+    """从测试文件名提取文件级 mark，如 test_mysql_basic.py -> mysql_basic。"""
+    match = _FILE_MARK_RE.match(filename)
+    return match.group(1) if match else None
+
+
 def pytest_configure(config):
     """在 pytest 启动时动态注册所有模块级和服务级 mark。
 
@@ -605,6 +612,7 @@ def pytest_configure(config):
 
     module_marks = set()
     service_marks = set()
+    file_marks = set()
 
     for tp in testpaths:
         base = Path(tp)
@@ -625,6 +633,9 @@ def pytest_configure(config):
             service = _resolve_service_mark(path.name)
             if service:
                 service_marks.add(service)
+            file_mark = _resolve_file_mark(path.name)
+            if file_mark:
+                file_marks.add(file_mark)
 
     for mark in sorted(module_marks):
         desc = _SERVICE_DESCRIPTIONS.get(mark, f"{mark}测试")
@@ -633,6 +644,9 @@ def pytest_configure(config):
     for mark in sorted(service_marks):
         desc = _SERVICE_DESCRIPTIONS.get(mark, mark)
         config.addinivalue_line("markers", f"{mark}: 服务级-{desc}")
+
+    for mark in sorted(file_marks):
+        config.addinivalue_line("markers", f"{mark}: 文件级-{mark}")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -657,3 +671,8 @@ def pytest_collection_modifyitems(config, items):
         service_mark = _resolve_service_mark(path.name)
         if service_mark:
             item.add_marker(service_mark)
+
+        # ── 文件级 mark（按完整文件名） ──
+        file_mark = _resolve_file_mark(path.name)
+        if file_mark:
+            item.add_marker(file_mark)
