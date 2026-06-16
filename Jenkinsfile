@@ -28,10 +28,17 @@ middleware=redis''')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
         string(name: 'SAMPLE_PER_MODULE', defaultValue: '5', description: '每个模块按 pytest 收集顺序抽取前 N 个用例执行。0 或留空表示跑完整模块。')
         text(name: 'RUN_PLAN', defaultValue: '''[
-  {"lane":"lane-a","modules":["bigdata","backup"]},
-  {"lane":"lane-b","modules":["database","iam","security"]},
-  {"lane":"lane-c","modules":["compute_non_bms","container","network","storage","middleware"]},
-  {"lane":"lane-d","modules":["bms"]}
+  {"lane":"bigdata","modules":["bigdata"]},
+  {"lane":"database","modules":["database"]},
+  {"lane":"security","modules":["security"]},
+  {"lane":"middleware","modules":["middleware"]},
+  {"lane":"bms","modules":["bms"]},
+  {"lane":"compute","modules":["compute_non_bms"]},
+  {"lane":"container","modules":["container"]},
+  {"lane":"network","modules":["network"]},
+  {"lane":"storage","modules":["storage"]},
+  {"lane":"backup","modules":["backup"]},
+  {"lane":"iam","modules":["iam"]}
 ]''', description: '模块并发调度计划。lane 之间并行，lane 内模块按顺序串行执行。MODULES 非空时覆盖此计划。')
         string(name: 'MODULE_PARALLEL_MAP', defaultValue: 'bigdata=1,database=2,compute_non_bms=2,container=2,backup=2,iam=1,security=4,network=1,storage=2,middleware=2,bms=1', description: '模块并发数配置，逗号分隔。BMS 会强制串行。')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
