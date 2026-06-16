@@ -177,3 +177,9 @@ prometheus:
           disk_size: 10
         - disk_type: "default"
           disk_size: 20
+emr:
+    test_create_and_delete_emr:
+        - deploy_mode: "主从分置"
+        - deploy_mode: "元数据分置"
+        - deploy_mode: "全部分置"
+        - deploy_mode: "数算分置"

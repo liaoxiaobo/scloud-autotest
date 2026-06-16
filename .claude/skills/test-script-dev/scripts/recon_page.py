@@ -24,9 +24,10 @@
     python recon_page.py --service "负载均衡" --submenu "监听器" --grep "创建"
     python recon_page.py --url-hash "#/vpc/slb" --headless
 输出：
-    控制台打印候选定位清单；整页截图存到 skill_runs/test-self-heal/recon/ 下（与 test-self-heal 共用侦察产物目录）。
+    控制台打印候选定位清单；整页截图存到 skill_runs/recon/ 下（与 test-self-heal 共用侦察产物目录）。
 """
 import argparse
+import hashlib
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +61,8 @@ def _parse_args(argv):
     parser.add_argument("--submenu", default=None, help="可选：进入服务后要点击的子菜单名")
     parser.add_argument("--url-hash", default=None, help="可选：直接导航到 base_url + 该 hash（如 '#/vpc/slb'），优先级低于 --service")
     parser.add_argument("--grep", default=None, help="可选：只打印文本/属性包含该关键词的候选元素")
+    parser.add_argument("--probe-click", default=None, metavar="文案",
+                        help="交互探针：导航到目标页后，对该文案的元素做【原生 .click()】，报命中数 + 点击前后 URL/DOM 是否变化（用于秒级验证'这个点击到底跳不跳转/有无效果'，替代靠全量 pytest 反复猜）")
     parser.add_argument("--host", default=None, help="被测环境管理 VIP，缺省用项目配置默认值")
     parser.add_argument("--username", default=None, help="登录用户名，缺省用项目配置")
     parser.add_argument("--password", default=None, help="登录密码，缺省用项目配置")
@@ -133,6 +136,82 @@ def _enumerate(page, grep):
     print("==================================================\n")
 
 
+def _dom_signature(page):
+    """轻量 DOM 指纹：(HTML 长度, 短哈希)，用于点击前后对比是否发生状态变化。"""
+    try:
+        html = page.content()
+    except Exception:
+        return (0, "")
+    return (len(html), hashlib.sha256(html.encode("utf-8", "replace")).hexdigest()[:12])
+
+
+def _probe_click(page, text, recon_dir):
+    """交互探针：对目标文案元素做原生 .click()，报命中数 + 点击前后 URL/DOM 变化。
+
+    目的：把"猜定位→7 分钟全量 pytest 验证→再猜"压成"秒级验证点击到底有无效果"。
+    只做一次点击验证，不修改任何测试代码。
+    """
+    print("\n========== 交互探针（点击效果验证） ==========")
+    print(f"目标文案: {text!r}")
+    loc = page.get_by_text(text, exact=False)
+    try:
+        n = loc.count()
+    except Exception as e:
+        print(f"[命中] get_by_text 统计失败: {e}")
+        print("=============================================\n")
+        return
+    note = "（>1：需在 dialog/行/tab 内 scope 限定，勿直接点 first）" if n > 1 else ""
+    print(f"[命中] get_by_text({text!r}) 命中 {n} 个 {note}")
+    if n == 0:
+        print("结论：当前页未命中该文案——文案/页面不对。先核对真实渲染文案（去掉 --probe-click 改用 --grep 侦察枚举）。")
+        print("=============================================\n")
+        return
+
+    url_before = page.url
+    sig_before = _dom_signature(page)
+    try:
+        loc.first.click(timeout=VISIBLE_TIMEOUT_MS * 2)
+        print("[点击] 已对 .first 执行【原生 Playwright .click()】（正确方式，勿用 evaluate 合成事件）")
+    except Exception as e:
+        print(f"[点击] 原生 .click() 失败：{e}")
+        print("结论：原生点击点不动——多为元素不可见/被遮挡/未就绪。先解决可见性与等待时机，"
+              "**切勿改用 evaluate 合成 MouseEvent 绕过**（合成事件触发不了 Vue onClick）。")
+        print("=============================================\n")
+        return
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=NETWORKIDLE_TIMEOUT_MS)
+    except Exception:
+        pass
+    url_after = page.url
+    sig_after = _dom_signature(page)
+    url_changed = url_after != url_before
+    dom_changed = sig_after != sig_before
+
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shot = recon_dir / f"probe_after_{ts}.png"
+        page.screenshot(path=str(shot), full_page=True)
+        print(f"点击后整页截图：{shot}")
+    except Exception:
+        pass
+
+    print(f"[URL] 前: {url_before}")
+    print(f"[URL] 后: {url_after}")
+    print(f"[结果] URL 变化: {'是' if url_changed else '否'} | DOM 变化: {'是' if dom_changed else '否'}"
+          f"（HTML 长度 {sig_before[0]}→{sig_after[0]}）")
+    if url_changed:
+        print("结论：原生 .click() 触发了路由跳转 → 该交互用 `get_by_text(...).click()` 即可，"
+              "**以 URL 变化判定成功**，不要等猜的返回按钮。")
+    elif dom_changed:
+        print("结论：原生 .click() 触发了页面状态变化（DOM 变、未跳路由）→ 多为弹窗/抽屉/展开，"
+              "按目标等其可见元素判定，仍用原生点击。")
+    else:
+        print("结论：点击后 URL 与 DOM 均无变化 → 多半点到了错元素或目标非真正可点击。"
+              "**先在 dialog/行/tab 内 scope 精确定位目标再验**，切勿改用 evaluate 合成事件反复试错。")
+    print("=============================================\n")
+
+
 def main(argv):
     args = _parse_args(argv)
     if not args.service and not args.url_hash:
@@ -157,7 +236,7 @@ def main(argv):
         print(f"错误：加载项目登录/导航基建失败：{e}", file=sys.stderr)
         return 3
 
-    recon_dir = root / "skill_runs" / "test-self-heal" / "recon"
+    recon_dir = root / "skill_runs" / "recon"
     recon_dir.mkdir(parents=True, exist_ok=True)
 
     browser_type = config.get("browser") or "chromium"
@@ -197,7 +276,10 @@ def main(argv):
             except Exception as e:
                 print(f"提示：截图失败（继续枚举）：{e}")
 
-            _enumerate(page, args.grep)
+            if args.probe_click:
+                _probe_click(page, args.probe_click, recon_dir)
+            else:
+                _enumerate(page, args.grep)
             return 0
         finally:
             context.close()

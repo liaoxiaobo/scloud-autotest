@@ -39,8 +39,12 @@
 | 场景 | 错误（会超时/报错） | 正确做法 |
 |:---|:---|:---|
 | `cl-button` 自定义按钮（立即创建/下一步/确定/搜索/保存等） | `get_by_role("button", name="保存")` | `get_by_text("保存")`（不依赖 ARIA role） |
+| `cl-button type="link"` 链接（点击进入详情/触发路由跳转） | 用 `evaluate` 派发合成 `MouseEvent`（**触发不了 Vue 路由，必超时**）；或猜返回按钮类名等 15s | `get_by_text(名称).click()` 原生点击触发 Vue onClick；**以 URL 变化判定跳转成功**（`expect(page).to_have_url(...)` 或等目标页元素），不要等猜的返回按钮 |
 | Element UI 下拉框，页面存在多个（含隐藏） | `.el-select-dropdown__wrap`（strict 多匹配） | `.el-select-dropdown:visible` 限定可见，或经 BasePage `_select_dropdown` 语义封装 |
 | 多步向导对话框（如监听器创建 = 3 步） | 当单页表单填完直接点"确定" | 按真实步数逐步：Step1 →"下一步"→ Step2 →"下一步"→ Step3 →"确定"；步数以侦察/前端为准 |
+| dialog 内选下拉后 **dialog 消失**/元素漂移 | 在 dialog 内对 el-select 用原生 `click()`（冒泡关 dialog）；**或自创 JS 点击**（实测也会引入 dialog 消失） | 用 BasePage 语义封装 `_select_dropdown`，在 dialog 容器内 scope 定位 `.el-select-dropdown:visible`；**禁自创 `evaluate`/`dispatchEvent` 硬点** |
+| Vue 表单提交后**成功 popup 不出现** | 用 JS/`$emit` 直接赋值字段，前端校验未同步 → 提交被静默拒绝（加大超时是治标） | 赋值后显式触发 `blur`/`change` 同步校验；或用 `fill()`+键盘走正常输入；向导每步提交前断言校验通过 |
+| 删除/清理报 `'CustomLocator' object is not callable` | 把 `search(name)`/`get_row_by_name()` 的**定位器返回值**当数据或函数链式调用 | 删除直接用 `click_action(name, "删除")`；定位器返回值不可当数据/函数链式调用 |
 | 详情页返回按钮（动态渲染） | 直接 click `el-icon-arrow-left` 或猜 `.sugon-back-button` | click 前 `expect(btn).to_be_enabled()`；**以 URL 变化判定返回成功**；多策略兜底（图标→面包屑→`go_back()`） |
 | 下拉选项文案 | 凭需求文档直译（如"云服务器实例"） | 以页面真实渲染文案为准（如"弹性云服务器 ECS"），不确定先侦察 |
 

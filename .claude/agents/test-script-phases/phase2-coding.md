@@ -29,12 +29,19 @@ model: opus
 ## 编码高频易错·交付前必查（架构新增·依据 test_case_codegen_prompt.md，命中即返工）
 
 > **编码前先做（治返工之源）**：本次若**新建 Page Object**、或交互含**多步向导 / `cl-button` 自定义组件 / 多 dropdown / 动态渲染**，**编码前必须先跑 `recon_page.py` 侦察真实渲染态**（按钮文案、向导步数、下拉选项、容器类名），按 `page_func_spec.md` §1.3 速查表写定位，**严禁凭需求文案猜选择器/猜流程**（实测复杂用例阶段三返工几乎全源于此）。
+> - **点击/导航类定位有疑问时，写进 Page Object 前必须先用交互探针验证**（与"必须带 `--log-file`"同级的机械步骤，秒级、不必跑全量 pytest）：
+>   `python .claude/skills/test-script-dev/scripts/recon_page.py --service "<服务>" [--submenu "<子菜单>"] --probe-click "<目标文案>"`
+>   看输出：命中数（>1 要 scope 限定）、原生 `.click()` 后 URL/DOM 是否变化。**确认原生点击有效再写**，严禁未验证就用 `evaluate` 合成 `MouseEvent`（触发不了 Vue 路由）。
 >
 > 实测最易漏的几类违规，交付前逐条核对（规则细节见 codegen 规范 §8/§9/§13/§15，此处只列速查、不重复）：
 > - **重复导航**：业务方法已带 `@submenu` 的，测试层/方法体不得再写 `goto_service`/`goto_submenu`，也不另封装导航方法。
 > - **JS 滥用**：Page 定位以 Playwright 原生 scoped 为首选，`evaluate`/`querySelectorAll` 仅兜底。
 > - **fixture 归位**：资源 fixture 定义在 `conftest.py`（按模块），禁止写在 `test_*.py`；fixture 内多步操作委托 helper。
 > - **日志复用**：统一 `from sugon_web.utils.logger import logger`，禁止局部 `import logging`。
+>
+> **★ 新建 Page Object 必须先侦察（机械门禁，2026-06-16 新增）**：本次若**新建或改动了 `sugon_web/pages/` 下的 Page Object**，进阶段三前的 `precheck.py` **必须带 `--require-recon --since "<运行报告头·运行开始时间>"`**：
+>   `python .claude/skills/test-script-dev/scripts/precheck.py <测试文件> --expected-tests <场景数> --require-recon --since "YYYY-MM-DD HH:MM"`
+>   门禁会检查 `skill_runs/recon/` 下是否存在本次（reset/run 之后）产生的侦察产物；**没有侦察就动 Page Object = 凭空猜页面结构**，门禁直接非 0、不许进阶段三。这正是上次 lbv2 把"内联表单"误判成"弹窗"、白白耗尽阶段三全部额度的根因。所以：**先 `recon_page.py` 侦察（自动落盘截图到 `skill_runs/recon/`），再写 Page Object，再过门禁。**
 
 <!-- ========== 以下为本阶段规范原文，逐字沿用，禁止改动（仅含白名单路径改写，已逐处登记） ========== -->
 

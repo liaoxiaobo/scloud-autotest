@@ -6,14 +6,33 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'MARK', defaultValue: 'preflight-all', description: '标签筛选用例或前置检查关键词。完整前置检查：preflight-all/all-checks/health；单项前置检查：frontend/backend/inspection/storage-health/daily-backend；模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
-        text(name: 'ENV_MATRIX', defaultValue: '', description: '多环境串行前置检查 JSON。留空则使用 HOST/STOR 单环境。示例：[{"name":"env-a","host":"172.22.3.140","stor":"xstor"},{"name":"env-b","host":"172.22.3.150","stor":"xstor"}]')
+        string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。支持虚拟模块 compute_non_bms、bms；填写后覆盖 RUN_PLAN。')
+        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
+middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
+格式：环境别名|host|stor|user|pwd''')
+        text(name: 'MODULE_ENV_MAP', defaultValue: '''database=database_env
+middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
+示例：
+database=database_env
+middleware=middleware_env''')
+        text(name: 'MODULE_MARK_MAP', defaultValue: '', description: '''模块绑定 pytest mark，一行一个映射。优先级高于全局 MARK。
+示例：
+database=mysql
+middleware=redis''')
+        string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
         string(name: 'BMS_PREFERRED_NODE', defaultValue: '', description: 'BMS优先物理节点（留空使用配置文件）')
         string(name: 'BMS_NETWORK_NAME', defaultValue: '', description: 'BMS网络名称（留空使用配置文件）')
         string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
+        text(name: 'RUN_PLAN', defaultValue: '''[
+  {"lane":"lane-a","modules":["bigdata","backup"]},
+  {"lane":"lane-b","modules":["database","iam","security"]},
+  {"lane":"lane-c","modules":["compute_non_bms","container","network","storage","middleware"]},
+  {"lane":"lane-d","modules":["bms"]}
+]''', description: '模块并发调度计划。lane 之间并行，lane 内模块按顺序串行执行。MODULES 非空时覆盖此计划。')
+        string(name: 'MODULE_PARALLEL_MAP', defaultValue: 'bigdata=1,database=2,compute_non_bms=2,container=2,backup=2,iam=4,security=4,network=1,storage=2,middleware=2,bms=1', description: '模块并发数配置，逗号分隔。BMS 会强制串行。')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -39,8 +58,10 @@ pipeline {
                 script{
                     TIMESTAMP = sh(script: "date +%Y%m%d_%H%M", returnStdout: true).trim()
                     COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
-                    sh "docker build -t playwright-sugon:${IMAGE_TAG} ."
+                    env.IMAGE_TAG = "${TIMESTAMP}_${COMMIT_ID}_${env.BUILD_ID}" // 镜像标签（唯一标识：时间戳+提交ID+构建ID）
+                    env.WORKSPACE_DIR = "${env.WORKSPACE}"
+                    sh "rm -rf allure-result allure-merged-result allure-report"
+                    sh "docker build -t playwright-sugon:${env.IMAGE_TAG} ."
 //                     sh  'printenv |sort'
                 }
           }
@@ -48,121 +69,248 @@ pipeline {
         stage('Run Tests'){
             agent{
                 docker{
-                    image "playwright-sugon:${IMAGE_TAG}"
+                    image "playwright-sugon:${env.IMAGE_TAG}"
                     args '--rm'
                     reuseNode true
                 }
             }
           steps{
                 script {
+                    def defaultEnv = [
+                        host: params.HOST,
+                        stor: params.STOR,
+                        user: params.USER,
+                        pwd : params.PWD
+                    ]
+
+                    def parseEnvConfigs = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('\\|', -1).collect { it.trim() }
+                            if (parts.size() != 5) {
+                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
+                            }
+                            result[parts[0]] = [
+                                host: parts[1],
+                                stor: parts[2],
+                                user: parts[3],
+                                pwd : parts[4]
+                            ]
+                        }
+                        return result
+                    }
+
+                    def parseModuleEnvMap = { String value ->
+                        def result = [:]
+                        value?.split('\n')?.eachWithIndex { rawLine, index ->
+                            def line = rawLine.trim()
+                            if (!line || line.startsWith('#')) {
+                                return
+                            }
+                            def parts = line.split('=', -1).collect { it.trim() }
+                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
+                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
+                            }
+                            result[parts[0]] = parts[1]
+                        }
+                        return result
+                    }
+
+                    def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
+                    def moduleEnvMap = parseModuleEnvMap(params.MODULE_ENV_MAP)
+                    def moduleMarkMap = parseModuleEnvMap(params.MODULE_MARK_MAP)
+
+                    def failedModules = []
+                    def baseWorkspace = env.WORKSPACE_DIR ?: env.WORKSPACE
                     def markFilter = (params.MARK ?: '').trim().toLowerCase()
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
-                    def effectiveParallelCount = (params.PARALLEL_COUNT ?: '2').trim()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
-                    def preflightSuites = ['frontend', 'backend', 'health', 'inspection', 'storage-health', 'daily-backend', 'preflight-all', 'all-checks']
-                    def isPreflightSuite = preflightSuites.contains(markFilter)
-                    def envMatrixText = (params.ENV_MATRIX ?: '').trim()
-                    def preflightMarkExpression = 'preflight'
-                    if (markFilter == 'frontend') {
-                        preflightMarkExpression = 'preflight_frontend'
-                    } else if (markFilter == 'backend') {
-                        preflightMarkExpression = 'preflight_backend'
-                    } else if (markFilter == 'inspection') {
-                        preflightMarkExpression = 'preflight_inspection'
-                    } else if (markFilter == 'storage-health') {
-                        preflightMarkExpression = 'preflight_storage'
-                    } else if (markFilter == 'daily-backend') {
-                        preflightMarkExpression = 'preflight_backend or preflight_inspection'
-                    }
 
-                    if (isBmsRun && effectiveParallelCount != '1') {
+                    if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
-                        effectiveParallelCount = '1'
-                    }
-                    if (isPreflightSuite && effectiveParallelCount != '1') {
-                        echo "前置检查按环境串行执行，避免多个巡检同时操作同一运维页面。"
-                        effectiveParallelCount = '1'
                     }
 
-                    def testTarget = isPreflightSuite ? "sugon_web/testcase/preflight/test_environment_health.py" : (isBmsRun ? "sugon_web/testcase/compute/test_bms_*.py" : "sugon_web/testcase/")
-                    def buildPytestCommand = { targetHost, targetStor, targetUser, targetPwd ->
-                        def cmd = "pytest --headless=true --host=${targetHost} --stor=${targetStor} --username=${targetUser} --password=${targetPwd} ${testTarget} --alluredir allure-result"
+                    def moduleParallelMap = [:]
+                    (params.MODULE_PARALLEL_MAP ?: '').split(/[,\n]/).each { item ->
+                        def entry = item.trim()
+                        if (entry) {
+                            def pair = entry.split('=', 2)
+                            if (pair.size() == 2 && pair[0].trim() && pair[1].trim()) {
+                                moduleParallelMap[pair[0].trim()] = pair[1].trim()
+                            }
+                        }
+                    }
+
+                    def sanitizeName = { value ->
+                        value.toString().replaceAll('[^A-Za-z0-9_.-]', '_')
+                    }
+
+                    def resolveModuleConfig = { String moduleName ->
+                        if (moduleName == 'bms') {
+                            return [
+                                target: "${baseWorkspace}/sugon_web/testcase/compute/test_bms_*.py",
+                                check: "ls ${baseWorkspace}/sugon_web/testcase/compute/test_bms_*.py >/dev/null",
+                                extra: "",
+                                envKey: "compute",
+                                markKey: "bms",
+                                parallel: "1",
+                                resultName: "bms"
+                            ]
+                        }
+                        if (moduleName == 'compute_non_bms') {
+                            return [
+                                target: "${baseWorkspace}/sugon_web/testcase/compute",
+                                check: "test -d '${baseWorkspace}/sugon_web/testcase/compute'",
+                                extra: "--ignore-glob='*/test_bms_*.py'",
+                                envKey: "compute",
+                                markKey: "compute_non_bms",
+                                parallel: (moduleParallelMap[moduleName] ?: params.PARALLEL_COUNT ?: '2').toString(),
+                                resultName: "compute_non_bms"
+                            ]
+                        }
+                        return [
+                            target: "${baseWorkspace}/sugon_web/testcase/${moduleName}",
+                            check: "test -d '${baseWorkspace}/sugon_web/testcase/${moduleName}'",
+                            extra: "",
+                            envKey: moduleName,
+                            markKey: moduleName,
+                            parallel: (moduleParallelMap[moduleName] ?: params.PARALLEL_COUNT ?: '2').toString(),
+                            resultName: sanitizeName(moduleName)
+                        ]
+                    }
+
+                    def resolveModuleEnv = { String moduleName ->
+                        def cfg = resolveModuleConfig(moduleName)
+                        def envName = moduleEnvMap[moduleName] ?: moduleEnvMap[cfg.envKey]
+                        if (envName && !envConfigs[envName]) {
+                            error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
+                        }
+                        return [
+                            envName: envName,
+                            envCfg: defaultEnv + (envName ? (envConfigs[envName] ?: [:]) : [:])
+                        ]
+                    }
+
+                    def resolveModuleMark = { String moduleName ->
+                        def cfg = resolveModuleConfig(moduleName)
+                        return moduleMarkMap[moduleName] ?: moduleMarkMap[cfg.markKey] ?: params.MARK
+                    }
+
+                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr, String parallelCount, String extraArgs ->
+                        def pytestCommand = "pytest --headless=true " +
+                            "--host=${envCfg.host ?: defaultEnv.host} " +
+                            "--stor=${envCfg.stor ?: defaultEnv.stor} " +
+                            "--username=${envCfg.user ?: defaultEnv.user} " +
+                            "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
+                            "${casePath} " +
+                            "--alluredir ${baseWorkspace}/allure-result/${resultName}"
+
+                        if (extraArgs) {
+                            pytestCommand += " ${extraArgs}"
+                        }
                         if (params.BMS_INSTANCE_NAME?.trim()) {
-                            cmd += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
+                            pytestCommand += " --bms-instance-name=${params.BMS_INSTANCE_NAME.trim()}"
                         }
                         if (params.BMS_BMC_IP?.trim()) {
-                            cmd += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
+                            pytestCommand += " --bms-bmc-ip=${params.BMS_BMC_IP.trim()}"
                         }
                         if (params.BMS_PREFERRED_NODE?.trim()) {
-                            cmd += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
+                            pytestCommand += " --bms-preferred-node=${params.BMS_PREFERRED_NODE.trim()}"
                         }
                         if (params.BMS_NETWORK_NAME?.trim()) {
-                            cmd += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
+                            pytestCommand += " --bms-network-name=${params.BMS_NETWORK_NAME.trim()}"
                         }
                         if (params.BMS_PASSWORD?.trim()) {
-                            cmd += " --bms-password=${params.BMS_PASSWORD.trim()}"
+                            pytestCommand += " --bms-password=${params.BMS_PASSWORD.trim()}"
                         }
-                        if (effectiveParallelCount != '1') {
-                            cmd += " -n ${effectiveParallelCount} --dist=loadscope"
-                        }
-                        if (isPreflightSuite) {
-                            cmd += " -m '${preflightMarkExpression}'"
-                        } else if (params.MARK) {
-                            cmd += " -m '${params.MARK}'"
+                        if (markExpr) {
+                            pytestCommand += " -m '${markExpr}'"
                         }
                         if (params.RUN_LAST_FAILED) {
-                            cmd += " --lf"
+                            pytestCommand += " --lf"
                         }
-                        return cmd
+                        if (parallelCount != '1') {
+                            pytestCommand += " -n ${parallelCount} --dist=loadscope"
+                        } else if (resultName == 'bms') {
+                            echo "BMS 用例强制单进程执行，保证按 pytest 收集顺序执行并避免裸金属资源争抢。"
+                        }
+
+                        echo "Pytest command: ${pytestCommand}"
+                        sh pytestCommand
                     }
 
-                    if (isPreflightSuite && envMatrixText) {
-                        def envMatrix = new groovy.json.JsonSlurperClassic().parseText(envMatrixText)
-                        if (!(envMatrix instanceof List) || envMatrix.isEmpty()) {
-                            error "ENV_MATRIX 必须是非空 JSON 数组"
-                        }
-                        def healthFiles = []
-                        def failedEnvs = []
-                        envMatrix.eachWithIndex { envCfg, index ->
-                            def envName = (envCfg.name ?: envCfg.host ?: "env-${index + 1}").toString()
-                            def envHost = (envCfg.host ?: '').toString()
-                            if (!envHost) {
-                                error "ENV_MATRIX 第 ${index + 1} 项缺少 host"
+                    def runModule = { String moduleName ->
+                        stage("Module: ${moduleName}") {
+                            def cfg = resolveModuleConfig(moduleName)
+                            def moduleExists = sh(script: cfg.check, returnStatus: true)
+                            if (moduleExists != 0) {
+                                echo "模块 ${moduleName} 的测试目标不存在，跳过。check=${cfg.check}"
+                                return
                             }
-                            def envStor = (envCfg.stor ?: params.STOR).toString()
-                            def envUser = (envCfg.user ?: params.USER).toString()
-                            def envPwd = (envCfg.pwd ?: envCfg.password ?: params.PWD).toString()
-                            def safeEnv = envName.replaceAll('[^A-Za-z0-9_.-]', '_')
-                            echo "开始前置检查环境: ${envName} (${envHost})"
+                            def resolvedEnv = resolveModuleEnv(moduleName)
+                            def envCfg = resolvedEnv.envCfg
+                            def markExpr = resolveModuleMark(moduleName)
+                            echo "Resolved module ${moduleName}: host=${envCfg.host}, stor=${envCfg.stor}, user=${envCfg.user}, env=${resolvedEnv.envName ?: 'default'}, mark=${markExpr ?: 'default'}, parallel=${cfg.parallel}"
+                            try {
+                                runPytest(cfg.target, envCfg, cfg.resultName, markExpr, cfg.parallel, cfg.extra)
+                            } catch (err) {
+                                failedModules.add(moduleName)
+                                currentBuild.result = 'FAILURE'
+                                echo "模块 ${moduleName} 执行失败，继续执行后续模块: ${err}"
+                            }
+                        }
+                    }
 
-                            def pytestCommand = buildPytestCommand(envHost, envStor, envUser, envPwd)
-                            def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} PREFLIGHT_ENV_NAME=${safeEnv} ${pytestCommand}", returnStatus: true)
-                            def healthJson = "preflight-results/health_${safeEnv}.json"
-                            def healthStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}", returnStatus: true)
-                            sh "mkdir -p allure-result/preflight-${safeEnv}; if [ -d allure-result/preflight/test_environment_health ]; then find allure-result/preflight/test_environment_health -maxdepth 1 -type f -exec cp -n {} allure-result/preflight-${safeEnv}/ \\; ; fi"
-                            healthFiles << healthJson
-                            if (pytestStatus != 0 || healthStatus != 0) {
-                                failedEnvs << "${envName}(pytest=${pytestStatus}, health=${healthStatus})"
+                    def buildRunPlan = {
+                        if (params.MODULES?.trim()) {
+                            def selectedModules = params.MODULES.split(/[,\s]+/).collect { it.trim() }.findAll { it }
+                            return [[lane: 'selected', modules: selectedModules]]
+                        }
+                        if (isBmsRun) {
+                            return [[lane: 'bms', modules: ['bms']]]
+                        }
+                        def planText = (params.RUN_PLAN ?: '').trim()
+                        if (planText) {
+                            def parsedPlan = new groovy.json.JsonSlurperClassic().parseText(planText)
+                            if (!(parsedPlan instanceof List) || parsedPlan.isEmpty()) {
+                                error "RUN_PLAN 必须是非空 JSON 数组"
+                            }
+                            return parsedPlan
+                        }
+                        def moduleText = sh(
+                            script: "find '${baseWorkspace}/sugon_web/testcase' -mindepth 2 -maxdepth 2 -name 'test_*.py' -print | awk -F/ '{print \$(NF-1)}' | sort -u",
+                            returnStdout: true
+                        ).trim()
+                        def scannedModules = moduleText ? moduleText.split('\n').collect { it.trim() }.findAll { it } : []
+                        echo "RUN_PLAN 和 MODULES 为空，自动扫描到模块: ${scannedModules.join(', ')}"
+                        return [[lane: 'default', modules: scannedModules]]
+                    }
+
+                    def runPlan = buildRunPlan()
+                    def branches = [:]
+                    runPlan.eachWithIndex { laneCfg, index ->
+                        def laneName = (laneCfg.lane ?: "lane-${index + 1}").toString()
+                        def laneModules = laneCfg.modules
+                        if (!(laneModules instanceof List) || laneModules.isEmpty()) {
+                            error "RUN_PLAN 中 ${laneName} 缺少 modules"
+                        }
+                        branches[laneName] = {
+                            stage("Lane: ${laneName}") {
+                                laneModules.each { moduleName ->
+                                    runModule(moduleName.toString())
+                                }
                             }
                         }
-                        def matrixJson = "preflight-results/health_matrix.json"
-                        def mergeInputs = healthFiles.collect { "'${it}'" }.join(' ')
-                        def mergeStatus = sh(script: "python -m sugon_web.tools.preflight.merge_health --output ${matrixJson} ${mergeInputs}", returnStatus: true)
-                        def matrixStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${matrixJson}", returnStatus: true)
-                        if (failedEnvs || mergeStatus != 0 || matrixStatus != 0) {
-                            error "多环境前置检查失败: failedEnvs=${failedEnvs}, mergeStatus=${mergeStatus}, matrixStatus=${matrixStatus}"
-                        }
-                    } else if (isPreflightSuite) {
-                        def pytestCommand = buildPytestCommand(params.HOST, params.STOR, params.USER, params.PWD)
-                        def safeHost = params.HOST.replace(':', '_').replace('/', '_').replace('\\\\', '_')
-                        def pytestStatus = sh(script: "PREFLIGHT_SUITE=${markFilter} PREFLIGHT_ENV_NAME=${safeHost} ${pytestCommand}", returnStatus: true)
-                        def healthJson = "preflight-results/health_${safeHost}.json"
-                        def healthStatus = sh(script: "python -m sugon_web.tools.preflight.health_check --suite ${markFilter} --health-json ${healthJson}", returnStatus: true)
-                        if (pytestStatus != 0 || healthStatus != 0) {
-                            error "前置环境检查失败: pytestStatus=${pytestStatus}, healthStatus=${healthStatus}"
-                        }
-                    } else {
-                        sh buildPytestCommand(params.HOST, params.STOR, params.USER, params.PWD)
+                    }
+                    branches.failFast = false
+                    parallel branches
+
+                    if (failedModules) {
+                        error "以下模块执行失败: ${failedModules.join(', ')}"
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
@@ -171,24 +319,30 @@ pipeline {
     }
     post('Send Report') {
         always {
-            // conftest.py 会按运行目标写入 allure-result/<run_id>/，Allure 插件只读取配置目录本层文件。
-            // 生成报告前汇总子目录结果，避免只展示 environment 而没有 test cases。
-            sh "find allure-result -mindepth 2 -type f ! -path '*/history/*' -exec cp -n {} allure-result/ \\; || true"
-
+            sh "mkdir -p allure-result allure-merged-result"
             // 保留allure历史数据
-            sh "cp -r allure-report/history allure-result/ || true" // 忽略复制失败（首次构建无 history 目录）
+            sh "cp -r allure-report/history allure-merged-result/ || true" // 忽略复制失败（首次构建无 history 目录）
 //             sh "cp -f sugon_web/environment.properties allure-result/"
 
-            // 生成 Allure 报告
-            allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+            // 多模块会分别写入 allure-result/<module>/，发布前合并为单个结果目录
+            sh "find allure-result -maxdepth 3 -type f -exec cp {} allure-merged-result/ \\; || true"
 
-            // 清理临时文件
-            sh "rm -rf allure-result/* || true"
+            // Jenkins Allure 插件发布报告；失败时继续归档结果，避免报告完全不可看
+            script {
+                try {
+                    allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-merged-result']]
+                } catch (err) {
+                    echo "Allure 插件发布失败: ${err}"
+                }
+            }
+
+            archiveArtifacts artifacts: 'allure-result/**, allure-merged-result/**, screenshots/**/*.png', allowEmptyArchive: true, fingerprint: true
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
 
             // Docker 系统清理
+            sh "docker rmi playwright-sugon:${env.IMAGE_TAG} || true" // 删除本次构建的临时镜像
             sh "docker system prune -f"
 
             // 发送报告到飞书

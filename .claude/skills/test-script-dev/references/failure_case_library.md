@@ -95,3 +95,17 @@ Page Object 方法中先 `wait_for(state="visible")` 再 `fill()`，但 Element 
 ### 排查口诀
 
 > 复杂新页面阶段三反复"定位超时"，先自问：**这些选择器/流程是侦察来的还是猜的？** 若是猜的 → 立即跑 `recon_page.py` 拿真实渲染态，一次性对齐 cl-button 文案、向导步数、可见 dropdown，避免逐个试错耗尽轮次。
+
+## 模式：SLB/Vue 表单类高频陷阱（速查·源自 lbv2 转发规则 2334 运行复盘）
+
+> 这批坑在"复杂 Vue 表单/dialog"用例反复出现，且实测 AI 用 JS 硬改反而引入新故障。命中即按"正确做法"修，**严禁自创 JS 操作**。
+
+| 现象（报错/超时） | 根因 | 正确做法（修复方向） |
+|---|---|---|
+| dialog 内选完下拉后 **dialog 消失**、后续元素定位漂移 | 在 dialog 内用 Playwright 原生 `click()` 选 el-select 选项会事件冒泡关 dialog；**而用 JS 点也会引入 dialog 消失**（实测 AI 自创 JS 改法的新故障） | 用 BasePage 语义封装 `_select_dropdown`，在 **dialog 容器内 scope 定位** `.el-select-dropdown:visible` 的选项；**不要自创 JS `evaluate`/`dispatchEvent`** |
+| 监听器/表单提交后**成功 popup 不出现**（10s/30s 超时） | 用 JS/`$emit` 直接给 Vue 表单字段赋值后，**前端校验状态未同步** → 点提交被后端静默拒绝，自然无成功 popup。加大 popup 超时是治标 | 赋值后**显式触发 `blur`/`change`** 使校验同步；或改用 `fill()`+键盘输入走正常输入路径；多步向导**每步提交前断言表单校验通过**，再点下一步/确定 |
+| teardown 报 `'CustomLocator' object is not callable`、资源未清理 | 把 `search(name)` 的返回值（**定位器对象**，非行数据）当可调用/数据做链式调用 | 删除直接用 `click_action(name, "删除")` 流程；`search()`/`get_row_by_name()` 返回的是定位器，**不可当数据或函数链式调用** |
+
+### 排查口诀
+
+> 看到"dialog 莫名消失""提交后无成功提示""teardown CustomLocator not callable"——先问：**是不是用 JS 硬改了下拉/表单？** 是 → 撤掉 JS，改用语义封装 + 原生输入 + 触发 change；popup 不出现优先怀疑"表单校验没过被静默拒绝"，而非"超时不够"。
