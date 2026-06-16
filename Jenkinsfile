@@ -89,7 +89,7 @@ middleware=redis''')
           steps{
                 script {
                     def defaultUser = 'admin'
-                    def defaultPwd = 'keystone'
+                    def defaultPwd = 'keystone_sugon'
                     def defaultEnv = [
                         host: params.HOST,
                         stor: params.STOR,
