@@ -27,6 +27,7 @@ middleware=redis''')
         string(name: 'BMS_PASSWORD', defaultValue: '', description: 'BMS实例登录密码（留空使用配置文件）')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（BMS任务会自动强制串行）')
         string(name: 'SAMPLE_PER_MODULE', defaultValue: '5', description: '每个模块按 pytest 收集顺序抽取前 N 个用例执行。0 或留空表示跑完整模块。')
+        string(name: 'PRIORITY_MODULES', defaultValue: 'iam,compute_non_bms,network', description: '优先串行执行的模块，逗号分隔。执行完后再按 RUN_PLAN 并发执行其余模块。')
         text(name: 'RUN_PLAN', defaultValue: '''[
   {"lane":"bigdata","modules":["bigdata"]},
   {"lane":"database","modules":["database"]},
@@ -350,6 +351,22 @@ middleware=redis''')
                     }
 
                     def runPlan = buildRunPlan()
+                    def parseModuleList = { String value ->
+                        return value?.split(/[,\s]+/)?.collect { it.trim() }?.findAll { it } ?: []
+                    }
+                    def plannedModules = runPlan.collectMany { laneCfg ->
+                        def laneModules = laneCfg.modules
+                        return (laneModules instanceof List) ? laneModules.collect { it.toString() } : []
+                    }.toSet()
+                    def priorityModules = parseModuleList(params.PRIORITY_MODULES ?: '').findAll { plannedModules.contains(it) }
+                    def priorityModuleSet = priorityModules.toSet()
+                    if (priorityModules) {
+                        echo "优先串行执行模块: ${priorityModules.join(', ')}"
+                        priorityModules.each { moduleName ->
+                            runModule(moduleName)
+                        }
+                    }
+
                     def branches = [:]
                     runPlan.eachWithIndex { laneCfg, index ->
                         def laneName = (laneCfg.lane ?: "lane-${index + 1}").toString()
@@ -357,16 +374,25 @@ middleware=redis''')
                         if (!(laneModules instanceof List) || laneModules.isEmpty()) {
                             error "RUN_PLAN 中 ${laneName} 缺少 modules"
                         }
-                        branches[laneName] = {
-                            stage("Lane: ${laneName}") {
-                                laneModules.each { moduleName ->
-                                    runModule(moduleName.toString())
+                        def remainingModules = laneModules.collect { it.toString() }.findAll { !priorityModuleSet.contains(it) }
+                        if (remainingModules.isEmpty()) {
+                            echo "Lane ${laneName} 只包含优先模块，已在前置阶段执行，跳过并发分支。"
+                        } else {
+                            branches[laneName] = {
+                                stage("Lane: ${laneName}") {
+                                    remainingModules.each { moduleName ->
+                                        runModule(moduleName)
+                                    }
                                 }
                             }
                         }
                     }
-                    branches.failFast = false
-                    parallel branches
+                    if (branches) {
+                        branches.failFast = false
+                        parallel branches
+                    } else {
+                        echo "没有剩余并发模块需要执行。"
+                    }
 
                     if (failedModules) {
                         error "以下模块执行失败: ${failedModules.join(', ')}"
