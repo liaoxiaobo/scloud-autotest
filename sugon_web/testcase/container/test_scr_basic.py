@@ -7,6 +7,7 @@ from sugon_web.utils.data import random_data
 
 @allure.epic('容器服务')
 @allure.feature('容器镜像服务SCR')
+@allure.story('实例管理功能验证')
 class TestSCRInstanceManagement:
     """SCR 实例管理测试类：搜索、修改名称、删除、批量删除。"""
 
