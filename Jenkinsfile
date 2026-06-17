@@ -9,7 +9,7 @@ pipeline {
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow。全局 marker 筛选，先筛选用例再分发。为空则执行所有用例')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         string(name: 'HOSTS', defaultValue: '', description: '逗号分隔的环境 HOST 列表，用于从 env.yaml 中筛选参与调度的环境；留空则使用 env.yaml 中所有配置了 dispatch 的环境')
-        text(name: 'ENV_DISPATCH', defaultValue: '', description: 'JSON 或 YAML 格式调度覆盖，优先级高于 env.yaml。必须是 dispatch 任务列表（也支持单个对象），每项包含 host、modules/services/mark、stor，可选 parallel_count 覆盖全局并行数。YAML 示例：\n- host: "172.22.3.140"\n  modules: [compute]\n  stor: xbd\n  parallel_count: 4\n- host: "172.22.1.190"\n  services: [evs, vpc]\n  stor: xstor\n  parallel_count: 2')
+        text(name: 'ENV_DISPATCH', defaultValue: '', description: 'JSON 或 YAML 格式调度覆盖，优先级高于 env.yaml。必须是 dispatch 任务列表（也支持单个对象），每项包含 host、modules/services/mark、stor，可选 parallel_count、bms。YAML 示例：\n- host: "172.22.3.140"\n  modules: [compute]\n  stor: xbd\n  parallel_count: 4\n- host: "172.22.1.190"\n  services: [evs, vpc]\n  stor: xstor\n  parallel_count: 2\n- host: "172.22.3.141"\n  modules: [bms]\n  stor: xbd\n  parallel_count: 1\n  bms:\n    instance_name: bms-0601\n    bmc_ip: 172.22.2.250\n    preferred_node: master03.cloud.local\n    network_name: bms-test\n    password: admin1234')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -78,7 +78,7 @@ pipeline {
                     def jobCount = lines[0].trim().toInteger()
                     for (int i = 1; i <= jobCount; i++) {
                         def parts = lines[i].split('\t', -1)
-                        jobs << [host: parts[0], stor: parts[1], markExpr: parts[2], label: parts[3], parallelCount: parts.size() > 4 ? parts[4] : '']
+                        jobs << [host: parts[0], stor: parts[1], markExpr: parts[2], label: parts[3], parallelCount: parts.size() > 4 ? parts[4] : '', bms: parts.size() > 5 ? parts[5] : '{}']
                     }
                     def branches = [:]
 
@@ -87,6 +87,7 @@ pipeline {
                         branches["test-${currentJob.label}"] = {
                             docker.image("playwright-sugon:${IMAGE_TAG}").inside() {
                                 def parallelCount = currentJob.parallelCount?.trim() ? currentJob.parallelCount : params.PARALLEL_COUNT
+                                def bmsJson = currentJob.bms?.trim() ? currentJob.bms : '{}'
                                 def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} -n ${parallelCount} --dist=loadscope --env-label=${currentJob.label} \"${workspaceDir}/sugon_web/testcase/\" --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
 
                                 if (currentJob.markExpr) {
@@ -96,18 +97,20 @@ pipeline {
                                     pytestCommand += " --lf"
                                 }
 
-                                def exitCode = sh(script: pytestCommand, returnStatus: true)
+                                withEnv(['SUGON_BMS_OVERRIDE=' + bmsJson]) {
+                                    def exitCode = sh(script: pytestCommand, returnStatus: true)
 
-                                sh script: """
-                                    python3 sugon_web/tools/inject_env_tags.py \
-                                        --alluredir "${workspaceDir}/allure-result/${currentJob.label}" \
-                                        --host "${currentJob.host}" \
-                                        --stor "${currentJob.stor}" \
-                                        --env-label "${currentJob.label}"
-                                """
+                                    sh script: """
+                                        python3 sugon_web/tools/inject_env_tags.py \
+                                            --alluredir "${workspaceDir}/allure-result/${currentJob.label}" \
+                                            --host "${currentJob.host}" \
+                                            --stor "${currentJob.stor}" \
+                                            --env-label "${currentJob.label}"
+                                    """
 
-                                if (exitCode != 0 && exitCode != 5) {
-                                    error "pytest failed with exit code ${exitCode}"
+                                    if (exitCode != 0 && exitCode != 5) {
+                                        error "pytest failed with exit code ${exitCode}"
+                                    }
                                 }
                             }
                         }

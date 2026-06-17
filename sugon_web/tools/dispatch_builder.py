@@ -74,6 +74,7 @@ def validate_jobs(jobs):
                 "mark": job.get("mark") or "",
                 "stor": job.get("stor") or "xstor",
                 "parallel_count": job.get("parallel_count") or "",
+                "bms": job.get("bms") or {},
             }
         )
     return valid_jobs
@@ -116,6 +117,7 @@ def load_from_env_yaml(path, target_hosts=None):
                     "mark": dispatch.get("mark") or "",
                     "stor": stor,
                     "parallel_count": dispatch.get("parallel_count") or "",
+                    "bms": dispatch.get("bms") or {},
                 }
             )
 
@@ -137,6 +139,7 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
                 "modules": set(job.get("modules") or []),
                 "services": set(job.get("services") or []),
                 "parallel_count": job.get("parallel_count") or "",
+                "bms": job.get("bms") or {},
             }
         else:
             merged[key]["modules"].update(job.get("modules") or [])
@@ -146,6 +149,8 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
                 merged[key]["expr"] = f"({existing}) or ({expr})" if existing else expr
             if job.get("parallel_count"):
                 merged[key]["parallel_count"] = job["parallel_count"]
+            if job.get("bms"):
+                merged[key]["bms"].update(job["bms"])
 
     # 构建 runJobs
     run_jobs = []
@@ -160,6 +165,7 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
                 "modules": sorted(job["modules"]),
                 "services": sorted(job["services"]),
                 "parallel_count": job.get("parallel_count") or "",
+                "bms": job.get("bms") or {},
             }
         )
 
@@ -176,6 +182,7 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
             "modules": [],
             "services": [],
             "parallel_count": "",
+            "bms": {},
         }
     )
 
@@ -188,8 +195,8 @@ def write_text_output(run_jobs, path):
 
     格式：
     第一行为任务数量 N
-    接下来 N 行，每行 5 个字段，用制表符 \t 分隔：
-        host\tstor\tmarkExpr\tlabel\tparallel_count
+    接下来 N 行，每行 6 个字段，用制表符 \t 分隔：
+        host\tstor\tmarkExpr\tlabel\tparallel_count\tbms
 
     使用 \t 作为分隔符，因为 host 是 IP、stor 是标识、label 是 env-...，
     marker 表达式中通常不会包含制表符。
@@ -201,8 +208,9 @@ def write_text_output(run_jobs, path):
         mark_expr = job["markExpr"]
         label = job["label"]
         parallel_count = job.get("parallel_count") or ""
+        bms = json.dumps(job.get("bms") or {}, ensure_ascii=False)
         # 制表符和换行是 marker 表达式中不可能出现的字符，安全作为分隔符
-        lines.append(f"{host}\t{stor}\t{mark_expr}\t{label}\t{parallel_count}")
+        lines.append(f"{host}\t{stor}\t{mark_expr}\t{label}\t{parallel_count}\t{bms}")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
