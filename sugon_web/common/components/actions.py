@@ -259,7 +259,9 @@ class ActionsMixin:
 
             dropdown_selectors = [
                 ('[id^="dropdown-menu-"]', 'id'),
-                ('[class^="cloud-table-dropdown"]', 'class')
+                ('[class^="cloud-table-dropdown"]', 'class'),
+                ('[class*="cl-table-dropdown"]', 'cl-table-dropdown'),
+                ('[class*="cl-dropdown-menu"]', 'cl-dropdown-menu'),
             ]
 
             for selector, selector_type in dropdown_selectors:

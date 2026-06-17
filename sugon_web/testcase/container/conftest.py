@@ -1,6 +1,6 @@
 import pytest
 
-from sugon_web.pages.container import CcePage, ScrPage
+from sugon_web.pages.container import CcePage, ScrPage, SsmPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 
@@ -68,9 +68,31 @@ def _cleanup_cce_cluster(cce_page, ssh_host, name):
     ssh_host.wait_volume_deleted(name, timeout=600)
 
 
+def _find_existing_cluster(cce_page, cluster_name, timeout=600):
+    """在 CCE 集群列表中查找并复用指定名称的现有集群。
+
+    Args:
+        cce_page: CcePage 实例。
+        cluster_name: 要复用的集群名称。
+        timeout: 等待集群状态为运行中的最大秒数。
+
+    Returns:
+        dict: 集群资源字典，至少包含 name。
+
+    Raises:
+        AssertionError: 集群不存在或状态不为运行中时抛出。
+    """
+    cce_page.goto_service(cce_page.service_name)
+    cce_page.goto_submenu("集群管理")
+    cce_page.search(cluster_name)
+    cce_page.assert_list_contain(cluster_name, column_name="集群名称")
+    cce_page.assert_status(cluster_name, status="运行中", timeout=timeout, refresh=True)
+    return {"name": cluster_name}
+
+
 @pytest.fixture(scope="class")
 def cce_cluster(browser_context, config, ssh_host, request):
-    """创建CCE集群并等待就绪，测试类结束后自动清理。
+    """创建或复用CCE集群，测试类结束后自动清理（仅新建模式下删除）。
 
     Args:
         browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
@@ -87,6 +109,7 @@ def cce_cluster(browser_context, config, ssh_host, request):
         network_model (str): 容器网络模型，默认"flannel"。
         volume_size (int): 云硬盘大小，默认50。
         flavor (str): 节点规格，默认"4C8G"。
+        reuse_existing (bool): 是否复用现有集群，默认 False。
 
     Yields:
         dict: 集群资源字典，包含创建参数及运行时信息：
@@ -108,22 +131,28 @@ def cce_cluster(browser_context, config, ssh_host, request):
     from sugon_web.conftest import _create_logged_in_page
 
     params = getattr(request, "param", {}) or {}
+    reuse_existing = params.get("reuse_existing", False)
     page = _create_logged_in_page(browser_context, config)
     cce_page = CcePage(page)
 
     create_kwargs = _build_cce_create_kwargs(params)
     cluster_name = create_kwargs["name"]
 
+    if reuse_existing:
+        with allure_step_log(f"前置操作：复用现有CCE集群 {cluster_name}"):
+            _find_existing_cluster(cce_page, cluster_name)
+            node_data = []
+    else:
+        with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
+            cce_page.cce_create(**create_kwargs)
+            cce_page.assert_popup_success()
+            cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
-    with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
-        cce_page.cce_create(**create_kwargs)
-        cce_page.assert_popup_success()
-        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+        with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
+            node_data = cce_page.get_cluster_node_data(cluster_name)
+            assert node_data, f"获取集群 {cluster_name} 节点数据失败，返回空列表"
 
-    with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
-        node_data = cce_page.get_cluster_node_data(cluster_name)
-        assert node_data, f"获取集群 {cluster_name} 节点数据失败，返回空列表"
-
+    if node_data:
         # 按节点类型分类，供不同用例选择
         master_nodes = [n for n in node_data if n.get("类型") == "控制节点"]
         worker_nodes = [n for n in node_data if n.get("类型") == "计算节点"]
@@ -133,6 +162,8 @@ def cce_cluster(browser_context, config, ssh_host, request):
         worker_node_ip = worker_nodes[0].get("内网IP") if worker_nodes else ""
         mfip = ssh_host.find_mfip(master_node_ip) if master_node_ip else ""
         worker_mfip = ssh_host.find_mfip(worker_node_ip) if worker_node_ip else ""
+    else:
+        master_node = worker_node = master_node_ip = worker_node_ip = mfip = worker_mfip = ""
 
     yield {
         "name": cluster_name,
@@ -142,11 +173,13 @@ def cce_cluster(browser_context, config, ssh_host, request):
         "worker_mfip": worker_mfip,
         "master_node": master_node,
         "worker_node": worker_node,
+        **create_kwargs,
     }
 
     with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
         try:
-            _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
+            if not reuse_existing:
+                _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
         except Exception as e:
             logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
         finally:
@@ -289,5 +322,64 @@ def scr_instance(browser_context, config, ssh_host, request):
             _cleanup_scr_instance(scr_page, ssh_host, instance_name)
         except Exception as e:
             logger.warning(f"清理 SCR 实例失败（可能已删除）: {e}")
+        finally:
+            page.close()
+
+
+@pytest.fixture(scope="function")
+def ssm_page(page):
+    """初始化服务治理SSM页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        SsmPage: 服务治理SSM页面对象实例。
+    """
+    return SsmPage(page)
+
+
+@pytest.fixture(scope="class")
+def mesh_instance(browser_context, config, cce_cluster, request):
+    """创建SSM网格实例并等待安装完成，测试类结束后删除。
+
+    Args:
+        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        config: 配置对象。
+        cce_cluster: CCE集群fixture，提供集群名称等信息。
+        request: pytest 请求对象。
+
+    Yields:
+        dict: 网格实例资源字典：
+            - name (str): 网格实例名称
+            - cluster_name (str): 所属CCE集群名称
+            - page (Page): 登录页面实例
+            - ssm_page (SsmPage): SSM页面对象实例
+    """
+    from sugon_web.conftest import _create_logged_in_page
+
+    page = _create_logged_in_page(browser_context, config)
+    ssm_page = SsmPage(page)
+    cluster_name = cce_cluster["name"]
+    name = f"mesh-{random_data(length=4)}"
+
+    with allure_step_log(f"前置操作：创建网格实例 {name}，使用集群 {cluster_name}"):
+        ssm_page.mesh_create(name=name, cluster=cluster_name)
+        ssm_page.assert_popup_success()
+        ssm_page.assert_status(name, status="安装完成", timeout=1800, refresh=True)
+
+    yield {
+        "name": name,
+        "cluster_name": cluster_name,
+        "page": page,
+        "ssm_page": ssm_page,
+    }
+
+    with allure_step_log(f"后置清理：删除网格实例 {name}"):
+        try:
+            ssm_page.mesh_delete(name)
+            ssm_page.assert_deleted(name, timeout=600)
+        except Exception as e:
+            logger.warning(f"清理网格实例失败（可能已删除）: {e}")
         finally:
             page.close()
