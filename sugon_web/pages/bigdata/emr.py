@@ -9,6 +9,7 @@ class EMRPage(BasePage):
     """E-MapReduce 集群管理页面对象。"""
 
     service_name = "E-MapReduce"
+    common_node_name = "common01"
 
     def _select_visible_option(self, option_text: str = None, exact: bool = True):
         dropdown = self.page.locator("body > div.el-select-dropdown:visible").last
@@ -227,6 +228,24 @@ class EMRPage(BasePage):
                 sleep(1)
         raise AssertionError(f"解绑公网IP弹窗中未加载出可选公网IP: {last_error}")
 
+    def _ensure_common_node_visible(self, name: str):
+        """确保写死的 common01 节点可见。"""
+        self.ensure_detail_tab(name, "节点管理")
+        if self.page.locator("tr.el-table__row").filter(has_text=self.common_node_name).count() > 0:
+            return
+
+        tab = self._active_detail_tab()
+        for expand_icon in tab.locator(".el-table__expand-icon").all():
+            if "expanded" not in (expand_icon.get_attribute("class") or ""):
+                expand_icon.click()
+                sleep(0.5)
+            if self.page.locator("tr.el-table__row").filter(has_text=self.common_node_name).count() > 0:
+                break
+
+        self.page.locator("tr.el-table__row").filter(has_text=self.common_node_name).first.wait_for(
+            state="visible", timeout=10000
+        )
+
     @submenu("实例")
     def delete_cluster(self, name: str):
         """删除 E-MapReduce 集群。"""
@@ -442,7 +461,7 @@ class EMRPage(BasePage):
         dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例")
-    def expand_disk(self, name: str, size: int = 110):
+    def expand_disk(self, name: str, size: int = 70):
         self.ensure_detail_tab(name, "节点管理")
         self._first_node_group_action("磁盘扩容")
         dialog = self.page.locator("div.el-dialog:visible").last
@@ -469,14 +488,8 @@ class EMRPage(BasePage):
 
     @submenu("实例")
     def node_ip_binding(self, name: str, network: str):
-        self.ensure_detail_tab(name, "节点管理")
-        tab = self._active_detail_tab()
-        expand = tab.locator(".el-table__expand-icon").first
-        if "expanded" not in (expand.get_attribute("class") or ""):
-            expand.click()
-            sleep(1)
-        tab.locator(".el-table__expanded-cell").locator("cl-table-dropdown, .cl-table-dropdown, .el-dropdown").first.click()
-        self.page.locator("body .el-dropdown-menu:visible").last.get_by_text("绑定公网IP", exact=True).click()
+        self._ensure_common_node_visible(name)
+        self.click_action(self.common_node_name, "绑定公网IP")
         dialog = self.page.locator("div.el-dialog:visible").last
         self._select_public_network_in_dialog(dialog, network)
         ip = self._select_available_public_ip(dialog)
@@ -485,14 +498,8 @@ class EMRPage(BasePage):
 
     @submenu("实例")
     def node_ip_unbinding(self, name: str):
-        self.ensure_detail_tab(name, "节点管理")
-        tab = self._active_detail_tab()
-        expand = tab.locator(".el-table__expand-icon").first
-        if "expanded" not in (expand.get_attribute("class") or ""):
-            expand.click()
-            sleep(1)
-        tab.locator(".el-table__expanded-cell").locator("cl-table-dropdown, .cl-table-dropdown, .el-dropdown").first.click()
-        self.page.locator("body .el-dropdown-menu:visible").last.get_by_text("解绑公网IP", exact=True).click()
+        self._ensure_common_node_visible(name)
+        self.click_action(self.common_node_name, "解绑公网IP")
         dialog = self.page.locator("div.el-dialog:visible").last
         dialog.wait_for(state="visible", timeout=5000)
         self._wait_unbind_public_ip_ready(dialog)
