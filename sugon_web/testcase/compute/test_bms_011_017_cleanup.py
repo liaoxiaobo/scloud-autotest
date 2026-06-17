@@ -15,6 +15,39 @@ class TestBmsCleanup:
 
     # ---------- 资源重建辅助方法 ----------
 
+    def _retry_cleanup_action(self, action_name, action, page, attempts=3, delay_ms=5000):
+        """Retry a cleanup action before marking the case failed."""
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                logger.info(f"{action_name} 第 {attempt}/{attempts} 次尝试")
+                return action()
+            except Exception as e:
+                last_error = e
+                logger.warning(f"{action_name} 第 {attempt}/{attempts} 次失败: {e}")
+                if attempt < attempts:
+                    page.wait_for_timeout(delay_ms)
+        raise AssertionError(f"{action_name} 重试 {attempts} 次后仍失败: {last_error}") from last_error
+
+    def _wait_switch_group_unbound(self, bms_page, group_name, attempts=30):
+        """Wait until the switch group physical-machine column becomes unbound."""
+        last_row_text = "(未找到行)"
+        for i in range(attempts):
+            bms_page.goto_service("交换机组", force=True)
+            bms_page.wait_for_page_ready()
+            bms_page.page.wait_for_timeout(3000)
+            row = bms_page._get_row_by_name(group_name)
+            if not row:
+                logger.info(f"交换机组 '{group_name}' 已不存在，视为已解绑")
+                return True
+            last_row_text = row.text_content() or ""
+            if "--" in last_row_text:
+                logger.info(f"解绑验证成功，第 {i + 1} 次轮询检测到物理机列为 '--'")
+                return True
+            logger.info(f"解绑验证第 {i + 1}/{attempts} 次轮询，物理机未变为 '--'，继续等待...")
+            bms_page.page.wait_for_timeout(5000)
+        raise AssertionError(f"物理机列应显示'--'，实际: {last_row_text}")
+
     def _require_pxe_agent_or_skip(self, bms_page, node_name):
         """确保指定代理已安装PXE插件，如未安装则尝试安装；环境不支持则跳过测试。"""
         bms_page._goto_submenu_safe("代理")
@@ -376,8 +409,12 @@ class TestBmsCleanup:
         node_name = self._ensure_agent_exists(bms_page, node_name)
 
         # 步骤1：搜索并删除代理信息
-        with allure_step_log("步骤1: 搜索并删除代理信息"):
-            bms_page.bms_agent_delete(node_name)
+        with allure_step_log("步骤1: 搜索并删除代理信息（最多重试3次）"):
+            self._retry_cleanup_action(
+                f"删除代理信息 {node_name}",
+                lambda: bms_page.bms_agent_delete(node_name),
+                bms_page.page,
+            )
 
         # 步骤2：验证代理信息已删除
         with allure_step_log("步骤2: 验证代理信息已删除"):
@@ -433,8 +470,12 @@ class TestBmsCleanup:
         self._ensure_network_exists(bms_page, network_name)
 
         # 步骤1：搜索并删除网络信息
-        with allure_step_log("步骤1: 搜索并删除网络信息"):
-            bms_page.bms_network_delete(network_name)
+        with allure_step_log("步骤1: 搜索并删除网络信息（最多重试3次）"):
+            self._retry_cleanup_action(
+                f"删除网络信息 {network_name}",
+                lambda: bms_page.bms_network_delete(network_name),
+                bms_page.page,
+            )
 
         # 步骤2：验证网络信息已删除
         with allure_step_log("步骤2: 验证网络信息已删除"):
@@ -450,35 +491,30 @@ class TestBmsCleanup:
         # 确保交换机组存在且绑定物理机（支持重建）
         self._ensure_switch_group_exists(ops_page, group_name, node_name)
 
-        # 步骤1：解绑物理机
-        with allure_step_log("步骤1: 解绑交换机组物理机"):
-            actual_group_name = bms_page.bms_switch_group_unbind(group_name, node_name) or group_name
-
-        # 步骤2：验证物理机已解绑（异步操作，轮询等待）
-        with allure_step_log("步骤2: 验证物理机已解绑"):
-            unbound = False
-            # 解绑为异步操作，后台处理时间较长，加大轮询次数和间隔
-            for i in range(30):
-                bms_page.goto_service("交换机组", force=True)
-                bms_page.wait_for_page_ready()
-                bms_page.page.wait_for_timeout(3000)
-                row = bms_page._get_row_by_name(actual_group_name)
-                if row:
-                    row_text = row.text_content() or ""
-                    if "--" in row_text:
-                        unbound = True
-                        logger.info(f"解绑验证成功，第 {i + 1} 次轮询检测到物理机列为 '--'")
-                        break
-                logger.info(f"解绑验证第 {i + 1}/30 次轮询，物理机未变为 '--'，继续等待...")
-                bms_page.page.wait_for_timeout(5000)
-            if not unbound:
-                row = bms_page._get_row_by_name(actual_group_name)
-                row_text = row.text_content() or "" if row else "(未找到行)"
-                assert "--" in row_text, f"物理机列应显示'--'，实际: {row_text}"
+        # 步骤1-2：解绑物理机并验证（异步操作，失败后重新提交解绑）
+        with allure_step_log("步骤1-2: 解绑交换机组物理机并验证（最多重试3次）"):
+            last_error = None
+            for attempt in range(1, 4):
+                try:
+                    logger.info(f"解绑交换机组物理机第 {attempt}/3 次尝试")
+                    actual_group_name = bms_page.bms_switch_group_unbind(actual_group_name, node_name) or actual_group_name
+                    self._wait_switch_group_unbound(bms_page, actual_group_name)
+                    break
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"解绑交换机组物理机第 {attempt}/3 次失败: {e}")
+                    if attempt < 3:
+                        bms_page.page.wait_for_timeout(5000)
+                    else:
+                        raise AssertionError(f"交换机组物理机解绑重试 3 次后仍失败: {last_error}") from last_error
 
         # 步骤3：删除交换机组
-        with allure_step_log("步骤3: 删除交换机组"):
-            bms_page.bms_switch_group_delete(actual_group_name)
+        with allure_step_log("步骤3: 删除交换机组（最多重试3次）"):
+            self._retry_cleanup_action(
+                f"删除交换机组 {actual_group_name}",
+                lambda: bms_page.bms_switch_group_delete(actual_group_name),
+                bms_page.page,
+            )
 
         # 步骤4：验证交换机组已删除
         with allure_step_log("步骤4: 验证交换机组已删除"):

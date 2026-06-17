@@ -11,6 +11,7 @@ from sugon_web.utils.data import random_data, get_file_abspath
 
 BMS_ACL_NAME = "bms-acl"
 BMS_SECURITY_GROUP_NAME = "bms-default"
+BMS_VPC_PREFIX = "bms-vpc-autotest"
 
 
 def _row_exists(page_obj, submenu_name, row_name):
@@ -229,10 +230,11 @@ def _bms_ensure_acl_allow_all_rule(vpc_page, direction):
 
 
 def _ensure_bms_acl_allow_all(vpc_page):
-    if not _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
-        vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
-    else:
+    if _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
         logger.info(f"ACL {BMS_ACL_NAME} 已存在，复用")
+        return
+
+    vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
 
     try:
         acl_data = vpc_page.get_row_data(BMS_ACL_NAME)
@@ -263,11 +265,73 @@ def _sg_rule_exists(rules, direction, protocol, port=None):
     return False
 
 
-def _ensure_bms_security_group_allow_all(vpc_page):
-    if not _row_exists(vpc_page, "安全组", BMS_SECURITY_GROUP_NAME):
-        vpc_page.sg_create(BMS_SECURITY_GROUP_NAME, desc="BMS自动化专用安全组")
+def _bms_select_rule_option(vpc_page, dialog, label_text, option_text, exact=True):
+    """Select an option in the BMS-only security group rule dialog."""
+    label_prefix = r"远[程端]" if label_text == "远程" else re.escape(label_text)
+    label_pattern = re.compile(rf"^\s*\*?\s*{label_prefix}")
+    form_item = dialog.locator(".el-form-item").filter(has_text=label_pattern).first
+    select_input = form_item.get_by_placeholder("请选择").first
+    current = ""
+    try:
+        current = select_input.input_value(timeout=1000).strip()
+    except Exception:
+        pass
+    if current == option_text:
+        return
+
+    select_input.click(force=True)
+    options = vpc_page.page.locator("li:visible")
+    if exact:
+        options.filter(has_text=re.compile(rf"^\s*{re.escape(option_text)}\s*$")).first.click()
     else:
+        options.filter(has_text=option_text).first.click()
+
+
+def _bms_create_sg_cidr_rule(vpc_page, direction, protocol_type, port=None):
+    """Create a BMS security group rule with CIDR remote only, never remote security group."""
+    vpc_page.btn_create.click()
+    dialog = vpc_page.get_by_role("dialog", name="创建规则")
+
+    _bms_select_rule_option(vpc_page, dialog, "协议", "选择常用协议")
+
+    protocol_type_input = dialog.get_by_placeholder("请选择协议")
+    protocol_type_input.click(force=True)
+    protocol_type_input.fill(protocol_type)
+    vpc_page.page.locator("li:visible").filter(
+        has_text=re.compile(rf"^\s*{re.escape(protocol_type)}\s*$", re.IGNORECASE)
+    ).first.click()
+
+    if port:
+        _bms_select_rule_option(vpc_page, dialog, "打开端口", "端口范围")
+        start_port, end_port = port.split("-", 1)
+        start_input = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^\s*\*?\s*起始端口号")
+        ).get_by_role("textbox").first
+        end_input = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^\s*\*?\s*终止端口号")
+        ).get_by_role("textbox").first
+        start_input.fill(start_port.strip())
+        end_input.fill(end_port.strip())
+
+    _bms_select_rule_option(vpc_page, dialog, "方向", direction, exact=False)
+    _bms_select_rule_option(vpc_page, dialog, "远程", "CIDR")
+    _bms_select_rule_option(vpc_page, dialog, "IP版本", "IPv4", exact=False)
+
+    dialog.get_by_text("确定").click()
+    vpc_page.assert_popup_success("新建安全组规则成功")
+    logger.info(
+        f"BMS安全组规则创建完成: sg={BMS_SECURITY_GROUP_NAME}, 方向={direction}, "
+        f"协议={protocol_type}, 远程=CIDR, CIDR留空"
+        f"{f', 端口={port}' if port else ''}"
+    )
+
+
+def _ensure_bms_security_group_allow_all(vpc_page):
+    if _row_exists(vpc_page, "安全组", BMS_SECURITY_GROUP_NAME):
         logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在，复用")
+        return
+
+    vpc_page.sg_create(BMS_SECURITY_GROUP_NAME, desc="BMS自动化专用安全组")
 
     rules = vpc_page.sg_get_all_rules(sg_name=BMS_SECURITY_GROUP_NAME)
     expected_rules = [
@@ -282,30 +346,68 @@ def _ensure_bms_security_group_allow_all(vpc_page):
         if _sg_rule_exists(rules, direction, protocol, port):
             logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在 {direction} {protocol} 放通规则")
             continue
-        kwargs = {
-            "sg_name": BMS_SECURITY_GROUP_NAME,
-            "protocol": "选择常用协议",
-            "protocol_type": protocol_type,
-            "direction": direction,
-            "remote_type": "CIDR",
-            "ip_version": "IPv4",
-            "cidr": "0.0.0.0/0",
-            "from_list": False,
-            "detail_mode": True,
-        }
-        if port:
-            kwargs.update({"port_type": "端口范围", "port": port})
-        vpc_page.sg_rule_create(**kwargs)
+        _bms_create_sg_cidr_rule(vpc_page, direction, protocol_type, port=port)
+
+
+def _find_reusable_bms_vpc(vpc_page):
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
+    try:
+        vpc_page.search(BMS_VPC_PREFIX)
+    except Exception as e:
+        logger.warning(f"搜索可复用 BMS VPC 失败，继续新建: {e}")
+        return None
+
+    rows = vpc_page.page.locator(".el-table__body-wrapper:visible tbody tr").filter(has_text=BMS_VPC_PREFIX)
+    if rows.count() == 0:
+        return None
+
+    row = rows.first
+    cells = row.locator("td")
+    vpc_name = ""
+    for index in range(cells.count()):
+        text = (cells.nth(index).text_content(timeout=1000) or "").strip()
+        match = re.search(r"bms-vpc-autotest[-\w]*", text)
+        if match:
+            vpc_name = match.group(0)
+            break
+    if not vpc_name:
+        return None
+
+    row_data = {}
+    try:
+        row_data = vpc_page.get_row_data(vpc_name)
+    except Exception as e:
+        logger.warning(f"读取可复用 BMS VPC {vpc_name} 行数据失败，使用默认子网命名: {e}")
+    cidr = (
+        row_data.get("网段")
+        or row_data.get("CIDR")
+        or row_data.get("IPv4网段")
+        or ""
+    )
+    subnet_name = f"{vpc_name}-subnet"
+    logger.info(f"复用已有 BMS VPC: VPC={vpc_name}, 子网={subnet_name}, CIDR={cidr or '未知'}")
+    return {
+        "vpc_name": vpc_name,
+        "subnet_name": subnet_name,
+        "cidr": cidr,
+        "acl_name": BMS_ACL_NAME,
+        "security_group": BMS_SECURITY_GROUP_NAME,
+    }
 
 
 def _prepare_bms_instance_vpc(vpc_page):
-    timestamp = time.strftime("%Y%m%d%H%M%S")
-    vpc_name = f"bms-vpc-autotest-{timestamp}"
-    subnet_name = f"{vpc_name}-subnet"
-    cidr = random_data("cidr")
-
     _ensure_bms_acl_allow_all(vpc_page)
     _ensure_bms_security_group_allow_all(vpc_page)
+
+    reusable_vpc = _find_reusable_bms_vpc(vpc_page)
+    if reusable_vpc:
+        return reusable_vpc
+
+    timestamp = time.strftime("%Y%m%d%H%M%S")
+    vpc_name = f"{BMS_VPC_PREFIX}-{timestamp}"
+    subnet_name = f"{vpc_name}-subnet"
+    cidr = random_data("cidr")
 
     vpc_page.goto_service("虚拟私有云")
     vpc_page.goto_submenu("虚拟私有云")
