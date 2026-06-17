@@ -152,7 +152,6 @@ class TablesMixin:
         t_body = self.locator(".el-table__body-wrapper")
         if t_body.count() == 0:
             t_body = self
-        t_body.locator("tr").first.wait_for(state="visible", timeout=10000)
 
         try:
             pattern = re.compile(rf"^{re.escape(name)}\s")

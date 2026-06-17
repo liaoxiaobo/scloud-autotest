@@ -1,0 +1,8 @@
+scr:
+    test_scr_create:
+        - instance_type: "ALONE"
+          storage_type: "EVS"
+        - instance_type: "ALONE"
+          storage_type: "OSS"
+        - instance_type: "HA"
+          storage_type: null
