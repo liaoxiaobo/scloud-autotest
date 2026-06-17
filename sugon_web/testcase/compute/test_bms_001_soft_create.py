@@ -4,8 +4,153 @@ import pytest
 import allure
 
 from sugon_web.common.remote import SSH
+from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data, get_file_abspath
+
+
+BMS_ACL_NAME = "bms-acl"
+BMS_SECURITY_GROUP_NAME = "bms-default"
+
+
+def _row_exists(page_obj, submenu_name, row_name):
+    page_obj.goto_service("虚拟私有云")
+    page_obj.goto_submenu(submenu_name)
+    try:
+        return page_obj.get_row_by_name(row_name) is not None
+    except Exception:
+        return False
+
+
+def _ensure_bms_acl_allow_all(vpc_page):
+    if not _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
+        vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
+    else:
+        logger.info(f"ACL {BMS_ACL_NAME} 已存在，复用")
+
+    try:
+        acl_data = vpc_page.get_row_data(BMS_ACL_NAME)
+        if acl_data and str(acl_data.get("状态", "")) == "关闭":
+            vpc_page.acl_enable(BMS_ACL_NAME)
+    except Exception as e:
+        logger.warning(f"检查/开启 ACL {BMS_ACL_NAME} 状态失败，继续补规则: {e}")
+
+    for direction in ("入方向", "出方向"):
+        tab_name = f"{direction}规则"
+        vpc_page.goto_acl_detail(BMS_ACL_NAME, tab_name=tab_name)
+        rows_text = []
+        for row in vpc_page.get_by_role("row").all():
+            try:
+                rows_text.append(row.inner_text(timeout=1000))
+            except Exception:
+                continue
+        has_allow_all = any(
+            "IPv4" in text
+            and "允许" in text
+            and ("all" in text.lower() or "全部" in text)
+            and "0.0.0.0/0" in text
+            for text in rows_text
+        )
+        if has_allow_all:
+            logger.info(f"ACL {BMS_ACL_NAME} 已存在 {direction} IPv4 全放通规则")
+            continue
+        vpc_page.acl_rule_create(
+            acl_name=BMS_ACL_NAME,
+            direction=direction,
+            ip_version="IPv4",
+            policy="允许",
+            protocol="全部",
+            source_ip="0.0.0.0/0",
+            dest_ip="0.0.0.0/0",
+            detail_mode=True,
+        )
+
+
+def _sg_rule_exists(rules, direction, protocol, port=None):
+    for rule in rules:
+        if str(rule.get("方向", "")).strip() != direction:
+            continue
+        if "IPv4" not in str(rule.get("以太网类型", "")):
+            continue
+        rule_protocol = str(rule.get("IP协议", "")).lower()
+        if protocol.lower() not in rule_protocol:
+            continue
+        if port:
+            rule_port = str(rule.get("端口范围", "")).replace(" ", "")
+            if port.replace(" ", "") not in rule_port:
+                continue
+        return True
+    return False
+
+
+def _ensure_bms_security_group_allow_all(vpc_page):
+    if not _row_exists(vpc_page, "安全组", BMS_SECURITY_GROUP_NAME):
+        vpc_page.sg_create(BMS_SECURITY_GROUP_NAME, desc="BMS自动化专用安全组")
+    else:
+        logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在，复用")
+
+    rules = vpc_page.sg_get_all_rules(sg_name=BMS_SECURITY_GROUP_NAME)
+    expected_rules = [
+        ("入口", "定制TCP协议", "tcp", "1-65535"),
+        ("出口", "定制TCP协议", "tcp", "1-65535"),
+        ("入口", "定制UDP协议", "udp", "1-65535"),
+        ("出口", "定制UDP协议", "udp", "1-65535"),
+        ("入口", "所有ICMP协议", "icmp", None),
+        ("出口", "所有ICMP协议", "icmp", None),
+    ]
+    for direction, protocol_type, protocol, port in expected_rules:
+        if _sg_rule_exists(rules, direction, protocol, port):
+            logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在 {direction} {protocol} 放通规则")
+            continue
+        kwargs = {
+            "sg_name": BMS_SECURITY_GROUP_NAME,
+            "protocol": "选择常用协议",
+            "protocol_type": protocol_type,
+            "direction": direction,
+            "remote_type": "CIDR",
+            "ip_version": "IPv4",
+            "cidr": "0.0.0.0/0",
+            "from_list": False,
+            "detail_mode": True,
+        }
+        if port:
+            kwargs.update({"port_type": "端口范围", "port": port})
+        vpc_page.sg_rule_create(**kwargs)
+
+
+def _prepare_bms_instance_vpc(vpc_page):
+    timestamp = time.strftime("%Y%m%d%H%M%S")
+    vpc_name = f"bms-vpc-autotest-{timestamp}"
+    subnet_name = f"{vpc_name}-subnet"
+    cidr = random_data("cidr")
+
+    _ensure_bms_acl_allow_all(vpc_page)
+    _ensure_bms_security_group_allow_all(vpc_page)
+
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page.vpc_create(
+        name=vpc_name,
+        subnet_name=subnet_name,
+        cidr=cidr,
+        desc="BMS自动化专用VPC",
+        subnet_desc="BMS自动化专用子网",
+        network_type="Geneve",
+        acl_policy=BMS_ACL_NAME,
+    )
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    vpc_page.assert_status(vpc_name)
+    logger.info(
+        f"BMS实例专用网络已创建: VPC={vpc_name}, 子网={subnet_name}, CIDR={cidr}, "
+        f"ACL={BMS_ACL_NAME}, 安全组={BMS_SECURITY_GROUP_NAME}"
+    )
+    return {
+        "vpc_name": vpc_name,
+        "subnet_name": subnet_name,
+        "cidr": cidr,
+        "acl_name": BMS_ACL_NAME,
+        "security_group": BMS_SECURITY_GROUP_NAME,
+    }
 
 
 @allure.epic("计算")
@@ -362,8 +507,17 @@ class TestBmsSoftCreate:
         if skip_to_step14:
             logger.info("检测到已有实例，跳过步骤13（创建实例），直接进入步骤14")
         else:
+            with allure_step_log("步骤12b: 准备BMS实例专用VPC/ACL/安全组"):
+                vpc_page = VpcPage(bms_page.page)
+                bms_network_env = _prepare_bms_instance_vpc(vpc_page)
+
             # === 步骤13-14: 创建裸金属实例并等待运行中（使用 fixture 工厂函数） ===
-            instance_name = bms_instance(name=instance_name)
+            instance_name = bms_instance(
+                name=instance_name,
+                security_group=bms_network_env["security_group"],
+                network_name=bms_network_env["vpc_name"],
+                subnet_name=bms_network_env["subnet_name"],
+            )
 
         # === 步骤15: SSH验证 ===
         with allure_step_log("步骤15: SSH验证"):
