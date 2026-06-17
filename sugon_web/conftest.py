@@ -258,6 +258,7 @@ def browser_context(browser, request):
     context = browser.new_context(
         ignore_https_errors=True,  # 忽略 SSL 错误
         permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
     )
 
     # 根据 --tracing 参数决定是否开启 Playwright tracing
