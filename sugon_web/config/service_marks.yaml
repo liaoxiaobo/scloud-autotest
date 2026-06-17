@@ -47,14 +47,11 @@ eip: 弹性公网IP
 er: 企业路由器
 internal_dns: 内网解析
 ip_group: IP地址组
-lb: 监听器
 nat: NAT网关
 peer_connect: 对等连接
 qos: 网络QoS
 sg: 安全组
 slb: 负载均衡
-slbv1: 负载均衡V1
-slbv2: 负载均衡V2
 tm: 流量镜像
 vpc: 虚拟私有云
 

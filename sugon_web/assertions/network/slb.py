@@ -8,17 +8,29 @@ class SlbAssertionMixin:
     属于 L2 Business 层断言。
     """
 
-    def assert_listener_exists(self, lb_name):
+    def assert_listener_exists(self, lb_name, timeout=5000):
         """验证左侧列表是否存在指定名称的监听器（针对详情页监听器Tab）。
 
         Args:
             lb_name: 监听器名称。
+            timeout: 等待超时时间（毫秒），默认 5000。
         """
         # 使用用户提供的 listener-left-list-item 容器进行精确匹配
         locator = self.locator("div.listener-left-list-item").filter(has_text=lb_name)
         # 确保可见
-        locator.wait_for(state="visible", timeout=5000)
+        locator.wait_for(state="visible", timeout=timeout)
         self.logger.info(f"验证监听器 {lb_name} 存在于左侧列表")
+
+    def assert_listener_not_exists(self, lb_name, timeout=5000):
+        """验证左侧列表不存在指定名称的监听器（针对详情页监听器Tab）。
+
+        Args:
+            lb_name: 监听器名称。
+            timeout: 等待超时时间（毫秒），默认 5000。
+        """
+        locator = self.locator("div.listener-left-list-item").filter(has_text=lb_name)
+        expect(locator).not_to_be_visible(timeout=timeout)
+        self.logger.info(f"验证监听器 {lb_name} 已从左侧列表删除")
 
     def assert_lb_pool_basic_info(self, pool_name, protocol=None, balance_method=None,
                                   session_persistence=None, health_check=None):
