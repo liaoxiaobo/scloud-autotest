@@ -981,11 +981,15 @@ class BmsPage(BasePage):
         return []
 
     def _wait_for_row_absence(self, submenu_name: str, keyword: str, *, label: str, timeout: int = 120,
-                              poll_interval: int = 5, cell_index: int | None = None):
+                              poll_interval: int = 5, cell_index: int | None = None,
+                              navigate_as_service: bool = False):
         """轮询等待指定行从当前列表中消失。"""
         deadline = time.time() + timeout
         while time.time() < deadline:
-            self._goto_submenu_safe(submenu_name)
+            if navigate_as_service:
+                self.goto_service(submenu_name)
+            else:
+                self._goto_submenu_safe(submenu_name)
             self.search(keyword)
             self.page.wait_for_timeout(2000)
             row = (self._get_row_by_cell_text(keyword, cell_index=cell_index)
@@ -1017,7 +1021,7 @@ class BmsPage(BasePage):
     # ---- instance ----
 
     def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
-                               security_group="", server_name="", network_name="", bmc_ip=""):
+                               security_group="", server_name="", network_name="", subnet_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
         self.page.wait_for_load_state("networkidle")
@@ -1404,7 +1408,18 @@ class BmsPage(BasePage):
                 # 选择子网
                 net_selects[1].click()
                 self.page.wait_for_timeout(500)
-                self.page.locator(".el-select-dropdown:visible li").first.click()
+                subnet_opts = self.page.locator(".el-select-dropdown:visible li")
+                if subnet_name:
+                    subnet_opt = subnet_opts.filter(has_text=subnet_name)
+                    if subnet_opt.count() > 0:
+                        subnet_opt.first.click()
+                        logger.info(f"[bms_instance_create] 子网选择成功({subnet_name})")
+                    else:
+                        subnet_opts.first.click()
+                        logger.info("[bms_instance_create] 子网选择成功(第一个)")
+                else:
+                    subnet_opts.first.click()
+                    logger.info("[bms_instance_create] 子网选择成功(第一个)")
                 self.page.wait_for_timeout(500)
                 # 分配模式（自动分配）
                 if len(net_selects) >= 3:
@@ -3190,7 +3205,7 @@ class BmsPage(BasePage):
             return
         self._js_click_action(row, "删除")
         self._confirm_sugon_dialog()
-        self._wait_for_row_absence("交换机组", group_name, label="交换机组")
+        self._wait_for_row_absence("交换机组", group_name, label="交换机组", navigate_as_service=True)
         logger.info(f"交换机组 '{group_name}' 删除成功")
 
     # ---- full cleanup ----

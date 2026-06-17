@@ -1,9 +1,73 @@
+import ipaddress
 import time
 import pytest
 from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
+from sugon_web.config.config import Config
+
+
+@pytest.fixture(scope="function")
+def bms_eip_pool(page, request):
+    """Allocate a small BMS-only EIP pool and return the largest IP.
+
+    Teardown releases each EIP independently. If one IP is already bound or
+    cannot be released, log a warning and continue with the remaining EIPs.
+    """
+    params = getattr(request, "param", {}) or {}
+    count = params.get("count", 5)
+    pool = params.get("pool", Config.get("network") or "public_net(基础版)")
+    method = params.get("method", "快速选择")
+
+    vpc_page = VpcPage(page)
+    created_ips = []
+
+    with allure_step_log(f"Setup: allocate {count} BMS EIPs"):
+        vpc_page.goto_service("虚拟私有云")
+        created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method)
+        vpc_page.assert_popup_success("执行成功")
+        assert created_ips, "BMS EIP pool allocation returned no IPs"
+        target_ip = max(created_ips, key=ipaddress.ip_address)
+        logger.info(f"BMS allocated EIPs: {created_ips}, selected max IP: {target_ip}")
+
+    try:
+        yield {
+            "ips": created_ips,
+            "target_ip": target_ip,
+            "pool": pool,
+        }
+    finally:
+        with allure_step_log(f"Teardown: release BMS EIPs {created_ips}"):
+            for current_ip in created_ips:
+                try:
+                    vpc_page.goto_service("虚拟私有云")
+                    vpc_page.switch_eip_pool(pool)
+                    vpc_page.search(current_ip)
+                    if current_ip not in vpc_page.get_eip_list():
+                        logger.info(f"BMS preallocated EIP {current_ip} no longer exists; skip release")
+                        continue
+
+                    try:
+                        row_data = vpc_page.get_row_data(current_ip) or {}
+                        logger.info(f"BMS preallocated EIP {current_ip} row before cleanup: {row_data}")
+                    except Exception as row_err:
+                        logger.warning(f"Failed to read BMS preallocated EIP {current_ip} row; still trying release: {row_err}")
+
+                    vpc_page.eip_release(current_ip)
+                    vpc_page.assert_deleted(current_ip)
+                    logger.info(f"BMS preallocated EIP {current_ip} released")
+                except Exception as e:
+                    logger.warning(f"Failed to release BMS preallocated EIP {current_ip}; it may be bound elsewhere, continuing: {e}")
+                finally:
+                    try:
+                        vpc_page.close_dialog_if_exists()
+                    except Exception:
+                        pass
+                    try:
+                        vpc_page.btn_reset.click()
+                    except Exception:
+                        pass
 
 
 @pytest.fixture()
@@ -168,6 +232,7 @@ def bms_instance(bms_page, bms_env):
         security_group="default",
         server_name="N/A 2U Rack Server",
         network_name="guanyy-vpc",
+        subnet_name="",
     ):
         name = name or bms_env["instance_name"]
         password = password or bms_env["password"]
@@ -181,6 +246,7 @@ def bms_instance(bms_page, bms_env):
                     security_group=security_group,
                     server_name=server_name,
                     network_name=network_name,
+                    subnet_name=subnet_name,
                     bmc_ip=bms_env["bmc_ip"],
                 )
             except RuntimeError as e:
