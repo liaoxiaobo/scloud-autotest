@@ -86,12 +86,14 @@ class TestEMRBasic:
 
 
     @allure.title("E-MapReduce-节点磁盘扩容")
-    def test_expand_disk(self, emr_page, emr):
+    def test_expand_disk(self, emr_page, emr, ssh_host):
         with allure_step_log("步骤一：节点组磁盘扩容"):
             emr_page.expand_disk(emr["name"])
 
         with allure_step_log("步骤二：验证磁盘扩容结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("提交成功")
+            emr_page.assert_status("COMMON", status="变配中", timeout=600, refresh=True)
+            emr_page.assert_status("COMMON", status="运行", timeout=1600, refresh=True)
 
     @allure.title("E-MapReduce-扩容新增节点")
     def test_add_node(self, emr_page, emr):
@@ -99,7 +101,9 @@ class TestEMRBasic:
             emr_page.add_node(emr["name"], emr["password"])
 
         with allure_step_log("步骤二：验证扩容结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("添加成功")
+            emr_page.assert_status("COMMON", status="扩容中", timeout=600, refresh=True)
+            emr_page.assert_status("COMMON", status="运行", timeout=1800, refresh=True)
 
     @allure.title("E-MapReduce-缩容删除节点")
     def test_delete_node(self, emr_page, emr):
