@@ -22,6 +22,156 @@ def _row_exists(page_obj, submenu_name, row_name):
         return False
 
 
+def _bms_open_acl_list(vpc_page):
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("网络ACL")
+
+
+def _bms_open_acl_detail(vpc_page, acl_name):
+    _bms_open_acl_list(vpc_page)
+    try:
+        vpc_page.search(acl_name)
+    except Exception as e:
+        logger.warning(f"BMS ACL {acl_name} 搜索失败，尝试直接在列表中定位: {e}")
+
+    result = vpc_page.page.evaluate(
+        """aclName => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const rows = Array.from(document.querySelectorAll('tbody tr')).filter(visible);
+            const row = rows.find(item => (item.innerText || '').includes(aclName));
+            if (!row) {
+                return 'row-not-found';
+            }
+            const targets = Array.from(row.querySelectorAll('a, button, span, div'))
+                .filter(el => visible(el) && (el.innerText || el.textContent || '').trim() === aclName);
+            const target = targets[0] || row.querySelector('td:nth-child(2)') || row;
+            target.click();
+            return 'clicked';
+        }""",
+        acl_name,
+    )
+    assert result == "clicked", f"未在网络ACL列表中找到 {acl_name}: {result}"
+
+    for _ in range(30):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+    raise AssertionError(f"进入 BMS ACL 详情页超时: {acl_name}, current={vpc_page.page.url}")
+
+
+def _bms_switch_acl_rule_tab(vpc_page, tab_name):
+    result = vpc_page.page.evaluate(
+        """tabName => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const normalize = text => (text || '').replace(/\\s+/g, '').trim();
+            const candidates = Array.from(document.querySelectorAll(
+                '[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab, button, span, div'
+            )).filter(el => visible(el) && normalize(el.innerText || el.textContent) === normalize(tabName));
+            if (!candidates.length) {
+                return 'tab-not-found';
+            }
+            const active = candidates.find(el => {
+                const host = el.closest('[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab') || el;
+                const classes = `${el.className || ''} ${host.className || ''}`;
+                return el.getAttribute('aria-selected') === 'true'
+                    || host.getAttribute('aria-selected') === 'true'
+                    || /(^|\\s)(is-active|active|cloud-tabs-tab-active)(\\s|$)/.test(classes);
+            });
+            if (active) {
+                return 'already-active';
+            }
+            candidates[0].click();
+            return 'clicked';
+        }""",
+        tab_name,
+    )
+    assert result in ("clicked", "already-active"), f"切换 BMS ACL 页签失败: {tab_name}, result={result}"
+    vpc_page.wait_for_page_ready()
+
+
+def _bms_acl_rule_rows_text(vpc_page):
+    return vpc_page.page.evaluate(
+        """() => Array.from(document.querySelectorAll('tbody tr'))
+            .filter(row => {
+                const style = window.getComputedStyle(row);
+                const rect = row.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden'
+                    && rect.width > 0 && rect.height > 0;
+            })
+            .map(row => row.innerText || '')"""
+    )
+
+
+def _bms_click_acl_rule_create(vpc_page):
+    result = vpc_page.page.evaluate(
+        """() => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const buttons = Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
+                .filter(el => visible(el) && (el.innerText || el.textContent || '').includes('新建'));
+            if (!buttons.length) {
+                return 'button-not-found';
+            }
+            buttons[0].click();
+            return 'clicked';
+        }"""
+    )
+    assert result == "clicked", f"未找到 BMS ACL 规则新建按钮: {result}"
+
+
+def _bms_fill_acl_allow_all_dialog(vpc_page, tab_name):
+    dialog_name = f"新建{tab_name}"
+    dialog = vpc_page.page.locator(".el-dialog:visible, [role='dialog']:visible").filter(has_text=dialog_name)
+    dialog.wait_for(state="visible", timeout=15000)
+
+    src_ip_input = dialog.locator(".el-form-item").filter(has_text="源IP地址").locator("textarea, input[type='text']").first
+    src_ip_input.fill("0.0.0.0/0")
+    dest_ip_input = dialog.locator(".el-form-item").filter(has_text="目的IP地址").locator("textarea, input[type='text']").first
+    dest_ip_input.fill("0.0.0.0/0")
+
+    dialog.get_by_text("确定", exact=True).click()
+    vpc_page.wait_for_page_ready()
+
+
+def _bms_ensure_acl_allow_all_rule(vpc_page, direction):
+    tab_name = f"{direction}规则"
+    _bms_switch_acl_rule_tab(vpc_page, tab_name)
+
+    rows_text = _bms_acl_rule_rows_text(vpc_page)
+    has_allow_all = any(
+        "IPv4" in text
+        and "允许" in text
+        and ("all" in text.lower() or "全部" in text)
+        and "0.0.0.0/0" in text
+        for text in rows_text
+    )
+    if has_allow_all:
+        logger.info(f"ACL {BMS_ACL_NAME} 已存在 {direction} IPv4 全放通规则")
+        return
+
+    _bms_click_acl_rule_create(vpc_page)
+    _bms_fill_acl_allow_all_dialog(vpc_page, tab_name)
+    logger.info(f"ACL {BMS_ACL_NAME} 已按BMS页面流程创建 {direction} IPv4 全放通规则")
+
+
 def _ensure_bms_acl_allow_all(vpc_page):
     if not _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
         vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
@@ -35,35 +185,9 @@ def _ensure_bms_acl_allow_all(vpc_page):
     except Exception as e:
         logger.warning(f"检查/开启 ACL {BMS_ACL_NAME} 状态失败，继续补规则: {e}")
 
+    _bms_open_acl_detail(vpc_page, BMS_ACL_NAME)
     for direction in ("入方向", "出方向"):
-        tab_name = f"{direction}规则"
-        vpc_page.goto_acl_detail(BMS_ACL_NAME, tab_name=tab_name)
-        rows_text = []
-        for row in vpc_page.get_by_role("row").all():
-            try:
-                rows_text.append(row.inner_text(timeout=1000))
-            except Exception:
-                continue
-        has_allow_all = any(
-            "IPv4" in text
-            and "允许" in text
-            and ("all" in text.lower() or "全部" in text)
-            and "0.0.0.0/0" in text
-            for text in rows_text
-        )
-        if has_allow_all:
-            logger.info(f"ACL {BMS_ACL_NAME} 已存在 {direction} IPv4 全放通规则")
-            continue
-        vpc_page.acl_rule_create(
-            acl_name=BMS_ACL_NAME,
-            direction=direction,
-            ip_version="IPv4",
-            policy="允许",
-            protocol="全部",
-            source_ip="0.0.0.0/0",
-            dest_ip="0.0.0.0/0",
-            detail_mode=True,
-        )
+        _bms_ensure_acl_allow_all_rule(vpc_page, direction)
 
 
 def _sg_rule_exists(rules, direction, protocol, port=None):
