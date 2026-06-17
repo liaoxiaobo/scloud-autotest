@@ -13,7 +13,7 @@ from sugon_web.utils.logger import logger
 @pytest.fixture(scope="session")
 def verify_ctx(browser):
     """session级验证上下文，创建时预热避免首次调用超时。"""
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     base_url = Config.get("base_url")
     warmup = ctx.new_page()
     warmup.goto(f"{base_url}/#/login", wait_until="domcontentloaded")
@@ -70,7 +70,7 @@ def iam_tenant_page(page, iam_shared_tenant_user):
 @pytest.fixture(scope="package")
 def _iam_shared_ctx(browser):
     """package 级共享 browser context，供 IAM fixture 复用。"""
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     yield ctx
     ctx.close()
 
@@ -122,7 +122,7 @@ def iam_shared_user(_iam_shared_ctx, browser, config, iam_shared_child_org):
     yield user_info
 
     # 清理：删除用户（忽略已删除或定位失败的情况）
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(ctx, config)
     try:
         delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))

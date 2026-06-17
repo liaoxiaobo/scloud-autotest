@@ -1,3 +1,5 @@
+import json
+import os
 import ipaddress
 import time
 import pytest
@@ -171,8 +173,20 @@ def pool(ops_page, vm, request):
 
 @pytest.fixture(scope="session")
 def bms_env(pytestconfig, config):
-    """返回 BMS 回归测试的基线环境配置，CLI 参数可覆盖配置文件。"""
+    """返回 BMS 回归测试的基线环境配置，CLI 参数可覆盖配置文件，ENV_DISPATCH 中的 bms 配置次之。"""
     bms_config = config.get("bms", {}) or {}
+
+    # 读取 Jenkins 通过 SUGON_BMS_OVERRIDE 传入的 BMS 覆盖配置
+    bms_override_json = os.environ.get("SUGON_BMS_OVERRIDE", "{}")
+    try:
+        bms_override = json.loads(bms_override_json)
+    except json.JSONDecodeError as e:
+        logger.error(f"SUGON_BMS_OVERRIDE 解析失败: {e}, 原始内容: {bms_override_json}")
+        bms_override = {}
+
+    if bms_override:
+        bms_config = bms_config.copy()
+        bms_config.update(bms_override)
 
     def _value(option_name, config_key):
         option_value = pytestconfig.getoption(option_name)

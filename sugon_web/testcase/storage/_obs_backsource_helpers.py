@@ -63,7 +63,7 @@ def _verify_source_public_read(browser, context, url):
     """
     anonymous_status = 0
     try:
-        anon_context = browser.new_context()
+        anon_context = browser.new_context(timezone_id="Asia/Shanghai")
         anon_page = anon_context.new_page()
         anonymous_status = _goto_handle_download(anon_page, url)
         _close_page_silent(anon_page)

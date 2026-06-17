@@ -31,22 +31,52 @@ def labels(browser_context, config, request):
         finally:
             page.close()
 
+@pytest.fixture(scope="class")
+def affinity(browser_context, config, request):
+    """创建并返回亲和组名称，测试结束后自动清理。
 
-@pytest.fixture()
-def affinity(ecs_page, request):
-    """创建并返回指定数量的亲和组场景标签，测试结束后自动清理。"""
+    支持与 vm fixture 联动：当测试同时声明 affinity 和 vm fixture，
+    vm 会自动将 affinity 注入到 advanced.affinity 中。
+
+    注意：本 fixture 自行创建页面实例，不依赖 function-scoped 的 ecs_page
+    fixture，因此可设为 class scope 与 vm fixture 配合。
+
+    Args:
+        browser_context: Playwright 浏览器上下文。
+        config: 测试配置对象。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param:
+        dict: 配置字典，可选字段：
+            - policy: 亲和组策略，"亲和" 或 "反亲和"，默认 "亲和"
+            - name: 亲和组名称，默认使用 random_data() 生成
+
+    Yields:
+        str: 创建的亲和组名称。
+    """
+    from sugon_web.utils.data import random_data
+
+    page = _create_logged_in_page(browser_context, config)
+    ecs_page = EcsPage(page)
+
     params = getattr(request, "param", {})
-    count = params.get("count", 1)
-    prefix = params.get("prefix", "label")
+    policy = params.get("policy", "亲和")
+    name = params.get("name", f"{random_data()}-{policy}")
 
-    with allure_step_log("创建指定数量的亲和组场景标签"):
-        label_names = create_labels(ecs_page, count=count, prefix=prefix, separator="_")
+    with allure_step_log(f"创建亲和组: {name}, 策略: {policy}"):
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.ecs_create_affinity_group(name, policy=policy)
+        ecs_page.assert_popup_success("执行成功")
 
-    yield label_names
+    yield name
 
-    with allure_step_log("清理亲和组场景标签"):
-        logger.info(f"开始清理亲和组场景标签: {label_names}")
+    with allure_step_log(f"清理亲和组: {name}"):
         try:
-            delete_labels(ecs_page, label_names)
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("亲和组")
+            ecs_page.ecs_delete_affinity_group(name)
+            ecs_page.assert_deleted(name)
         except Exception as e:
-            logger.warning(f"清理亲和组场景标签时出错: {e}")
+            logger.warning(f"清理亲和组 {name} 时出错: {e}")
+        finally:
+            page.close()
