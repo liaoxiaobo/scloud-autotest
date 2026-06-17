@@ -176,20 +176,41 @@ class TestBmsSoftCreate:
             ops_page._goto_switch_group()
             sg_name = None
             actual_node = None
+            bound_group = None
+            bound_node = None
+            unbound_group = None
             for r in ops_page.page.locator("tbody tr").all():
                 try:
                     cells = r.locator("td")
                     if cells.count() > 1:
                         n = cells.nth(1).text_content(timeout=3000).strip()
                         pm = cells.nth(2).text_content(timeout=3000).strip() if cells.count() > 2 else ""
+                        if not n or "暂无数据" in n:
+                            continue
                         # 物理机名必须是合法主机名（不含中文、操作按钮文案）
                         if n and pm and pm != "--" and pm != "—" and not re.search(r'[一-鿿]', pm):
-                            sg_name = n
-                            actual_node = pm
+                            bound_group = n
+                            bound_node = pm
                             break
+                        if not unbound_group and (not pm or pm == "--" or pm == "—"):
+                            unbound_group = n
                 except Exception:
                     continue
-            if not sg_name:
+
+            if bound_group:
+                sg_name = bound_group
+                actual_node = bound_node
+                logger.info(f"复用已绑定物理机的交换机组: {sg_name}, 物理机: {actual_node}")
+            elif unbound_group:
+                sg_name = unbound_group
+                logger.info(f"复用未绑定物理机的交换机组: {sg_name}，开始绑定物理机")
+                ops_page.switch_group_bind_node(sg_name, preferred_node)
+                ops_page.page.wait_for_timeout(2000)
+                ops_page._goto_switch_group()
+                ops_page.search(sg_name)
+                actual_node = ops_page.get_row_data(sg_name).get("物理机", "")
+                assert actual_node and actual_node != "--"
+            else:
                 sg_name = f"test-bms-{random_data()}"
                 ops_page.switch_group_create(sg_name)
                 ops_page.page.wait_for_timeout(2000)
@@ -250,7 +271,18 @@ class TestBmsSoftCreate:
 
         # === 步骤4: 注册代理 ===
         with allure_step_log("步骤4: 注册代理"):
-            bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
+            bms_page._goto_submenu_safe("代理")
+            bms_page.bms_search(actual_node)
+            existing_agent = None
+            try:
+                existing_agent = bms_page.get_row_data(actual_node)
+            except Exception as e:
+                logger.info(f"未找到现有代理 '{actual_node}'，准备注册: {e}")
+
+            if existing_agent:
+                logger.info(f"发现现有代理 '{actual_node}'，复用该代理: {existing_agent}")
+            else:
+                bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
             agent_data = bms_page.bms_agent_wait_healthy(actual_node, max_wait=600, poll_interval=30)
             if not agent_data:
                 pytest.skip(f"代理 {actual_node} 未在10分钟内变为健康，无法继续 BMS 流程")
