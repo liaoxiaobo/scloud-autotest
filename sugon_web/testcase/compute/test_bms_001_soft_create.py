@@ -34,28 +34,84 @@ def _bms_open_acl_detail(vpc_page, acl_name):
     except Exception as e:
         logger.warning(f"BMS ACL {acl_name} 搜索失败，尝试直接在列表中定位: {e}")
 
-    result = vpc_page.page.evaluate(
+    row = vpc_page.page.locator(".el-table__body-wrapper tbody tr").filter(has_text=acl_name)
+    row.first.wait_for(state="visible", timeout=15000)
+    name_cell = row.first.locator("td").nth(1)
+
+    clicked = False
+    for target in (
+        name_cell.locator("a").filter(has_text=acl_name),
+        name_cell.get_by_text(acl_name, exact=True),
+        name_cell,
+    ):
+        try:
+            target.first.click(timeout=10000)
+            clicked = True
+            break
+        except Exception as e:
+            logger.warning(f"点击 BMS ACL {acl_name} 名称进入详情失败，尝试下一种方式: {e}")
+
+    if not clicked:
+        result = vpc_page.page.evaluate(
+            """aclName => {
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style && style.visibility !== 'hidden' && style.display !== 'none'
+                        && rect.width > 0 && rect.height > 0;
+                };
+                const rows = Array.from(document.querySelectorAll('tbody tr')).filter(visible);
+                const row = rows.find(item => (item.innerText || '').includes(aclName));
+                if (!row) {
+                    return 'row-not-found';
+                }
+                const cell = row.querySelector('td:nth-child(2)') || row;
+                const targets = Array.from(cell.querySelectorAll('a, button, span, div'))
+                    .filter(el => visible(el) && (el.innerText || el.textContent || '').trim() === aclName);
+                const target = targets[0] || cell;
+                ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(type => {
+                    target.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+                });
+                return 'clicked';
+            }""",
+            acl_name,
+        )
+        assert result == "clicked", f"未在网络ACL列表中找到 {acl_name}: {result}"
+
+    for _ in range(10):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+
+    try:
+        vpc_page.get_by_text(acl_name, exact=True).nth(1).click()
+    except Exception as e:
+        logger.warning(f"按精确文本点击 BMS ACL {acl_name} 进入详情失败，尝试 href 兜底: {e}")
+
+    for _ in range(10):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+
+    detail_url = vpc_page.page.evaluate(
         """aclName => {
-            const visible = el => {
-                const style = window.getComputedStyle(el);
-                const rect = el.getBoundingClientRect();
-                return style && style.visibility !== 'hidden' && style.display !== 'none'
-                    && rect.width > 0 && rect.height > 0;
-            };
-            const rows = Array.from(document.querySelectorAll('tbody tr')).filter(visible);
-            const row = rows.find(item => (item.innerText || '').includes(aclName));
-            if (!row) {
-                return 'row-not-found';
-            }
-            const targets = Array.from(row.querySelectorAll('a, button, span, div'))
-                .filter(el => visible(el) && (el.innerText || el.textContent || '').trim() === aclName);
-            const target = targets[0] || row.querySelector('td:nth-child(2)') || row;
-            target.click();
-            return 'clicked';
+            const anchors = Array.from(document.querySelectorAll('a[href*="/vpc-acl/"]'));
+            const anchor = anchors.find(el => (el.innerText || el.textContent || '').trim() === aclName);
+            return anchor ? anchor.href : '';
         }""",
         acl_name,
     )
-    assert result == "clicked", f"未在网络ACL列表中找到 {acl_name}: {result}"
+    if detail_url:
+        vpc_page.page.goto(detail_url)
+        vpc_page.wait_for_page_ready()
 
     for _ in range(30):
         try:
