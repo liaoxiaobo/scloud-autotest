@@ -5,7 +5,7 @@ from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, random_string
 
 
-@allure.epic('数据库服务')
+@allure.epic('中间件')
 @allure.feature('AnhanDB(for Redis)')
 class TestRedisBasic:
 

@@ -6,19 +6,17 @@ pipeline {
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
         string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
         string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
-        string(name: 'MODULES', defaultValue: '', description: '要运行的模块目录名，逗号分隔。如：database,middleware,bigdata。为空时按原逻辑运行整个 testcase')
-        text(name: 'ENV_CONFIGS', defaultValue: '''database_env|172.22.1.190|ceph|admin|keystone_sugon
-middleware_env|172.22.1.189|usan|admin|keystone_sugon''', description: '''页面维护的环境池，一行一个环境，不依赖 Jenkins 插件。
-格式：环境别名|host|stor|user|pwd''')
-        text(name: 'MODULE_ENV_MAP', defaultValue: '''database=database_env
-middleware=middleware_env''', description: '''模块绑定环境别名，一行一个映射，不依赖 Jenkins 插件。
+        text(name: 'MODULE_OVERRIDES', defaultValue: '''security|172.22.3.140|xstor|4||
+bigdata|||1||
+compute_non_bms|||2||
+network|||1||
+iam|||4||
+bms|||1||''', description: '''模块特殊配置，一行一个覆盖；空字段继承上方通用配置。
+格式：模块|host|stor|并行度|user|pwd
 示例：
-database=database_env
-middleware=middleware_env''')
-        text(name: 'MODULE_MARK_MAP', defaultValue: '', description: '''模块绑定 pytest mark，一行一个映射。优先级高于全局 MARK。
-示例：
-database=mysql
-middleware=redis''')
+security|172.22.3.140|xstor|4||
+container|172.22.3.150|xstor|2|admin|keystone_sugon
+database|||2||''')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow')
         string(name: 'BMS_INSTANCE_NAME', defaultValue: '', description: 'BMS复用实例名称（留空使用配置文件）')
         string(name: 'BMS_BMC_IP', defaultValue: '', description: 'BMS带外IP（留空使用配置文件）')
@@ -69,14 +67,15 @@ middleware=redis''')
             }
           steps{
                 script {
-                    def defaultEnv = [
+                    def defaultRunConfig = [
                         host: params.HOST,
                         stor: params.STOR,
                         user: params.USER,
-                        pwd : params.PWD
+                        pwd : params.PWD,
+                        parallel: (params.PARALLEL_COUNT ?: '2').trim()
                     ]
 
-                    def parseEnvConfigs = { String value ->
+                    def parseModuleOverrides = { String value ->
                         def result = [:]
                         value?.split('\n')?.eachWithIndex { rawLine, index ->
                             def line = rawLine.trim()
@@ -84,69 +83,73 @@ middleware=redis''')
                                 return
                             }
                             def parts = line.split('\\|', -1).collect { it.trim() }
-                            if (parts.size() != 5) {
-                                error "ENV_CONFIGS 第 ${index + 1} 行格式错误，正确格式：环境别名|host|stor|user|pwd"
+                            if (parts.size() != 6 || !parts[0]) {
+                                error "MODULE_OVERRIDES 第 ${index + 1} 行格式错误，正确格式：模块|host|stor|并行度|user|pwd"
                             }
                             result[parts[0]] = [
                                 host: parts[1],
                                 stor: parts[2],
-                                user: parts[3],
-                                pwd : parts[4]
+                                parallel: parts[3],
+                                user: parts[4],
+                                pwd: parts[5]
                             ]
                         }
                         return result
                     }
 
-                    def parseModuleEnvMap = { String value ->
-                        def result = [:]
-                        value?.split('\n')?.eachWithIndex { rawLine, index ->
-                            def line = rawLine.trim()
-                            if (!line || line.startsWith('#')) {
-                                return
-                            }
-                            def parts = line.split('=', -1).collect { it.trim() }
-                            if (parts.size() != 2 || !parts[0] || !parts[1]) {
-                                error "MODULE_ENV_MAP 第 ${index + 1} 行格式错误，正确格式：模块名=环境别名"
-                            }
-                            result[parts[0]] = parts[1]
-                        }
-                        return result
-                    }
-
-                    def envConfigs = parseEnvConfigs(params.ENV_CONFIGS)
-                    def moduleEnvMap = parseModuleEnvMap(params.MODULE_ENV_MAP)
-                    def moduleMarkMap = parseModuleEnvMap(params.MODULE_MARK_MAP)
-
+                    def moduleOverrides = parseModuleOverrides(params.MODULE_OVERRIDES)
                     def modules = []
-                    if (params.MODULES?.trim()) {
-                        modules = params.MODULES.split(',').collect { it.trim() }.findAll { it }
-                    }
                     def failedModules = []
                     def baseWorkspace = env.WORKSPACE_DIR ?: env.WORKSPACE
                     def markFilter = (params.MARK ?: '').trim().toLowerCase()
                     def jobName = (env.JOB_NAME ?: '').toLowerCase()
                     def isBmsRun = markFilter.contains('bms') || jobName.contains('bms')
-                    def effectiveParallelCount = (isBmsRun ? '1' : (params.PARALLEL_COUNT ?: '2').trim())
 
-                    if (isBmsRun && (params.PARALLEL_COUNT ?: '2').trim() != '1') {
+                    if (isBmsRun && defaultRunConfig.parallel != '1') {
                         echo "BMS用例依赖同一裸金属资源，Jenkins执行时强制串行，避免资源争抢。"
                     }
-                    if (!modules && !isBmsRun) {
+                    if (!isBmsRun) {
                         def moduleText = sh(
                             script: "find '${baseWorkspace}/sugon_web/testcase' -mindepth 2 -maxdepth 2 -name 'test_*.py' -print | awk -F/ '{print \$(NF-1)}' | sort -u",
                             returnStdout: true
                         ).trim()
                         modules = moduleText ? moduleText.split('\n').collect { it.trim() }.findAll { it } : []
-                        echo "MODULES 为空，自动扫描到模块: ${modules.join(', ')}"
+                        if (modules.contains('compute')) {
+                            modules.remove('compute')
+                            modules.add('compute_non_bms')
+                            modules.add('bms')
+                        }
+                        if (markFilter) {
+                            def markParts = markFilter.split(/[^a-zA-Z0-9_]+/).findAll { it }
+                            def moduleNames = modules as Set
+                            def selectedModules = markParts.findAll { moduleNames.contains(it) }
+                            if (selectedModules) {
+                                def overrideModules = moduleOverrides.keySet().findAll { moduleNames.contains(it) }
+                                def requestedModules = (selectedModules + overrideModules).unique()
+                                modules = modules.findAll { requestedModules.contains(it) }
+                            }
+                        }
+                        echo "自动生成运行单元: ${modules.join(', ')}"
                     }
 
-                    def runPytest = { String casePath, Map envCfg, String resultName, String markExpr ->
+                    def resolveModuleConfig = { String moduleName ->
+                        def override = moduleOverrides[moduleName] ?: [:]
+                        return [
+                            host: override.host ?: defaultRunConfig.host,
+                            stor: override.stor ?: defaultRunConfig.stor,
+                            user: override.user ?: defaultRunConfig.user,
+                            pwd : override.pwd ?: defaultRunConfig.pwd,
+                            parallel: moduleName == 'bms' ? '1' : (override.parallel ?: defaultRunConfig.parallel)
+                        ]
+                    }
+
+                    def runPytest = { String casePath, Map runCfg, String resultName, String markExpr ->
                         def pytestCommand = "pytest --headless=true " +
-                            "--host=${envCfg.host ?: defaultEnv.host} " +
-                            "--stor=${envCfg.stor ?: defaultEnv.stor} " +
-                            "--username=${envCfg.user ?: defaultEnv.user} " +
-                            "--password=${envCfg.pwd ?: defaultEnv.pwd} " +
-                            "-n ${effectiveParallelCount} --dist=loadscope " +
+                            "--host=${runCfg.host} " +
+                            "--stor=${runCfg.stor} " +
+                            "--username=${runCfg.user} " +
+                            "--password=${runCfg.pwd} " +
+                            "-n ${runCfg.parallel} --dist=loadscope " +
                             "${casePath} " +
                             "--alluredir ${baseWorkspace}/allure-result/${resultName}"
 
@@ -178,17 +181,21 @@ middleware=redis''')
 
                     if (modules) {
                         modules.each { moduleName ->
-                            def casePath = "${baseWorkspace}/sugon_web/testcase/${moduleName}"
+                            def casePath = moduleName in ['compute_non_bms', 'bms'] ?
+                                "${baseWorkspace}/sugon_web/testcase/compute" :
+                                "${baseWorkspace}/sugon_web/testcase/${moduleName}"
                             sh "test -d '${casePath}'"
-                            def envName = moduleEnvMap[moduleName]
-                            def envCfg = defaultEnv + (envName ? (envConfigs[envName] ?: [:]) : [:])
-                            if (envName && !envConfigs[envName]) {
-                                error "模块 ${moduleName} 指定的环境 ${envName} 不存在，请检查 ENV_CONFIGS"
+                            def runCfg = resolveModuleConfig(moduleName)
+                            def markExpr = params.MARK
+                            if (moduleName == 'compute_non_bms') {
+                                markExpr = markExpr ? "(${markExpr}) and not bms" : "not bms"
                             }
-                            def markExpr = moduleMarkMap[moduleName] ?: params.MARK
-                            echo "Resolved module ${moduleName}: host=${envCfg.host}, stor=${envCfg.stor}, user=${envCfg.user}, env=${envName ?: 'default'}, mark=${markExpr ?: 'default'}"
+                            if (moduleName == 'bms') {
+                                markExpr = markExpr ? "(${markExpr}) and bms" : "bms"
+                            }
+                            echo "Resolved module ${moduleName}: host=${runCfg.host}, stor=${runCfg.stor}, user=${runCfg.user}, parallel=${runCfg.parallel}, mark=${markExpr ?: 'default'}"
                             try {
-                                runPytest(casePath, envCfg, moduleName, markExpr)
+                                runPytest(casePath, runCfg, moduleName, markExpr)
                             } catch (err) {
                                 failedModules.add(moduleName)
                                 currentBuild.result = 'FAILURE'
@@ -199,9 +206,10 @@ middleware=redis''')
                             error "以下模块执行失败: ${failedModules.join(', ')}"
                         }
                     } else {
-                        echo "Resolved all testcase: host=${defaultEnv.host}, stor=${defaultEnv.stor}, user=${defaultEnv.user}, mark=${params.MARK ?: 'default'}"
+                        def runCfg = resolveModuleConfig('bms')
+                        echo "Resolved bms: host=${runCfg.host}, stor=${runCfg.stor}, user=${runCfg.user}, parallel=${runCfg.parallel}, mark=${params.MARK ?: 'default'}"
                         def testTarget = isBmsRun ? "${baseWorkspace}/sugon_web/testcase/compute/test_bms_*.py" : "${baseWorkspace}/sugon_web/testcase/"
-                        runPytest(testTarget, defaultEnv, "all", params.MARK)
+                        runPytest(testTarget, runCfg, "all", params.MARK)
                     }
                 //   sh "allure generate allure-result/ -o ./allure-report -c"  // -c代表overwrite报告目录内容
               }
