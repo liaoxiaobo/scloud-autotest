@@ -39,9 +39,18 @@ def build_mark_expr(job):
     return expr
 
 
+def is_bms_only_job(job):
+    """BMS lifecycle cases must be dispatched as an isolated serial pytest job."""
+    modules = set(job.get("modules") or [])
+    services = set(job.get("services") or [])
+    return modules == {"bms"} and not services and not (job.get("mark") or "").strip()
+
+
 def combine_with_global_mark(global_mark, dispatch_expr):
     """把全局 MARK 和 dispatch 表达式组合起来。"""
     gm = (global_mark or "").strip()
+    if dispatch_expr == "bms":
+        return "bms"
     if not gm and not dispatch_expr:
         return ""
     if not gm:
@@ -129,12 +138,14 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
     # 合并相同 host+stor 的调度任务，避免 label 冲突并减少容器数
     merged = {}
     for job in dispatch_jobs:
-        key = (job["host"], job["stor"])
+        job_kind = "bms" if is_bms_only_job(job) else "normal"
+        key = (job["host"], job["stor"], job_kind)
         expr = build_mark_expr(job)
         if key not in merged:
             merged[key] = {
                 "host": job["host"],
                 "stor": job["stor"],
+                "kind": job_kind,
                 "expr": expr,
                 "modules": set(job.get("modules") or []),
                 "services": set(job.get("services") or []),
@@ -156,6 +167,8 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor):
     run_jobs = []
     for job in merged.values():
         label = f"env-{job['host'].replace('.', '-')}-{job['stor']}"
+        if job.get("kind") == "bms":
+            label = f"{label}-bms"
         run_jobs.append(
             {
                 "host": job["host"],

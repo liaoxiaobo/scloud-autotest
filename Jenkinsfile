@@ -88,7 +88,15 @@ pipeline {
                             docker.image("playwright-sugon:${IMAGE_TAG}").inside() {
                                 def parallelCount = currentJob.parallelCount?.trim() ? currentJob.parallelCount : params.PARALLEL_COUNT
                                 def bmsJson = currentJob.bms?.trim() ? currentJob.bms : '{}'
-                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} -n ${parallelCount} --dist=loadscope --env-label=${currentJob.label} \"${workspaceDir}/sugon_web/testcase/\" --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
+                                def isBmsJob = currentJob.markExpr?.trim() == 'bms'
+                                def pytestTarget = isBmsJob ? "${workspaceDir}/sugon_web/testcase/compute/test_bms_*.py" : "\"${workspaceDir}/sugon_web/testcase/\""
+                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} --env-label=${currentJob.label} ${pytestTarget} --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
+
+                                if (!isBmsJob) {
+                                    pytestCommand += " -n ${parallelCount} --dist=loadscope"
+                                } else {
+                                    echo "BMS 用例强制单进程执行，按 pytest 收集顺序执行。"
+                                }
 
                                 if (currentJob.markExpr) {
                                     pytestCommand += " -m '${currentJob.markExpr}'"

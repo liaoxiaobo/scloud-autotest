@@ -62,4 +62,3 @@ class TestSCRInstanceManagement:
 
         with allure_step_log("步骤4: 后台验证虚机已删除"):
             ssh_host.wait_vm_deleted(instance_name, timeout=600)
-
