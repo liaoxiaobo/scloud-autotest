@@ -182,13 +182,20 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker("bms_destructive")
         else:
             item.add_marker("bms_regression")
-    if len(bms_items) <= 1:
-        return
+    if len(bms_items) > 1:
+        ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
+        for index, item in enumerate(items):
+            if item in bms_items:
+                items[index] = next(ordered_bms_items)
 
-    ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
-    for index, item in enumerate(items):
-        if item in bms_items:
-            items[index] = next(ordered_bms_items)
+    # 为每个测试用例注入 host/stor 环境 tag，替代 inject_env_tags.py 的事后注入
+    host = config.getoption("--host")
+    stor = config.getoption("--stor")
+    for item in items:
+        if host:
+            item.add_marker(allure.tag(f"host:{host}"))
+        if stor:
+            item.add_marker(allure.tag(f"stor:{stor}"))
 
 
 @pytest.fixture(scope="session")

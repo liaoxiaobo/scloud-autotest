@@ -100,14 +100,6 @@ pipeline {
                                 withEnv(['SUGON_BMS_OVERRIDE=' + bmsJson]) {
                                     def exitCode = sh(script: pytestCommand, returnStatus: true)
 
-                                    sh script: """
-                                        python3 sugon_web/tools/inject_env_tags.py \
-                                            --alluredir "${workspaceDir}/allure-result/${currentJob.label}" \
-                                            --host "${currentJob.host}" \
-                                            --stor "${currentJob.stor}" \
-                                            --env-label "${currentJob.label}"
-                                    """
-
                                     if (exitCode != 0 && exitCode != 5) {
                                         error "pytest failed with exit code ${exitCode}"
                                     }
