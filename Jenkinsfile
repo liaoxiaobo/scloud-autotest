@@ -90,7 +90,7 @@ pipeline {
                                 def bmsJson = currentJob.bms?.trim() ? currentJob.bms : '{}'
                                 def isBmsJob = currentJob.markExpr?.trim() == 'bms'
                                 def pytestTarget = isBmsJob ? "${workspaceDir}/sugon_web/testcase/compute/test_bms_*.py" : "\"${workspaceDir}/sugon_web/testcase/\""
-                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} --env-label=${currentJob.label} ${pytestTarget} --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
+                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} --env-label=${currentJob.label} ${pytestTarget}"
 
                                 if (!isBmsJob) {
                                     pytestCommand += " -n ${parallelCount} --dist=loadscope"
@@ -131,11 +131,11 @@ pipeline {
                         for d in allure-result/env-*; do
                             [ -d "$d" ] || continue
                             [ -n "$(ls -A "$d")" ] || continue
-                            cp -r "$d"/* allure-result/ || true
+                            cp -rn "$d"/* allure-result/ || true
                         done
                         find allure-result -mindepth 2 -type d -name 'env-*' | while read -r d; do
                             [ -n "$(ls -A "$d")" ] || continue
-                            cp -r "$d"/* allure-result/ || true
+                            cp -rn "$d"/* allure-result/ || true
                         done
                     '''
 
