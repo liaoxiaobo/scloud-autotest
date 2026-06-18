@@ -133,6 +133,10 @@ pipeline {
                             [ -n "$(ls -A "$d")" ] || continue
                             cp -r "$d"/* allure-result/ || true
                         done
+                        find allure-result -mindepth 2 -type d -name 'env-*' | while read -r d; do
+                            [ -n "$(ls -A "$d")" ] || continue
+                            cp -r "$d"/* allure-result/ || true
+                        done
                     '''
 
                     // 保留allure历史数据
