@@ -1,5 +1,6 @@
 import pytest
 import allure
+import time
 
 from sugon_web.common.remote import SSH
 from sugon_web.utils.logger import allure_step_log, logger
@@ -58,8 +59,13 @@ class TestBmsBindEip:
         with allure_step_log("步骤4: 公网IP连通性验证"):
             ssh_host.ping(bound_ip, connected=True, count=10, retries=5)
 
-        # 步骤5：SSH登录验证（通过当前 ssh_host 环境主机连接 BMS FIP）
-        with allure_step_log("步骤5: SSH登录验证"):
+        # 步骤5：等待公网IP SSH链路稳定
+        with allure_step_log("步骤5: 等待公网IP SSH链路稳定"):
+            logger.info(f"公网IP {bound_ip} ping 可达，等待 300 秒后开始 SSH 端口验证")
+            time.sleep(300)
+
+        # 步骤6：SSH登录验证（通过当前 ssh_host 环境主机连接 BMS FIP）
+        with allure_step_log("步骤6: SSH登录验证"):
             try:
                 ssh_host.telnet(bound_ip, port=22, timeout=180)
             except Exception as e:
@@ -74,8 +80,8 @@ class TestBmsBindEip:
                     pytest.fail(f"通过当前环境主机 SSH 登录裸金属实例 {bound_ip} 失败: {e}")
                 logger.info(f"SSH连接裸金属实例 {bound_ip} 成功")
 
-                # 步骤6：系统信息验证
-                with allure_step_log("步骤6: 系统信息验证"):
+                # 步骤7：系统信息验证
+                with allure_step_log("步骤7: 系统信息验证"):
                     ip_output = bms_ssh.run("ip a", check_rc=True)
                     assert ip_output, "ip a 命令未返回结果"
                     # 裸金属公网IP通过网关映射，不一定直接显示在网卡上
@@ -85,6 +91,6 @@ class TestBmsBindEip:
             finally:
                 bms_ssh.close()
 
-        # 步骤7：解绑公网IP（仅在全部验证通过后执行，失败时保留现场）
-        with allure_step_log("步骤7: 解绑公网IP"):
+        # 步骤8：解绑公网IP（仅在全部验证通过后执行，失败时保留现场）
+        with allure_step_log("步骤8: 解绑公网IP"):
             bms_page.bms_instance_unbind_eip(instance_name)
