@@ -2,7 +2,6 @@ import allure
 import pytest
 
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.data import random_data
 
 
 @allure.epic('存储服务')
@@ -12,33 +11,29 @@ class TestOSSBucketCreate:
     """验证OSS对象存储创建桶的完整流程，含UI配置、列表验证、详情页标签验证及SSH后端验证。"""
 
     @allure.title("对象存储OSS-新建桶")
-    def test_oss_bucket_create(self, oss_page, ssh_host):
+    @pytest.mark.parametrize(
+        "oss_bucket",
+        [{
+            "region": "RegionOne",
+            "az_strategy": "MULTI_AZ",
+            "storage_class": "标准存储",
+            "bucket_strategy": "私有",
+            "is_encryption": True,
+            "data_read": False,
+            "tags": [{"key": "key1", "value": "vaule1"}],
+        }],
+        indirect=True,
+    )
+    def test_oss_bucket_create(self, oss_page, ssh_host, oss_bucket):
         """创建OSS桶（多AZ/私有/加密/标签）并验证UI展示与后端生效性。"""
-        bucket_name = random_data()
-        region = "RegionOne"
-        az_strategy = "MULTI_AZ"
-        storage_class = "标准存储"
-        bucket_strategy = "私有"
-        tags = [{"key": "key1", "value": "vaule1"}]
+        bucket_name = oss_bucket["name"]
+        region = oss_bucket["region"]
+        storage_class = oss_bucket["storage_class"]
+        tags = oss_bucket.get("tags", [])
 
-        with allure_step_log("步骤1: 进入OSS对象存储新建桶页面"):
-            oss_page.goto_service("对象存储")
-            oss_page.wait_for_page_ready()
-
-        with allure_step_log("步骤2: 配置并创建桶"):
-            oss_page.oss_bucket_create(
-                name=bucket_name,
-                region=region,
-                az_strategy=az_strategy,
-                storage_class=storage_class,
-                bucket_strategy=bucket_strategy,
-                is_encryption=True,
-                data_read=False,
-                tags=tags,
-            )
-
-        with allure_step_log("步骤3: UI验证列表页桶信息"):
+        with allure_step_log("步骤1: UI验证列表页桶信息"):
             oss_page._goto_bucket_list()
+            oss_page.wait_for_page_ready()
             oss_page.assert_list_contain(bucket_name, column_name="桶名称")
             # 部分字段由后端异步填充，需轮询等待稳定
             row_data = None
@@ -46,7 +41,7 @@ class TestOSSBucketCreate:
                 row_data = oss_page.get_row_data(bucket_name)
                 if row_data.get("数据冗余存储策略") not in (None, "", "--"):
                     break
-                oss_page.page.wait_for_timeout(500)
+                oss_page.wait_for_page_ready()
             assert row_data.get("区域") == region, \
                 f"[FieldAssertion] 区域不匹配 | 期望: {region} | 实际: {row_data.get('区域')}"
             assert row_data.get("数据冗余存储策略") == "多AZ存储", \
@@ -54,7 +49,7 @@ class TestOSSBucketCreate:
             assert row_data.get("存储类别") == storage_class, \
                 f"[FieldAssertion] 存储类别不匹配 | 期望: {storage_class} | 实际: {row_data.get('存储类别')}"
 
-        with allure_step_log("步骤4: 进入桶详情页验证标签"):
+        with allure_step_log("步骤2: 进入桶详情页验证标签"):
             oss_page.oss_bucket_enter_detail(bucket_name)
             tag_accessible = oss_page.oss_bucket_detail_click_tag_tab()
             if tag_accessible:
@@ -71,7 +66,7 @@ class TestOSSBucketCreate:
                     "标签已在创建时通过表单提交，此问题为环境菜单配置限制。"
                 )
 
-        with allure_step_log("步骤5: OSS存储侧桶信息生效性验证"):
+        with allure_step_log("步骤3: OSS存储侧桶信息生效性验证"):
             result = ssh_host.run(
                 'cd /opt/seaweedfs/master && ./weed shell <<< "s3.bucket.list"',
                 return_rc=True,
@@ -81,14 +76,10 @@ class TestOSSBucketCreate:
             if result["rc"] != 0 and "No such file or directory" in stderr:
                 logger.warning(
                     "SSH 后端验证跳过: 目标环境未安装 seaweedfs (%s)。"
-                    "已通过步骤3 UI列表验证确认桶存在。" % stderr.strip()
+                    "已通过步骤1 UI列表验证确认桶存在。" % stderr.strip()
                 )
             else:
                 assert result["rc"] == 0, \
                     f"[BackendAssertion] SSH命令执行失败 | stderr: {stderr}"
                 assert bucket_name in result["stdout"], \
                     f"[BackendAssertion] 后端未找到桶 {bucket_name} | stdout: {result['stdout']}"
-
-        with allure_step_log("步骤6: 清理测试数据"):
-            oss_page.oss_bucket_delete(bucket_name)
-            oss_page.assert_deleted(bucket_name)
