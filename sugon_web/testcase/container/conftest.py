@@ -68,31 +68,9 @@ def _cleanup_cce_cluster(cce_page, ssh_host, name):
     ssh_host.wait_volume_deleted(name, timeout=600)
 
 
-def _find_existing_cluster(cce_page, cluster_name, timeout=600):
-    """在 CCE 集群列表中查找并复用指定名称的现有集群。
-
-    Args:
-        cce_page: CcePage 实例。
-        cluster_name: 要复用的集群名称。
-        timeout: 等待集群状态为运行中的最大秒数。
-
-    Returns:
-        dict: 集群资源字典，至少包含 name。
-
-    Raises:
-        AssertionError: 集群不存在或状态不为运行中时抛出。
-    """
-    cce_page.goto_service(cce_page.service_name)
-    cce_page.goto_submenu("集群管理")
-    cce_page.search(cluster_name)
-    cce_page.assert_list_contain(cluster_name, column_name="集群名称")
-    cce_page.assert_status(cluster_name, status="运行中", timeout=timeout, refresh=True)
-    return {"name": cluster_name}
-
-
 @pytest.fixture(scope="class")
 def cce_cluster(browser_context, config, ssh_host, request):
-    """创建或复用CCE集群，测试类结束后自动清理（仅新建模式下删除）。
+    """创建CCE集群并等待就绪，测试类结束后自动清理（scope=class）。
 
     Args:
         browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
@@ -109,7 +87,6 @@ def cce_cluster(browser_context, config, ssh_host, request):
         network_model (str): 容器网络模型，默认"flannel"。
         volume_size (int): 云硬盘大小，默认50。
         flavor (str): 节点规格，默认"4C8G"。
-        reuse_existing (bool): 是否复用现有集群，默认 False。
 
     Yields:
         dict: 集群资源字典，包含创建参数及运行时信息：
@@ -124,46 +101,37 @@ def cce_cluster(browser_context, config, ssh_host, request):
             - node_data (list): UI 节点列表数据
             - master_node_ip (str): 控制节点内网IP
             - worker_node_ip (str): 计算节点内网IP
-            - mfip (str): SSH 连接用的 MFIP
+            - master_mfip (str): SSH 连接控制节点用的 MFIP
+            - worker_mfip (str): SSH 连接计算节点用的 MFIP
             - master_node (str): 控制节点名称
             - worker_node (str): 计算节点名称
     """
     from sugon_web.conftest import _create_logged_in_page
 
     params = getattr(request, "param", {}) or {}
-    reuse_existing = params.get("reuse_existing", False)
     page = _create_logged_in_page(browser_context, config)
     cce_page = CcePage(page)
 
     create_kwargs = _build_cce_create_kwargs(params)
     cluster_name = create_kwargs["name"]
 
-    if reuse_existing:
-        with allure_step_log(f"前置操作：复用现有CCE集群 {cluster_name}"):
-            _find_existing_cluster(cce_page, cluster_name)
-            node_data = []
-    else:
-        with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
-            cce_page.cce_create(**create_kwargs)
-            cce_page.assert_popup_success()
-            cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+    with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
+        cce_page.cce_create(**create_kwargs)
+        cce_page.assert_popup_success()
+        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
-        with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
-            node_data = cce_page.get_cluster_node_data(cluster_name)
-            assert node_data, f"获取集群 {cluster_name} 节点数据失败，返回空列表"
+    with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
+        node_data = cce_page.get_cluster_node_data(cluster_name)
+        assert node_data, f"获取集群 {cluster_name} 节点数据失败，返回空列表"
 
-    if node_data:
-        # 按节点类型分类，供不同用例选择
-        master_nodes = [n for n in node_data if n.get("类型") == "控制节点"]
-        worker_nodes = [n for n in node_data if n.get("类型") == "计算节点"]
-        master_node = master_nodes[0].get("名称") if master_nodes else ""
-        worker_node = worker_nodes[0].get("名称") if worker_nodes else ""
-        master_node_ip = master_nodes[0].get("内网IP") if master_nodes else ""
-        worker_node_ip = worker_nodes[0].get("内网IP") if worker_nodes else ""
-        mfip = ssh_host.find_mfip(master_node_ip) if master_node_ip else ""
-        worker_mfip = ssh_host.find_mfip(worker_node_ip) if worker_node_ip else ""
-    else:
-        master_node = worker_node = master_node_ip = worker_node_ip = mfip = worker_mfip = ""
+    master_nodes = [n for n in node_data if n.get("类型") == "控制节点"]
+    worker_nodes = [n for n in node_data if n.get("类型") == "计算节点"]
+    master_node = master_nodes[0].get("名称") if master_nodes else ""
+    worker_node = worker_nodes[0].get("名称") if worker_nodes else ""
+    master_node_ip = master_nodes[0].get("内网IP") if master_nodes else ""
+    worker_node_ip = worker_nodes[0].get("内网IP") if worker_nodes else ""
+    mfip = ssh_host.find_mfip(master_node_ip) if master_node_ip else ""
+    worker_mfip = ssh_host.find_mfip(worker_node_ip) if worker_node_ip else ""
 
     yield {
         "name": cluster_name,
@@ -178,8 +146,7 @@ def cce_cluster(browser_context, config, ssh_host, request):
 
     with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
         try:
-            if not reuse_existing:
-                _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
+            _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
         except Exception as e:
             logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
         finally:

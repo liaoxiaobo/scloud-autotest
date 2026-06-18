@@ -214,6 +214,18 @@ class SsmPage(CceBaseMixin, BasePage):
                 f"{name} | 期望: '{status}' | 实际: '{last_status}' | 超时未收敛"
             )
 
+    def get_mesh_row_data(self, name):
+        """获取指定网格实例的列表行数据。
+
+        Args:
+            name: 网格实例名称。
+
+        Returns:
+            dict: 行数据字典，键为列名（名称/项目名称/创建时间/集群/版本/状态/错误信息）。
+        """
+        row = self.get_row_by_name(name)
+        return self.get_row_data_by_locator(row)
+
     def _select_flavor_card(self, dialog, flavor):
         """在创建/修改弹窗中选择规格卡片。
 
