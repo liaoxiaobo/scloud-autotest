@@ -168,8 +168,12 @@ class TestSCRInstanceManagement:
             scr_page.assert_list_not_contain(namespace_name, column_name="命名空间")
 
     @allure.title("实例详情-绑定和解绑公网IP")
-    def test_scr_public_ip_bind_unbind(self, scr_page, scr_instance, ssh_host, eip):
-        """验证实例公网IP的绑定和解绑功能及后台连通性。"""
+    def test_scr_public_ip_bind_unbind(self, scr_page, scr_instance, ssh_host):
+        """验证实例公网IP的绑定和解绑功能及后台连通性。
+
+        默认资源池中有充足的可用公网IP，直接从已有资源池中选择可用IP进行绑定，
+        不再通过 eip fixture 预先分配新IP。
+        """
         instance_name = scr_instance["name"]
         pool_name = "public_net(基础版)"
 
@@ -178,8 +182,8 @@ class TestSCRInstanceManagement:
             scr_page.goto_detail_page(instance_name)
             scr_page.wait_for_page_ready()
 
-        with allure_step_log("步骤2: 绑定公网IP"):
-            ip_address = scr_page.scr_public_ip_bind(pool=pool_name, ip_address=eip)
+        with allure_step_log("步骤2: 从资源池绑定公网IP"):
+            ip_address = scr_page.scr_public_ip_bind(pool=pool_name)
             scr_page.assert_popup_success()
             logger.info(f"绑定的公网IP: {ip_address}")
 
