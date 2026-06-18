@@ -107,17 +107,39 @@ def _get_run_id_from_args(config):
     return "default"
 
 
+def _get_explicit_allure_dir(config, project_root):
+    """Return the CLI --alluredir path when one is provided."""
+    report_dir = getattr(config.option, "allure_report_dir", None)
+    if not report_dir:
+        return None, None
+
+    allure_dir = Path(report_dir)
+    if not allure_dir.is_absolute():
+        allure_dir = project_root / allure_dir
+    allure_dir = allure_dir.resolve()
+
+    try:
+        run_id = allure_dir.relative_to(project_root / "allure-result").as_posix()
+    except ValueError:
+        run_id = None
+
+    return allure_dir, run_id
+
+
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
 
     # 获取项目根目录
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
+    explicit_allure_dir, explicit_run_id = _get_explicit_allure_dir(config, project_root)
 
     # 从命令行参数提取运行标识（测试文件名或类名）
     run_id = _get_run_id_from_args(config)
     env_label = config.getoption("--env-label")
-    if env_label:
+    if explicit_run_id:
+        run_id = explicit_run_id
+    elif env_label:
         run_id = f"{run_id}/{env_label}" if run_id else env_label
     os.environ['_PYTEST_RUN_ID'] = run_id
 
@@ -131,7 +153,7 @@ def pytest_configure(config):
     config.option.log_file = str(log_file_path)
 
     # 创建 allure-result 子目录（按 run_id 隔离），仅清理本子目录历史数据
-    allure_dir = project_root / "allure-result" / run_id
+    allure_dir = explicit_allure_dir or (project_root / "allure-result" / run_id)
     if allure_dir.exists():
         import shutil
         shutil.rmtree(allure_dir)
