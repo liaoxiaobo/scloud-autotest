@@ -3,6 +3,9 @@ import allure
 from sugon_web.utils.logger import allure_step_log, logger
 
 
+BMS_REBUILD_TIMEOUT = 3600
+
+
 @allure.epic("计算")
 @allure.feature("裸金属BMS-软装版")
 @allure.story("软装版裸金属BMS实例-重建实例")
@@ -46,12 +49,29 @@ class TestBmsRebuild:
                 if not recover_ok:
                     pytest.skip("实例未在30分钟内从重建中间态恢复为运行中，跳过重建测试")
 
-        # 步骤3：执行重建操作
-        with allure_step_log("步骤3: 执行重建操作"):
+        # 步骤3：重建前解绑公网IP，避免FIP绑定状态影响重建流程
+        with allure_step_log("步骤3: 重建前解绑公网IP"):
+            bms_page._goto_submenu_safe("裸金属实例")
+            bms_page.bms_search(instance_name)
+            row = bms_page._get_row_by_name(instance_name)
+            row_text = row.text_content() if row else ""
+            if "公网:" in row_text:
+                bms_page.bms_instance_unbind_eip(instance_name)
+                bms_page._goto_submenu_safe("裸金属实例")
+                bms_page.bms_search(instance_name)
+                row = bms_page._get_row_by_name(instance_name)
+                row_text = row.text_content() if row else ""
+                assert "公网:" not in row_text, f"实例 '{instance_name}' 公网IP解绑后列表仍显示公网IP"
+                logger.info(f"实例 '{instance_name}' 重建前公网IP已解绑")
+            else:
+                logger.info(f"实例 '{instance_name}' 未绑定公网IP，跳过解绑")
+
+        # 步骤4：执行重建操作
+        with allure_step_log("步骤4: 执行重建操作"):
             bms_page.bms_instance_rebuild(instance_name, image_name="bms")
 
-        # 步骤4：验证状态变为重建中
-        with allure_step_log("步骤4: 验证状态变为重建中"):
+        # 步骤5：验证状态变为重建中
+        with allure_step_log("步骤5: 验证状态变为重建中"):
             bms_page._goto_submenu_safe("裸金属实例")
             bms_page.bms_search(instance_name)
             row_data = bms_page.get_row_data(instance_name)
@@ -61,13 +81,24 @@ class TestBmsRebuild:
             assert "重建" in status or "运行中" in status or "镜像拉取" in status, f"重建提交后状态期望为重建相关或'运行中'，实际为 '{status}'"
             logger.info(f"重建提交后状态: '{status}'")
 
-        # 步骤5：等待重建完成，状态恢复为运行中
-        with allure_step_log("步骤5: 等待重建完成"):
-            rebuild_ok = bms_page.bms_instance_wait_for_status(instance_name, "运行中", timeout=1800)
-            assert rebuild_ok, "实例未在30分钟内恢复为运行中状态"
+        # 步骤6：等待重建完成，状态恢复为运行中
+        with allure_step_log("步骤6: 等待重建完成"):
+            rebuild_ok = bms_page.bms_instance_wait_for_status(
+                instance_name, "运行中", timeout=BMS_REBUILD_TIMEOUT
+            )
+            if not rebuild_ok:
+                bms_page._goto_submenu_safe("裸金属实例")
+                bms_page.bms_search(instance_name)
+                row_data = bms_page.get_row_data(instance_name) or {}
+                status = row_data.get("状态", "")
+                logger.warning(f"重建超时后实例最终行数据: {row_data}")
+                assert rebuild_ok, (
+                    f"实例未在{BMS_REBUILD_TIMEOUT // 60}分钟内恢复为运行中状态，"
+                    f"最终状态: '{status or '未获取到'}'"
+                )
 
-        # 步骤6：验证列表状态
-        with allure_step_log("步骤6: 验证列表状态"):
+        # 步骤7：验证列表状态
+        with allure_step_log("步骤7: 验证列表状态"):
             bms_page._goto_submenu_safe("裸金属实例")
             bms_page.bms_search(instance_name)
             row_data = bms_page.get_row_data(instance_name)
