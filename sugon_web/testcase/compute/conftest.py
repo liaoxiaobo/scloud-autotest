@@ -1,6 +1,7 @@
 import json
 import os
 import ipaddress
+import shlex
 import time
 import pytest
 from sugon_web.pages.network import VpcPage
@@ -34,11 +35,18 @@ def ensure_bms_image(ssh_host, bms_env=None, image_name=None):
     image_url = _bms_config_value(bms_env, "image_url")
     image_backend = _bms_config_value(bms_env, "image_backend")
     image_min_disk = _bms_config_value(bms_env, "image_min_disk")
+    image_name_arg = shlex.quote(image_name)
+    image_check_cmd = (
+        "source /root/admin-openrc.sh && scli image list | "
+        f"awk -F'|' -v name={image_name_arg} "
+        """'{gsub(/^[ \t]+|[ \t]+$/, "", $3); gsub(/^[ \t]+|[ \t]+$/, "", $5); """
+        """if ($3 == name && $5 == "active") found=1} END {exit found ? 0 : 1}'"""
+    )
 
-    with allure_step_log(f"前置: 检查BMS镜像 {image_name}"):
-        result = ssh_host.run(f"source /root/admin-openrc.sh && openstack image show {image_name}", return_rc=True)
+    with allure_step_log(f"前置: 检查BMS镜像 {image_name} 状态为active"):
+        result = ssh_host.run(image_check_cmd, return_rc=True)
         if result["rc"] == 0:
-            logger.info(f"BMS镜像 '{image_name}' 已存在，跳过创建")
+            logger.info(f"BMS镜像 '{image_name}' 已存在且状态为active，跳过创建")
             return image_name
 
     with allure_step_log("前置: 准备BMS镜像文件"):
@@ -63,9 +71,9 @@ def ensure_bms_image(ssh_host, bms_env=None, image_name=None):
         assert result["rc"] == 0, f"BMS镜像创建失败: {result.get('stderr', '')}"
         logger.info(f"BMS镜像 '{image_name}' 创建成功")
 
-    with allure_step_log(f"前置: 验证BMS镜像 {image_name}"):
-        result = ssh_host.run(f"source /root/admin-openrc.sh && openstack image show {image_name}", return_rc=True)
-        assert result["rc"] == 0, f"BMS镜像创建后验证失败: {result.get('stderr', '')}"
+    with allure_step_log(f"前置: 验证BMS镜像 {image_name} 状态为active"):
+        result = ssh_host.run(image_check_cmd, return_rc=True)
+        assert result["rc"] == 0, f"BMS镜像创建后未达到active状态: {result.get('stderr', '')}"
 
     return image_name
 
