@@ -167,18 +167,19 @@ def pytest_collection_modifyitems(config, items):
     """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
     bms_file_order = {
         "image_prepare": 0,
-        "soft_create": 1,
-        "sanity": 2,
-        "bind_eip": 3,
-        "monitor": 4,
-        "rename": 5,
-        "security_group": 6,
-        "label": 7,
-        "remove_label": 8,
-        "shutdown": 9,
-        "start": 10,
-        "rebuild": 11,
-        "cleanup": 12,
+        "network_prepare": 1,
+        "soft_create": 2,
+        "sanity": 3,
+        "bind_eip": 4,
+        "monitor": 5,
+        "rename": 6,
+        "security_group": 7,
+        "label": 8,
+        "remove_label": 9,
+        "shutdown": 10,
+        "start": 11,
+        "rebuild": 12,
+        "cleanup": 13,
     }
 
     def _bms_order_key(item):
@@ -199,7 +200,12 @@ def pytest_collection_modifyitems(config, items):
     for item in bms_items:
         item.add_marker("bms")
         filename = item.path.name
-        if "image_prepare" in filename or "soft_create" in filename or "sanity" in filename:
+        if (
+            "image_prepare" in filename
+            or "network_prepare" in filename
+            or "soft_create" in filename
+            or "sanity" in filename
+        ):
             item.add_marker("bms_prepare")
         elif "rebuild" in filename or "cleanup" in filename:
             item.add_marker("bms_destructive")
