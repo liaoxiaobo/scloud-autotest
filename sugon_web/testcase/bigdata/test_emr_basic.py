@@ -57,7 +57,7 @@ class TestEMRBasic:
             emr_page.operate_all_services(emr["name"], "停止所有服务")
 
         with allure_step_log("步骤二：验证停止所有服务结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("执行成功")
 
     @allure.title("E-MapReduce-启动所有服务")
     def test_start_all_services(self, emr_page, emr):
@@ -65,7 +65,7 @@ class TestEMRBasic:
             emr_page.operate_all_services(emr["name"], "启动所有服务")
 
         with allure_step_log("步骤二：验证启动所有服务结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("执行成功")
 
     @allure.title("E-MapReduce-重启所有服务")
     def test_restart_all_services(self, emr_page, emr):
@@ -73,7 +73,7 @@ class TestEMRBasic:
             emr_page.operate_all_services(emr["name"], "重启所有服务")
 
         with allure_step_log("步骤二：验证重启所有服务结果"):
-            emr_page.assert_popup_success()
+            emr_page.assert_popup_success("执行成功")
 
     @allure.title("E-MapReduce-节点修改规格")
     def test_change_specification(self, emr_page, emr):
@@ -82,6 +82,8 @@ class TestEMRBasic:
 
         with allure_step_log("步骤二：验证修改规格结果"):
             emr_page.assert_popup_success("提交成功")
+            emr_page.assert_status("WEB", status="变配中", timeout=600, refresh=True)
+            emr_page.assert_status("WEB", status="运行", timeout=1600, refresh=True)
 
 
 
@@ -101,9 +103,11 @@ class TestEMRBasic:
             emr_page.add_node(emr["name"], emr["password"])
 
         with allure_step_log("步骤二：验证扩容结果"):
+            node_name = "common04"
             emr_page.assert_popup_success("添加成功")
             emr_page.assert_status("COMMON", status="扩容中", timeout=600, refresh=True)
             emr_page.assert_status("COMMON", status="运行", timeout=1800, refresh=True)
+            emr_page.assert_common_node_status(emr["name"], node_name, status="运行", timeout=1200, refresh=True)
 
     @allure.title("E-MapReduce-缩容删除节点")
     def test_delete_node(self, emr_page, emr):
@@ -111,7 +115,9 @@ class TestEMRBasic:
             emr_page.delete_node(emr["name"])
 
         with allure_step_log("步骤二：验证缩容结果"):
-            emr_page.assert_popup_success()
+            node_name = "common04"
+            emr_page.assert_popup_success("删除节点成功")
+            emr_page.assert_common_node_absent(emr["name"], node_name, timeout=1200, refresh=True)
 
     @allure.title("E-MapReduce-节点绑定公网IP")
     def test_node_bind_ip(self, emr_page, emr, ssh_host):
