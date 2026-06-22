@@ -27,8 +27,9 @@
     1) 计数：每经本脚本跑一次 pytest，该测试目标计数 +1、全局计数 +1，落盘 state 文件。
     2) 硬熔断（满足任一即退出码 3 拒绝执行）：
          - 单测试目标累计 >= --cap-file（默认 30）
-         - 全局累计 >= --cap-global（默认随场景数缩放 = 场景数 × 30）
+         - 全局累计 >= --cap-global（默认随场景数缩放 = max(40, 场景数 × 8)）
          - 连续 FREEZE_LIMIT 次"相同失败指纹"（默认 10）→ 原地打转，停。
+       另：自首次激活起全局墙钟 > 6h → 软提示走 Phase 4.5、倾向"标遗留·转人工"（软兜底，不硬杀）。
     3) 冻结检测：连续 N 次失败摘要完全相同 → 判定无进展、拒绝下一轮；只要失败现象变化（有进展）
        或某轮通过，冻结计数立即清零。
 
@@ -40,8 +41,10 @@
     2   用法/环境错误。
 
 用法（阶段三所有 pytest 必须经本脚本跑，禁止裸跑 pytest）：
-    # 阶段三开始（首次执行该文件前）先重置本次任务的守卫状态（必须传 --cases 缩放全局上限）：
+    # 阶段三【首次】执行该文件前先重置本次任务的守卫状态（必须传 --cases 缩放全局上限）：
     python .claude/skills/test-script-dev/scripts/run_guard.py --reset --task <任务标识> --cases <场景数>
+    # 阶段四/五【回退重入】阶段三时，用 --reset --reentry（不清零累计全局、只给本用例新预算 + 小额回退预算）：
+    python .claude/skills/test-script-dev/scripts/run_guard.py --reset --reentry --task <任务标识> --cases <场景数>
     # 之后每次跑 pytest 都经本脚本（-- 之后原样就是平时的 pytest 命令与参数）：
     python .claude/skills/test-script-dev/scripts/run_guard.py --task <任务标识> -- \
         pytest sugon_web/testcase/network/test_xxx.py -k test_xxx --log-file=logs/xxx.log --log-file-level=DEBUG
@@ -50,7 +53,9 @@
 import argparse
 import hashlib
 import json
+import os
 import re
+import secrets
 import subprocess
 import sys
 import time
@@ -64,10 +69,13 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-DEFAULT_CAP_FILE = 30          # 单测试目标（= 一个 CSV 需求 / def test_ 方法）次数上限
-GLOBAL_PER_CASE = 30           # 全局上限按"每个场景 30 次"加总缩放：场景数 × 该值
-DEFAULT_CAP_GLOBAL = 30        # 全局上限下限（1 个场景时）
-FREEZE_LIMIT = 10              # 连续相同失败达到该值 → 下一轮拒绝（原地打转、无进展）
+DEFAULT_CAP_FILE = 30          # 单测试目标（= 一个 CSV 需求 / def test_ 方法）次数上限（2026-06-19 团队决策由 20 提高到 30：复杂用例 setup 链长、20 次不够，前面修复易前功尽弃；有"连续相同失败冻结"兜底，提高上限不会退回无限续命）
+GLOBAL_PER_CASE = 8            # 全局上限按"每个场景 8 次"加总缩放：场景数 × 该值（2026-06-17 由 30 收回 8）
+DEFAULT_CAP_GLOBAL = 40        # 全局上限下限（1 个场景时）（2026-06-19 团队决策由 20 提高到 40：给复杂用例更宽裕的全局额度，仍有冻结/墙钟兜底）
+FREEZE_LIMIT = 10             # 连续相同失败达到该值 → 下一轮拒绝（原地打转、无进展）（2026-06-19 团队决策由 5 放宽到 10：弱模型同一失败需更多修复空间；并配合 phase3「连续同指纹强制 recon 取证」避免把额度浪费在盲改）
+REENTRY_BUDGET = 10           # 回退重入（--reentry）发放的小额全局增量预算：不清零累计全局、把全局上限设为"当前全局位置 + 该值"，给本次回退留出有限的修复空间，避免"回退一进去就被拒"又杜绝"无限续命"；基于当前位置而非累加，故重复 reset 幂等、不叠加
+GLOBAL_WALL_SECS = 6 * 3600    # 全局墙钟软兜底(秒)：自首次激活起累计墙钟超过该时长 → 软提示走 Phase 4.5 质疑、倾向"标遗留·转人工"（软兜底，不硬杀，避免人工空档误杀）
+GUARD_TTL = 4 * 3600           # 守卫哨兵滑动过期(秒)：每次经 run_guard 跑 pytest 都续期；若超过该时长无 run_guard 活动则哨兵自动失效，避免陈旧哨兵长期卡住项目/开发者
 
 
 def _project_root() -> Path:
@@ -98,6 +106,55 @@ def _load(p):
 def _save(p, state):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# ===== 守卫哨兵（为"即时拒绝裸跑"预留；当前实际靠下方"绕过审计"兜底）=====
+# 设计意图：--reset 时写哨兵（含随机 token + 过期时间）；run_guard 启动 pytest 时把 token 注入子进程环境，
+#   并由 sugon_web/conftest.py 的 pytest_sessionstart 钩子在裸跑（env 无正确 token）时当场拒绝启动。
+# 现状：该 conftest 钩子【尚未实现】，故"即时拒绝裸跑"暂不生效；裸跑由下方 _count_real_logs"绕过审计"
+#   （数日志补算计数）兜底——裸跑虽能启动，但次数照样被算进上限、逃不过熔断。若将来要"即时拒绝"，
+#   只需在 conftest 补 pytest_sessionstart 钩子读本哨兵 + 校验 RUN_GUARD_TOKEN 即可，本文件无需改。
+# 安全：哨兵只在 skill 执行期存在 + 滑动 TTL 自动过期 + --release 主动删除 + skill_runs/ 已 gitignore（CI 无哨兵）。
+def _sentinel_path():
+    return _project_root() / "skill_runs" / "test-script-dev" / "_guard_active.json"
+
+
+def _read_sentinel():
+    p = _sentinel_path()
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _write_sentinel(token, task):
+    p = _sentinel_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"token": token, "task": task, "expires_at": time.time() + GUARD_TTL},
+                            ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _refresh_sentinel():
+    """续期哨兵（滑动 TTL）并返回当前 token；无哨兵则返回 None（此时不做强制，保持向后兼容）。"""
+    s = _read_sentinel()
+    if not s:
+        return None
+    s["expires_at"] = time.time() + GUARD_TTL
+    try:
+        _sentinel_path().write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    return s.get("token")
+
+
+def _remove_sentinel():
+    try:
+        _sentinel_path().unlink()
+        return True
+    except OSError:
+        return False
 
 
 def _target_key(pytest_args):
@@ -190,9 +247,15 @@ def main(argv):
     ap.add_argument("--cap-global", type=int, default=DEFAULT_CAP_GLOBAL,
                     help=f"全局次数上限下限（默认 {DEFAULT_CAP_GLOBAL}）；实际取 max(该值, 场景数×{GLOBAL_PER_CASE})")
     ap.add_argument("--reset", action="store_true", help="重置本任务守卫状态（阶段三开始时调一次）")
+    ap.add_argument("--reentry", action="store_true",
+                    help="回退重入语义（阶段四/五回退重入阶段三时与 --reset 同用）：不清零累计的全局次数，"
+                         "只清空各用例的单用例/冻结计数让本次回退能继续修，并在原全局上限上 +REENTRY_BUDGET 小额预算；"
+                         "保留首次激活的起始时刻（全局墙钟连续计）。杜绝『每次回退 reset 拿全新预算→无限续命』。")
     ap.add_argument("--cases", type=int, default=None,
                     help=f"本次测试场景数（def test_ 方法数）；用于把全局上限缩放为 max(cap-global, 场景数×{GLOBAL_PER_CASE})，--reset 时传一次")
     ap.add_argument("--pytest-cmd", default="pytest", help="pytest 可执行命令（默认 pytest）")
+    ap.add_argument("--release", action="store_true",
+                    help="解除守卫哨兵（skill 全部结束/中断时调一次）；解除后裸跑 pytest 不再被拦截")
     if "--" in argv:
         sep = argv.index("--")
         guard_argv, pytest_args = argv[:sep], argv[sep + 1:]
@@ -206,15 +269,50 @@ def main(argv):
 
     sp = _state_path(args.task, args.state)
 
+    if args.release:
+        removed = _remove_sentinel()
+        print(f"[run_guard] 已释放守卫哨兵：{_sentinel_path()}（{'已删除' if removed else '本就不存在'}）。"
+              f"此后裸跑 pytest 不再被守卫拦截。")
+        return 0
+
     if args.reset:
-        # 全局上限随场景数缩放 = max(下限, 场景数 × 每个场景 30 次)
+        # 全局上限随场景数缩放 = max(下限, 场景数 × 每个场景 8 次)
         eff_global = max(args.cap_global, (args.cases or 0) * GLOBAL_PER_CASE)
-        _save(sp, {"global_runs": 0, "files": {}, "started_at": time.time(), "cap_global": eff_global})
-        print(f"[run_guard] 已重置守卫状态：{sp}")
-        print(f"[run_guard] 次数上限：单用例(= 一个 CSV 需求/def test_ 方法)={args.cap_file} 次、"
-              f"全局={eff_global} 次（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×{GLOBAL_PER_CASE})）；"
-              f"连续相同失败冻结={FREEZE_LIMIT} 次。")
-        print(f"[run_guard] 口径：1 次 pytest = 1 次；审计只数本次 reset 之后产生的日志，旧日志不污染额度。")
+        if args.reentry:
+            # 回退重入：不清零累计全局；全局墙钟基准 first_activated_at 跨回退保留（连续计）；
+            # 但审计窗口 started_at 刷新为 now（只审计本次回退之后产生的日志，避免把上一段的旧日志
+            # 误判成"裸跑"而把刚清零的单用例计数瞬间补满、导致回退一进去就被拒）；
+            # 只清空各用例的单用例/冻结计数让本次回退能继续修；在原全局上限上 +REENTRY_BUDGET 小额预算。
+            prev = _load(sp)
+            prev_global = prev.get("global_runs", 0)
+            first_at = prev.get("first_activated_at", prev.get("started_at", time.time()))
+            # 从"当前全局累计位置"再发放 REENTRY_BUDGET 次额度（幂等：即便编排层与子智能体各 reset 一次，
+            # 因两次之间 prev_global 未变，算出的 new_cap 相同，预算不会被叠加成 +2×budget）。
+            new_cap = prev_global + REENTRY_BUDGET
+            _save(sp, {"global_runs": prev_global, "files": {},
+                       "started_at": time.time(), "first_activated_at": first_at,
+                       "cap_global": new_cap})
+            print(f"[run_guard] 已按【回退重入】重置：{sp}")
+            print(f"[run_guard] 全局累计不清零（保留 {prev_global} 次）；从当前全局位置再给 {REENTRY_BUDGET} 次额度 → 新全局上限 {new_cap}（幂等：重复 reset 不叠加预算）；"
+                  f"各用例单用例/冻结计数已清空，本次回退可继续修。")
+            print(f"[run_guard] 单用例上限={args.cap_file} 次、连续相同失败冻结={FREEZE_LIMIT} 次；"
+                  f"绕过审计窗口已刷新为本次回退起（旧日志不再计入本次单用例额度）；全局墙钟自首次激活连续计（>6h 软提示走 Phase 4.5）。")
+        else:
+            now = time.time()
+            _save(sp, {"global_runs": 0, "files": {}, "started_at": now,
+                       "first_activated_at": now, "cap_global": eff_global})
+            print(f"[run_guard] 已重置守卫状态：{sp}")
+            print(f"[run_guard] 次数上限：单用例(= 一个 CSV 需求/def test_ 方法)={args.cap_file} 次、"
+                  f"全局={eff_global} 次（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×{GLOBAL_PER_CASE})）；"
+                  f"连续相同失败冻结={FREEZE_LIMIT} 次。")
+            print(f"[run_guard] 口径：1 次 pytest = 1 次；审计只数本次 reset 之后产生的日志，旧日志不污染额度。"
+                  f"全局墙钟 >6h → 软提示走 Phase 4.5、倾向标遗留转人工（软兜底，不硬杀）。")
+        # 写守卫哨兵 + token（供未来 conftest pytest_sessionstart 钩子做"即时拒绝裸跑"用；当前该钩子未实现，
+        # 裸跑实际由下方"绕过审计"数日志补算计数兜底，不影响次数上限的正确性）。
+        token = secrets.token_hex(16)
+        _write_sentinel(token, args.task)
+        print(f"[run_guard] 已写守卫状态：{_sentinel_path()}（{GUARD_TTL // 3600}h 滑动过期，每次经 run_guard 跑会续期）。"
+              f"裸跑 pytest 不会被当场拒绝，但会被 run_guard 的【绕过审计】数日志补算进次数上限（裸跑逃不过计数、本轮视为作废）；技能全部结束/中断时请运行 `--release` 清理状态。")
         if not pytest_args:
             return 0
 
@@ -242,6 +340,16 @@ def main(argv):
         f["runs"] = real
         state["global_runs"] = state["global_runs"] + bypass
 
+    # ---- 全局墙钟软兜底（自首次激活 first_activated_at 起累计 > 6h → 软提示走 Phase 4.5，不硬杀）----
+    # 用 first_activated_at（跨回退保留）而非 started_at（每次回退会刷新），保证墙钟是"整个任务"的累计时长。
+    wall_base = state.get("first_activated_at", state.get("started_at", 0))
+    if wall_base:
+        elapsed = time.time() - wall_base
+        if elapsed > GLOBAL_WALL_SECS:
+            print(f"[run_guard] [软兜底] 全局墙钟已超 {GLOBAL_WALL_SECS // 3600}h（自首次激活起 ≈{elapsed/3600:.1f}h）。"
+                  f"按 phase3 正文要求：必须走一次 Phase 4.5 三次失败质疑，并【倾向标遗留·转人工】，"
+                  f"不要再无脑续修；本提示为软兜底，不阻断本次执行。")
+
     # ---- 执行前硬熔断检查 ----
     if state["global_runs"] >= cap_global:
         _refuse(f"全局次数已达上限（{state['global_runs']}/{cap_global}）。")
@@ -259,10 +367,16 @@ def main(argv):
           f"｜目标：{key}")
 
     # ---- 跑 pytest，实时打印同时捕获用于指纹 ----
+    # 注入守卫 token 到子进程环境（供未来 conftest pytest_sessionstart 钩子放行"经 run_guard 启动"的 pytest 用；
+    # 当前该 conftest 钩子未实现）。同时滑动续期哨兵。裸跑（无此 token）由上方"绕过审计"补算计数兜底，逃不过上限。
+    run_env = dict(os.environ)
+    _tok = _refresh_sentinel()
+    if _tok:
+        run_env["RUN_GUARD_TOKEN"] = _tok
     try:
         proc = subprocess.run([args.pytest_cmd] + pytest_args,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              text=True, encoding="utf-8", errors="replace")
+                              text=True, encoding="utf-8", errors="replace", env=run_env)
     except FileNotFoundError:
         print(f"[run_guard] 找不到 pytest 命令：{args.pytest_cmd}", file=sys.stderr)
         return 2

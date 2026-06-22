@@ -120,6 +120,7 @@ def _send_udp_via_test_udp2(ssh_vm, vm_info, target_ip, port, message):
         f"python /opt/network_tool/test-udp2.py -c {target_ip} {port} {message}",
         check_rc=False,
         return_rc=True,
+        timeout=20,
     )
 
 
