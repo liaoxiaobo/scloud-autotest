@@ -57,7 +57,7 @@ def ensure_bms_image(ssh_host, bms_env=None, image_name=None):
             f"scli image create --visibility public --disk-format raw --container-format bare "
             f"--min-disk {image_min_disk} --property hypervisor_type=baremetal --property purpose=ironic "
             f"--property os_type=linux --property hw_qemu_guest_agent=yes --backend {image_backend} "
-            f"--file {image_file} --name {image_name} --progress"
+            f"--file {image_file} --name {image_name}"
         )
         result = ssh_host.run(cmd, return_rc=True, timeout=1800)
         assert result["rc"] == 0, f"BMS镜像创建失败: {result.get('stderr', '')}"
