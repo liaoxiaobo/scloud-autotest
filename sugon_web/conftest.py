@@ -25,7 +25,7 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from sugon_web.utils.logger import logger, allure_step_log
+from sugon_web.utils.logger import logger
 from sugon_web.utils.data import get_file_abspath
 from sugon_web.utils.hooks import capture_failure_screenshot, get_page_from_item
 from sugon_web.common.remote.ssh import SSH
@@ -41,6 +41,12 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", help="登录用户名")
     parser.addoption("--password", action="store", help="登录密码")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
+    parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
+    parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
+    parser.addoption("--bms-bmc-ip", action="store", help="指定BMS带外IP，覆盖配置文件 bms.bmc_ip")
+    parser.addoption("--bms-preferred-node", action="store", help="指定BMS优先物理节点，覆盖配置文件 bms.preferred_node")
+    parser.addoption("--bms-network-name", action="store", help="指定BMS网络名称，覆盖配置文件 bms.network_name")
+    parser.addoption("--bms-password", action="store", help="指定BMS实例登录密码，覆盖配置文件 bms.password")
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -101,15 +107,40 @@ def _get_run_id_from_args(config):
     return "default"
 
 
+def _get_explicit_allure_dir(config, project_root):
+    """Return the CLI --alluredir path when one is provided."""
+    report_dir = getattr(config.option, "allure_report_dir", None)
+    if not report_dir:
+        return None, None
+
+    allure_dir = Path(report_dir)
+    if not allure_dir.is_absolute():
+        allure_dir = project_root / allure_dir
+    allure_dir = allure_dir.resolve()
+
+    try:
+        run_id = allure_dir.relative_to(project_root / "allure-result").as_posix()
+    except ValueError:
+        run_id = None
+
+    return allure_dir, run_id
+
+
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
 
     # 获取项目根目录
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
+    explicit_allure_dir, explicit_run_id = _get_explicit_allure_dir(config, project_root)
 
     # 从命令行参数提取运行标识（测试文件名或类名）
     run_id = _get_run_id_from_args(config)
+    env_label = config.getoption("--env-label")
+    if explicit_run_id:
+        run_id = explicit_run_id
+    elif env_label:
+        run_id = f"{run_id}/{env_label}" if run_id else env_label
     os.environ['_PYTEST_RUN_ID'] = run_id
 
     # 创建 logs 子目录（按 run_id 隔离）
@@ -122,7 +153,7 @@ def pytest_configure(config):
     config.option.log_file = str(log_file_path)
 
     # 创建 allure-result 子目录（按 run_id 隔离），仅清理本子目录历史数据
-    allure_dir = project_root / "allure-result" / run_id
+    allure_dir = explicit_allure_dir or (project_root / "allure-result" / run_id)
     if allure_dir.exists():
         import shutil
         shutil.rmtree(allure_dir)
@@ -130,6 +161,63 @@ def pytest_configure(config):
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
+
+
+def pytest_collection_modifyitems(config, items):
+    """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
+    bms_file_order = {
+        "soft_create": 0,
+        "sanity": 1,
+        "bind_eip": 2,
+        "monitor": 3,
+        "rename": 4,
+        "security_group": 5,
+        "label": 6,
+        "remove_label": 7,
+        "shutdown": 8,
+        "start": 9,
+        "rebuild": 10,
+        "cleanup": 11,
+    }
+
+    def _bms_order_key(item):
+        filename = item.path.name
+        for name_part, order in sorted(bms_file_order.items(), key=lambda item: len(item[0]), reverse=True):
+            if name_part in filename:
+                return order, filename, item.nodeid
+        number_match = re.search(r"test_bms_(\d+)", filename)
+        if number_match:
+            return int(number_match.group(1)), filename, item.nodeid
+        return 999, filename, item.nodeid
+
+    bms_items = [
+        item
+        for item in items
+        if "/testcase/compute/test_bms" in str(item.path).replace("\\", "/")
+    ]
+    for item in bms_items:
+        item.add_marker("bms")
+        filename = item.path.name
+        if "soft_create" in filename:
+            item.add_marker("bms_prepare")
+        elif "rebuild" in filename or "cleanup" in filename:
+            item.add_marker("bms_destructive")
+        else:
+            item.add_marker("bms_regression")
+    if len(bms_items) > 1:
+        ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
+        for index, item in enumerate(items):
+            if item in bms_items:
+                items[index] = next(ordered_bms_items)
+
+    # 为每个测试用例注入 host/stor 环境 tag，替代 inject_env_tags.py 的事后注入
+    host = config.getoption("--host")
+    stor = config.getoption("--stor")
+    for item in items:
+        if host:
+            item.add_marker(allure.tag(f"host:{host}"))
+        if stor:
+            item.add_marker(allure.tag(f"stor:{stor}"))
 
 
 @pytest.fixture(scope="session")
@@ -203,6 +291,7 @@ def browser_context(browser, request):
     context = browser.new_context(
         ignore_https_errors=True,  # 忽略 SSL 错误
         permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
     )
 
     # 根据 --tracing 参数决定是否开启 Playwright tracing
@@ -231,39 +320,15 @@ def browser_context(browser, request):
 
 def _create_logged_in_page(browser_context, config):
     """基于给定的 context 创建并返回一个已登录页面。"""
+    from sugon_web.common.auth import prepare_page_session
+
     base_url = config.get("base_url")
-    username = config.get("username")
-    password = config.get("password")
 
     logger.info("创建新页面...")
     page = browser_context.new_page()
     logger.info("页面创建成功")
 
-    logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url, wait_until="domcontentloaded")
-    # 等待 SPA JS 资源加载完成，确保前端路由可以正常执行
-    try:
-        page.wait_for_load_state("networkidle", timeout=15000)
-    except Exception:
-        pass
-    logger.info(f"页面导航完成，当前URL: {page.url}")
-
-    try:
-        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
-    except Exception:
-        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
-        # 若 URL 仍在根路径（无 hash），可能是前端路由尚未完成，追加短暂等待
-        if "/#" not in page.url:
-            try:
-                page.wait_for_url(re.compile(r".*#/(index|login|console-page)$"), timeout=15000)
-            except Exception:
-                pass
-    logger.info(f"页面导航完成，当前URL: {page.url}")
-
-    if not _is_logged_in(page):
-        _login(page, {"username": username, "password": password})
-        logger.info("登录成功")
+    prepare_page_session(page, config)
 
     # 安全网：若URL异常（如 no-permission），重新加载以恢复
     if "no-permission" in page.url:
@@ -278,9 +343,6 @@ def _create_logged_in_page(browser_context, config):
 
     base_page_obj = BasePage(page)
     base_page_obj.close_dialog_if_exists()
-
-    # 慢环境兼容：短暂等待 SPA 初始化，后续 goto_service 会直接导航到目标页面
-    page.wait_for_timeout(2000)
 
     # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
     _orig_close = page.close
@@ -479,136 +541,6 @@ def ssh_vm(jump_host):
         yield ssh
     finally:
         ssh.close()
-
-def _is_logged_in(page):
-    """检查是否已登录"""
-    current_url = page.url or ""
-    # URL 明确指向首页或控制台页
-    if "/#/index" in current_url or "/#/console-page" in current_url:
-        return True
-    # URL 明确指向登录页
-    if "login" in current_url:
-        return False
-    # URL 没有 hash 路由，前端 SPA 可能尚未加载完成，保守返回未登录以触发登录流程
-    if "/#" not in current_url:
-        return False
-    # URL 包含 hash 但不是已知页面，通过页面元素兜底判断
-    try:
-        login_input = page.locator("input[placeholder='请输入登录账号']")
-        return login_input.count() == 0 or not login_input.first.is_visible()
-    except Exception:
-        return False
-
-
-def _dismiss_license_dialog(page):
-    """处理 console-page 的许可证提示弹窗。
-
-    SugonCloud 8.0.6.0 登录后若存在许可证到期弹窗，所有自动化点击方式均无法关闭。
-    实测发现：直接刷新页面后弹窗不再出现。因此核心策略为 reload。
-    """
-    if "console-page" not in page.url:
-        return True
-
-    # 核心策略：刷新页面（弹窗通常在首次加载后出现，刷新后不再显示）
-    try:
-        page.reload(wait_until="domcontentloaded")
-        page.wait_for_timeout(8000)
-        has_dialog = page.locator(".el-message-box").count() > 0
-        if not has_dialog:
-            logger.info(f"[license] 刷新后弹窗已消失，URL: {page.url}")
-            return True
-        logger.info(f"[license] 刷新后弹窗仍存在，URL: {page.url}")
-    except Exception as e:
-        logger.warning(f"[license] 刷新失败: {e}")
-
-    # 降级策略：移除弹窗 DOM
-    if page.locator(".el-message-box").count() > 0:
-        try:
-            page.evaluate("""
-                (function() {
-                    document.querySelectorAll('.el-message-box__wrapper, .el-message-box, .v-modal, .el-popup-parent--hidden').forEach(function(el) { el.remove(); });
-                    document.body.classList.remove('el-popup-parent--hidden');
-                    document.body.style.overflow = '';
-                    document.body.style.paddingRight = '';
-                })();
-            """)
-            page.wait_for_timeout(1000)
-            logger.info("[license] 已移除弹窗 DOM")
-        except Exception as e:
-            logger.warning(f"[license] DOM 移除失败: {e}")
-
-    return "console-page" not in page.url
-
-
-def _login(page, config, max_retries=3):
-    """
-    执行登录操作，带轮询重试机制
-
-    Args:
-        page: Playwright page 对象
-        config: 配置字典，包含 username 和 password
-        max_retries: 最大重试次数，默认3次
-
-    Returns:
-        bool: 登录成功返回 True
-
-    Raises:
-        Exception: 超过最大重试次数后抛出异常
-    """
-    username = config.get("username")
-    password = config.get("password")
-
-    if not username or not password:
-        raise ValueError("环境配置中缺少用户名或密码")
-
-    with allure_step_log("尝试登录"):
-        for attempt in range(1, max_retries + 1):
-            if attempt > 1:
-                logger.info(f"\n{'=' * 40}")
-                logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
-                logger.info(f"{'=' * 40}")
-
-            try:
-                # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
-                for _close_attempt in range(3):
-                    try:
-                        dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if dialog_btn.count() > 0 and dialog_btn.is_visible():
-                            dialog_btn.click()
-                            page.wait_for_timeout(500)
-                            continue
-                    except Exception:
-                        pass
-                    break
-
-                # 填写登录信息
-                page.get_by_placeholder("请输入登录账号").fill(username)
-                page.get_by_placeholder("请输入登录密码").fill(password)
-                page.get_by_text("登 录").click()
-
-                # 登录成功后应进入控制台首页或console-page（许可证提示页）
-                page.wait_for_url(re.compile(r".*#/(index|console-page)$"), timeout=20000)
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_load_state("load")
-
-                if _is_logged_in(page):
-                    return True
-
-                raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
-
-            except Exception as e:
-                logger.info(f"第{attempt}次登录未成功: {e}")
-                if attempt == max_retries:
-                    raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
-                # 重试前刷新页面，清除可能残留的弹窗或异常状态
-                try:
-                    page.reload(wait_until="domcontentloaded")
-                    page.wait_for_timeout(2000)
-                except Exception:
-                    pass
-                continue
-
-        return False
 
 @pytest.fixture(scope="session", autouse=True)
 def check_compute_nodes(ssh_host, config):

@@ -9,7 +9,7 @@ from sugon_web.testcase.iam._iam_helpers import verify_login
 def acl_cleanup(iam_page, iam_shared_user, iam_shared_child_org):
     """在每个访问控制测试后清空访问控制设置，避免限制累积影响后续测试。"""
     yield
-    disp = iam_shared_user["name"]
+    disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
     child_org = iam_shared_child_org["child_name"]
     today = date.today().strftime("%Y-%m-%d")
     far_future = "2099-12-31"
@@ -36,7 +36,7 @@ class TestAclIP:
     @allure.title("IAM-用户管理-访问控制-IP禁止登录")
     def test_ip_deny(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -48,7 +48,7 @@ class TestAclIP:
     @allure.title("IAM-用户管理-访问控制-IP允许登录")
     def test_ip_allow(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -65,7 +65,7 @@ class TestAclDate:
     @allure.title("IAM-用户管理-访问控制-当前日期范围内登录")
     def test_date_range(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -79,7 +79,7 @@ class TestAclDate:
     @allure.title("IAM-用户管理-访问控制-过期日期范围")
     def test_date_past(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -93,7 +93,7 @@ class TestAclDate:
     @allure.title("IAM-用户管理-访问控制-未来日期范围")
     def test_date_future(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -107,7 +107,7 @@ class TestAclDate:
     @allure.title("IAM-用户管理-访问控制-仅当天日期")
     def test_date_today(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -125,7 +125,7 @@ class TestAclTime:
     @allure.title("IAM-用户管理-访问控制-当前时间允许登录")
     def test_time_match(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -143,7 +143,7 @@ class TestAclTime:
     @allure.title("IAM-用户管理-访问控制-非当前时间禁止登录")
     def test_time_mismatch(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -168,7 +168,7 @@ class TestAclCombined:
     @allure.title("IAM-用户管理-访问控制-组合非本地IP+时间+当天")
     def test_combined_deny_ip(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -185,7 +185,7 @@ class TestAclCombined:
     @allure.title("IAM-用户管理-访问控制-组合本地IP+过期时间+当天")
     def test_combined_deny_time(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -203,7 +203,7 @@ class TestAclCombined:
     @allure.title("IAM-用户管理-访问控制-组合非本地IP+时间+昨天")
     def test_combined_deny_date(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]
@@ -219,7 +219,7 @@ class TestAclCombined:
     @allure.title("IAM-用户管理-访问控制-组合本地IP+时间+当天")
     def test_combined_allow(self, iam_page, iam_shared_user, iam_shared_child_org):
         iam_page._navigate_to_user_management(target_org=iam_shared_user.get("target_org"))
-        disp = iam_shared_user["name"]
+        disp = iam_shared_user.get("display_name") or iam_shared_user["name"]
         u = iam_shared_user["name"]
         p = iam_shared_user["password"]
         child_org = iam_shared_child_org["child_name"]

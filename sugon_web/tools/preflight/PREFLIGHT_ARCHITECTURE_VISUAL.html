@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自动化前置环境检查架构流程图</title>
+  <style>
+    :root {
+      --bg: #fbf6ee;
+      --ink: #101828;
+      --muted: #667085;
+      --line: #22364d;
+      --card: #fffdf7;
+      --border: #c9cfd6;
+      --shadow: rgba(16, 24, 40, 0.15);
+      --accent: #d9eef3;
+      --accent-border: #b9d5dc;
+      --sand: #eadfcf;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+    }
+
+    .page {
+      width: 1500px;
+      min-height: 1040px;
+      margin: 0 auto;
+      padding: 34px 26px 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 44px;
+      line-height: 1.18;
+      letter-spacing: 0;
+      font-weight: 800;
+    }
+
+    .subtitle {
+      margin-top: 14px;
+      font-size: 20px;
+      line-height: 1.7;
+      color: var(--muted);
+      max-width: 1180px;
+    }
+
+    .pill {
+      flex: 0 0 auto;
+      padding: 14px 22px;
+      border: 1px solid var(--accent-border);
+      border-radius: 999px;
+      background: var(--accent);
+      color: #234b59;
+      font-size: 19px;
+      font-weight: 700;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    }
+
+    .canvas {
+      position: relative;
+      margin-top: 24px;
+      height: 700px;
+      border: 1px solid #ded6ca;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.5);
+      overflow: hidden;
+    }
+
+    .ribbon {
+      position: absolute;
+      left: 36px;
+      right: 36px;
+      bottom: 73px;
+      height: 48px;
+      border-radius: 999px;
+      background: rgba(226, 212, 193, 0.62);
+      transform: rotate(-1.2deg);
+      z-index: 0;
+    }
+
+    .card {
+      position: absolute;
+      z-index: 2;
+      width: 236px;
+      min-height: 132px;
+      padding: 18px 22px;
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      background: var(--card);
+      box-shadow: 0 12px 24px var(--shadow);
+    }
+
+    .card.wide {
+      width: 320px;
+      min-height: 98px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0 0 10px;
+      line-height: 1.2;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.55;
+    }
+
+    .note {
+      position: absolute;
+      left: 70px;
+      right: 70px;
+      bottom: 36px;
+      z-index: 3;
+      color: #182230;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .arrow {
+      position: absolute;
+      z-index: 1;
+      height: 3px;
+      background: var(--line);
+      transform-origin: left center;
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: 50%;
+      width: 0;
+      height: 0;
+      border-top: 11px solid transparent;
+      border-bottom: 11px solid transparent;
+      border-left: 20px solid var(--line);
+      transform: translateY(-50%);
+    }
+
+    .arrow.dashed {
+      height: 0;
+      border-top: 3px dashed rgba(34, 54, 77, 0.62);
+      background: transparent;
+    }
+
+    .arrow.dashed::after {
+      border-left-color: rgba(34, 54, 77, 0.75);
+    }
+
+    svg.curves {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .info {
+      min-height: 150px;
+      padding: 22px 20px;
+      border: 1px solid #e1d8cd;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.54);
+    }
+
+    .info h3 {
+      margin: 0 0 14px;
+      font-size: 21px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .info p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .c1 { left: 60px; top: 72px; }
+    .c2 { left: 345px; top: 72px; }
+    .c3 { left: 630px; top: 72px; }
+    .c4 { left: 915px; top: 72px; }
+    .c5 { left: 1200px; top: 72px; }
+    .c6 { left: 170px; top: 315px; width: 270px; }
+    .c7 { left: 610px; top: 315px; width: 285px; }
+    .c8 { left: 1055px; top: 315px; width: 285px; }
+    .s1 { left: 150px; top: 545px; }
+    .s2 { left: 555px; top: 545px; width: 335px; }
+    .s3 { left: 970px; top: 545px; width: 350px; }
+
+    .a12 { left: 287px; top: 140px; width: 50px; }
+    .a23 { left: 572px; top: 140px; width: 50px; }
+    .a34 { left: 857px; top: 140px; width: 50px; }
+    .a45 { left: 1142px; top: 140px; width: 50px; }
+    .a67 { left: 441px; top: 382px; width: 160px; }
+    .a78 { left: 897px; top: 382px; width: 150px; }
+    .d7s1 { left: 328px; top: 520px; width: 335px; transform: rotate(-4deg); }
+    .d7s2 { left: 745px; top: 448px; width: 0; height: 82px; border-left: 3px dashed rgba(34, 54, 77, 0.62); border-top: none; }
+    .d7s2::after { right: auto; left: -11px; top: auto; bottom: -3px; border-left: 11px solid transparent; border-right: 11px solid transparent; border-top: 20px solid rgba(34, 54, 77, 0.75); border-bottom: 0; transform: none; }
+    .d8s3 { left: 1185px; top: 450px; width: 0; height: 78px; border-left: 3px dashed rgba(34, 54, 77, 0.62); border-top: none; }
+    .d8s3::after { right: auto; left: -11px; top: auto; bottom: -3px; border-left: 11px solid transparent; border-right: 11px solid transparent; border-top: 20px solid rgba(34, 54, 77, 0.75); border-bottom: 0; transform: none; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="title-row">
+      <div>
+        <h1>自动化前置环境检查架构流程图</h1>
+        <div class="subtitle">
+          面向 Jenkins 自动化执行：通过一个 MARK 关键词触发完整前置检查，先判断前端、后台和运维巡检状态，再结合资源画像输出环境是否满足自动化准入条件。
+        </div>
+      </div>
+      <div class="pill">Python + Playwright + Pytest + Jenkins</div>
+    </div>
+
+    <section class="canvas">
+      <div class="ribbon"></div>
+
+      <div class="card c1">
+        <h2>1. Jenkins 参数</h2>
+        <p>MARK 输入<br/>preflight-all<br/>frontend / backend</p>
+      </div>
+      <div class="card c2">
+        <h2>2. 关键词展开</h2>
+        <p>check_suites.yaml<br/>展开前端、后台<br/>运维巡检检查项</p>
+      </div>
+      <div class="card c3">
+        <h2>3. pytest 启动</h2>
+        <p>test_environment_health.py<br/>PREFLIGHT_SUITE<br/>按 suite 过滤断言</p>
+      </div>
+      <div class="card c4">
+        <h2>4. 前端检查</h2>
+        <p>Playwright 登录<br/>页面可访问<br/>运维入口可用</p>
+      </div>
+      <div class="card c5">
+        <h2>5. 后台检查</h2>
+        <p>SSH 连接环境<br/>系统盘容量<br/>Pod 异常状态</p>
+      </div>
+
+      <div class="card c6">
+        <h2>6. 运维一键巡检</h2>
+        <p>CmsPage / inspection.py<br/>触发一键巡检<br/>采集状态、失败项、告警项</p>
+      </div>
+      <div class="card c7">
+        <h2>7. 结果聚合</h2>
+        <p>health_HOST.json<br/>frontend / backend / inspection<br/>合并为统一健康快照</p>
+      </div>
+      <div class="card c8">
+        <h2>8. 准入结论</h2>
+        <p>health_check.py<br/>健康矩阵 / 可执行环境<br/>失败项辅助定位</p>
+      </div>
+
+      <div class="card wide s1">
+        <h3>资源画像</h3>
+        <p>resource_requirements.yaml：维护各模块资源峰值、配额最大值和 worker 放大规则。</p>
+      </div>
+      <div class="card wide s2">
+        <h3>规则引擎</h3>
+        <p>health_rules.yaml：定义系统盘阈值、Pod 异常数、巡检状态、失败项和告警项。</p>
+      </div>
+      <div class="card wide s3">
+        <h3>输出产物</h3>
+        <p>preflight-results + allure-result：健康 JSON、矩阵日志、截图、Allure 报告。</p>
+      </div>
+
+      <div class="arrow a12"></div>
+      <div class="arrow a23"></div>
+      <div class="arrow a34"></div>
+      <div class="arrow a45"></div>
+      <div class="arrow a67"></div>
+      <div class="arrow a78"></div>
+      <div class="arrow dashed d7s1"></div>
+      <div class="arrow dashed d7s2"></div>
+      <div class="arrow dashed d8s3"></div>
+
+      <svg class="curves" viewBox="0 0 1448 700" preserveAspectRatio="none">
+        <path d="M1322 205 C1255 270, 650 238, 315 285 C270 292, 268 303, 300 318"
+              fill="none" stroke="#22364d" stroke-width="3" />
+        <polygon points="300,318 285,296 315,300" fill="#22364d" />
+      </svg>
+
+      <div class="note">
+        设计原则：一个关键词触发完整检查，前端页面、后台状态、运维巡检和资源画像分层治理；检查失败先阻断自动化，失败项直接辅助定位环境问题。
+      </div>
+    </section>
+
+    <section class="info-grid">
+      <div class="info">
+        <h3>关键词入口</h3>
+        <p>Jenkins MARK 填写 preflight-all，即可一次性展开前端、后台和运维巡检检查。</p>
+      </div>
+      <div class="info">
+        <h3>执行约束</h3>
+        <p>前置检查默认串行执行，避免多个巡检任务同时操作同一套运维页面。</p>
+      </div>
+      <div class="info">
+        <h3>代码分层</h3>
+        <p>pytest 负责真实采集，profiles 维护规则，health_check 负责统计和输出矩阵。</p>
+      </div>
+      <div class="info">
+        <h3>失败定位</h3>
+        <p>通过健康 JSON、Jenkins 日志、Allure 步骤、截图和后台状态判断问题来源。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

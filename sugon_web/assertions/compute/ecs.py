@@ -136,7 +136,7 @@ class EcsAssertionMixin:
         ssh_vm.ping("100.126.255.250")
 
         logger.info(f"验证云服务器{name}能 curl通http://169.254.169.254:80/openstack")
-        stdout = ssh_vm.run("curl http://169.254.169.254:80/openstack", return_rc=True)
+        stdout = ssh_vm.run("curl --connect-timeout 10 --max-time 20 http://169.254.169.254:80/openstack", return_rc=True, timeout=30)
         assert stdout.get("stdout").count("latest") \
                and stdout.get("rc") == 0, \
                f"[BackendAssertion] ECS '{name}' | curl 元数据服务 | 期望: 包含 'latest' | 实际: 请求失败"

@@ -13,7 +13,7 @@ def security_vpc(browser, config):
     from sugon_web.conftest import _create_logged_in_page
     from sugon_web.pages.network import VpcPage
 
-    context = browser.new_context(ignore_https_errors=True)
+    context = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(context, config)
     vpc_page = VpcPage(page)
     vpc_page.goto_service("虚拟私有云")
@@ -50,7 +50,7 @@ def usm_instance(browser, config, security_vpc):
     from sugon_web.testcase.security._usm_helpers import create_usm_instance, delete_usm_instance
     from sugon_web.utils.data import random_data
 
-    context = browser.new_context(ignore_https_errors=True)
+    context = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(context, config)
     usm_page_obj = UsmPage(page)
     usm_page_obj.goto_list_page()
@@ -116,7 +116,7 @@ def ver_instance(browser, config, security_vpc):
     from sugon_web.testcase.security._ver_helpers import create_ver_instance, delete_ver_instance
     from sugon_web.utils.data import random_data
 
-    context = browser.new_context(ignore_https_errors=True)
+    context = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(context, config)
     ver_page_obj = VerPage(page)
     ver_page_obj.goto_list_page()
@@ -166,7 +166,7 @@ def vdb_instance(browser, config, security_vpc):
     from sugon_web.testcase.security._vdb_helpers import create_vdb_instance, delete_vdb_instance
     from sugon_web.utils.data import random_data
 
-    context = browser.new_context(ignore_https_errors=True)
+    context = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(context, config)
     vdb_page_obj = VdbPage(page)
     vdb_page_obj.goto_list_page()

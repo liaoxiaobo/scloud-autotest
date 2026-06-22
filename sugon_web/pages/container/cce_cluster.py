@@ -106,11 +106,24 @@ class CceClusterMixin:
     def cce_batch_delete(self, names):
         """批量删除CCE集群。
 
+        集群管理页存在定时轮询刷新表格，可能冲掉 checkbox 选中状态。
+        若首次点击批量删除后确认对话框未出现，则重新勾选并重试。
+
         Args:
             names: 集群名称列表
         """
         self.select_rows_by_names(names)
         self.btn_batch_delete.click()
+
+        # 处理定时轮询清空 checkbox 导致确认对话框未弹出的偶现情况
+        try:
+            self.get_by_role("dialog").wait_for(state="visible", timeout=5000)
+        except Exception:
+            self.logger.warning("批量删除确认对话框未出现，可能是轮询清空了勾选，尝试重新勾选")
+            self.select_rows_by_names(names)
+            self.btn_batch_delete.click()
+            self.get_by_role("dialog").wait_for(state="visible", timeout=10000)
+
         self.dialog_confirm.click()
 
     @submenu("集群管理")

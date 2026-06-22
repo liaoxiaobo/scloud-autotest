@@ -1,6 +1,6 @@
 import pytest
 
-from sugon_web.pages.container import CcePage
+from sugon_web.pages.container import CcePage, ScrPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 
@@ -16,6 +16,19 @@ def cce_page(page):
         CcePage: 云容器引擎页面对象实例。
     """
     return CcePage(page)
+
+
+@pytest.fixture(scope="function")
+def scr_page(page):
+    """初始化容器镜像服务SCR页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        ScrPage: 容器镜像服务页面对象实例。
+    """
+    return ScrPage(page)
 
 
 def _build_cce_create_kwargs(params=None):
@@ -105,7 +118,7 @@ def cce_cluster(browser_context, config, ssh_host, request):
     with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
         cce_page.cce_create(**create_kwargs)
         cce_page.assert_popup_success()
-        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+        cce_page.assert_status(cluster_name, status="运行中", timeout=1800)
 
     with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
         node_data = cce_page.get_cluster_node_data(cluster_name)
@@ -175,5 +188,106 @@ def storage_class(browser_context, config, cce_cluster):
             cce_page.storage_class_delete(sc_name)
         except Exception as e:
             logger.warning(f"清理 StorageClass 失败（可能已删除）: {e}")
+        finally:
+            page.close()
+
+
+def _build_scr_create_kwargs(params=None):
+    """根据参数构建 SCR 实例创建入参。"""
+    params = params or {}
+    return {
+        "name": params.get("name", f"scr-{random_data(length=4)}"),
+        "version": params.get("version"),
+        "cluster": params.get("cluster", "Autotest"),
+        "network": params.get("network", "Autotest"),
+        "subnet": params.get("subnet", "Autotest"),
+        "instance_type": params.get("instance_type", "ALONE"),
+        "storage_type": params.get("storage_type", "EVS"),
+        "volume_type": params.get("volume_type"),
+        "volume_size": params.get("volume_size", 10),
+        "flavor": params.get("flavor", "4C8G"),
+    }
+
+
+def _create_scr_instance(scr_page, params=None):
+    """创建 SCR 实例并返回资源信息。"""
+    create_kwargs = _build_scr_create_kwargs(params)
+    scr_page.scr_create(**create_kwargs)
+    scr_page.assert_popup_success()
+    return create_kwargs
+
+
+def _cleanup_scr_instance(scr_page, ssh_host, name):
+    """清理 SCR 实例资源，并后台验证虚机已删除。"""
+    scr_page.goto_service(scr_page.service_name)
+    scr_page.goto_submenu("实例管理")
+    scr_page.scr_delete(name)
+    scr_page.assert_deleted(name, timeout=600)
+    ssh_host.wait_vm_deleted(name, timeout=600)
+
+
+@pytest.fixture(scope="class")
+def scr_instance(browser_context, config, ssh_host, request):
+    """创建 SCR 单机实例并等待就绪，测试类结束后自动清理。
+
+    Args:
+        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        config: 配置对象。
+        ssh_host: SSH 主机连接对象，用于后台验证。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        name (str): 实例名称，未提供时自动生成随机名称。
+        version (str): 仓库版本，默认使用页面初始化选项。
+        cluster (str): 集群名称，默认 "Autotest"。
+        network (str): 专有网络名称，默认 "Autotest"。
+        subnet (str): 子网名称，默认 "Autotest"。
+        instance_type (str): 实例类型，默认 "ALONE"。
+        storage_type (str): 存储类型，默认 "EVS"。
+        volume_type (str): 云硬盘类型，默认从配置读取。
+        volume_size (int): 云硬盘大小(GiB)，默认 5。
+        flavor (str): 规格名称，默认 "4C8G"。
+
+    Yields:
+        dict: 实例资源字典，包含创建参数及运行时信息：
+            - name (str): 实例名称
+            - id (str): 实例 ID
+            - instance_type (str): 实例类型
+            - storage_type (str): 存储类型
+            - cluster (str): 集群名称
+            - network (str): 专有网络名称
+            - subnet (str): 子网名称
+            - volume_size (int): 云硬盘大小
+            - flavor (str): 规格名称
+    """
+    from sugon_web.conftest import _create_logged_in_page
+
+    params = getattr(request, "param", {}) or {}
+    page = _create_logged_in_page(browser_context, config)
+    scr_page = ScrPage(page)
+
+    create_kwargs = _build_scr_create_kwargs(params)
+    instance_name = create_kwargs["name"]
+
+    with allure_step_log(f"前置操作：创建 SCR 实例 {instance_name}"):
+        scr_page.scr_create(**create_kwargs)
+        scr_page.assert_popup_success()
+        scr_page.assert_status(instance_name, status="运行中", timeout=1200)
+
+    with allure_step_log(f"前置操作：获取 SCR 实例 {instance_name} 详情"):
+        row_data = scr_page.get_row_data(instance_name)
+        instance_id = row_data.get("ID", "") if row_data else ""
+
+    yield {
+        "name": instance_name,
+        "id": instance_id,
+        **create_kwargs,
+    }
+
+    with allure_step_log(f"后置清理：删除 SCR 实例 {instance_name}"):
+        try:
+            _cleanup_scr_instance(scr_page, ssh_host, instance_name)
+        except Exception as e:
+            logger.warning(f"清理 SCR 实例失败（可能已删除）: {e}")
         finally:
             page.close()
