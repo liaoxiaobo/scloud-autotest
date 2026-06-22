@@ -249,13 +249,23 @@ def _bms_click_acl_rule_create(vpc_page, tab_name):
                     && rect.width > 0 && rect.height > 0;
             };
             const textOf = el => (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
-            const buttons = Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
-                .filter(el => visible(el) && textOf(el) === '新建' && !el.closest('.el-dialog, [role="dialog"]'));
+            const buttons = Array.from(document.querySelectorAll(
+                '.noOverflow .cloud-button-btn.cl-btn-primary, '
+                + '#cloud-container-content .cloud-button-btn.cl-btn-primary, '
+                + '#cloud-container-content button, '
+                + '#cloud-container-content .el-button, '
+                + '#cloud-container-content [role="button"]'
+            )).filter(el => visible(el) && textOf(el) === '新建' && !el.closest('.el-dialog, [role="dialog"]'));
             if (!buttons.length) {
                 return {
                     status: 'button-not-found',
                     tabName,
-                    buttons: Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
+                    buttons: Array.from(document.querySelectorAll(
+                        '#cloud-container-content .cloud-button-btn, '
+                        + '#cloud-container-content button, '
+                        + '#cloud-container-content .el-button, '
+                        + '#cloud-container-content [role="button"]'
+                    ))
                         .filter(visible)
                         .map(textOf)
                         .filter(Boolean)
@@ -295,12 +305,28 @@ def _bms_fill_acl_allow_all_dialog(vpc_page, tab_name):
             f"BMS ACL {tab_name} 新建弹窗未出现: {e}; diagnostics={_bms_acl_page_diagnostics(vpc_page)}"
         ) from e
 
+    policy_input = dialog.locator(".el-form-item").filter(has_text="策略").locator(
+        "input[placeholder='请选择策略']"
+    ).first
+    try:
+        if not (policy_input.input_value(timeout=1000) or "").strip():
+            policy_input.click(force=True)
+            vpc_page.page.locator("li:visible").filter(has_text="允许").first.click()
+    except Exception as e:
+        raise AssertionError(
+            f"BMS ACL {tab_name} 新建弹窗选择策略失败: {e}; diagnostics={_bms_acl_page_diagnostics(vpc_page)}"
+        ) from e
+
     src_ip_input = dialog.locator(".el-form-item").filter(has_text="源IP地址").locator("textarea, input[type='text']").first
     src_ip_input.fill("0.0.0.0/0")
     dest_ip_input = dialog.locator(".el-form-item").filter(has_text="目的IP地址").locator("textarea, input[type='text']").first
     dest_ip_input.fill("0.0.0.0/0")
 
-    dialog.get_by_text("确定", exact=True).click()
+    ok_button = dialog.locator(".cloud-button-btn.cl-btn-primary").filter(has_text="确定")
+    if ok_button.count() > 0:
+        ok_button.first.click(force=True)
+    else:
+        dialog.get_by_text("确定", exact=True).click()
     vpc_page.wait_for_page_ready()
 
 
