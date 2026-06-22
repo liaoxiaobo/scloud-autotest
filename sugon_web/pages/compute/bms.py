@@ -31,16 +31,37 @@ class BmsPage(BasePage):
                 # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
                 # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
                 base = self.page.url.split('#')[0].rstrip('/')
+                target_url = f"{base}/#{expected}"
                 self.page.goto(base)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(1500)
-                self.page.goto(f"{base}#{expected}")
+                self.page.goto(target_url)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(2500)
                 # 若被重定向到 no-permission，尝试通过菜单点击导航
                 if "no-permission" in self.page.url:
                     self.logger.warning(f"URL 导航到 {expected} 被重定向到 no-permission，尝试菜单点击")
                     self._click_bms_submenu(name)
+                # 偶发进入前端 error 路由时，先重新打开服务根页再直达目标 hash；
+                # 仍失败时再尝试菜单点击，避免后续误报为搜索框定位失败。
+                if "#/error" in self.page.url:
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 导航到 {name} 后进入 error 路由，重试直达: {target_url}"
+                    )
+                    self.page.goto(base)
+                    self.page.wait_for_load_state("domcontentloaded")
+                    self.page.wait_for_timeout(1500)
+                    self.page.goto(target_url)
+                    self.page.wait_for_load_state("domcontentloaded")
+                    self.page.wait_for_timeout(3000)
+                if "#/error" in self.page.url:
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 直达 {target_url} 后仍为 error，尝试左侧菜单点击"
+                    )
+                    self._click_bms_submenu(name)
+                    self.page.wait_for_timeout(3000)
+                if "#/error" in self.page.url:
+                    raise RuntimeError(f"进入BMS{name}页失败，当前URL={self.page.url}, 目标URL={target_url}")
             # 裸金属实例页面表格和搜索框加载较慢，增加等待时间
             wait_ms = 4000 if name == "裸金属实例" else 2500
             self.page.wait_for_timeout(wait_ms)

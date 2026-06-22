@@ -199,7 +199,7 @@ def pytest_collection_modifyitems(config, items):
     for item in bms_items:
         item.add_marker("bms")
         filename = item.path.name
-        if "image_prepare" in filename or "soft_create" in filename:
+        if "image_prepare" in filename or "soft_create" in filename or "sanity" in filename:
             item.add_marker("bms_prepare")
         elif "rebuild" in filename or "cleanup" in filename:
             item.add_marker("bms_destructive")
