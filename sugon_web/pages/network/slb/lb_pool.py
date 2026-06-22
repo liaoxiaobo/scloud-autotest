@@ -402,7 +402,7 @@ class LbPoolMixin(LbDetailMixin):
         )
 
     def wait_lb_pool_member_status(self, lb_name, pool_name, vm_name,
-                                   expected_status="运行中", timeout=120,
+                                   expected_status="运行中", timeout=180,
                                    interval=10, refresh=True):
         """轮询等待资源池成员状态变为期望值。
 

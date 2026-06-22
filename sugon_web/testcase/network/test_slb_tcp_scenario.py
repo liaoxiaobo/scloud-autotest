@@ -8,6 +8,7 @@ from sugon_web.testcase.network._slb_helpers import (
     assert_lb_algorithm,
     collect_lb_http_responses,
     count_lb_responses,
+    get_ssh_host_source_ip,
     is_http_reachable,
     prepare_http_backend,
     stop_http_backend,
@@ -105,7 +106,6 @@ class _BaseTestLbTcpScenario:
             responses = collect_lb_http_responses(
                 ssh_host,
                 f"http://{eip}:{PORT}/index.html",
-                count=30,
                 interval_sec=1,
                 connect_timeout=10,
             )
@@ -161,8 +161,9 @@ class _BaseTestLbTcpScenario:
         with allure_step_log("步骤4: 确认Real-Server初始状态为运行中"):
             vpc_page.goto_lb_pool_detail(lb_name, pool_name)
             for backend in backends:
-                vpc_page.assert_lb_pool_member_info(
-                    backend["name"], resource_status="运行中"
+                vpc_page.wait_lb_pool_member_status(
+                    lb_name, pool_name, backend["name"],
+                    expected_status="运行中", timeout=120,
                 )
 
         with allure_step_log("步骤5: 停止ecs1和ecs2的web服务"):
@@ -265,7 +266,7 @@ class _BaseTestLbTcpScenario:
             ssh_vm.connect(requester["mfip"])
             time.sleep(5)
             responses = collect_lb_http_responses(
-                ssh_vm, f"http://{lb_vip}:{PORT}/index.html", count=12
+                ssh_vm, f"http://{lb_vip}:{PORT}/index.html",
             )
             assert_lb_algorithm(
                 "round_robin",
@@ -484,15 +485,9 @@ class _BaseTestLbTcpScenario:
             )
 
         with allure_step_log("步骤8: 识别并添加本机源IP"):
-            host_ip_cmd = f"ip route get {eip} | grep -oP 'src \\K\\S+'"
-            host_ip_result = ssh_host.run(
-                host_ip_cmd, check_rc=False, return_rc=True,
-            )
-            route_src_ip = host_ip_result["stdout"].strip()
-
-            assert route_src_ip, (
-                f"未能通过 'ip route get {eip}' 识别 ssh_host 的源IP"
-            )
+            host_ips = get_ssh_host_source_ip(ssh_host, eip)
+            assert host_ips, "未能识别 ssh_host 访问 EIP 的源 IP"
+            route_src_ip = host_ips[0]
 
             actual_ips = vpc_page.get_detail_ip_addresses()
             if route_src_ip not in actual_ips:

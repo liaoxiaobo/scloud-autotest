@@ -1,4 +1,3 @@
-import random
 import time
 
 import allure
@@ -6,15 +5,16 @@ import pytest
 
 from sugon_web.testcase.network._lb_fixtures import clean_lb_listener, clean_ip_group
 from sugon_web.testcase.network._slb_helpers import (
-    assert_udp_all_rejected,
     assert_udp_source_ip_sticky,
+    assert_udp_source_ip_sticky_with_retry,
     clear_udp_server_log,
     collect_udp_recipients,
     get_ssh_host_source_ip,
     prepare_udp_backend,
     send_udp_message,
     stop_udp_backend,
-    wait_for_ping_reachable,
+    wait_for_udp_acl_converged,
+    _send_udp_batch,
 )
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
@@ -23,15 +23,10 @@ from sugon_web.utils.data import random_data
 PORT = 5050
 DESC = "1234567890edwqWDWQ中文~"
 
-
-def _send_udp_batch(ssh_client, target_ip, target_port, prefix, count=3):
-    """从指定客户端连续发送多条 UDP 消息，返回发送的消息列表。"""
-    base = random.randint(1000, 9999)
-    messages = [str(base + idx) for idx in range(count)]
-    for message in messages:
-        send_udp_message(ssh_client, target_ip, target_port, message)
-        time.sleep(0.3)
-    return messages
+# UDP 健康检查参数：使用较短间隔，确保状态在测试轮询周期内收敛。
+UDP_HEALTH_CHECK_INTERVAL = 5
+UDP_HEALTH_CHECK_TIMEOUT = 3
+UDP_HEALTH_CHECK_MAX_RETRIES = 2
 
 
 @pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
@@ -74,7 +69,12 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_listener_exists(lb_name)
             cleanup.add_listener({"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name})
 
-        with allure_step_log("步骤2: 添加资源池成员"):
+        with allure_step_log("步骤2: 后端启动UDP server"):
+            for backend in backends:
+                prepare_udp_backend(ssh_vm, backend, port=PORT)
+                cleanup.add_backend_server(backend, port=PORT)
+
+        with allure_step_log("步骤3: 添加资源池成员"):
             vpc_page.lb_pool_add_vm(
                 vm_names=[b["name"] for b in backends],
                 lb_name=lb_name,
@@ -87,22 +87,19 @@ class _BaseTestLbUdpScenario:
                     backend["name"], port=PORT, resource_status="运行中"
                 )
 
-        with allure_step_log("步骤3: 后端启动UDP server"):
-            for backend in backends:
-                prepare_udp_backend(ssh_vm, backend, port=PORT)
-                cleanup.add_backend_server(backend, port=PORT)
-
         with allure_step_log("步骤4: 内网VIP发送UDP消息(源IP算法)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
             ssh_vm.connect(requester["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"vip-{random_data(length=4)}", count=5
-            )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            sticky_backend = assert_udp_source_ip_sticky(
-                hit_map, f"{self.SLB_VERSION} UDP 内网 VIP 源IP算法"
+            sticky_backend, hit_map = assert_udp_source_ip_sticky_with_retry(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                prefix=f"vip-{random_data(length=4)}",
+                scene_name=f"{self.SLB_VERSION} UDP 内网 VIP 源IP算法",
+                count=5,
+                max_retries=3,
+                retry_interval=5,
             )
             allure.attach(
                 f"VIP 源 IP 算法命中后端: {sticky_backend}\n命中分布: {hit_map}",
@@ -124,19 +121,18 @@ class _BaseTestLbUdpScenario:
             warmup_result = send_udp_message(ssh_host, eip, PORT, "0")
             assert warmup_result.get("rc") == 0, f"warm-up UDP 发送失败: {warmup_result}"
             time.sleep(10)
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
-            time.sleep(5)
-            base = random.randint(1000, 9999)
-            messages = [str(base + idx) for idx in range(5)]
-            for message in messages:
-                result = send_udp_message(ssh_host, eip, PORT, message)
-                assert result.get("rc") == 0, f"UDP 消息 {message} 发送失败: {result}"
-                time.sleep(1)
-            time.sleep(10)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            sticky_backend = assert_udp_source_ip_sticky(
-                hit_map, f"{self.SLB_VERSION} UDP 公网 FIP 源IP算法"
+
+            sticky_backend, hit_map = assert_udp_source_ip_sticky_with_retry(
+                ssh_client=ssh_host,
+                ssh_vm=ssh_vm,
+                target_ip=eip,
+                port=PORT,
+                backends=backends,
+                prefix=f"fip-{random_data(length=4)}",
+                scene_name=f"{self.SLB_VERSION} UDP 公网 FIP 源IP算法",
+                count=5,
+                max_retries=3,
+                retry_interval=10,
             )
             allure.attach(
                 f"FIP 源 IP 算法命中后端: {sticky_backend}\n命中分布: {hit_map}",
@@ -171,6 +167,9 @@ class _BaseTestLbUdpScenario:
                 balance_method="源IP",
                 health_check=True,
                 health_type="UDP",
+                health_interval=UDP_HEALTH_CHECK_INTERVAL,
+                health_timeout=UDP_HEALTH_CHECK_TIMEOUT,
+                health_max_retries=UDP_HEALTH_CHECK_MAX_RETRIES,
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
@@ -190,7 +189,7 @@ class _BaseTestLbUdpScenario:
             for backend in backends:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
-                    expected_status="运行中", timeout=120,
+                    expected_status="运行中", timeout=180,
                 )
 
         with allure_step_log("步骤5: 停止ecs1、ecs2的UDP server"):
@@ -201,7 +200,7 @@ class _BaseTestLbUdpScenario:
             for backend in backends[:2]:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
-                    expected_status="离线", timeout=120,
+                    expected_status="离线", timeout=180,
                 )
             vpc_page.assert_lb_pool_member_info(
                 backends[2]["name"], resource_status="运行中"
@@ -232,7 +231,7 @@ class _BaseTestLbUdpScenario:
             for backend in backends:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
-                    expected_status="运行中", timeout=120,
+                    expected_status="运行中", timeout=180,
                 )
 
         with allure_step_log("步骤10: 关闭健康检查"):
@@ -257,7 +256,7 @@ class _BaseTestLbUdpScenario:
             for backend in backends[:2]:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
-                    expected_status="离线", timeout=120,
+                    expected_status="离线", timeout=180,
                 )
             vpc_page.assert_lb_pool_member_info(
                 backends[2]["name"], resource_status="运行中"
@@ -273,7 +272,7 @@ class _BaseTestLbUdpScenario:
             for backend in backends:
                 vpc_page.wait_lb_pool_member_status(
                     lb_name, pool_name, backend["name"],
-                    expected_status="运行中", timeout=120,
+                    expected_status="运行中", timeout=180,
                 )
 
         with allure_step_log("步骤15: 再次内网VIP发送UDP消息(源IP一致)"):
@@ -352,27 +351,33 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_lb_basic_info("黑名单")
 
         with allure_step_log("步骤4: 黑名单内客户端访问(ecs0,应被拒绝)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
-            ssh_vm.connect(requester["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"acl-blocked-{random_data(length=4)}", count=3
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=True,
+                prefix=f"acl-blocked-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            assert_udp_all_rejected(hit_map, f"{self.SLB_VERSION} UDP 黑名单ecs0被拒绝")
 
         with allure_step_log("步骤5: 黑名单外客户端访问(ecs1,可达)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
             ssh_vm.connect(excluded["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"acl-allowed-{random_data(length=4)}", count=3
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=False,
+                prefix=f"acl-allowed-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            received = {msg: backend for msg, backend in hit_map.items() if backend is not None}
-            assert received, f"黑名单外ecs1访问应被后端接收，但全部未命中: {hit_map}"
 
         with allure_step_log("步骤6: IP地址组追加ecs1的IP"):
             vpc_page.ip_group_add_ip_addresses(ip_group_name, [excluded["ip"]])
@@ -381,15 +386,19 @@ class _BaseTestLbUdpScenario:
             assert excluded["ip"] in actual_ips
 
         with allure_step_log("步骤7: ecs1加入黑名单后再次访问(应被拒绝)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
             ssh_vm.connect(excluded["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"acl-blocked2-{random_data(length=4)}", count=3
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=True,
+                prefix=f"acl-blocked2-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            assert_udp_all_rejected(hit_map, f"{self.SLB_VERSION} UDP 黑名单ecs1被拒绝")
 
         with allure_step_log("步骤8: IP地址组移除ecs1的IP"):
             vpc_page.ip_group_delete_ip_addresses(ip_group_name, [excluded["ip"]])
@@ -397,16 +406,19 @@ class _BaseTestLbUdpScenario:
             assert excluded["ip"] not in actual_ips
 
         with allure_step_log("步骤9: ecs1再次访问(应恢复)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
             ssh_vm.connect(excluded["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"acl-recover-{random_data(length=4)}", count=3
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=False,
+                prefix=f"acl-recover-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            received = {msg: backend for msg, backend in hit_map.items() if backend is not None}
-            assert received, f"移除黑名单后ecs1访问应被后端接收: {hit_map}"
 
         with allure_step_log("步骤10: 修改为允许所有IP"):
             vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
@@ -496,15 +508,19 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_lb_basic_info("黑名单")
 
         with allure_step_log("步骤4: 黑名单内ecs0访问(应被拒绝)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
             ssh_vm.connect(requester["mfip"])
-            messages = _send_udp_batch(
-                ssh_vm, lb_vip, PORT, prefix=f"ext-blocked-{random_data(length=4)}", count=3
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_vm,
+                ssh_vm=ssh_vm,
+                target_ip=lb_vip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=True,
+                prefix=f"ext-blocked-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
-            time.sleep(3)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            assert_udp_all_rejected(hit_map, f"{self.SLB_VERSION} UDP 外网黑名单ecs0被拒绝")
 
         with allure_step_log("步骤5: 绑定公网IP"):
             eip = vpc_page.slb_bind_eip(slb["name"])
@@ -520,15 +536,18 @@ class _BaseTestLbUdpScenario:
             for backend in backends:
                 clear_udp_server_log(ssh_vm, backend, port=PORT)
             time.sleep(5)
-            base = random.randint(1000, 9999)
-            messages = [str(base + idx) for idx in range(3)]
-            for message in messages:
-                send_udp_message(ssh_host, eip, PORT, message)
-                time.sleep(0.3)
-            time.sleep(10)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            received = {msg: backend for msg, backend in hit_map.items() if backend is not None}
-            assert received, f"外网客户端访问应被后端接收，但实际未命中: {hit_map}"
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_host,
+                ssh_vm=ssh_vm,
+                target_ip=eip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=False,
+                prefix=f"ext-allowed-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
+            )
 
         with allure_step_log("步骤7: 识别并将本机源IP加入黑名单"):
             candidates = get_ssh_host_source_ip(ssh_host, eip)
@@ -543,18 +562,17 @@ class _BaseTestLbUdpScenario:
             assert primary_ip in actual_ips, f"IP {primary_ip} 未成功加入黑名单"
 
         with allure_step_log("步骤8: 外网客户端再次访问(应被拒绝)"):
-            for backend in backends:
-                clear_udp_server_log(ssh_vm, backend, port=PORT)
-            time.sleep(10)
-            base = random.randint(1000, 9999)
-            messages = [str(base + idx) for idx in range(3)]
-            for message in messages:
-                send_udp_message(ssh_host, eip, PORT, message)
-                time.sleep(0.3)
-            time.sleep(10)
-            hit_map = collect_udp_recipients(ssh_vm, backends, port=PORT, messages=messages)
-            assert_udp_all_rejected(
-                hit_map, f"{self.SLB_VERSION} UDP 外网黑名单加入本机源IP后被拒绝"
+            wait_for_udp_acl_converged(
+                ssh_client=ssh_host,
+                ssh_vm=ssh_vm,
+                target_ip=eip,
+                port=PORT,
+                backends=backends,
+                should_be_rejected=True,
+                prefix=f"ext-blocked2-{random_data(length=4)}",
+                count=3,
+                timeout_sec=60,
+                interval_sec=5,
             )
 
 

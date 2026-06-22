@@ -347,7 +347,7 @@ class _BaseTestLbHttpScenario:
                 weights={k: v for k, v in weights.items()},
             )
 
-        if self.SLB_VERSION == "V2":
+        if self.SLB_VERSION == "V1":
             with allure_step_log("步骤7: 检查pod数量"):
                 lb_uuid = vpc_page.get_slb_uuid(slb["name"])
                 pod_count = 0
@@ -416,8 +416,9 @@ class _BaseTestLbHttpScenario:
         with allure_step_log("步骤4: 确认Real-Server初始状态为运行中"):
             vpc_page.goto_lb_pool_detail(lb_name, pool_name)
             for backend in backends:
-                vpc_page.assert_lb_pool_member_info(
-                    backend["name"], resource_status="运行中"
+                vpc_page.wait_lb_pool_member_status(
+                    lb_name, pool_name, backend["name"],
+                    expected_status="运行中", timeout=120,
                 )
 
         with allure_step_log("步骤5: 停止ecs1和ecs2的web服务"):
