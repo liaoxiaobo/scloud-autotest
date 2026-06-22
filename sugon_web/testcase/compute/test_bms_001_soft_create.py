@@ -723,7 +723,7 @@ class TestBmsSoftCreate:
         # === 步骤8: SSH检查BMS网卡 ===
         with allure_step_log("步骤8: SSH检查BMS网卡"):
             # 获取 master02 的 IP 地址
-            node_info = ssh_host.run(f"kubectl get nodes {actual_node} -owide", return_rc=True)
+            node_info = ssh_host.run(f"sudo kubectl get nodes {actual_node} -owide", return_rc=True)
             master02_ip = None
             for line in node_info.get("stdout", "").split('\n'):
                 parts = line.split()
@@ -731,6 +731,7 @@ class TestBmsSoftCreate:
                     master02_ip = parts[5]
                     break
             if not master02_ip:
+                logger.warning(f"未从 kubectl 节点信息中解析到 {actual_node} 的 Internal-IP，使用节点名直连")
                 master02_ip = actual_node
             logger.info(f"master02 节点地址: {master02_ip}")
 
@@ -740,22 +741,22 @@ class TestBmsSoftCreate:
             pkey_path = get_file_abspath(config.get("pkey"))
             ssh_node.connect(host=master02_ip, username="scloudadmin", pkey=pkey_path, use_jumphost=True)
 
-            time.sleep(300)
             bms_nic_name = None
-            for i in range(3):
+            for waited in range(0, 901, 30):
                 r = ssh_node.run("ip a | grep bms", return_rc=True)
                 if r["rc"] == 0 and "bms-nic" in r["stdout"]:
                     # ip a 输出格式: "bms-nic-3157: <flags> ..."，冒号不是名称一部分
                     m = re.search(r"(bms-nic[0-9a-zA-Z_-]+)", r["stdout"])
                     if m:
                         bms_nic_name = m.group(1)
-                        logger.info(f"网卡: {bms_nic_name}")
+                        logger.info(f"发现BMS网卡: {bms_nic_name}，等待{waited}s")
                         break
-                if i < 2:
-                    time.sleep(300)
+                if waited < 900:
+                    logger.info(f"暂未发现 bms-nic 网卡，30s后重试 ({waited}/900s)")
+                    time.sleep(30)
             if not bms_nic_name:
                 ssh_node.close()
-                pytest.skip("未找到bms-nic网卡")
+                pytest.skip("未在15分钟内找到bms-nic网卡")
 
         try:
             # === 步骤9: 记录 ===

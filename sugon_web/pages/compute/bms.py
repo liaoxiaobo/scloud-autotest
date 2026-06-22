@@ -26,41 +26,45 @@ class BmsPage(BasePage):
         expected = self._SOFT_SUBMENU_URL_MAP.get(name)
         self.goto_service("裸金属")
         if expected:
-            if expected not in self.page.url:
-                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
-                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
-                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
-                base = self.page.url.split('#')[0].rstrip('/')
-                target_url = f"{base}/#{expected}"
+            base = self.page.url.split('#')[0].rstrip('/')
+            target_url = f"{base}/#{expected}"
+
+            def _on_expected_route():
+                return expected in self.page.url and "#/error" not in self.page.url
+
+            def _goto_target(wait_ms=2500):
                 self.page.goto(base)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(1500)
                 self.page.goto(target_url)
                 self.page.wait_for_load_state("domcontentloaded")
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(wait_ms)
+
+            if not _on_expected_route():
+                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
+                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
+                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
+                _goto_target()
                 # 若被重定向到 no-permission，尝试通过菜单点击导航
                 if "no-permission" in self.page.url:
                     self.logger.warning(f"URL 导航到 {expected} 被重定向到 no-permission，尝试菜单点击")
                     self._click_bms_submenu(name)
-                # 偶发进入前端 error 路由时，先重新打开服务根页再直达目标 hash；
+                # 偶发进入前端 error 路由或落到其他 BMS 子页面时，先重新打开服务根页再直达目标 hash；
                 # 仍失败时再尝试菜单点击，避免后续误报为搜索框定位失败。
-                if "#/error" in self.page.url:
+                if not _on_expected_route():
                     self.logger.warning(
-                        f"[_goto_submenu_safe] 导航到 {name} 后进入 error 路由，重试直达: {target_url}"
+                        f"[_goto_submenu_safe] 导航到 {name} 后未到达期望路由，"
+                        f"当前URL={self.page.url}，重试直达: {target_url}"
                     )
-                    self.page.goto(base)
-                    self.page.wait_for_load_state("domcontentloaded")
-                    self.page.wait_for_timeout(1500)
-                    self.page.goto(target_url)
-                    self.page.wait_for_load_state("domcontentloaded")
-                    self.page.wait_for_timeout(3000)
-                if "#/error" in self.page.url:
+                    _goto_target(wait_ms=3000)
+                if not _on_expected_route():
                     self.logger.warning(
-                        f"[_goto_submenu_safe] 直达 {target_url} 后仍为 error，尝试左侧菜单点击"
+                        f"[_goto_submenu_safe] 直达 {target_url} 后仍未到达期望路由，"
+                        f"当前URL={self.page.url}，尝试左侧菜单点击"
                     )
                     self._click_bms_submenu(name)
                     self.page.wait_for_timeout(3000)
-                if "#/error" in self.page.url:
+                if not _on_expected_route():
                     raise RuntimeError(f"进入BMS{name}页失败，当前URL={self.page.url}, 目标URL={target_url}")
             # 裸金属实例页面表格和搜索框加载较慢，增加等待时间
             wait_ms = 4000 if name == "裸金属实例" else 2500
@@ -325,7 +329,7 @@ class BmsPage(BasePage):
                 logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
                 return True
             except Exception as e:
-                logger.warning(f"[_js_click_action] 标准点击失败（元素不可见或不可交互）: {e}")
+                logger.info(f"[_js_click_action] 标准点击不可用，准备使用 JavaScript 点击 '{action}': {e}")
 
         # 回退到 JavaScript
         logger.info(f"[_js_click_action] 回退到 JavaScript 点击 '{action}'")
@@ -368,7 +372,10 @@ class BmsPage(BasePage):
                 return 'row-not-found';
             }""", [row_text, action])
         logger.info(f"[_js_click_action] JavaScript 点击结果: {result}")
-        return result not in ("not-found", "row-not-found")
+        if result in ("not-found", "row-not-found"):
+            logger.error(f"[_js_click_action] JavaScript 未找到操作 '{action}'，结果: {result}")
+            return False
+        return True
 
     def _get_switch_group_row(self, group_name: str, node_name: str = ""):
         """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
