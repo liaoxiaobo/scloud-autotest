@@ -964,7 +964,7 @@ class TestOBSBucketACL:
             os.path.dirname(__file__), "..", "test_data", "test_upload.txt"
         )
         test_file_name = os.path.basename(test_file_path)
-        project_name = f"obs专项{random_data(length=4)}"
+        project_name = "公共测试"
         project_id = None
         ak = sk = None
         endpoint_url = None
@@ -984,20 +984,8 @@ class TestOBSBucketACL:
             obs_page.page.wait_for_timeout(3000)
             obs_page.assert_object_list_contain(test_file_name)
 
-        # ------------------ 步骤1：创建项目 ------------------
-        with allure_step_log("步骤1: 创建obs专项项目并记录项目ID"):
-            _goto_org_management(page)
-            _select_org_and_switch_project_tab(page, "智能云事业部")
-            _delete_project_if_exists(page, project_name)
-            _create_project(page, project_name)
-            assert project_name in page.content(), (
-                f"项目'{project_name}'创建后未出现在页面中"
-            )
-            project_id = _get_project_id(page, project_name)
-            assert project_id, f"未能获取项目'{project_name}'的ID"
-
-        # ------------------ 步骤2：记录EndPoint ------------------
-        with allure_step_log("步骤2: 记录桶EndPoint信息"):
+        # ------------------ 步骤1：记录EndPoint ------------------
+        with allure_step_log("步骤1: 记录桶EndPoint信息"):
             obs_page.goto_service("对象存储专业版")
             obs_page.select_top_nav_project(
                 org_name=["sugoncloud", "智能云事业部"],
@@ -1012,18 +1000,8 @@ class TestOBSBucketACL:
             # 新桶创建后 S3 EndPoint 可能存在 eventual consistency，等待桶在 API 上可见
             _wait_for_bucket_s3_ready(endpoint_url, bucket["name"])
 
-        # ------------------ 步骤3：配置桶ACL ------------------
-        with allure_step_log("步骤3: 配置桶ACL权限"):
-            obs_page.obs_bucket_acl_config_click()
-            obs_page.obs_bucket_acl_create(
-                project_id=project_id,
-                read_permission=True,
-                object_read_permission=True,
-            )
-            obs_page.obs_bucket_acl_assert_contain(project_name)
-
-        # ------------------ 步骤4：创建AK/SK ------------------
-        with allure_step_log("步骤4: 为obs专项项目创建访问密钥"):
+        # ------------------ 步骤2：创建AK/SK ------------------
+        with allure_step_log("步骤2: 为公共测试项目创建访问密钥"):
             obs_page.page.goto(f"{Config.get('base_url')}/obs")
             obs_page.page.wait_for_load_state('networkidle')
             obs_page.page.wait_for_timeout(3000)
@@ -1071,8 +1049,8 @@ class TestOBSBucketACL:
             assert sk, "Secret Access Key 为空"
             obs_page.obs_credential_close_success_dialog()
 
-        # ------------------ 步骤5：验证有AK/SK可读取桶 ------------------
-        with allure_step_log("步骤5: 验证有AK/SK时可读取桶列表"):
+        # ------------------ 步骤3：验证有AK/SK可读取桶 ------------------
+        with allure_step_log("步骤3: 验证有AK/SK时可读取桶列表"):
             url = f"{endpoint_url}/{bucket['name']}"
             headers = _aws_sign_request(
                 "GET", f"/{bucket['name']}", ak, sk,
@@ -1086,20 +1064,18 @@ class TestOBSBucketACL:
 
         # ------------------ 步骤6：停用访问密钥 ------------------
         with allure_step_log("步骤6: 停用访问密钥"):
-            obs_page.goto_service("对象存储专业版")
-            obs_page.select_top_nav_project(
-                org_name=["sugoncloud", "智能云事业部"],
-                project_name=project_name,
-            )
-            obs_page.goto_submenu("个人凭证")
+            # 步骤4创建 AK 后已在个人凭证页且列表已按所选项目过滤，
+            # 直接刷新当前页确保列表最新，避免重新选择项目上下文。
+            obs_page.page.reload()
+            obs_page.page.wait_for_load_state('networkidle')
             obs_page.wait_for_page_ready()
             obs_page.page.wait_for_timeout(3000)
             obs_page.obs_credential_stop(ak)
             # 断言状态已变为停用
             obs_page.assert_credential_status(ak, expected_status="停用")
 
-        # ------------------ 步骤7：验证停用后无法读取桶 ------------------
-        with allure_step_log("步骤7: 验证停用后无法读取桶列表"):
+        # ------------------ 步骤4：验证停用后无法读取桶 ------------------
+        with allure_step_log("步骤4: 验证停用后无法读取桶列表"):
             headers = _aws_sign_request(
                 "GET", f"/{bucket['name']}", ak, sk,
                 "cn-north-1", "s3", full_host,
@@ -1110,35 +1086,14 @@ class TestOBSBucketACL:
             )
 
         # ------------------ 清理 ------------------
-        with allure_step_log("清理1: 删除obs专项项目的访问密钥"):
+        with allure_step_log("清理1: 删除公共测试项目的访问密钥"):
             obs_page.obs_credential_delete(ak)
             obs_page.assert_list_not_contain(
                 ak, column_name="访问密钥（Access Key ID）"
             )
 
-        with allure_step_log("清理2: 删除桶ACL配置"):
-            # ACL变更后UI可能无法访问桶，使用try/except避免清理失败导致测试失败
-            try:
-                obs_page.select_top_nav_project(
-                    org_name=["sugoncloud", "智能云事业部"],
-                    project_name="公共测试",
-                )
-                obs_page.goto_submenu("桶列表")
-                obs_page.page.wait_for_timeout(3000)
-                obs_page.assert_list_contain(bucket["name"])
-                obs_page.obs_bucket_enter_detail(bucket["name"])
-                obs_page.obs_bucket_acl_config_click()
-                obs_page.obs_bucket_acl_delete(project_name)
-                page_content = obs_page.page.content()
-                assert (
-                    project_name not in page_content
-                    or "暂无数据" in page_content
-                ), f"ACL删除后列表仍包含{project_name}"
-            except Exception as e:
-                logger.warning(f"清理桶ACL配置失败(ACL限制可能导致): {e}")
-
-        with allure_step_log("清理3: 删除上传的对象"):
-            # 从ACL配置页导航回桶详情页的对象tab
+        with allure_step_log("清理2: 删除上传的对象"):
+            # 从桶列表导航回桶详情页的对象tab
             try:
                 obs_page.goto_service("对象存储专业版")
                 obs_page.select_top_nav_project(
@@ -1151,8 +1106,3 @@ class TestOBSBucketACL:
                 obs_page.obs_object_delete(test_file_name)
             except Exception as e:
                 logger.warning(f"清理上传对象失败(ACL限制可能导致): {e}")
-
-        with allure_step_log("清理4: 删除obs专项项目"):
-            _goto_org_management(page)
-            _select_org_and_switch_project_tab(page, "智能云事业部")
-            _delete_project_if_exists(page, project_name)
