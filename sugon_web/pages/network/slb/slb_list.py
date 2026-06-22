@@ -74,7 +74,7 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
 
         # 网络配置 - IP分配方式
         if ip_type == "自动分配":
-            self.locator("label").filter(has_text="自动分配").click()
+            self.locator("label").filter(has_text="自动分配").first.click()
         elif ip_type in ["快速选择", "手动输入"]:
             # 当IP分配方式为手动分配的时候才能快速选择或手动输入ip，且ip是必填
             if not ip_address:
@@ -108,6 +108,9 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
 
         # 提交
         self.btn_submit.click()
+        # 等待创建弹窗关闭并返回列表页
+        self.page.wait_for_url("**/vpc-load-balance-list", timeout=30000)
+        self.wait_for_page_ready()
 
         self.logger.info(f"负载均衡创建完成: {name} ({version})")
         return name
@@ -225,25 +228,44 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
         """)
 
         if balance_detail:
-            return {
+            info = {
                 "name": balance_detail.get("name", slb_name),
                 "id": balance_detail.get("uuid", "") or balance_detail.get("id", ""),
                 "vip": balance_detail.get("vip_address", ""),
                 "vip6": balance_detail.get("vip6_address", ""),
+                "fip6": (balance_detail.get("fip6") or {}).get("floating_ip_address", "")
+                    or (balance_detail.get("fip6") or {}).get("fixed_ip_address", ""),
                 "status": balance_detail.get("status", ""),
                 "version": "V2" if balance_detail.get("type") == "nfv" else "V1",
                 "ha": balance_detail.get("topology") == "ACTIVE_STANDBY",
             }
+            self.logger.info(f"Vue读取SLB '{slb_name}' 详情: {info}")
+            return info
 
         # 降级：从 DOM 读取关键字段
-        info = {"name": slb_name, "id": "", "vip": "", "vip6": "", "status": "", "version": "", "ha": False}
+        info = {"name": slb_name, "id": "", "vip": "", "vip6": "", "fip6": "", "status": "", "version": "", "ha": False}
 
-        # VIP
-        vip_el = self.locator("cl-item-col[label='网络IP'] span").first
-        if vip_el.count() > 0 and vip_el.is_visible():
-            text = vip_el.inner_text().strip()
+        # 网络IP 区域：提取所有文本后按正则分离 IPv4/IPv6
+        net_ip_el = self.locator("cl-item-col[label='网络IP']").first
+        if net_ip_el.count() > 0 and net_ip_el.is_visible():
+            full_text = net_ip_el.inner_text().strip()
+            self.logger.info(f"SLB '{slb_name}' 网络IP原始文本: '{full_text}'")
+            if full_text and full_text != "--":
+                # 提取 IPv4（排除IPv6格式）
+                ipv4_match = re.search(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", full_text)
+                if ipv4_match:
+                    info["vip"] = ipv4_match.group(1)
+                # 提取 IPv6
+                ipv6_match = re.search(r"([0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){2,7})", full_text)
+                if ipv6_match:
+                    info["vip6"] = ipv6_match.group(1)
+
+        # 公网IPv6
+        fip6_el = self.locator("cl-item-col[label='公网IPv6'] span").first
+        if fip6_el.count() > 0 and fip6_el.is_visible():
+            text = fip6_el.inner_text().strip()
             if text and text != "--":
-                info["vip"] = text
+                info["fip6"] = text
 
         # UUID
         uuid_el = self.locator("cl-item-col[label='负载均衡UUID']").first
@@ -498,6 +520,26 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
         """
         action_name = f"绑定公网{ip_version}"
         self.click_action(slb_name, action_name)
+
+        # IPv6 场景：对话框标题为"配置弹性公网IPv6"，无 IP 池/列表选择
+        if ip_version == "IPv6":
+            dialog_name = "配置弹性公网IPv6"
+            dialog = self._find_element([
+                self.get_by_role("dialog", name=dialog_name),
+                self.get_by_label(dialog_name),
+            ], f"{dialog_name}对话框", timeout=5000)
+            # 关闭对话框，不执行绑定
+            try:
+                dialog.get_by_text("取消").click()
+            except Exception:
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            self.logger.info(f"负载均衡 {slb_name} IPv6 公网IP可用")
+            return ["IPv6"]
+
+        # IPv4 场景
         dialog = self._find_element([
             self.get_by_role("dialog", name=action_name),
             self.get_by_label(action_name),
@@ -527,9 +569,43 @@ class SlbListMixin(SlbAssertionMixin, BasePage):
 
     @submenu("负载均衡（基础版）")
     def slb_bind_eip(self, slb_name, network_type="public_net(基础版)", ip_version="IPv4"):
-        """为负载均衡绑定公网IP，并返回绑定的EIP地址"""
+        """为负载均衡绑定公网IP，并返回绑定的EIP地址
+
+        IPv4 场景：选择 IP 池 -> 选择可用 IP -> 确定。
+        IPv6 场景：对话框标题为"配置弹性公网IPv6"，无 IP 池/可用 IP 选择，直接确定。
+        """
         action_name = f"绑定公网{ip_version}"
         self.click_action(slb_name, action_name)
+
+        if ip_version == "IPv6":
+            dialog_name = "配置弹性公网IPv6"
+            dialog = self._find_element([
+                self.get_by_role("dialog", name=dialog_name),
+                self.get_by_label(dialog_name),
+            ], f"{dialog_name}对话框", timeout=5000)
+            dialog.get_by_text("确定", exact=True).click()
+            self.assert_popup_success("新建弹性公网IPV6成功")
+            # IPv6 地址在绑定后从页面刷新获取，需要轮询等待后端同步
+            eip6 = ""
+            for _ in range(15):
+                self.page.wait_for_timeout(2000)
+                self.goto_submenu("负载均衡（基础版）")
+                self.search(slb_name)
+                detail = self.get_slb_detail_info(slb_name)
+                eip6 = detail.get("fip6", "")
+                if eip6:
+                    break
+                # 从 DOM 的"公网IPv6"字段兜底读取
+                fip6_el = self.locator("cl-item-col[label='公网IPv6'] span").first
+                if fip6_el.count() > 0 and fip6_el.is_visible():
+                    text = fip6_el.inner_text().strip()
+                    if text and text != "--":
+                        eip6 = text
+                        break
+            self.logger.info(f"负载均衡 {slb_name} {action_name}成功: {eip6}")
+            return eip6
+
+        # IPv4 场景
         dialog = self._find_element([
             self.get_by_role("dialog", name=action_name),
             self.get_by_label(action_name),

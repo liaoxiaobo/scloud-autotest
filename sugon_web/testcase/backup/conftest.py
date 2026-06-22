@@ -2,19 +2,18 @@ from __future__ import annotations
 import time
 import pytest
 from typing import Any, Dict, Iterator, List, Tuple, TypedDict, Union
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.network import VpcPage
-from sugon_web.testcase.conftest import (
-    VmFixtureParams,
-    _allocate_eips,
-    _build_vm_create_request,
-    _build_vm_fixture_names,
-    _collect_vm_fixture_metadata,
-    _create_vm_resources,
-)
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute.vm_fixture.types import VmFixtureParams
+from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
+from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
+from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
+from sugon_web.testcase.conftest import _allocate_eips
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import load_data, random_data
 
@@ -202,6 +201,9 @@ def _prepare_single_vm_backup_metadata(
     ssh_vm: Any,
     vm_data: VmInfo,
     backup_nodes: List[str],
+    browser: Any,
+    config: Any,
+    ssh_host: Any,
 ) -> VmInfo:
     """为单台虚机补齐备份场景专用校验元数据。
 
@@ -216,6 +218,9 @@ def _prepare_single_vm_backup_metadata(
         ssh_vm: SSH fixture，用于连接源虚机并生成校验数据。
         vm_data: 通用 VM helper 返回的一台虚机元数据。
         backup_nodes: 当前环境可用的备份节点列表。
+        browser: Playwright Browser 实例，用于创建 admin context 绑定 MFIP。
+        config: 配置对象。
+        ssh_host: SSH 后端客户端，用于查询 ``port_id``。
 
     Returns:
         一个新的虚机元数据字典，除原始字段外，还包含 ``backup_nodes``、
@@ -229,8 +234,11 @@ def _prepare_single_vm_backup_metadata(
         ecs_page.assert_popup_success("执行成功")
         row_data = ecs_page.get_row_data(vm_data["name"])
         arch = row_data.get("架构")
-        ip = row_data.get("IP地址").split("固定:")[1].strip()
-        mfip = OpsPage(ecs_page.page).bind_mfip(ip)
+        meta = collect_vm_metadata(ecs_page, ssh_host, vm_data["name"])
+        mfip = MfipHelper.bind_mfip_with_admin_context(
+            browser, config, meta["port_id"],
+            project_id=meta.get("project_id", "admin-inner-project"),
+        )
         ssh_vm.connect(mfip)
         md5_dict = ecs_page.vm_pre_data(ssh_vm)
 
@@ -244,6 +252,9 @@ def _enrich_vm_backup_metadata(
     ssh_vm: Any,
     base_vm_list: VmList,
     backup_nodes: List[str],
+    browser: Any,
+    config: Any,
+    ssh_host: Any,
 ) -> VmList:
     """基于通用 VM 元数据，补齐备份场景专用校验字段。
 
@@ -252,6 +263,9 @@ def _enrich_vm_backup_metadata(
         ssh_vm: SSH fixture，用于准备源数据。
         base_vm_list: 通用 VM helper 返回的基础虚机元数据列表。
         backup_nodes: 当前环境可用的备份节点列表。
+        browser: Playwright Browser 实例。
+        config: 配置对象。
+        ssh_host: SSH 后端客户端。
 
     Returns:
         补齐备份校验字段后的虚机元数据列表。
@@ -262,6 +276,9 @@ def _enrich_vm_backup_metadata(
             ssh_vm=ssh_vm,
             vm_data=vm_data,
             backup_nodes=backup_nodes,
+            browser=browser,
+            config=config,
+            ssh_host=ssh_host,
         )
         for vm_data in base_vm_list
     ]
@@ -489,8 +506,10 @@ def backup_page(page: Any) -> BackUpPage:
 @pytest.fixture(scope="class")
 def vm_backup(
     browser_context: Any,
+    browser: Any,
     config: Any,
     ssh_vm: Any,
+    ssh_host: Any,
     request: pytest.FixtureRequest,
 ) -> Iterator[VmList]:
     """为当前测试类提供可用于备份的源虚机。
@@ -525,7 +544,9 @@ def vm_backup(
             params=params,
         )
         enabled_nodes = _get_enabled_backup_nodes(OpsPage(page))
-        vm_list = _enrich_vm_backup_metadata(ecs_page, ssh_vm, base_vm_list, enabled_nodes)
+        vm_list = _enrich_vm_backup_metadata(
+            ecs_page, ssh_vm, base_vm_list, enabled_nodes, browser, config, ssh_host
+        )
         logger.info(f"vm_list: {vm_list}")
 
         ecs_page.goto_service("备份")

@@ -18,8 +18,10 @@ from .ecs_volume import EcsVolumeMixin
 from .ecs_batch import EcsBatchMixin
 from .ecs_detail import EcsDetailMixin
 from .ecs_ssh import EcsSshMixin
+from .ecs_keypair import EcsKeypairMixin
 
 class EcsMixin(
+    EcsKeypairMixin,
     EcsCreateMixin,
     EcsLifecycleMixin,
     EcsNetworkMixin,

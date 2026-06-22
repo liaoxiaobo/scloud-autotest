@@ -1,6 +1,7 @@
 from sugon_web.common.components.navigation import submenu
 from sugon_web.common.playwright import expect
 
+from sugon_web.assertions.base.format import fmt_assertion_error
 
 class BackupAssertionMixin:
     """备份服务业务断言 Mixin。
@@ -79,9 +80,13 @@ class BackupAssertionMixin:
             status = [status]
 
         for status in status:
-            assert status in actual_status, \
-                f"[StatusAssertion] 备份数据 '{server_name}' | 状态不匹配 | " \
-                f"期望: 包含 '{status}' | 实际: '{actual_status}'"
+            assert status in actual_status, fmt_assertion_error(
+                "StatusAssertion",
+                f"备份数据 '{server_name}'",
+                "状态不匹配",
+                expected=f"包含 '{status}'",
+                actual=f"'{actual_status}'",
+            )
 
     @submenu("恢复任务")
     def assert_resume_task_details(self, name, details: dict, tab="详情"):

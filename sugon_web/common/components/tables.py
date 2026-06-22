@@ -152,7 +152,6 @@ class TablesMixin:
         t_body = self.locator(".el-table__body-wrapper")
         if t_body.count() == 0:
             t_body = self
-        t_body.locator("tr").first.wait_for(state="visible", timeout=10000)
 
         try:
             pattern = re.compile(rf"^{re.escape(name)}\s")
@@ -378,12 +377,10 @@ class TablesMixin:
         return column_data
 
     def _expand_page_size(self, target_size: str = "50") -> bool:
-        """尝试将当前可见表格的分页条数扩大。
+        """尝试将当前交互上下文中的分页条数扩大。
 
-        按优先级查找分页器：
-        1. 主内容区 (#cloud-container-content)
-        2. 当前激活 tab 页
-        3. 页面全局
+        自动按优先级探测分页器位置：可见 dialog → 激活 tab → 主内容区 → 页面全局。
+        调用方无需关心自身处于弹窗、Tab 页还是主页面。
 
         点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
         若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
@@ -394,34 +391,49 @@ class TablesMixin:
         Returns:
             bool: 是否成功调整分页条数
         """
-        try:
-            size_triggers = [
-                self.locator("#cloud-container-content .el-pagination__sizes .el-input__inner"),
-                self.locator(".el-tab-pane:not([aria-hidden='true']) .el-pagination__sizes .el-input__inner"),
-                self.locator(".el-pagination__sizes .el-input__inner"),
-            ]
+        # 按优先级构建候选触发器
+        candidate_triggers = [
+            self.get_by_role("dialog")
+                .filter(has=self.page.locator(".el-pagination"))
+                .locator(".el-pagination__sizes .el-input__inner")
+                .first,
+            self.locator(".el-tab-pane:not([aria-hidden='true']) .el-pagination__sizes .el-input__inner")
+                .first,
+            self.locator("#cloud-container-content .el-pagination__sizes .el-input__inner")
+                .first,
+            self.locator(".el-pagination__sizes .el-input__inner")
+                .first,
+        ]
 
-            size_trigger = None
-            for loc in size_triggers:
-                if loc.count() > 0 and loc.first.is_visible():
-                    size_trigger = loc.first
+        size_trigger = None
+        for trigger in candidate_triggers:
+            try:
+                if trigger.count() > 0 and trigger.is_visible():
+                    size_trigger = trigger
                     break
+            except Exception:
+                continue
 
-            if size_trigger is None:
-                self.logger.debug("未找到可见的分页条数切换器")
-                return False
+        if size_trigger is None:
+            self.logger.debug("未找到可见的分页条数切换器")
+            return False
 
+        try:
             size_trigger.click()
             self.page.wait_for_timeout(500)
 
+            # 下拉选项限定在 el-select-dropdown 内，避免误点其他 select 组件
             for size in [f"{target_size}条/页", "100条/页", "50条/页"]:
-                option = self.locator("li:visible").filter(has_text=size).last
+                option = self.locator("div.el-select-dropdown:visible li").filter(has_text=size).last
                 if option.count() > 0 and option.is_visible():
                     option.click()
                     if hasattr(self, "wait_for_page_ready"):
                         self.wait_for_page_ready()
                     else:
-                        self.page.wait_for_timeout(1000)
+                        try:
+                            self.page.locator(".el-loading-mask").wait_for(state="hidden", timeout=5000)
+                        except Exception:
+                            self.page.wait_for_timeout(1000)
                     self.logger.info(f"分页条数已调整为 {size}")
                     return True
 

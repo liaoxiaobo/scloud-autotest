@@ -8,6 +8,7 @@ from sugon_web.testcase.network._slb_helpers import (
     assert_lb_algorithm,
     collect_lb_http_responses,
     count_lb_responses,
+    is_http_reachable,
     prepare_http_backend,
     stop_http_backend,
     wait_for_ping_reachable,
@@ -39,6 +40,7 @@ class _BaseTestLbTcpScenario:
         backend_markers = {
             f"ecs{i + 1}": f"this is ecs{i + 1}" for i in range(len(backends))
         }
+        lb_vip = vpc_page.get_slb_vip(slb["name"])
 
         with allure_step_log("步骤1: 创建TCP监听器"):
             vpc_page.slb_lb_create(
@@ -64,18 +66,17 @@ class _BaseTestLbTcpScenario:
             )
             vpc_page.assert_popup_success("提交成功")
             for backend in backends:
-                vpc_page.assert_lb_pool_member_info(backend["name"], port=PORT)
+                vpc_page.assert_lb_pool_member_info(
+                    backend["name"], port=PORT, resource_status="运行中"
+                )
 
         with allure_step_log("步骤3: 后端虚机启动web服务"):
             for i, backend in enumerate(backends):
                 prepare_http_backend(ssh_vm, backend, f"ecs{i + 1}", port=PORT)
                 cleanup.add_backend_server(backend, port=PORT)
 
-        lb_vip = vpc_page.get_slb_vip(slb["name"])
-
         with allure_step_log("步骤4: 内网VIP访问测试"):
             ssh_vm.connect(requester["mfip"])
-            time.sleep(5)
             responses = collect_lb_http_responses(
                 ssh_vm, f"http://{lb_vip}:{PORT}/index.html"
             )
@@ -87,23 +88,33 @@ class _BaseTestLbTcpScenario:
             )
 
         with allure_step_log("步骤5: 绑定公网IP"):
-            eip = vpc_page.slb_bind_eip(slb["name"])
+            available_eips = vpc_page.get_available_eips(slb["name"])
+            if len(available_eips) < 1:
+                pytest.skip("环境问题：当前环境无可用公网IP")
+            eip = vpc_page.slb_bind_eip_by_ip(slb["name"], available_eips[0])
             cleanup.add_eip(slb["name"])
             vpc_page.assert_popup_success("执行成功")
             actual_eip = vpc_page.get_slb_eip(slb["name"])
             assert actual_eip == eip, f"绑定公网IP不一致: 期望{eip}, 实际{actual_eip}"
 
         with allure_step_log("步骤6: 公网IP访问测试"):
-            # wait_for_ping_reachable(ssh_host, eip)
-            time.sleep(10)
+            assert is_http_reachable(
+                ssh_host, f"http://{eip}:{PORT}/index.html",
+                timeout_sec=60, interval_sec=5, connect_timeout=5,
+            ), f"公网IP {eip} 绑定成功但60秒内仍不可达，请检查EIP绑定状态或网络连通性"
             responses = collect_lb_http_responses(
-                ssh_host, f"http://{eip}:{PORT}/index.html"
+                ssh_host,
+                f"http://{eip}:{PORT}/index.html",
+                count=30,
+                interval_sec=1,
+                connect_timeout=10,
             )
             assert_lb_algorithm(
                 "round_robin",
                 responses,
                 backend_markers,
                 f"{self.SLB_VERSION} TCP 公网 EIP 轮询验证",
+                tolerance=0.25,
             )
 
     def test_lb_tcp_health_check(self, vpc_page, slb, vm, ssh_vm, clean_lb_listener):

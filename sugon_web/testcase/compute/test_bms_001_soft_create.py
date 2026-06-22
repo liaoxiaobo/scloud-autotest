@@ -4,8 +4,435 @@ import pytest
 import allure
 
 from sugon_web.common.remote import SSH
+from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data, get_file_abspath
+
+
+BMS_ACL_NAME = "bms-acl"
+BMS_SECURITY_GROUP_NAME = "bms-default"
+BMS_VPC_PREFIX = "bms-vpc-autotest"
+
+
+def _row_exists(page_obj, submenu_name, row_name):
+    page_obj.goto_service("虚拟私有云")
+    page_obj.goto_submenu(submenu_name)
+    try:
+        return page_obj.get_row_by_name(row_name) is not None
+    except Exception:
+        return False
+
+
+def _bms_open_acl_list(vpc_page):
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("网络ACL")
+
+
+def _bms_open_acl_detail(vpc_page, acl_name):
+    _bms_open_acl_list(vpc_page)
+    try:
+        vpc_page.search(acl_name)
+    except Exception as e:
+        logger.warning(f"BMS ACL {acl_name} 搜索失败，尝试直接在列表中定位: {e}")
+
+    row = vpc_page.page.locator(".el-table__body-wrapper tbody tr").filter(has_text=acl_name)
+    row.first.wait_for(state="visible", timeout=15000)
+    name_cell = row.first.locator("td").nth(1)
+
+    clicked = False
+    for target in (
+        name_cell.locator("a").filter(has_text=acl_name),
+        name_cell.get_by_text(acl_name, exact=True),
+        name_cell,
+    ):
+        try:
+            target.first.click(timeout=10000)
+            clicked = True
+            break
+        except Exception as e:
+            logger.warning(f"点击 BMS ACL {acl_name} 名称进入详情失败，尝试下一种方式: {e}")
+
+    if not clicked:
+        result = vpc_page.page.evaluate(
+            """aclName => {
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style && style.visibility !== 'hidden' && style.display !== 'none'
+                        && rect.width > 0 && rect.height > 0;
+                };
+                const rows = Array.from(document.querySelectorAll('tbody tr')).filter(visible);
+                const row = rows.find(item => (item.innerText || '').includes(aclName));
+                if (!row) {
+                    return 'row-not-found';
+                }
+                const cell = row.querySelector('td:nth-child(2)') || row;
+                const targets = Array.from(cell.querySelectorAll('a, button, span, div'))
+                    .filter(el => visible(el) && (el.innerText || el.textContent || '').trim() === aclName);
+                const target = targets[0] || cell;
+                ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(type => {
+                    target.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+                });
+                return 'clicked';
+            }""",
+            acl_name,
+        )
+        assert result == "clicked", f"未在网络ACL列表中找到 {acl_name}: {result}"
+
+    for _ in range(10):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+
+    try:
+        vpc_page.get_by_text(acl_name, exact=True).nth(1).click()
+    except Exception as e:
+        logger.warning(f"按精确文本点击 BMS ACL {acl_name} 进入详情失败，尝试 href 兜底: {e}")
+
+    for _ in range(10):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+
+    detail_url = vpc_page.page.evaluate(
+        """aclName => {
+            const anchors = Array.from(document.querySelectorAll('a[href*="/vpc-acl/"]'));
+            const anchor = anchors.find(el => (el.innerText || el.textContent || '').trim() === aclName);
+            return anchor ? anchor.href : '';
+        }""",
+        acl_name,
+    )
+    if detail_url:
+        vpc_page.page.goto(detail_url)
+        vpc_page.wait_for_page_ready()
+
+    for _ in range(30):
+        try:
+            page_text = vpc_page.page.locator("#cloud-container-content").inner_text(timeout=3000)
+            if "/vpc-acl/" in vpc_page.page.url and acl_name in page_text:
+                return
+        except Exception:
+            pass
+        vpc_page.page.wait_for_timeout(1000)
+    raise AssertionError(f"进入 BMS ACL 详情页超时: {acl_name}, current={vpc_page.page.url}")
+
+
+def _bms_switch_acl_rule_tab(vpc_page, tab_name):
+    result = vpc_page.page.evaluate(
+        """tabName => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const normalize = text => (text || '').replace(/\\s+/g, '').trim();
+            const candidates = Array.from(document.querySelectorAll(
+                '[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab, button, span, div'
+            )).filter(el => visible(el) && normalize(el.innerText || el.textContent) === normalize(tabName));
+            if (!candidates.length) {
+                return 'tab-not-found';
+            }
+            const active = candidates.find(el => {
+                const host = el.closest('[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab') || el;
+                const classes = `${el.className || ''} ${host.className || ''}`;
+                return el.getAttribute('aria-selected') === 'true'
+                    || host.getAttribute('aria-selected') === 'true'
+                    || /(^|\\s)(is-active|active|cloud-tabs-tab-active)(\\s|$)/.test(classes);
+            });
+            if (active) {
+                return 'already-active';
+            }
+            candidates[0].click();
+            return 'clicked';
+        }""",
+        tab_name,
+    )
+    assert result in ("clicked", "already-active"), f"切换 BMS ACL 页签失败: {tab_name}, result={result}"
+    vpc_page.wait_for_page_ready()
+
+
+def _bms_acl_rule_rows_text(vpc_page):
+    return vpc_page.page.evaluate(
+        """() => Array.from(document.querySelectorAll('tbody tr'))
+            .filter(row => {
+                const style = window.getComputedStyle(row);
+                const rect = row.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden'
+                    && rect.width > 0 && rect.height > 0;
+            })
+            .map(row => row.innerText || '')"""
+    )
+
+
+def _bms_click_acl_rule_create(vpc_page):
+    result = vpc_page.page.evaluate(
+        """() => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const buttons = Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
+                .filter(el => visible(el) && (el.innerText || el.textContent || '').includes('新建'));
+            if (!buttons.length) {
+                return 'button-not-found';
+            }
+            buttons[0].click();
+            return 'clicked';
+        }"""
+    )
+    assert result == "clicked", f"未找到 BMS ACL 规则新建按钮: {result}"
+
+
+def _bms_fill_acl_allow_all_dialog(vpc_page, tab_name):
+    dialog_name = f"新建{tab_name}"
+    dialog = vpc_page.page.locator(".el-dialog:visible, [role='dialog']:visible").filter(has_text=dialog_name)
+    dialog.wait_for(state="visible", timeout=15000)
+
+    src_ip_input = dialog.locator(".el-form-item").filter(has_text="源IP地址").locator("textarea, input[type='text']").first
+    src_ip_input.fill("0.0.0.0/0")
+    dest_ip_input = dialog.locator(".el-form-item").filter(has_text="目的IP地址").locator("textarea, input[type='text']").first
+    dest_ip_input.fill("0.0.0.0/0")
+
+    dialog.get_by_text("确定", exact=True).click()
+    vpc_page.wait_for_page_ready()
+
+
+def _bms_ensure_acl_allow_all_rule(vpc_page, direction):
+    tab_name = f"{direction}规则"
+    _bms_switch_acl_rule_tab(vpc_page, tab_name)
+
+    rows_text = _bms_acl_rule_rows_text(vpc_page)
+    has_allow_all = any(
+        "IPv4" in text
+        and "允许" in text
+        and ("all" in text.lower() or "全部" in text)
+        and "0.0.0.0/0" in text
+        for text in rows_text
+    )
+    if has_allow_all:
+        logger.info(f"ACL {BMS_ACL_NAME} 已存在 {direction} IPv4 全放通规则")
+        return
+
+    _bms_click_acl_rule_create(vpc_page)
+    _bms_fill_acl_allow_all_dialog(vpc_page, tab_name)
+    logger.info(f"ACL {BMS_ACL_NAME} 已按BMS页面流程创建 {direction} IPv4 全放通规则")
+
+
+def _ensure_bms_acl_allow_all(vpc_page):
+    if _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
+        logger.info(f"ACL {BMS_ACL_NAME} 已存在，复用")
+        return
+
+    vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
+
+    try:
+        acl_data = vpc_page.get_row_data(BMS_ACL_NAME)
+        if acl_data and str(acl_data.get("状态", "")) == "关闭":
+            vpc_page.acl_enable(BMS_ACL_NAME)
+    except Exception as e:
+        logger.warning(f"检查/开启 ACL {BMS_ACL_NAME} 状态失败，继续补规则: {e}")
+
+    _bms_open_acl_detail(vpc_page, BMS_ACL_NAME)
+    for direction in ("入方向", "出方向"):
+        _bms_ensure_acl_allow_all_rule(vpc_page, direction)
+
+
+def _sg_rule_exists(rules, direction, protocol, port=None):
+    for rule in rules:
+        if str(rule.get("方向", "")).strip() != direction:
+            continue
+        if "IPv4" not in str(rule.get("以太网类型", "")):
+            continue
+        rule_protocol = str(rule.get("IP协议", "")).lower()
+        if protocol.lower() not in rule_protocol:
+            continue
+        if port:
+            rule_port = str(rule.get("端口范围", "")).replace(" ", "")
+            if port.replace(" ", "") not in rule_port:
+                continue
+        return True
+    return False
+
+
+def _bms_select_rule_option(vpc_page, dialog, label_text, option_text, exact=True):
+    """Select an option in the BMS-only security group rule dialog."""
+    label_prefix = r"远[程端]" if label_text == "远程" else re.escape(label_text)
+    label_pattern = re.compile(rf"^\s*\*?\s*{label_prefix}")
+    form_item = dialog.locator(".el-form-item").filter(has_text=label_pattern).first
+    select_input = form_item.get_by_placeholder("请选择").first
+    current = ""
+    try:
+        current = select_input.input_value(timeout=1000).strip()
+    except Exception:
+        pass
+    if current == option_text:
+        return
+
+    select_input.click(force=True)
+    options = vpc_page.page.locator("li:visible")
+    if exact:
+        options.filter(has_text=re.compile(rf"^\s*{re.escape(option_text)}\s*$")).first.click()
+    else:
+        options.filter(has_text=option_text).first.click()
+
+
+def _bms_create_sg_cidr_rule(vpc_page, direction, protocol_type, port=None):
+    """Create a BMS security group rule with CIDR remote only, never remote security group."""
+    vpc_page.btn_create.click()
+    dialog = vpc_page.get_by_role("dialog", name="创建规则")
+
+    _bms_select_rule_option(vpc_page, dialog, "协议", "选择常用协议")
+
+    protocol_type_input = dialog.get_by_placeholder("请选择协议")
+    protocol_type_input.click(force=True)
+    protocol_type_input.fill(protocol_type)
+    vpc_page.page.locator("li:visible").filter(
+        has_text=re.compile(rf"^\s*{re.escape(protocol_type)}\s*$", re.IGNORECASE)
+    ).first.click()
+
+    if port:
+        _bms_select_rule_option(vpc_page, dialog, "打开端口", "端口范围")
+        start_port, end_port = port.split("-", 1)
+        start_input = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^\s*\*?\s*起始端口号")
+        ).get_by_role("textbox").first
+        end_input = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"^\s*\*?\s*终止端口号")
+        ).get_by_role("textbox").first
+        start_input.fill(start_port.strip())
+        end_input.fill(end_port.strip())
+
+    _bms_select_rule_option(vpc_page, dialog, "方向", direction, exact=False)
+    _bms_select_rule_option(vpc_page, dialog, "远程", "CIDR")
+    _bms_select_rule_option(vpc_page, dialog, "IP版本", "IPv4", exact=False)
+
+    dialog.get_by_text("确定").click()
+    vpc_page.assert_popup_success("新建安全组规则成功")
+    logger.info(
+        f"BMS安全组规则创建完成: sg={BMS_SECURITY_GROUP_NAME}, 方向={direction}, "
+        f"协议={protocol_type}, 远程=CIDR, CIDR留空"
+        f"{f', 端口={port}' if port else ''}"
+    )
+
+
+def _ensure_bms_security_group_allow_all(vpc_page):
+    if _row_exists(vpc_page, "安全组", BMS_SECURITY_GROUP_NAME):
+        logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在，复用")
+        return
+
+    vpc_page.sg_create(BMS_SECURITY_GROUP_NAME, desc="BMS自动化专用安全组")
+
+    rules = vpc_page.sg_get_all_rules(sg_name=BMS_SECURITY_GROUP_NAME)
+    expected_rules = [
+        ("入口", "定制TCP协议", "tcp", "1-65535"),
+        ("出口", "定制TCP协议", "tcp", "1-65535"),
+        ("入口", "定制UDP协议", "udp", "1-65535"),
+        ("出口", "定制UDP协议", "udp", "1-65535"),
+        ("入口", "所有ICMP协议", "icmp", None),
+        ("出口", "所有ICMP协议", "icmp", None),
+    ]
+    for direction, protocol_type, protocol, port in expected_rules:
+        if _sg_rule_exists(rules, direction, protocol, port):
+            logger.info(f"安全组 {BMS_SECURITY_GROUP_NAME} 已存在 {direction} {protocol} 放通规则")
+            continue
+        _bms_create_sg_cidr_rule(vpc_page, direction, protocol_type, port=port)
+
+
+def _find_reusable_bms_vpc(vpc_page):
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
+    try:
+        vpc_page.search(BMS_VPC_PREFIX)
+    except Exception as e:
+        logger.warning(f"搜索可复用 BMS VPC 失败，继续新建: {e}")
+        return None
+
+    rows = vpc_page.page.locator(".el-table__body-wrapper:visible tbody tr").filter(has_text=BMS_VPC_PREFIX)
+    if rows.count() == 0:
+        return None
+
+    row = rows.first
+    cells = row.locator("td")
+    vpc_name = ""
+    for index in range(cells.count()):
+        text = (cells.nth(index).text_content(timeout=1000) or "").strip()
+        match = re.search(r"bms-vpc-autotest[-\w]*", text)
+        if match:
+            vpc_name = match.group(0)
+            break
+    if not vpc_name:
+        return None
+
+    row_data = {}
+    try:
+        row_data = vpc_page.get_row_data(vpc_name)
+    except Exception as e:
+        logger.warning(f"读取可复用 BMS VPC {vpc_name} 行数据失败，使用默认子网命名: {e}")
+    cidr = (
+        row_data.get("网段")
+        or row_data.get("CIDR")
+        or row_data.get("IPv4网段")
+        or ""
+    )
+    subnet_name = f"{vpc_name}-subnet"
+    logger.info(f"复用已有 BMS VPC: VPC={vpc_name}, 子网={subnet_name}, CIDR={cidr or '未知'}")
+    return {
+        "vpc_name": vpc_name,
+        "subnet_name": subnet_name,
+        "cidr": cidr,
+        "acl_name": BMS_ACL_NAME,
+        "security_group": BMS_SECURITY_GROUP_NAME,
+    }
+
+
+def _prepare_bms_instance_vpc(vpc_page):
+    _ensure_bms_acl_allow_all(vpc_page)
+    _ensure_bms_security_group_allow_all(vpc_page)
+
+    reusable_vpc = _find_reusable_bms_vpc(vpc_page)
+    if reusable_vpc:
+        return reusable_vpc
+
+    timestamp = time.strftime("%Y%m%d%H%M%S")
+    vpc_name = f"{BMS_VPC_PREFIX}-{timestamp}"
+    subnet_name = f"{vpc_name}-subnet"
+    cidr = random_data("cidr")
+
+    vpc_page.goto_service("虚拟私有云")
+    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page.vpc_create(
+        name=vpc_name,
+        subnet_name=subnet_name,
+        cidr=cidr,
+        desc="BMS自动化专用VPC",
+        subnet_desc="BMS自动化专用子网",
+        network_type="Geneve",
+        acl_policy=BMS_ACL_NAME,
+    )
+    vpc_page.assert_popup_success("创建虚拟私有云成功")
+    vpc_page.assert_status(vpc_name)
+    logger.info(
+        f"BMS实例专用网络已创建: VPC={vpc_name}, 子网={subnet_name}, CIDR={cidr}, "
+        f"ACL={BMS_ACL_NAME}, 安全组={BMS_SECURITY_GROUP_NAME}"
+    )
+    return {
+        "vpc_name": vpc_name,
+        "subnet_name": subnet_name,
+        "cidr": cidr,
+        "acl_name": BMS_ACL_NAME,
+        "security_group": BMS_SECURITY_GROUP_NAME,
+    }
 
 
 @allure.epic("计算")
@@ -31,20 +458,41 @@ class TestBmsSoftCreate:
             ops_page._goto_switch_group()
             sg_name = None
             actual_node = None
+            bound_group = None
+            bound_node = None
+            unbound_group = None
             for r in ops_page.page.locator("tbody tr").all():
                 try:
                     cells = r.locator("td")
                     if cells.count() > 1:
                         n = cells.nth(1).text_content(timeout=3000).strip()
                         pm = cells.nth(2).text_content(timeout=3000).strip() if cells.count() > 2 else ""
+                        if not n or "暂无数据" in n:
+                            continue
                         # 物理机名必须是合法主机名（不含中文、操作按钮文案）
                         if n and pm and pm != "--" and pm != "—" and not re.search(r'[一-鿿]', pm):
-                            sg_name = n
-                            actual_node = pm
+                            bound_group = n
+                            bound_node = pm
                             break
+                        if not unbound_group and (not pm or pm == "--" or pm == "—"):
+                            unbound_group = n
                 except Exception:
                     continue
-            if not sg_name:
+
+            if bound_group:
+                sg_name = bound_group
+                actual_node = bound_node
+                logger.info(f"复用已绑定物理机的交换机组: {sg_name}, 物理机: {actual_node}")
+            elif unbound_group:
+                sg_name = unbound_group
+                logger.info(f"复用未绑定物理机的交换机组: {sg_name}，开始绑定物理机")
+                ops_page.switch_group_bind_node(sg_name, preferred_node)
+                ops_page.page.wait_for_timeout(2000)
+                ops_page._goto_switch_group()
+                ops_page.search(sg_name)
+                actual_node = ops_page.get_row_data(sg_name).get("物理机", "")
+                assert actual_node and actual_node != "--"
+            else:
                 sg_name = f"test-bms-{random_data()}"
                 ops_page.switch_group_create(sg_name)
                 ops_page.page.wait_for_timeout(2000)
@@ -105,7 +553,18 @@ class TestBmsSoftCreate:
 
         # === 步骤4: 注册代理 ===
         with allure_step_log("步骤4: 注册代理"):
-            bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
+            bms_page._goto_submenu_safe("代理")
+            bms_page.bms_search(actual_node)
+            existing_agent = None
+            try:
+                existing_agent = bms_page.get_row_data(actual_node)
+            except Exception as e:
+                logger.info(f"未找到现有代理 '{actual_node}'，准备注册: {e}")
+
+            if existing_agent:
+                logger.info(f"发现现有代理 '{actual_node}'，复用该代理: {existing_agent}")
+            else:
+                bms_page.bms_agent_register(node_name=actual_node, ip_address="10.0.13.13")
             agent_data = bms_page.bms_agent_wait_healthy(actual_node, max_wait=600, poll_interval=30)
             if not agent_data:
                 pytest.skip(f"代理 {actual_node} 未在10分钟内变为健康，无法继续 BMS 流程")
@@ -362,8 +821,17 @@ class TestBmsSoftCreate:
         if skip_to_step14:
             logger.info("检测到已有实例，跳过步骤13（创建实例），直接进入步骤14")
         else:
+            with allure_step_log("步骤12b: 准备BMS实例专用VPC/ACL/安全组"):
+                vpc_page = VpcPage(bms_page.page)
+                bms_network_env = _prepare_bms_instance_vpc(vpc_page)
+
             # === 步骤13-14: 创建裸金属实例并等待运行中（使用 fixture 工厂函数） ===
-            instance_name = bms_instance(name=instance_name)
+            instance_name = bms_instance(
+                name=instance_name,
+                security_group=bms_network_env["security_group"],
+                network_name=bms_network_env["vpc_name"],
+                subnet_name=bms_network_env["subnet_name"],
+            )
 
         # === 步骤15: SSH验证 ===
         with allure_step_log("步骤15: SSH验证"):
