@@ -1,4 +1,5 @@
 import re
+import time
 from time import sleep
 
 from sugon_web.common.base import BasePage, submenu
@@ -246,6 +247,77 @@ class EMRPage(BasePage):
             state="visible", timeout=10000
         )
 
+    def assert_common_node_status(
+        self, name: str, node_name: str, status: str = "运行", timeout: int = 300, refresh: bool = False, refresh_interval: int = 5
+    ):
+        start_time = time.time()
+        current_status = "未知"
+        first_check = True
+
+        while time.time() - start_time < timeout:
+            try:
+                if refresh and not first_check:
+                    self.btn_refresh.click()
+                    self.wait_for_page_ready()
+                first_check = False
+
+                self.ensure_detail_tab(name, "节点管理")
+                common_row = self.page.locator("tr.el-table__row").filter(has_text=re.compile(r"\bCOMMON\b", re.I)).first
+                expand_icon = common_row.locator(".el-table__expand-icon").first
+                if expand_icon.count() > 0 and "expanded" not in (expand_icon.get_attribute("class") or ""):
+                    expand_icon.click()
+                    sleep(0.5)
+
+                node_row = self.page.locator("tr.el-table__row").filter(has_text=re.compile(rf"^{re.escape(node_name)}\b", re.I)).first
+                node_row.wait_for(state="visible", timeout=10000)
+                current_status = node_row.inner_text()
+                if status in current_status:
+                    self.logger.info(f"COMMON 子节点状态验证成功: {node_name} -> {status}")
+                    return
+            except Exception as e:
+                self.logger.debug(f"检查 COMMON 子节点状态时出错: {e}")
+
+            sleep(refresh_interval)
+
+        raise AssertionError(
+            f"[StatusAssertion] COMMON 子节点状态 | 状态收敛失败 | "
+            f"节点: {node_name} | 期望: '{status}' | 实际: '{current_status}' | 超时未收敛"
+        )
+
+    def assert_common_node_absent(
+        self, name: str, node_name: str, timeout: int = 300, refresh: bool = False, refresh_interval: int = 5
+    ):
+        start_time = time.time()
+        first_check = True
+
+        while time.time() - start_time < timeout:
+            try:
+                if refresh and not first_check:
+                    self.btn_refresh.click()
+                    self.wait_for_page_ready()
+                first_check = False
+
+                self.ensure_detail_tab(name, "节点管理")
+                common_row = self.page.locator("tr.el-table__row").filter(has_text=re.compile(r"\bCOMMON\b", re.I)).first
+                expand_icon = common_row.locator(".el-table__expand-icon").first
+                if expand_icon.count() > 0 and "expanded" not in (expand_icon.get_attribute("class") or ""):
+                    expand_icon.click()
+                    sleep(0.5)
+
+                node_rows = self.page.locator("tr.el-table__row").filter(has_text=re.compile(rf"^{re.escape(node_name)}\b", re.I))
+                if node_rows.count() == 0:
+                    self.logger.info(f"COMMON 子节点不存在断言通过: {node_name} 已消失")
+                    return
+            except Exception as e:
+                self.logger.debug(f"检查 COMMON 子节点不存在时出错: {e}")
+
+            sleep(refresh_interval)
+
+        raise AssertionError(
+            f"[StatusAssertion] COMMON 子节点不存在 | 断言失败 | "
+            f"节点: {node_name} | 超时 {timeout} 秒后页面仍存在"
+        )
+
     @submenu("实例")
     def delete_cluster(self, name: str):
         """删除 E-MapReduce 集群。"""
@@ -455,10 +527,36 @@ class EMRPage(BasePage):
     @submenu("实例")
     def change_specification(self, name: str):
         self.ensure_detail_tab(name, "节点管理")
-        self._first_node_group_action("修改规格")
-        dialog = self.page.locator("div.el-dialog:visible").last
-        dialog.locator("label[role='radio'], .el-radio").last.click()
-        dialog.get_by_text("确定", exact=True).click()
+        tab = self._active_detail_tab()
+        name_rows = tab.locator(".el-table__fixed .el-table__fixed-body-wrapper tbody tr.el-table__row")
+        if name_rows.count() == 0:
+            name_rows = tab.locator(".el-table__body-wrapper tbody tr.el-table__row")
+
+        target_index = None
+        for i in range(name_rows.count()):
+            row = name_rows.nth(i)
+            try:
+                text = row.inner_text().strip()
+            except Exception:
+                continue
+            if re.search(r"\bWEB\b", text, re.I):
+                target_index = i
+                break
+
+        if target_index is None:
+            raise AssertionError("未找到 WEB 节点组行")
+
+        action_rows = tab.locator(".el-table__fixed-right .el-table__fixed-body-wrapper tbody tr.el-table__row")
+        if action_rows.count() == 0:
+            action_rows = tab.locator(".el-table__body-wrapper tbody tr.el-table__row")
+        if action_rows.count() <= target_index:
+            raise AssertionError(f"未找到 WEB 节点组对应的操作列行，目标索引: {target_index}")
+
+        action_row = action_rows.nth(target_index)
+        action_row.get_by_text("修改规格", exact=True).first.click()
+        specification_name = "emr.d6 emr.d6.2xlarge 8核"
+        self.get_by_role("row", name=specification_name).get_by_role("radio").click()
+        self.dialog_confirm.click()
 
     @submenu("实例")
     def expand_disk(self, name: str, size: int = 70):
