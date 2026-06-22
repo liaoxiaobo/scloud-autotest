@@ -347,7 +347,7 @@ class _BaseTestLbHttpScenario:
                 weights={k: v for k, v in weights.items()},
             )
 
-        if self.SLB_VERSION == "V1":
+        if self.SLB_VERSION == "V1" and slb["ha_enable"] == True:
             with allure_step_log("步骤7: 检查pod数量"):
                 lb_uuid = vpc_page.get_slb_uuid(slb["name"])
                 pod_count = 0
@@ -361,7 +361,7 @@ class _BaseTestLbHttpScenario:
                     if pod_count >= 1:
                         break
                     time.sleep(5)
-                assert pod_count == 1, f"预期有1个pod，实际有{pod_count}个"
+                assert pod_count == 2, f"预期有2个pod，实际有{pod_count}个"
 
     def test_lb_http_health_check(
         self, vpc_page, slb, vm, ssh_vm, clean_lb_listener

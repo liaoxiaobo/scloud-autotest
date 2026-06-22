@@ -23,11 +23,6 @@ from sugon_web.utils.data import random_data
 PORT = 5050
 DESC = "1234567890edwqWDWQ中文~"
 
-# UDP 健康检查参数：使用较短间隔，确保状态在测试轮询周期内收敛。
-UDP_HEALTH_CHECK_INTERVAL = 5
-UDP_HEALTH_CHECK_TIMEOUT = 3
-UDP_HEALTH_CHECK_MAX_RETRIES = 2
-
 
 @pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
 @allure.epic("网络服务")
@@ -167,9 +162,6 @@ class _BaseTestLbUdpScenario:
                 balance_method="源IP",
                 health_check=True,
                 health_type="UDP",
-                health_interval=UDP_HEALTH_CHECK_INTERVAL,
-                health_timeout=UDP_HEALTH_CHECK_TIMEOUT,
-                health_max_retries=UDP_HEALTH_CHECK_MAX_RETRIES,
             )
             vpc_page.assert_popup_success()
             vpc_page.assert_listener_exists(lb_name)
@@ -351,6 +343,7 @@ class _BaseTestLbUdpScenario:
             vpc_page.assert_lb_basic_info("黑名单")
 
         with allure_step_log("步骤4: 黑名单内客户端访问(ecs0,应被拒绝)"):
+            ssh_vm.connect(requester["mfip"])
             wait_for_udp_acl_converged(
                 ssh_client=ssh_vm,
                 ssh_vm=ssh_vm,

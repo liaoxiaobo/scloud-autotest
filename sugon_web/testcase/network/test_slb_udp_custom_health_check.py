@@ -123,8 +123,12 @@ def _send_udp_via_test_udp2(ssh_vm, vm_info, target_ip, port, message):
         timeout=20,
     )
 
-
-def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version, custom_hc=True):
+@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
+@pytest.mark.parametrize("slb", [{"version": "V1"}], indirect=True)
+@allure.epic("网络服务")
+@allure.feature("负载均衡")
+@allure.story("UDP自定义健康检查验证")
+def test_udp_custom_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, custom_hc=True):
     """执行 UDP 健康检查可用性验证的公共步骤。
 
     Args:
@@ -133,7 +137,6 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
         vm: VM fixture 返回的虚机列表。
         ssh_vm: SSH 虚拟机客户端 fixture。
         clean_lb_listener: 监听器清理注册表 fixture。
-        version: SLB 版本字符串，"V1" 或 "V2"。
         custom_hc: 是否使用自定义健康检查（V1支持，V2不支持）。
     """
     cleanup = clean_lb_listener
@@ -241,29 +244,3 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
                 f"[ScenarioAssertion] 客户端未收到预期的健康响应 '{HEALTH_RESPONSE}' | "
                 f"client_response={client_response!r}"
             )
-
-
-@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
-@pytest.mark.parametrize("slb", [{"version": "V1"}], indirect=True)
-@allure.epic("网络服务")
-@allure.feature("负载均衡")
-@allure.story("UDP自定义健康检查验证")
-class TestSlbUdpCustomHealthCheckV1:
-    def test_udp_custom_health_check(
-        self, vpc_page, slb, vm, ssh_vm, clean_lb_listener
-    ):
-        allure.dynamic.title("lbv1 > udp自定义健康检查验证 > 可用性验证")
-        _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, "V1", custom_hc=True)
-
-
-@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
-@pytest.mark.parametrize("slb", [{"version": "V2"}], indirect=True)
-@allure.epic("网络服务")
-@allure.feature("负载均衡")
-@allure.story("UDP自定义健康检查验证")
-class TestSlbUdpCustomHealthCheckV2:
-    def test_udp_custom_health_check(
-        self, vpc_page, slb, vm, ssh_vm, clean_lb_listener
-    ):
-        allure.dynamic.title("v2-lbv1 > udp自定义健康检查验证 > 可用性验证")
-        _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, "V2", custom_hc=False)

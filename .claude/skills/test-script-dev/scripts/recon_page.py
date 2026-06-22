@@ -20,7 +20,7 @@
 再 inspect DOM；元素枚举范式参考其 examples/element_discovery.py。
 
 用法示例：
-    python recon_page.py --service "云服务器" --host 172.22.1.190
+    python recon_page.py --service "云服务器"          # 不带 --host：默认用 sugon_web/config/base.yaml 配置的当前测试环境（推荐）
     python recon_page.py --service "负载均衡" --submenu "监听器" --grep "创建"
     python recon_page.py --url-hash "#/vpc/slb" --headless
 输出：

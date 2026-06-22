@@ -444,7 +444,7 @@ class ScrPage(CceBaseMixin, BasePage):
         """解绑公网IP。"""
         self.get_by_text("解绑公网IP").first.click()
         self.page.wait_for_timeout(500)
-        dialog = self.page.locator(".el-dialog:visible").filter(has_text=re.compile(r"^解除绑定公网IP"))
+        dialog = self.page.locator(".el-dialog:visible").filter(has_text=re.compile(r"^解绑公网IP"))
         dialog.wait_for(state="visible", timeout=10000)
         dialog.get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()

@@ -330,8 +330,12 @@ class EcsCreateMixin(BasePage):
                 self.get_by_text("添加网卡").click()
                 self._select_single_network(net_config)
         security_groups = _config_get(network, "security_groups", default=[])
+        disable_default_sg = _config_get(network, "disable_default_sg", default=False)
         if security_groups:
             self._select_security_group(security_groups)
+        elif disable_default_sg:
+            self._select_security_group([], deselect_default=True)
+            logger.info("已取消默认安全组 default")
 
         # 选择分配IPv6
         if network and network.get("enable_ipv6"):
@@ -754,14 +758,20 @@ class EcsCreateMixin(BasePage):
         logger.info(f"选择子网: {subnet_name}")
 
 
-    def _select_security_group(self, security_group):
-        if security_group:
+    def _select_security_group(self, security_group, deselect_default=True):
+        """选择安全组，默认先取消 default 安全组。
+
+        Args:
+            security_group: 要绑定的安全组名称列表。
+            deselect_default: 是否先取消默认安全组 default 的勾选。
+        """
+        if deselect_default:
             self.locator("div").filter(has_text=re.compile(r"^default$")).locator("i").click()
-            for group in security_group:
-                self.locator(".el-select__input").first.click()
-                self.locator("li").filter(has_text=group).click()
-            self.page.keyboard.press("Escape") # 收起下拉列表
-            logger.info(f"选择安全组: {security_group}")
+        for group in security_group:
+            self.locator(".el-select__input").first.click()
+            self.locator("li").filter(has_text=group).click()
+        self.page.keyboard.press("Escape") # 收起下拉列表
+        logger.info(f"选择安全组: {security_group}")
 
 
     def _set_login_pwd(self, login_pwd):

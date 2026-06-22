@@ -19,6 +19,7 @@ import shlex
 import time
 
 from sugon_web.utils.logger import logger
+from sugon_web.common.remote.ssh import SSH
 from sugon_web.assertions.helpers import (
     assert_lb_algorithm,
     assert_udp_source_ip_sticky,
@@ -353,7 +354,7 @@ def collect_lb_responses(ssh_client, curl_cmd, count, interval_sec=0, check_rc=T
 
 def collect_lb_http_responses(
     ssh_client, target_url, count=90, interval_sec=1, connect_timeout=10,
-    use_cookie=False
+    use_cookie=False, headers=None
 ):
     """连续 curl 指定 URL，并返回原始响应列表。
 
@@ -367,6 +368,8 @@ def collect_lb_http_responses(
         connect_timeout: curl 连接超时时间，单位为秒。
         use_cookie: 是否使用 cookie jar 保存/发送 cookie，用于 HTTP COOKIE
             会话保持验证。默认 False。
+        headers: 额外请求头列表，每条形如 "Host: example.com"；
+            用于覆盖 curl 默认 Host（例如端口影响域名精确匹配时）。
 
     Returns:
         list[str]: 按采样顺序保存的 HTTP 响应文本列表。
@@ -375,13 +378,18 @@ def collect_lb_http_responses(
         当测试需要验证调度分布时，优先使用本函数保留完整响应序列，
         再交给 `assert_lb_algorithm()` 做策略断言。
     """
+    headers = headers or []
+    header_args = " ".join(f"-H {shlex.quote(h)}" for h in headers)
     if use_cookie:
         curl_cmd = (
             f"curl -s -c /tmp/lb_test_cookie -b /tmp/lb_test_cookie "
-            f"--connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+            f"{header_args} --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
         )
     else:
-        curl_cmd = f"curl -s --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+        curl_cmd = (
+            f"curl -s {header_args} --connect-timeout {connect_timeout} "
+            f"{shlex.quote(target_url)}"
+        )
     return collect_lb_responses(
         ssh_client,
         curl_cmd,
@@ -594,26 +602,40 @@ def wait_for_udp_acl_converged(
     Raises:
         AssertionError: 超时后仍未满足期望。
     """
-    end_time = time.time() + timeout_sec
-    last_hit_map = {}
-    while time.time() < end_time:
-        for backend in backends:
-            clear_udp_server_log(ssh_vm, backend, port=port)
-        messages = _send_udp_batch(
-            ssh_client, target_ip, port, prefix=prefix, count=count
-        )
-        time.sleep(2)
-        last_hit_map = collect_udp_recipients(ssh_vm, backends, port=port, messages=messages)
-        received = {msg: b for msg, b in last_hit_map.items() if b is not None}
-        if should_be_rejected and not received:
-            logger.info("UDP ACL 规则已收敛（全部拒绝）: %s", last_hit_map)
-            return
-        if not should_be_rejected and received:
-            logger.info("UDP ACL 规则已收敛（允许通过）: %s", last_hit_map)
-            return
-        remaining = end_time - time.time()
-        if remaining > 0:
-            time.sleep(min(interval_sec, remaining))
+    # 当发送端与日志读取端为同一 SSH 对象时，clear_udp_server_log 会切换
+    # 当前活动连接到后端 VM，导致后续 _send_udp_batch 也从后端发出，从而
+    # 使源 IP 错误。此时创建独立的日志读取客户端，避免污染发送端连接。
+    log_reader = ssh_vm
+    reader_owned = False
+    if ssh_client is ssh_vm:
+        log_reader = SSH()
+        log_reader.jumphost_client = ssh_vm.jumphost_client
+        reader_owned = True
+
+    try:
+        end_time = time.time() + timeout_sec
+        last_hit_map = {}
+        while time.time() < end_time:
+            for backend in backends:
+                clear_udp_server_log(log_reader, backend, port=port)
+            messages = _send_udp_batch(
+                ssh_client, target_ip, port, prefix=prefix, count=count
+            )
+            time.sleep(2)
+            last_hit_map = collect_udp_recipients(log_reader, backends, port=port, messages=messages)
+            received = {msg: b for msg, b in last_hit_map.items() if b is not None}
+            if should_be_rejected and not received:
+                logger.info("UDP ACL 规则已收敛（全部拒绝）: %s", last_hit_map)
+                return
+            if not should_be_rejected and received:
+                logger.info("UDP ACL 规则已收敛（允许通过）: %s", last_hit_map)
+                return
+            remaining = end_time - time.time()
+            if remaining > 0:
+                time.sleep(min(interval_sec, remaining))
+    finally:
+        if reader_owned:
+            log_reader.close()
 
     expected = "全部拒绝" if should_be_rejected else "至少一条命中"
     raise AssertionError(

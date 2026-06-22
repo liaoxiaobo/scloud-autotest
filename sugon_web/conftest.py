@@ -167,18 +167,20 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
     bms_file_order = {
-        "soft_create": 0,
-        "sanity": 1,
-        "bind_eip": 2,
-        "monitor": 3,
-        "rename": 4,
-        "security_group": 5,
-        "label": 6,
-        "remove_label": 7,
-        "shutdown": 8,
-        "start": 9,
-        "rebuild": 10,
-        "cleanup": 11,
+        "image_prepare": 0,
+        "network_prepare": 1,
+        "soft_create": 2,
+        "sanity": 3,
+        "bind_eip": 4,
+        "monitor": 5,
+        "rename": 6,
+        "security_group": 7,
+        "label": 8,
+        "remove_label": 9,
+        "shutdown": 10,
+        "start": 11,
+        "rebuild": 12,
+        "cleanup": 13,
     }
 
     def _bms_order_key(item):
@@ -199,7 +201,12 @@ def pytest_collection_modifyitems(config, items):
     for item in bms_items:
         item.add_marker("bms")
         filename = item.path.name
-        if "soft_create" in filename:
+        if (
+            "image_prepare" in filename
+            or "network_prepare" in filename
+            or "soft_create" in filename
+            or "sanity" in filename
+        ):
             item.add_marker("bms_prepare")
         elif "rebuild" in filename or "cleanup" in filename:
             item.add_marker("bms_destructive")
@@ -430,6 +437,9 @@ def _attach_pre_captured_screenshots(item, stage):
 def pytest_runtest_setup(item):
     """在setup阶段开始时记录标记"""
     logger.info(f"=== SETUP START: {item.name} ===")
+    block_reason = getattr(item.config, "_bms_block_reason", None)
+    if block_reason and item.get_closest_marker("bms"):
+        pytest.skip(block_reason)
 
     # 多环境调度执行时，把 host/stor 注入为 Allure 参数，使同一用例在不同环境
     # 下拥有不同的 historyId，避免 Allure 报告把多环境结果聚合/覆盖为 retry。
@@ -461,6 +471,17 @@ def pytest_runtest_makereport(item, call):
     """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
+
+    if (
+        item.get_closest_marker("bms_prepare")
+        and rep.when in ("setup", "call")
+        and (rep.failed or rep.skipped)
+        and not getattr(item.config, "_bms_block_reason", None)
+    ):
+        outcome_text = "失败" if rep.failed else "跳过"
+        item.config._bms_block_reason = (
+            f"BMS前置用例 {item.name} {outcome_text}，跳过后续BMS用例"
+        )
 
     # 先处理 fixture 失败时预截图的数据（fixture 在 makereport 前已关闭 page）
     _attach_pre_captured_screenshots(item, rep.when)

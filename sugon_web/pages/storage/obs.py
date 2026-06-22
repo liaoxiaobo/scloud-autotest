@@ -83,27 +83,47 @@ class ObsPage(ObsAssertionMixin, BasePage):
             """, [target, is_leaf])
             self.page.wait_for_timeout(3000)
 
-        # 等待项目列表异步加载
-        self.page.wait_for_timeout(3000)
-        project_items = self.page.locator(".project_item")
-        if project_items.count() > 0:
-            selected = False
-            for i in range(project_items.count()):
-                item = project_items.nth(i)
-                item_text = item.inner_text()
-                if project_name in item_text:
+        # 等待项目列表异步加载，并轮询查找目标项目
+        deadline = time.time() + 15
+        selected = False
+
+        def _try_select_project():
+            items = self.page.locator(".project_item")
+            for i in range(items.count()):
+                item = items.nth(i)
+                if project_name in item.inner_text():
                     item.locator(".el-radio").click()
-                    selected = True
-                    break
-            if not selected:
-                project_items.first.locator(".el-radio").click()
-        else:
-            no_project = panel.locator("text=此部门下没有项目")
-            if no_project.count() > 0:
-                panel.locator(".dialog_footer").get_by_text("取消", exact=True).click()
-                self.page.wait_for_timeout(300)
+                    return True
+            return False
+
+        while time.time() < deadline:
+            if _try_select_project():
+                selected = True
+                break
+            time.sleep(1)
+
+        # 未找到则尝试使用搜索框
+        if not selected:
+            search_input = panel.locator('input[type="text"]').filter(
+                has=self.page.get_by_placeholder(re.compile(r"搜索|请输入"))
+            )
+            if search_input.count() > 0:
+                self.logger.info(f"项目列表中未直接找到 '{project_name}'，尝试搜索")
+                search_input.first.fill(project_name)
+                self.page.wait_for_timeout(500)
+                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(2000)
+                # 搜索后轮询
+                deadline = time.time() + 10
+                while time.time() < deadline:
+                    if _try_select_project():
+                        selected = True
+                        break
+                    time.sleep(1)
+
+        if not selected:
             raise AssertionError(
-                f"环境缺少可用项目：组织路径'{org_names}'下没有项目'{project_name}'")
+                f"项目选择失败：组织路径'{org_names}'下未找到项目'{project_name}'")
 
         # 点击确定
         panel.locator(".dialog_footer").get_by_text("确定", exact=True).click()

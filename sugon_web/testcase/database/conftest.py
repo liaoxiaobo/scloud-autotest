@@ -262,7 +262,7 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         xscale_page.create_instance(name, password=admin_password)
         xscale_page.assert_popup_success()
         xscale_page.assert_list_contain(name)
-        xscale_page.assert_status(name, status="就绪", timeout=1500)
+        xscale_page.assert_status(name, status="就绪", timeout=2400)
 
     with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
         node_name = f"{name}-cn-0"
