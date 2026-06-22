@@ -11,7 +11,7 @@ from sugon_web.config.config import Config
 
 
 BMS_IMAGE_DEFAULTS = {
-    "image_name": "centos76-bms-0511-autotest",
+    "image_name": "centos76-bms-0511-base",
     "image_file": "/home/scloudadmin/centos76-bms-0511.raw",
     "image_url": "http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw",
     "image_backend": "bms",
