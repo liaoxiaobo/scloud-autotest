@@ -12,6 +12,7 @@ from sugon_web.utils.data import random_data, get_file_abspath
 BMS_ACL_NAME = "bms-acl"
 BMS_SECURITY_GROUP_NAME = "bms-default"
 BMS_VPC_PREFIX = "bms-vpc-autotest"
+BMS_NIC_CHECK_CMD = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH; ip a | grep bms"
 
 
 def _row_exists(page_obj, submenu_name, row_name):
@@ -888,7 +889,11 @@ class TestBmsSoftCreate:
 
             bms_nic_name = None
             for waited in range(0, 901, 30):
-                r = ssh_node.run("ip a | grep bms", return_rc=True)
+                r = ssh_node.run(BMS_NIC_CHECK_CMD, return_rc=True, return_stderr=True)
+                stderr = r.get("stderr", "")
+                if r["rc"] not in (0, 1):
+                    ssh_node.close()
+                    pytest.fail(f"检查BMS网卡命令执行失败: rc={r['rc']}, stderr={stderr}")
                 if r["rc"] == 0 and "bms-nic" in r["stdout"]:
                     # ip a 输出格式: "bms-nic-3157: <flags> ..."，冒号不是名称一部分
                     m = re.search(r"(bms-nic[0-9a-zA-Z_-]+)", r["stdout"])

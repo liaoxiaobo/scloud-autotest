@@ -7,6 +7,9 @@ from sugon_web.utils.data import get_file_abspath
 from sugon_web.utils.logger import allure_step_log, logger
 
 
+BMS_NIC_CHECK_CMD = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH; ip a | grep bms"
+
+
 @allure.epic("计算")
 @allure.feature("裸金属BMS-软装版")
 @allure.story("软装版裸金属BMS实例-资源清理")
@@ -434,7 +437,12 @@ class TestBmsCleanup:
             deadline = time.time() + 300
             cleaned = False
             while time.time() < deadline:
-                result = ssh_node.run("ip a | grep bms", return_rc=True)
+                result = ssh_node.run(BMS_NIC_CHECK_CMD, return_rc=True, return_stderr=True)
+                if result["rc"] not in (0, 1):
+                    ssh_node.close()
+                    raise AssertionError(
+                        f"检查BMS网卡清理状态命令执行失败: rc={result['rc']}, stderr={result.get('stderr', '')}"
+                    )
                 if result and "bms" not in result.get("stdout", ""):
                     cleaned = True
                     break
