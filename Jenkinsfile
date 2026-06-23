@@ -153,7 +153,7 @@ pipeline {
 
             // 清理临时文件
             sh "rm -rf allure-result/env-* || true"
-            sh "rm -f allure-result/* || true"
+            sh "rm -rf allure-result/* || true"
 
             // 清理整个工作目录
             // deleteDir()  // clean up our workspace
