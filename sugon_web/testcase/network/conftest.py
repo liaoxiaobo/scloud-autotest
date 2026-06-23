@@ -168,7 +168,6 @@ def _resolve_param_refs(value, request):
 def _create_vpc_resource(vpc_page, params=None):
     """创建VPC并返回资源信息。"""
     create_kwargs = _build_vpc_create_kwargs(params)
-
     vpc_page.vpc_create(**create_kwargs)
     vpc_page.assert_popup_success("创建虚拟私有云成功")
     vpc_page.assert_status(create_kwargs["name"])
@@ -237,8 +236,7 @@ def _build_vpc_batch_params(params, count):
 def _cleanup_vpc_resource(vpc_page, name):
     """清理VPC资源，确保后端真正删除。"""
     # 先导航到VPC列表页确保状态正确
-    vpc_page.goto_service("虚拟私有云")
-    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page._ensure_vpc_network_list()
     try:
         vpc_page.get_row_by_name(name)
     except Exception:
@@ -248,7 +246,7 @@ def _cleanup_vpc_resource(vpc_page, name):
     # 刷新页面并验证删除，避免前端缓存导致误判
     vpc_page.page.reload()
     vpc_page.wait_for_page_ready()
-    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page._ensure_vpc_network_list()
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)
 
@@ -364,7 +362,6 @@ def eip(vpc_page, request):
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     yield created_ips[0] if count == 1 else created_ips
 

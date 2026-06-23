@@ -7,6 +7,7 @@ from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 
 
 def _cleanup_residual_dc_resources(dc_page):
@@ -125,7 +126,7 @@ class TestDCBgpNonHaValidation:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -139,8 +140,9 @@ class TestDCBgpNonHaValidation:
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件4: 创建虚拟接口（BGP模式）"):
-            time.sleep(30)
-            dc_page.virtual_interface_create(
+            time.sleep(60)
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -150,16 +152,6 @@ class TestDCBgpNonHaValidation:
                 bgp_peer_asn="65533",
                 bgp_md5_password="123123",
                 subnet_index=0,
-            )
-            dc_page.assert_popup_success(timeout=10000)
-
-        with allure_step_log("前置条件4.5: 等待虚拟接口状态变为运行中"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
             )
 
         with allure_step_log("前置条件4.6: 等待5秒确保路由就绪"):

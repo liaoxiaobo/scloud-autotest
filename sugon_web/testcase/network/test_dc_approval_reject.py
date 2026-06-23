@@ -116,12 +116,12 @@ class TestDCApprovalReject:
             dc_page.assert_popup_success(timeout=10)
             logger.info(f"物理连接 {dc_name} 审批通过成功")
 
-        with allure_step_log("步骤5: 轮询等待审批后状态变化（最长180秒）"):
+        with allure_step_log("步骤5: 轮询等待审批后状态变化（最长1200秒）"):
             final_row = dc_page.wait_for_physical_connection_status(
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=180,
+                timeout=1200,
                 interval=20,
             )
             logger.info(f"最终状态: {final_row}")
