@@ -342,6 +342,83 @@ def browser_context(browser, request):
     logger.info("浏览器上下文已关闭")
 
 
+def _get_admin_credentials(config):
+    """获取 admin 账号密码，优先使用 users.admin 配置。"""
+    admin_cfg = config.get("users", {}).get("admin", {})
+    username = admin_cfg.get("username")
+    password = admin_cfg.get("password")
+    if not username or not password:
+        logger.warning("未配置 users.admin 凭据，admin 相关操作将回退到当前角色凭据")
+        username = config.get("username")
+        password = config.get("password")
+    return username, password
+
+
+def _create_admin_logged_in_page(admin_browser_context, config):
+    """基于 admin browser context 创建并返回一个已登录的 admin page。"""
+    from sugon_web.common.auth import prepare_page_session
+
+    base_url = config.get("base_url")
+    username, password = _get_admin_credentials(config)
+
+    logger.info("创建 admin page...")
+    page = admin_browser_context.new_page()
+
+    try:
+        prepare_page_session(page, config, username=username, password=password)
+
+        # 安全网：若URL异常（如 no-permission），重新加载以恢复
+        if "no-permission" in page.url:
+            logger.info(f"admin page 在 no-permission，尝试重新加载恢复...")
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+
+        base_page_obj = BasePage(page)
+        base_page_obj.close_dialog_if_exists()
+
+        logger.info("admin page 创建并登录成功")
+        return page
+    except Exception:
+        page.close()
+        raise
+
+
+@pytest.fixture(scope="session")
+def admin_browser_context(browser, config):
+    """
+    Session 级 admin 浏览器上下文。
+
+    用于普通用户角色执行测试时，需要 admin 权限的辅助操作
+    （如 ops 页面、MFIP 绑定、环境准备等）。
+    上下文在 session 开始时完成 admin 登录并复用登录态，
+    避免每次需要 admin 操作时都重新登录。
+    """
+    logger.info("开始初始化 admin browser context")
+
+    context = browser.new_context(
+        ignore_https_errors=True,  # 忽略 SSL 错误
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
+    )
+
+    try:
+        warmup_page = _create_admin_logged_in_page(context, config)
+        logger.info("admin browser context 登录成功")
+        warmup_page.close()
+    except Exception as e:
+        context.close()
+        logger.error(f"admin browser context 初始化失败: {e}")
+        raise
+
+    logger.info("admin browser context 初始化成功")
+    yield context
+
+    logger.info("admin browser context 关闭中...")
+    context.close()
+    logger.info("admin browser context 已关闭")
+
+
 def _create_logged_in_page(browser_context, config):
     """基于给定的 context 创建并返回一个已登录页面。"""
     from sugon_web.common.auth import prepare_page_session
@@ -386,6 +463,21 @@ def _create_logged_in_page(browser_context, config):
 
     page.close = _close_with_screenshot
     return page
+
+
+@pytest.fixture(scope="function")
+def admin_page(admin_browser_context, config):
+    """
+    Function 级 admin page。
+
+    从 admin_browser_context 创建新 page，复用 admin 登录态。
+    每个测试方法获得独立的 admin page，避免页面状态互相污染。
+    """
+    page = _create_admin_logged_in_page(admin_browser_context, config)
+    try:
+        yield page
+    finally:
+        page.close()
 
 
 @pytest.fixture(scope="function")
