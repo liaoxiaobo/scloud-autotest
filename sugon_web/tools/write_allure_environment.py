@@ -78,6 +78,13 @@ def write_environment_properties(dispatch_json_path, output_path, default_host, 
     with open(dispatch_path, "r", encoding="utf-8") as f:
         jobs = json.load(f)
 
+    # 如果未提供默认 host/stor，尝试从 env-default 兜底任务提取
+    if not default_host or not default_stor:
+        default_job = next((job for job in jobs if job.get("label") == "env-default"), None)
+        if default_job:
+            default_host = default_host or default_job.get("host", "")
+            default_stor = default_stor or default_job.get("stor", "")
+
     lines = [
         f"DISPATCH_SOURCE={dispatch_source}",
         f"DEFAULT_HOST={default_host}",

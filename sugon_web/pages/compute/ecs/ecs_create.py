@@ -781,9 +781,17 @@ class EcsCreateMixin(BasePage):
 
 
     def _set_login_key(self, login_key):
-        """设置密钥对"""
-        self.get_by_placeholder("请选择", exact=True).nth(4).click()
-        self.get_by_text(login_key, exact=True).click()
+        """设置密钥对。
+
+        按"密钥对"表单项标签锚定下拉框，避免依赖随表单条件渲染而漂移的 nth(4) 占位符位置。
+        用 label.el-form-item__label 含"密钥对"定位，排除"密钥对登录"等单选标签。
+        """
+        self.locator(".el-form-item").filter(
+            has=self.locator("label.el-form-item__label").filter(has_text="密钥对")
+        ).get_by_placeholder("请选择").click()
+        self.get_by_role("listitem").filter(
+            has_text=re.compile(rf"^{re.escape(login_key)}$")
+        ).click()
 
 
     def _set_vnc_pwd(self, vnc_pwd):

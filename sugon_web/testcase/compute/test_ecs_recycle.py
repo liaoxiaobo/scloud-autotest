@@ -5,8 +5,6 @@ from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import only_stor
 
 
-@allure.epic('计算服务')
-@allure.feature('回收站')
 @allure.story('回收站功能验证')
 class TestECSRecycle:
 

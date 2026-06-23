@@ -337,9 +337,12 @@ class LbPoolMixin(LbDetailMixin):
         page_root = self.locator("#cloud-container-content")
 
         # 点击健康检查区域的"配置"按钮
-        # 页面上有两个"配置"链接（会话保持、健康检查），
-        # 健康检查的在 DOM 顺序中排在第二个，使用 nth(1) 精确定位。
-        config_btn = page_root.locator("a:has-text('配置')").nth(1)
+        # 页面上有多个"配置"链接（会话保持、负载调度算法、健康检查），
+        # DOM 顺序在不同版本/状态下可能变化，通过"健康检查"文本上下文定位。
+        config_btn = page_root.locator(
+            "xpath=//*[contains(text(), '健康检查')]/ancestor-or-self::*[.//a[contains(text(), '配置')]][1]//a[contains(text(), '配置')]"
+        ).first
+        # self.locator("div").filter(has_text=re.compile(r"^健康检查$")).locator("xpath=./following-sibling::div//a").click()
         expect(config_btn).to_be_visible(timeout=5000)
         config_btn.click()
 
@@ -402,7 +405,7 @@ class LbPoolMixin(LbDetailMixin):
         )
 
     def wait_lb_pool_member_status(self, lb_name, pool_name, vm_name,
-                                   expected_status="运行中", timeout=120,
+                                   expected_status="运行中", timeout=180,
                                    interval=10, refresh=True):
         """轮询等待资源池成员状态变为期望值。
 

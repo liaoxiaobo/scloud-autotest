@@ -5,8 +5,6 @@ from sugon_web.utils.data import random_data, load_data
 from sugon_web.utils.decorators import only_stor
 
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
 @allure.story('云硬盘-创建功能验证')
 class TestEVSCreate:
 

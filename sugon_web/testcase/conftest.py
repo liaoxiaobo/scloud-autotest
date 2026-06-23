@@ -17,6 +17,8 @@
 import re
 import time
 from pathlib import Path
+
+import allure
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
@@ -676,3 +678,45 @@ def pytest_collection_modifyitems(config, items):
         file_mark = _resolve_file_mark(path.name)
         if file_mark:
             item.add_marker(file_mark)
+
+
+def _resolve_ecs_feature(module_name):
+    """根据 ECS 文件名解析 feature 名称。"""
+    if module_name.startswith("test_ecs_affinity"):
+        return "亲和组"
+    if module_name == "test_ecs_labels":
+        return "标签"
+    if module_name == "test_ecs_recycle":
+        return "回收站"
+    if module_name == "test_ecs_snapshot":
+        return "云服务器快照"
+    return "弹性云服务器 ECS"
+
+
+def pytest_runtest_setup(item):
+    """多环境调度时，仅对 ECS/EVS 用例动态注入 host/stor 到 epic/feature。
+
+    其他用例保持现有静态 @allure.epic/@allure.feature 不变。
+    """
+    host = item.config.getoption("--host")
+    stor = item.config.getoption("--stor")
+
+    module_name = item.path.stem
+    parent = item.path.parent.name
+
+    if parent == "compute" and module_name.startswith("test_ecs_"):
+        epic = "计算服务"
+        feature = _resolve_ecs_feature(module_name)
+    elif parent == "storage" and module_name.startswith("test_evs_"):
+        epic = "存储服务"
+        feature = "云硬盘"
+    else:
+        return
+
+    if host:
+        epic = f"{epic} / {host}"
+    if stor:
+        feature = f"{feature} / {stor}"
+
+    allure.dynamic.epic(epic)
+    allure.dynamic.feature(feature)

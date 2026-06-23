@@ -140,7 +140,8 @@ def pytest_configure(config):
     if explicit_run_id:
         run_id = explicit_run_id
     elif env_label:
-        run_id = f"{run_id}/{env_label}" if run_id else env_label
+        # 多环境调度执行时，直接用 env-label 作为产物目录，与 Jenkins 调度 label 对齐
+        run_id = env_label
     os.environ['_PYTEST_RUN_ID'] = run_id
 
     # 创建 logs 子目录（按 run_id 隔离）
@@ -439,6 +440,18 @@ def pytest_runtest_setup(item):
     block_reason = getattr(item.config, "_bms_block_reason", None)
     if block_reason and item.get_closest_marker("bms"):
         pytest.skip(block_reason)
+
+    # 多环境调度执行时，把 host/stor 注入为 Allure 参数，使同一用例在不同环境
+    # 下拥有不同的 historyId，避免 Allure 报告把多环境结果聚合/覆盖为 retry。
+    host = item.config.getoption("--host")
+    stor = item.config.getoption("--stor")
+    if host or stor:
+        env = f"{host or 'default'} / {stor or 'default'}"
+        allure.dynamic.parameter("env", env)
+        # 保持报告标题干净，不带 [env:...] 后缀
+        allure.dynamic.title(item.originalname or item.name)
+        # 增加组合环境标签，便于 Allure 按环境筛选
+        allure.dynamic.tag(f"env:{env}")
 
 
 @pytest.hookimpl(tryfirst=True)

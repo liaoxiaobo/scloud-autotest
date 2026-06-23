@@ -943,6 +943,7 @@ def slb(browser_context, config, vpc, request):
         "status": detail_info.get("status"),
         "version": detail_info.get("version"),
         "ha": detail_info.get("ha"),
+        "ha_enable": ha_enable,
     }
 
     with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):

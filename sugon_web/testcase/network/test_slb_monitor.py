@@ -288,7 +288,7 @@ class TestSlbv1Monitor:
         with allure_step_log("步骤4: VIP访问测试生成流量数据"):
             ssh_vm.connect(requester["mfip"])
             responses = []
-            for _ in range(15):
+            for _ in range(60):
                 response = ssh_vm.run(
                     f"curl -s --connect-timeout 5 http://{lb_vip}:{port}/index.html",
                     check_rc=False,

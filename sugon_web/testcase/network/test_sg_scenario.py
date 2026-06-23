@@ -1,9 +1,10 @@
 import allure
 import pytest
+import re
 from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.common.playwright import expect
 from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
-from sugon_web.utils.logger import allure_step_log
+from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
 @allure.epic('网络服务')
@@ -237,6 +238,7 @@ class TestSGScenario:
 
             with allure_step_log(f"步骤5: 生效性验证"):
                 ssh_host.ping(fip1, connected=False)
+                ecs_page.goto_submenu("弹性云服务器")
                 vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
                 vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
                     browser, config, vm2_meta["port_id"],
@@ -321,6 +323,7 @@ class TestSGScenario:
                 ssh_host.ping(fip1, connected=False)
 
             with allure_step_log("步骤6: 登录vm2虚机，对vm1虚机发起ping请求，预期结果：可以ping通"):
+                ecs_page.goto_submenu("弹性云服务器")
                 vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
                 vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
                     browser, config, vm2_meta["port_id"],
@@ -480,6 +483,7 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤7: 登录vm2, ping vm1, 预期结果：可以ping通"):
+                ecs_page.goto_submenu("弹性云服务器")
                 vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
                 vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
                     browser, config, vm2_meta["port_id"],
