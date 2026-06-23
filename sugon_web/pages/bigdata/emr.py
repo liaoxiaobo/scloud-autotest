@@ -131,7 +131,7 @@ class EMRPage(BasePage):
         subnet: str = "Autotest:10.",
         security_group: str = "default",
         disk_type: str = None,
-        disk_size: int = 100,
+        disk_size: int = 60,
     ):
         """创建 E-MapReduce 集群。"""
         self.btn_create.click()
