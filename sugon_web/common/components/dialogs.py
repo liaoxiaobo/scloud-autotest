@@ -64,7 +64,7 @@ class DialogsMixin(BaseElementMixin):
             if not closed:
                 try:
                     dialogs = self.page.locator(
-                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible"
                     )
                     for i in range(min(dialogs.count(), 5)):
                         dialog = dialogs.nth(i)
@@ -93,7 +93,7 @@ class DialogsMixin(BaseElementMixin):
             # 检查是否还有可见对话框，没有则退出
             try:
                 remaining = self.page.locator(
-                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible"
                 )
                 if remaining.count() == 0:
                     break

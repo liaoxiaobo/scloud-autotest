@@ -89,8 +89,13 @@ class EcsNetworkMixin(BasePage):
         self.page.wait_for_timeout(2000)
         # 选择公网ip
         if eip_ip:
-            # 在表格中查找指定IP地址的行，支持分页
-            for page_attempt in range(10):
+            # 在表格中查找指定IP地址的行，支持分页（含对话框外分页条）
+            for page_attempt in range(20):
+                # 等待表格加载完成（如有 loading 蒙层）
+                try:
+                    self.page.locator(".el-loading-mask").first.wait_for(state="hidden", timeout=3000)
+                except Exception:
+                    pass
                 rows = bind_dialog.get_by_role("row").all()
                 for row in rows:
                     cells = row.get_by_role("cell").all_text_contents()
@@ -99,36 +104,43 @@ class EcsNetworkMixin(BasePage):
                         self.dialog_confirm.click()
                         logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {eip_ip}")
                         return eip_ip
-                # 尝试多种方式翻页
+                # 尝试翻页：优先在对话框内查找，再回退到页面级分页
                 clicked = False
-                # 策略1: 标准 Element UI 分页下一页按钮
-                for selector in [
-                    ".el-pagination .btn-next:not([disabled])",
-                    ".el-pagination__next:not([disabled])",
-                    ".pagination .next:not([disabled])",
-                    ".btn-next:not(.is-disabled)",
-                    "button[class*='next']:not([disabled])",
-                ]:
-                    try:
-                        btns = bind_dialog.locator(selector).all()
-                        for btn in btns:
-                            if btn.is_visible() and btn.is_enabled():
-                                btn.click()
-                                self.page.wait_for_timeout(1500)
-                                clicked = True
+                pagination_scopes = [bind_dialog, self.page]
+                for scope in pagination_scopes:
+                    for selector in [
+                        ".el-pagination .btn-next:not([disabled])",
+                        ".el-pagination__next:not([disabled])",
+                        ".pagination .next:not([disabled])",
+                        ".btn-next:not(.is-disabled)",
+                        "button[class*='next']:not([disabled])",
+                    ]:
+                        try:
+                            btns = scope.locator(selector).all()
+                            for btn in btns:
+                                if btn.is_visible() and btn.is_enabled():
+                                    btn.click()
+                                    self.page.wait_for_timeout(1500)
+                                    clicked = True
+                                    break
+                            if clicked:
                                 break
-                        if clicked:
-                            break
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
+                    if clicked:
+                        break
                 # 策略2: 尝试点击页码数字（当前页+1）
                 if not clicked:
                     try:
                         current_page = bind_dialog.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
+                        if current_page.count() == 0:
+                            current_page = self.page.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
                         if current_page.count() > 0:
                             current_text = current_page.text_content() or "1"
                             next_page_num = str(int(current_text) + 1)
                             next_page = bind_dialog.locator(".el-pager li, .pagination .page-item").filter(has_text=re.compile(rf"^{re.escape(next_page_num)}$")).first
+                            if next_page.count() == 0:
+                                next_page = self.page.locator(".el-pager li, .pagination .page-item").filter(has_text=re.compile(rf"^{re.escape(next_page_num)}$")).first
                             if next_page.count() > 0 and next_page.is_visible():
                                 next_page.click()
                                 self.page.wait_for_timeout(1500)

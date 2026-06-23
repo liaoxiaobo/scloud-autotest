@@ -8,7 +8,7 @@ loop_gate.py —— 阶段三/五 回退派发硬闸门（中方案·架构新�
     读运行报告里的「循环计数区」 → 比对阈值 → 输出"还能不能再派发一轮"。
 
 为什么需要它（中方案动机）：
-    原本各类"停止条件"（次数上限、状态冻结）写在 phase3 正文里，靠子智能体自觉遵守（软约束），
+    原本 5/7/15 轮、状态冻结这些"停止条件"写在 phase3 正文里，靠子智能体自觉遵守（软约束），
     弱模型长跑时会无视上限继续试错（实测出现过阶段三十几轮失控）。本闸门把"要不要再来一轮"
     的决定权从子智能体收回到编排层：编排层每次回退派发 phase3 前先跑本脚本，退出码非 0 就
     强制停止、不再派发。刹车从"软约束"升级为"硬控制"，且不依赖模型当天是否听话。
@@ -18,26 +18,23 @@ loop_gate.py —— 阶段三/五 回退派发硬闸门（中方案·架构新�
     本脚本只读运行报告磁盘文件中的「循环计数区」，不依赖任何对话记忆——只要计数"每轮就落盘"，
     压缩遗忘也不影响裁决结果。
 
-阈值来源（统一以 run_guard.py 常量与 SKILL.md「循环计数器持久化」表为准，本脚本不改判定逻辑，
-只读运行报告「循环计数区」里"当前值/上限"做机器比对；2026-06-16 团队决策值）：
-    - 单用例次数上限 30                          见 phase3-execution 正文「三、3.1」
-    - 全局次数上限 max(40, 场景数×8)             见 phase3-execution 正文「三、3.5」
-    - 状态冻结：连续 10 次相同失败                 见 phase3-execution 正文「三、3.3」
-    - 阶段五回退同一根因修复次数上限 8           见 phase5-stability 正文回退约束
-  注：本脚本按运行报告计数区"上限"列的实际数值比对，故上述数字变化时改 run_guard 与计数区即可，
-      无需改本脚本逻辑；口径为"1 次 pytest = 1 次"。（2026-06-17 团队决策：30/场景数×30/10/10 → 20/场景数×8/5/5；2026-06-18 阶段五同根因 5 → 8；2026-06-19 冻结 5→10、单用例 20→30、全局下限 20→40）
+阈值来源（全部来自子智能体内联正文，本脚本不改判定逻辑，仅做机器比对）：
+    - 单用例修复轮次上限 5（触发进展奖励 → 7）  见 phase3-execution 正文「三、3.1 / 3.2」
+    - 全局修复轮次上限 15                        见 phase3-execution 正文「三、3.5」
+    - 状态冻结：连续 2 轮无变化                   见 phase3-execution 正文「三、3.3」
+    - 阶段五回退同一根因修复次数上限 2           见 phase5-stability 正文回退约束
+  注：以上数字若与正文不一致，一律以正文为准并同步修正本脚本，严禁出现"第二套阈值"。
 
 运行报告中须存在「循环计数区」结构化块（由编排层 SKILL.md 维护），格式（标记之间为一张表）：
     <!-- LOOP_COUNTER_BLOCK_START -->
     | 计数项 | 标识 | 当前值 | 上限 |
     |---|---|---|---|
-    | global_fix_rounds |  | 3 | 64 |
-    | case_fix_rounds | test_xxx | 2 | 20 |
-    | freeze_same_rounds | test_xxx | 1 | 5 |
-    | heal_same_rootcause | <根因标识> | 0 | 8 |
+    | global_fix_rounds |  | 3 | 15 |
+    | case_fix_rounds | test_xxx | 2 | 5 |
+    | freeze_same_rounds | test_xxx | 1 | 2 |
+    | heal_same_rootcause | <根因标识> | 0 | 2 |
     <!-- LOOP_COUNTER_BLOCK_END -->
-  说明：字段名沿用历史命名（global_fix_rounds/case_fix_rounds 等），含义即"次数"；"上限"列由编排层
-        按生效阈值写入（单用例 30、全局 max(40,场景数×8)、冻结 10、同根因 8），脚本只比对当前值 >= 上限。
+  说明：单用例上限是否被进展奖励抬到 7，由编排层在"上限"列写入生效值（5 或 7），脚本只比对。
 
 退出码：
     0  允许再派发一轮（所有相关计数均未达上限）
@@ -54,14 +51,6 @@ loop_gate.py —— 阶段三/五 回退派发硬闸门（中方案·架构新�
 import argparse
 import re
 import sys
-
-# Windows 控制台默认 GBK，脚本含大量中文；不强制 UTF-8 会出现 `���` 乱码。
-# 统一把 stdout/stderr 切到 UTF-8，保证闸门命中原因可读。
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-    except Exception:
-        pass
 
 BLOCK_START = "<!-- LOOP_COUNTER_BLOCK_START -->"
 BLOCK_END = "<!-- LOOP_COUNTER_BLOCK_END -->"
