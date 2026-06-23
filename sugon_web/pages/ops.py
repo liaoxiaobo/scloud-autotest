@@ -35,7 +35,10 @@ class OpsPage(BasePage):
             timeout: 接口等待超时时间（毫秒）
         """
         self.get_by_placeholder(placeholder).click()
-        dropdown = self.page.locator(".el-select-dropdown:visible")
+        # 过滤掉正在离开动画中的旧下拉框，避免 ElementUI 动画期间同时存在两个可见下拉框导致 strict mode 冲突
+        dropdown = self.page.locator(
+            ".el-select-dropdown:visible:not(.el-zoom-in-top-leave-active):not(.el-zoom-in-top-leave-to)"
+        ).last
         expect(dropdown).to_be_visible(timeout=timeout)
 
         # 若指定了接口模式，先等待异步接口返回，确保选项已加载
@@ -98,7 +101,9 @@ class OpsPage(BasePage):
         # 选择端口
         self.get_by_placeholder("请选择端口").click()
         self.page.wait_for_timeout(500)
-        dropdown = self.page.locator(".el-select-dropdown:visible")
+        dropdown = self.page.locator(
+            ".el-select-dropdown:visible:not(.el-zoom-in-top-leave-active):not(.el-zoom-in-top-leave-to)"
+        ).last
         option = dropdown.get_by_text(ip, exact=exact).first
         option.click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()
