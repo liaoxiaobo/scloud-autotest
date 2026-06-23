@@ -28,10 +28,11 @@
     2) 硬熔断（满足任一即退出码 3 拒绝执行）：
          - 单测试目标累计 >= --cap-file（默认 30）
          - 全局累计 >= --cap-global（默认随场景数缩放 = max(40, 场景数 × 8)）
-         - 连续 FREEZE_LIMIT 次"相同失败指纹"（默认 10）→ 原地打转，停。
+         - 连续 FREEZE_LIMIT 次"失败在同一位置"（默认 10）→ 原地打转、零前进，停。
        另：自首次激活起全局墙钟 > 6h → 软提示走 Phase 4.5、倾向"标遗留·转人工"（软兜底，不硬杀）。
-    3) 冻结检测：连续 N 次失败摘要完全相同 → 判定无进展、拒绝下一轮；只要失败现象变化（有进展）
-       或某轮通过，冻结计数立即清零。
+    3) 冻结检测（零前进熔断）：连续 N 次失败在【同一位置】（同一测试 nodeid + 同一处最深用户代码 file:line，
+       与报错文本是否变化无关）→ 判定原地打转、拒绝下一轮；只有【推进到新的失败位置】（真有进展）或某轮通过，
+       冻结计数才清零。这样"换 selector 让报错文本变一变"骗不过冻结，杜绝同一阻塞点烧满额度。
 
 退出码：
     0   pytest 通过（透传 pytest 退出码 0）
@@ -76,6 +77,11 @@ FREEZE_LIMIT = 10             # 连续相同失败达到该值 → 下一轮拒�
 REENTRY_BUDGET = 10           # 回退重入（--reentry）发放的小额全局增量预算：不清零累计全局、把全局上限设为"当前全局位置 + 该值"，给本次回退留出有限的修复空间，避免"回退一进去就被拒"又杜绝"无限续命"；基于当前位置而非累加，故重复 reset 幂等、不叠加
 GLOBAL_WALL_SECS = 6 * 3600    # 全局墙钟软兜底(秒)：自首次激活起累计墙钟超过该时长 → 软提示走 Phase 4.5 质疑、倾向"标遗留·转人工"（软兜底，不硬杀，避免人工空档误杀）
 GUARD_TTL = 4 * 3600           # 守卫哨兵滑动过期(秒)：每次经 run_guard 跑 pytest 都续期；若超过该时长无 run_guard 活动则哨兵自动失效，避免陈旧哨兵长期卡住项目/开发者
+
+# 「已排除方向清单」结构化块标记（写在运行报告里，phase3 每轮追加；run_guard 每轮自动回显给模型，
+# 强制"已写必被读"——抗上下文压缩、抗回退重入失忆，杜绝重复试已排除的修复方向、原地打转烧额度）。
+RULED_OUT_START = "<!-- RULED_OUT_BLOCK_START -->"
+RULED_OUT_END = "<!-- RULED_OUT_BLOCK_END -->"
 
 
 def _project_root() -> Path:
@@ -157,6 +163,33 @@ def _remove_sentinel():
         return False
 
 
+def _latest_report(task):
+    """按任务标识 glob 运行报告，取 mtime 最新的一个；找不到返回 None。"""
+    d = _project_root() / "skill_runs" / "test-script-dev"
+    if not d.is_dir():
+        return None
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", task or "default")
+    for pat in (f"test-script-dev_{task}_*.md", f"test-script-dev_{safe}_*.md"):
+        cands = sorted(d.glob(pat), key=lambda p: p.stat().st_mtime, reverse=True)
+        if cands:
+            return cands[0]
+    return None
+
+
+def _read_ruled_out_block(task):
+    """从最新运行报告读出「已排除方向清单」块正文（标记之间）；无则返回 ''。"""
+    rep = _latest_report(task)
+    if not rep:
+        return ""
+    try:
+        text = rep.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if RULED_OUT_START not in text or RULED_OUT_END not in text:
+        return ""
+    return text.split(RULED_OUT_START, 1)[1].split(RULED_OUT_END, 1)[0].strip()
+
+
 def _target_key(pytest_args):
     """从 pytest 参数里提取"测试目标"作为计数键：优先 .py 路径（含 ::node），并附带 -k 表达式。"""
     target = None
@@ -210,13 +243,37 @@ def _count_real_logs(log_dir, started_at=0):
 
 
 def _failure_fingerprint(output):
-    """从 pytest 输出提取失败指纹：取 FAILED/ERROR 短摘要行集合做哈希；无则取末尾非空行。"""
-    lines = [l.strip() for l in output.splitlines()]
-    sig_lines = [l for l in lines if l.startswith("FAILED ") or l.startswith("ERROR ")]
-    if not sig_lines:
-        tail = [l for l in lines if l][-6:]
-        sig_lines = tail
-    blob = "\n".join(sig_lines)
+    """提取『失败位置指纹』——用【失败的测试 nodeid + 最深的用户代码 file:line】，而非报错文本。
+
+    目的：让"连续相同失败"= "卡在同一处、零前进"，而不是"报错文本恰好一样"。
+    实测教训：弱模型一换 selector/等待，报错文本就变（TimeoutError→no elements→未导航），
+    若按文本做指纹，冻结计数每轮清零、永不触发，于是同一阻塞点被烧满 30 次额度（17 个步骤一个没跑）。
+    改为按"失败位置"做指纹后：只要还卡在同一个测试的同一处代码（即便报错文本变了）→ 指纹不变、冻结累加；
+    推进到新的失败位置（= 真有进展，过了旧阻塞点、在更后面失败）→ 指纹变、冻结清零。通用于任何模块。
+    """
+    lines = output.splitlines()
+    # 1) 失败/错误的测试 nodeid（去掉 ' - 错误信息' 尾巴，只留 路径::用例，对报错文本不敏感）
+    nodeids = []
+    for raw in lines:
+        l = raw.strip()
+        if l.startswith("FAILED ") or l.startswith("ERROR "):
+            body = l.split(" ", 1)[1] if " " in l else l
+            nodeids.append(body.split(" - ", 1)[0].strip())
+    nodeids = sorted(set(nodeids))
+    # 2) 最深的"用户代码（测试/页面/断言/conftest）"traceback 帧 file:line = 真实阻塞位置。
+    #    pytest 回溯帧形如 `sugon_web/pages/network/slb.py:511: in slb_create`；取最后一个匹配=最深帧。
+    loc = ""
+    for m in re.finditer(r"([^\s:]+\.py):(\d+):", output):
+        path = m.group(1).replace("\\", "/")
+        if any(seg in path for seg in ("sugon_web/testcase", "sugon_web/pages",
+                                       "sugon_web/assertions", "conftest.py")):
+            loc = f"{path}:{m.group(2)}"
+    if nodeids or loc:
+        blob = "|".join(nodeids) + "#" + loc
+    else:
+        # 兜底：无 nodeid 也无用户代码帧（收集期/会话级错误）→ 退化为末尾非空行
+        tail = [l.strip() for l in lines if l.strip()][-6:]
+        blob = "\n".join(tail)
     return hashlib.sha256(blob.encode("utf-8", "replace")).hexdigest()[:16]
 
 
@@ -366,6 +423,15 @@ def main(argv):
     print(f"[run_guard] 第 {f['runs']}/{cap_file} 次（全局 {state['global_runs']}/{cap_global}）"
           f"｜目标：{key}")
 
+    # ---- 抗"失忆/原地打转"：每轮把运行报告里的【已排除方向清单】回显给模型（强制"已写必被读"）----
+    # 无论上下文是否被压缩、是否回退重入换了新 agent，这份清单每轮都从磁盘重读并打印在你眼前。
+    ruled = _read_ruled_out_block(args.task)
+    if ruled:
+        print("\n[run_guard] 【已排除方向·本轮勿重试】（自运行报告「已排除方向清单」自动回显）：")
+        print(ruled)
+        print("[run_guard] ↑ 动代码前先比对：本轮修复方向若与上述任一【实质相同】→ 立即换方向、不要再试；"
+              "本轮若又确认某方向无效，务必把它追加写回该清单（每轮真实落盘）。\n")
+
     # ---- 跑 pytest，实时打印同时捕获用于指纹 ----
     # 注入守卫 token 到子进程环境（供未来 conftest pytest_sessionstart 钩子放行"经 run_guard 启动"的 pytest 用；
     # 当前该 conftest 钩子未实现）。同时滑动续期哨兵。裸跑（无此 token）由上方"绕过审计"补算计数兜底，逃不过上限。
@@ -399,11 +465,11 @@ def main(argv):
         f["freeze"] = 1
     f["last_fp"] = fp
     _save(sp, state)
-    print(f"[run_guard] 本轮失败（失败指纹 {fp}，连续相同 {f['freeze']}/{FREEZE_LIMIT} 次）。"
+    print(f"[run_guard] 本轮失败（失败位置指纹 {fp}，连续卡同一处 {f['freeze']}/{FREEZE_LIMIT} 次）。"
           f"该目标剩余 {cap_file - f['runs']} 次、全局剩余 {cap_global - state['global_runs']} 次。")
     if f["freeze"] >= FREEZE_LIMIT:
-        print("[run_guard] [!] 已连续相同失败达冻结线——下一轮将被拒绝。"
-              "请勿再重复同一修复，改为零基复盘根因或标记遗留问题。")
+        print("[run_guard] [!] 已连续卡在同一失败位置达冻结线——下一轮将被拒绝。"
+              "说明修改方向错了/根因不在所改处，请勿再原地试错，改为零基复盘或标记遗留问题。")
     return 1
 
 
