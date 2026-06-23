@@ -12,6 +12,7 @@ from sugon_web.utils.data import random_data, get_file_abspath
 BMS_ACL_NAME = "bms-acl"
 BMS_SECURITY_GROUP_NAME = "bms-default"
 BMS_VPC_PREFIX = "bms-vpc-autotest"
+BMS_NIC_CHECK_CMD = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH; ip a | grep bms"
 
 
 def _row_exists(page_obj, submenu_name, row_name):
@@ -817,7 +818,7 @@ class TestBmsSoftCreate:
                     instance_name = existing_instance
                     skip_to_step14 = True
                 else:
-                    pytest.skip(f"BMC {bmc_ip} 状态为'已使用'但未找到实例，环境异常")
+                    pytest.fail(f"BMC {bmc_ip} 状态为'已使用'但未找到实例，环境异常")
             elif "注册失败" in current_status:
                 logger.warning(f"BMC {bmc_ip} 状态为'注册失败'，尝试删除并重新发现")
                 bms_page.bms_register_delete(bmc_ip)
@@ -834,12 +835,12 @@ class TestBmsSoftCreate:
                     name=rediscovery_name, start_ip=bmc_ip, end_ip=bmc_ip,
                     subnet_mask="255.255.255.0", username="admin", password="admin")
                 bms_page.page.wait_for_timeout(5000)
-                # 如果重试发现任务仍未创建成功，跳过而非失败
+                # 如果重试发现任务仍未创建成功，说明注册链路不可用，应标记为失败。
                 try:
                     bms_page.bms_discovery_sync(rediscovery_name)
                 except Exception as e:
                     logger.warning(f"重新发现任务同步失败: {e}")
-                    pytest.skip(f"BMC {bmc_ip} 注册失败后重新发现未能成功创建任务，环境可能不支持该BMC的重新发现")
+                    pytest.fail(f"BMC {bmc_ip} 注册失败后重新发现未能成功创建任务: {e}")
                 time.sleep(300)
                 # 重新检查注册状态
                 bms_page._goto_submenu_safe("注册")
@@ -852,9 +853,9 @@ class TestBmsSoftCreate:
                 elif "注册完成" in current_status:
                     logger.info(f"重新发现后状态已为'注册完成'")
                 else:
-                    pytest.skip(f"重新发现后BMC {bmc_ip} 仍处异常状态: {current_status}")
+                    pytest.fail(f"重新发现后BMC {bmc_ip} 仍处异常状态: {current_status}")
             else:
-                pytest.skip(f"BMC {bmc_ip} 处于未知状态: {current_status}")
+                pytest.fail(f"BMC {bmc_ip} 处于未知状态: {current_status}")
 
         with allure_step_log("步骤7b: 等待注册完成"):
             if "已使用" in current_status:
@@ -863,7 +864,7 @@ class TestBmsSoftCreate:
                 logger.info(f"BMC状态已为'{current_status}'，跳过注册完成等待")
             else:
                 if not bms_page.bms_register_wait_status(bmc_ip, "注册完成", poll_interval=30, max_wait=600):
-                    pytest.skip("步骤7注册完成等待超时（10分钟），可能环境异常")
+                    pytest.fail("步骤7注册完成等待超时（10分钟），注册链路异常")
 
         # === 步骤8: SSH检查BMS网卡 ===
         with allure_step_log("步骤8: SSH检查BMS网卡"):
@@ -888,7 +889,11 @@ class TestBmsSoftCreate:
 
             bms_nic_name = None
             for waited in range(0, 901, 30):
-                r = ssh_node.run("ip a | grep bms", return_rc=True)
+                r = ssh_node.run(BMS_NIC_CHECK_CMD, return_rc=True, return_stderr=True)
+                stderr = r.get("stderr", "")
+                if r["rc"] not in (0, 1):
+                    ssh_node.close()
+                    pytest.fail(f"检查BMS网卡命令执行失败: rc={r['rc']}, stderr={stderr}")
                 if r["rc"] == 0 and "bms-nic" in r["stdout"]:
                     # ip a 输出格式: "bms-nic-3157: <flags> ..."，冒号不是名称一部分
                     m = re.search(r"(bms-nic[0-9a-zA-Z_-]+)", r["stdout"])
@@ -962,7 +967,13 @@ class TestBmsSoftCreate:
                 bms_page.bms_register_action(bmc_ip)
                 bms_page.page.wait_for_timeout(3000)
                 if not bms_page.bms_register_wait_status(bmc_ip, "就绪", poll_interval=30, max_wait=2400):
-                    pytest.skip("注册未在40分钟内完成")
+                    bms_page._goto_submenu_safe("注册")
+                    bms_page.search(bmc_ip)
+                    final_data = bms_page.get_row_data(bmc_ip)
+                    final_status = str(final_data.get("状态", "")) if final_data else "未找到注册记录"
+                    if "注册失败" in final_status:
+                        pytest.fail(f"注册等待40分钟后页面状态为'注册失败'，BMS未进入就绪状态: {final_data}")
+                    pytest.fail(f"注册未在40分钟内完成，BMS未进入就绪状态，当前状态: {final_status}")
 
         if skip_to_step14:
             logger.info("检测到已有实例，跳过步骤13（创建实例），直接进入步骤14")
