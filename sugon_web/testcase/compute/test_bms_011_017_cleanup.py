@@ -9,9 +9,9 @@ from sugon_web.utils.logger import allure_step_log, logger
 
 @allure.epic("计算")
 @allure.feature("裸金属BMS-软装版")
-@allure.story("软装版裸金属BMS实例-资源清理与镜像创建")
+@allure.story("软装版裸金属BMS实例-资源清理")
 class TestBmsCleanup:
-    """验证裸金属BMS软装版资源清理流程和镜像创建功能。"""
+    """验证裸金属BMS软装版资源清理流程。"""
 
     # ---------- 资源重建辅助方法 ----------
 
@@ -305,11 +305,10 @@ class TestBmsCleanup:
     # ---------- 测试方法 ----------
 
     @allure.title("裸金属BMS-实例删除")
-    def test_bms_011_instance_delete(self, bms_page, ops_page, ssh_host, config, bms_instance, bms_env):
+    def test_bms_011_instance_delete(self, bms_page, bms_env):
         """删除裸金属实例并验证注册状态变更。
 
-        若实例不存在，自动调用 BMS_001 完整创建流程先创建再删除，
-        使 cleanup 文件可独立运行，无需 Jenkins 按序调度创建用例。
+        该用例只负责销毁阶段；实例不存在时直接跳过，避免清理用例反向创建资源。
         """
         instance_name = bms_env["instance_name"]
         bmc_ip = bms_env["bmc_ip"]
@@ -328,15 +327,7 @@ class TestBmsCleanup:
             instance_exists = False
 
         if not instance_exists:
-            logger.info(f"实例 '{instance_name}' 不存在，先执行镜像创建 + 完整创建流程...")
-            # 1) 先创建镜像，确保实例创建时有可用镜像
-            TestBmsCleanup().test_bms_017_image_create(ssh_host)
-            # 2) 执行完整创建流程（BMS_001）
-            from sugon_web.testcase.compute.test_bms_001_soft_create import TestBmsSoftCreate
-            TestBmsSoftCreate().test_bms_create_with_page_image(
-                ops_page, bms_page, ssh_host, config, bms_instance, bms_env
-            )
-            logger.info("实例创建完成，继续执行删除测试")
+            pytest.skip(f"BMS实例 '{instance_name}' 不存在，跳过销毁用例；请先执行创建流程")
 
         # 步骤1：搜索并删除实例
         with allure_step_log("步骤1: 搜索并删除裸金属实例"):
@@ -521,46 +512,3 @@ class TestBmsCleanup:
             bms_page.search(actual_group_name)
             bms_page.assert_list_not_contain(actual_group_name, "名称")
 
-    @allure.title("裸金属BMS-镜像创建")
-    def test_bms_017_image_create(self, ssh_host):
-        """通过SSH在后台创建裸金属镜像并在前端验证。"""
-        image_file = "/home/scloudadmin/centos76-bms-0511.raw"
-        image_url = "http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw"
-        image_name = "centos76-bms-0511-autotest"
-
-        # 步骤0：检查镜像是否已存在于 glance
-        with allure_step_log("步骤0: 检查镜像是否已存在"):
-            result = ssh_host.run(f"source /root/admin-openrc.sh && openstack image show {image_name}", return_rc=True)
-            if result["rc"] == 0:
-                logger.info(f"镜像 '{image_name}' 已存在于 glance，跳过创建")
-                return
-
-        # 步骤1：检查并下载镜像文件
-        with allure_step_log("步骤1: 检查并下载镜像文件"):
-            result = ssh_host.run(f"test -f {image_file} && echo 'exists' || echo 'missing'", return_rc=True)
-            assert result["rc"] == 0
-            if "missing" in result["stdout"]:
-                result = ssh_host.run(f"cd /home/scloudadmin && curl -O {image_url}", return_rc=True, timeout=300)
-                assert result["rc"] == 0, f"镜像下载失败: {result.get('stderr', '')}"
-                logger.info("镜像下载完成")
-            else:
-                logger.info("镜像文件已存在，跳过下载")
-
-        # 步骤2：创建裸金属镜像
-        with allure_step_log("步骤2: 创建裸金属镜像"):
-            cmd = (
-                f"source /root/admin-openrc.sh && "
-                f"scli image create --visibility public --disk-format raw --container-format bare "
-                f"--min-disk 50 --property hypervisor_type=baremetal --property purpose=ironic "
-                f"--property os_type=linux --property hw_qemu_guest_agent=yes --backend bms "
-                f"--file {image_file} --name {image_name} --progress"
-            )
-            result = ssh_host.run(cmd, return_rc=True, timeout=1800)
-            assert result["rc"] == 0, f"镜像创建失败: {result.get('stderr', '')}"
-            logger.info(f"镜像 '{image_name}' 创建成功")
-
-        # 步骤3：在前端验证镜像存在
-        with allure_step_log("步骤3: 在前端验证镜像存在"):
-            # 这里需要镜像服务的页面对象，暂时用日志记录
-            # 实际执行时可通过 image_page 导航到镜像服务进行验证
-            logger.info(f"镜像 '{image_name}' 已创建，请在前端镜像服务中验证")

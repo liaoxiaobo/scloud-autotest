@@ -12,7 +12,7 @@ BMS_REBUILD_TIMEOUT = 3600
 class TestBmsRebuild:
 
     @allure.title("裸金属BMS-重建实例")
-    def test_bms_rebuild(self, bms_page, bms_instance_name):
+    def test_bms_rebuild(self, bms_page, bms_instance_name, bms_env):
         """验证裸金属实例重建功能正常。"""
         instance_name = bms_instance_name
 
@@ -68,7 +68,7 @@ class TestBmsRebuild:
 
         # 步骤4：执行重建操作
         with allure_step_log("步骤4: 执行重建操作"):
-            bms_page.bms_instance_rebuild(instance_name, image_name="bms")
+            bms_page.bms_instance_rebuild(instance_name, image_name=bms_env["image_name"])
 
         # 步骤5：验证状态变为重建中
         with allure_step_log("步骤5: 验证状态变为重建中"):
