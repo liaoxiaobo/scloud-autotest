@@ -1,6 +1,7 @@
 import allure
 import pytest
 import re
+import textwrap
 import time
 
 from sugon_web.utils.logger import allure_step_log, logger
@@ -164,6 +165,45 @@ class TestQosNatv1FipEffectiveness:
 
         # ========== 步骤7: 启动iperf3 server ==========
         with allure_step_log("步骤7: 在管理节点后台启动iperf3 server"):
+            # 先检查并安装 iperf3（AnolisOS 8 环境）
+            install_script = textwrap.dedent("""if command -v iperf3 >/dev/null 2>&1; then
+    echo "iperf3 already installed"
+else
+    sudo bash -c 'mkdir -p /etc/yum.repos.d && cat > /etc/yum.repos.d/AnolisOS-8.repo << '"'"'REPOEOF'"'"'
+[BaseOS]
+name=AnolisOS-8.6 - Base
+baseurl=https://mirrors.openanolis.cn/anolis/8.6/BaseOS/$basearch/os
+enabled=1
+gpgcheck=1
+gpgkey=https://mirrors.openanolis.cn/anolis/RPM-GPG-KEY-Anolis-8
+
+[AppStream]
+name=AnolisOS-8.6 - AppStream
+baseurl=https://mirrors.openanolis.cn/anolis/8.6/AppStream/$basearch/os
+enabled=1
+gpgcheck=1
+gpgkey=https://mirrors.openanolis.cn/anolis/RPM-GPG-KEY-Anolis-8
+
+[Extras]
+name=AnolisOS-8.6 - Extras
+baseurl=https://mirrors.openanolis.cn/anolis/8.6/Extras/$basearch/os
+enabled=1
+gpgcheck=1
+gpgkey=https://mirrors.openanolis.cn/anolis/RPM-GPG-KEY-Anolis-8
+
+[PowerTools]
+name=AnolisOS-8.6 - PowerTools
+baseurl=https://mirrors.openanolis.cn/anolis/8.6/PowerTools/$basearch/os
+enabled=1
+gpgcheck=1
+gpgkey=https://mirrors.openanolis.cn/anolis/RPM-GPG-KEY-Anolis-8
+REPOEOF
+    yum clean all && yum makecache && yum install iperf3 -y --nogpgcheck'
+fi""")
+            install_result = ssh_host.run(install_script, return_rc=True, timeout=180)
+            assert install_result["rc"] == 0, f"iperf3 安装失败: {install_result.get('stderr', '')}"
+            logger.info(f"iperf3 安装/检查输出: {install_result['stdout']}")
+
             # 先停止可能已存在的iperf3进程
             ssh_host.run("pkill -f 'iperf3 -s' >/dev/null 2>&1; sleep 1", return_rc=True)
             result = ssh_host.run("nohup iperf3 -s > /dev/null 2>&1 & echo $!", return_rc=True)

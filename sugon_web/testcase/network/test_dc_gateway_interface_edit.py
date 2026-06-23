@@ -5,6 +5,7 @@ import allure
 from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 
 
 @allure.epic('网络服务')
@@ -233,7 +234,8 @@ class TestDCGatewayInterfaceEdit:
 
         with allure_step_log("步骤4: 创建虚拟接口"):
             time.sleep(60)
-            dc_page.virtual_interface_create(
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -243,18 +245,8 @@ class TestDCGatewayInterfaceEdit:
                 remote_subnet="123.12.0.0/24",
                 subnet_index=0,
             )
-            dc_page.assert_popup_success(timeout=10000)
 
-        with allure_step_log("步骤5: 等待虚拟接口状态变为运行中"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
-            )
-
-        with allure_step_log("步骤6: 执行修改操作（修改名称和描述）"):
+        with allure_step_log("步骤5: 执行修改操作（修改名称和描述）"):
             dc_page._ensure_virtual_interface_list()
             dc_page.virtual_interface_edit(
                 name=vif_name,
@@ -263,7 +255,7 @@ class TestDCGatewayInterfaceEdit:
             )
             dc_page.assert_popup_success(timeout=10000)
 
-        with allure_step_log("步骤7: 列表页验证修改结果"):
+        with allure_step_log("步骤6: 列表页验证修改结果"):
             dc_page.assert_list_contain(new_vif_name, column_name="名称")
             dc_page.assert_status(new_vif_name, status="运行中")
 
@@ -273,7 +265,7 @@ class TestDCGatewayInterfaceEdit:
             assert "11.22.0.2/24" in local_gw, f"本地网关不匹配: 期望 11.22.0.2/24, 实际 {local_gw}"
             assert "11.22.0.3/24" in remote_gw, f"远端网关不匹配: 期望 11.22.0.3/24, 实际 {remote_gw}"
 
-        with allure_step_log("步骤8: 详情页验证修改结果"):
+        with allure_step_log("步骤7: 详情页验证修改结果"):
             # 虚拟接口详情页通过点击名称进入
             dc_page.page.locator("#cloud-container-content").get_by_text(new_vif_name, exact=True).first.click()
             dc_page.page.wait_for_timeout(3000)
@@ -282,7 +274,7 @@ class TestDCGatewayInterfaceEdit:
             # 验证详情页中存在新名称（使用 first 避免 strict mode violation）
             expect(dc_page.page.get_by_text(new_vif_name, exact=True).first).to_be_visible(timeout=5000)
 
-        with allure_step_log("步骤9: 清理资源"):
+        with allure_step_log("步骤8: 清理资源"):
             dc_page._ensure_virtual_interface_list()
             dc_page.virtual_interface_delete(new_vif_name)
             dc_page.assert_deleted(new_vif_name, timeout=60)
