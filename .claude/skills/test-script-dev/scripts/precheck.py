@@ -13,7 +13,7 @@ validator → fix → repeat 反馈环，避免这些违规被带到阶段三的
   文件读取等可预见错误显式处理。
 - **退出码**：无违规返回 0；有违规返回 1；用法/环境错误返回 2。
 
-校验项（全部对 test_*.py「测试层」生效，pages/ 页面对象层不在此列）：
+校验项（1~6 对 test_*.py「测试层」生效；7 对该测试 import 的 pages/ 页面对象层生效）：
   1. 测试层底层 API：出现 .locator( / playwright import expect / xpath=
   2. 固定等待：出现 wait_for_timeout( / time.sleep(
   3. 测试方法体 try/except|try/finally 包裹（AST 精确判定，仅 test_ 方法）
@@ -24,6 +24,12 @@ validator → fix → repeat 反馈环，避免这些违规被带到阶段三的
       这样 5 个独立方法、或 1 个 5 组参数化方法都算 5；而把 5 个场景塞进同一个不参数化
       的方法只算 1，会被拦下——正是要堵的「多需求合并进一个方法」。
       不传 --expected-tests 时本项静默跳过，故脚本会显式告警提醒开启。）
+  7. Page Object 导航/定位 + JS 填表反模式（通用·跨模块，扫描该测试 import 的 pages/ 文件，按 --since 限定本轮改动的）：
+     硬违规 = 读取 Vue 内部状态 __vue__、用 evaluate 合成 .click()、用 evaluate 合成 input/change 填表、
+              JS 点 .el-select-dropdown__item 选下拉、evaluate 内 setTimeout 竞态；
+     告警 = 手动拼接 #/ 前端路由、page.goto(f"...") 跳转构造 URL。
+     —— 列表→详情应点真实行内实体名链接、表单应原生 fill/点选项触发真实事件链，而非拼 URL/读 Vue 内部状态/JS 合成事件
+     （前者是"反复超时卡列表页"、后者是"创建表单提交不了、按钮一直 disabled"的高发根因）。
 
 用法示例：
     python precheck.py sugon_web/testcase/network/test_lb_v2_http_forward.py
@@ -79,6 +85,34 @@ MARK_USAGE_PATTERN = re.compile(r"@pytest\.mark\.([A-Za-z_]\w*)")
 BUILTIN_MARKERS = {
     "parametrize", "skip", "skipif", "xfail", "usefixtures", "filterwarnings", "tryfirst", "trylast",
 }
+
+# Page Object 导航/定位反模式（通用·跨模块）：靠框架内部状态或拼 URL 导航，而非点击真实渲染元素。
+# 硬违规——这两类在 Page Object 里几乎无正当用途，且是"反复超时卡在列表页"的高发根因：
+PAGE_NAV_VIOLATION_PATTERNS = [
+    (re.compile(r"__vue__"),
+     "Page Object 读取 Vue 内部状态 __vue__（构建/版本相关、极脆弱、常返回 None）：禁止靠它取数据再拼 URL 导航；列表→详情应点击该行真实渲染的实体名链接 / 行内操作进入"),
+    (re.compile(r"\.evaluate\([^\n]*\.click\(\)"),
+     "用 evaluate 合成 .click()（合成事件触发不了 Vue 的 @click、常静默失败、还易引发 dialog 异常）：改用 Playwright 原生定位后 .click()"),
+]
+# 告警——多数情况是反模式，但保留少量正当导航的可能，故只提示、不阻断：
+PAGE_NAV_WARN_PATTERNS = [
+    (re.compile(r"=\s*f?[\"'][^\"'\n]*#/"),
+     "疑似手动拼接前端路由（#/...）用于导航：列表→详情应点击行内实体名链接，不要自己拼 URL 再 page.goto（拼 URL 脆弱、易因缺参/重定向停在列表页）"),
+    (re.compile(r"\.goto\(\s*f[\"']"),
+     "page.goto() 跳转 f-string 构造的 URL：导航应走 goto_service/goto_submenu 或点击真实元素，避免写死/拼接 URL"),
+]
+
+# JS 填表反模式（通用·跨模块）：用 page.evaluate 里的合成事件/JS 直接填表，骗不过 Vue/Element UI 的
+# 响应式校验（v-model 不更新、必填项被判空、提交按钮一直 disabled），是"创建表单提交不了、反复超时"的高发根因。
+# 这些 token 只会出现在 evaluate 的 JS 串里，扫页面对象 .py 即可命中，正当 Playwright 代码不会误伤。
+PAGE_JSFILL_VIOLATION_PATTERNS = [
+    (re.compile(r"dispatchEvent\(\s*new\s+Event\(\s*['\"](input|change)"),
+     "用 evaluate 合成 input/change 事件填表（dispatchEvent(new Event('input'/'change'))）：合成事件常骗不过 Element UI 校验，v-model 不更新、必填项被判空、提交按钮保持 disabled。改用原生 fill()/点选项触发真实事件链"),
+    (re.compile(r"\.el-select-dropdown__item"),
+     "用 JS 直接点 .el-select-dropdown__item 选下拉项：易选错/未触发 @change，子网等必填项实际没赋值。改用原生：点 el-select → 等选项可见 → 按文案 .click() 选项"),
+    (re.compile(r"setTimeout\s*\("),
+     "页面对象里出现 setTimeout（必在 evaluate 的 JS 串内）：page.evaluate 一返回就不等这个异步回调，是典型竞态 bug（如『盲选下拉』）。改用 Playwright 原生等待（expect/wait_for_selector），不要在 JS 里 setTimeout"),
+]
 
 
 def _iter_test_files(paths):
@@ -353,6 +387,91 @@ def _check_recon_gate(test_files, explicit_page_files, recon_dir, since_epoch):
     ]
 
 
+def _conftest_chain(test_file, root):
+    """返回该测试文件所在目录到仓库根之间所有存在的 conftest.py。
+
+    测试常通过 conftest 里的 fixture（如 slb_page）间接使用 Page Object，
+    Page Object 不在测试文件的 import 里，故需顺路扫 conftest 的 pages 导入，避免漏检。
+    """
+    out = []
+    try:
+        d = test_file.resolve().parent
+        root = root.resolve()
+    except OSError:
+        return out
+    while True:
+        cf = d / "conftest.py"
+        if cf.is_file():
+            out.append(cf)
+        if d == root or d.parent == d:
+            break
+        d = d.parent
+    return out
+
+
+def _resolve_page_files_in_scope(test_files, explicit_page_files, since_epoch):
+    """解析本次该检查的 Page Object 文件，按精准度从高到低：
+      1) 显式 --page-files；
+      2) 有 --since（阶段二/三 workflow 一定带）：直接扫 sugon_web/pages 下【本轮 mtime 改动过】的文件
+         —— 精准命中"本次任务新建/改动的 Page Object"，不依赖脆弱的 import 解析，也不误伤未改动的历史文件；
+      3) 无 --since（手动跑兜底）：从测试文件 + 其路径上的 conftest（fixture 常在此引入 Page Object）解析导入。
+    """
+    root = _project_root()
+    if explicit_page_files:
+        cand = set(Path(p) for p in explicit_page_files)
+    elif since_epoch is not None:
+        cand = set()
+        pages_dir = root / "sugon_web" / "pages"
+        if pages_dir.is_dir():
+            for p in pages_dir.rglob("*.py"):
+                if p.name != "__init__.py":
+                    cand.add(p)
+    else:
+        cand = set()
+        for tf in test_files:
+            src = _read(tf)
+            if src is not None:
+                cand |= _resolve_page_object_files(src, root)
+            for cf in _conftest_chain(Path(tf), root):
+                csrc = _read(cf)
+                if csrc is not None:
+                    cand |= _resolve_page_object_files(csrc, root)
+    in_scope = []
+    for pf in sorted(cand):
+        if not pf.exists():
+            continue
+        if since_epoch is not None:
+            try:
+                if pf.stat().st_mtime < (since_epoch - 2):
+                    continue
+            except OSError:
+                continue
+        in_scope.append(pf)
+    return in_scope
+
+
+def _check_page_object_nav_antipattern(test_files, explicit_page_files, since_epoch):
+    """机检 Page Object 层「靠框架内部状态/拼 URL 导航，而非点击真实渲染元素」这一类通用反模式。
+
+    跨模块通用（不针对任何具体页面）：
+      硬违规：读取 __vue__ 内部数据、用 evaluate 合成 .click()（Vue @click 触发不了、常静默失败）。
+      告警：手动拼接 #/ 前端路由、page.goto(f"...") 跳转构造的 URL。
+    实测教训：列表→详情若靠 el.__vue__ 取 id 拼 URL 再 page.goto，会因缺参/重定向停在列表页、
+    反复 30+ 轮超时仍卡同一页。正确做法是点击该行真实渲染的实体名链接 / 行内操作。
+    返回 (violations, warnings)。仅扫描 pages/ 下解析到的（按 --since 过滤的）文件；未涉及/未改动一律不误伤。
+    """
+    in_scope = _resolve_page_files_in_scope(test_files, explicit_page_files, since_epoch)
+    violations, warnings = [], []
+    for pf in in_scope:
+        src = _read(pf)
+        if src is None:
+            continue
+        violations += _scan_line_patterns(pf, src, PAGE_NAV_VIOLATION_PATTERNS)
+        violations += _scan_line_patterns(pf, src, PAGE_JSFILL_VIOLATION_PATTERNS)
+        warnings += _scan_line_patterns(pf, src, PAGE_NAV_WARN_PATTERNS)
+    return violations, warnings
+
+
 def _git_repo_root(start):
     """返回包含 start 的 git 仓库根（`git rev-parse --show-toplevel`）；
     不在 git 仓库 / 无 git 命令时返回 None。
@@ -490,13 +609,19 @@ def main(argv):
     else:
         count_skipped = True
 
+    # 解析 --since（recon 门禁与 Page Object 反模式门禁共用）
+    since_epoch = _parse_since(args.since)
+    if args.since and since_epoch is None:
+        print(f"[WARN] --since 无法解析：{args.since!r}（应为 'YYYY-MM-DD HH:MM' 或 epoch 秒），本次按『不限时间』判定。")
+
     # 新建/改动 Page Object 必须先侦察（仅 --require-recon 开启时生效）
     recon_skipped = not args.require_recon
     if args.require_recon:
-        since_epoch = _parse_since(args.since)
-        if args.since and since_epoch is None:
-            print(f"[WARN] --since 无法解析：{args.since!r}（应为 'YYYY-MM-DD HH:MM' 或 epoch 秒），本次按『不限时间』判定。")
         all_violations += _check_recon_gate(files, args.page_files, args.recon_dir, since_epoch)
+
+    # Page Object 导航/定位反模式（通用·始终执行，跨模块；__vue__/合成 click 为硬违规，拼 URL 为告警）
+    nav_violations, nav_warnings = _check_page_object_nav_antipattern(files, args.page_files, since_epoch)
+    all_violations += nav_violations
 
     # 已有用例只增不减（机械兜底·始终执行，防 CSV/MD 同名导致整文件覆盖删除已有用例的严重事故）
     all_violations += _check_no_test_deletion(files)
@@ -513,6 +638,10 @@ def main(argv):
     if recon_skipped:
         print("[WARN] 未提供 --require-recon，已【跳过】『新建 Page Object 必须先侦察』门禁。"
               "本次若新建/改动了 Page Object（或遇自定义组件/多步向导），强烈建议加 --require-recon。")
+    if nav_warnings:
+        print(f"[WARN] Page Object 导航疑似反模式 {len(nav_warnings)} 处（不阻断，但强烈建议改为点击真实元素导航）：")
+        for w in nav_warnings:
+            print(f"  - {w}")
     if not all_violations:
         print("[PASS] 门禁通过：未发现可机器判定的规范违规。")
         print("（注意：门禁只兜底机械项，断言分层/需求语义对齐仍须按阶段二对齐检查完成。）")

@@ -29,6 +29,8 @@ model: opus
 ## 编码高频易错·交付前必查（架构新增·依据 test_case_codegen_prompt.md，命中即返工）
 
 > **编码前先做（治返工之源）**：本次若**新建 Page Object**、或交互含**多步向导 / `cl-button` 自定义组件 / 多 dropdown / 动态渲染**，**编码前必须先跑 `recon_page.py` 侦察真实渲染态**（按钮文案、向导步数、下拉选项、容器类名），按 `page_func_spec.md` §1.3 速查表写定位，**严禁凭需求文案猜选择器/猜流程**（实测复杂用例阶段三返工几乎全源于此）。
+> - **★ 侦察必须覆盖"首个创建/跳转表单"，不能只 recon 下游次要表单**：每个会**新建资源/跳转新页面**的 Page 方法（如 `xxx_create`），其创建页/弹窗的每个**必填项**（含异步加载的下拉/规格表）都要侦察并写进侦察卡——实测某次只 recon 了下游转发规则/资源池，却对第一个 SLB 创建表单凭源码猜，结果在第一步就卡死、烧光额度。
+> - **★ 多必填 + 异步加载 + 校验的创建表单，严格按 `frontend_to_script_guide.md` §七 配方写**：原生 `fill`/点选项触发真实事件链、等 `el-loading-mask` 消失、按依赖顺序填、提交前断言按钮 `enabled`（仍 disabled 就读 `.el-form-item.is-error` 定位漏填项）；**严禁用 `page.evaluate` 合成 input/change 事件 JS 盲填、严禁 JS 点下拉项、严禁 evaluate 内 setTimeout**（`precheck.py` 会机器拦截，且这是"提交按钮一直 disabled、创建不出来"的高发根因）。
 > - **点击/导航类定位有疑问时，写进 Page Object 前必须先用交互探针验证**（与"必须带 `--log-file`"同级的机械步骤，秒级、不必跑全量 pytest）：
 >   `python .claude/skills/test-script-dev/scripts/recon_page.py --service "<服务>" [--submenu "<子菜单>"] --probe-click "<目标文案>"`
 >   看输出：命中数（>1 要 scope 限定）、原生 `.click()` 后 URL/DOM 是否变化。**确认原生点击有效再写**，严禁未验证就用 `evaluate` 合成 `MouseEvent`（触发不了 Vue 路由）。
@@ -137,7 +139,7 @@ model: opus
    - 规则：测试层严禁直接使用 `locator()` / `expect()` / XPath，所有页面交互必须通过 Page Object 封装方法调用；定位优先 `get_by_role()` / `get_by_text(exact=True)` / `get_by_placeholder()`，并限定在 dialog / tab / 表格 / 行范围内，`first()` / `nth()` 仅作兜底。
    - **运行时侦察(按需,无法仅凭前端代码确定唯一定位时)**：当某交互的定位**无法仅凭前端工程代码确定唯一、稳定的选择器**（典型：操作项默认隐藏需 JS 触发、同名菜单多个需 nth、复杂表单组件内部多 input、自定义组件如 cl-table/SugonDeleteDialog），**应先用运行时侦察脚本(黑盒,先 `--help`)** 从真实渲染态枚举候选元素再写定位，不要凭空构造或仅靠静态代码猜测：
      `python .claude/skills/test-script-dev/scripts/recon_page.py --service "<服务名>" [--submenu "<子菜单>"] [--grep "<关键词>"]`
-     侦察脚本**只读不改**(复用项目登录态/`goto_service`、整页截图、枚举 button/a/input/tab/列头)，只用于发现定位，定位写回 Page Object。简单用例能直接确定定位的**不必触发**，避免拖慢。
+     侦察脚本**只读不改**(复用项目登录态/`goto_service`、整页截图、浏览器端单次枚举真实渲染态元素：按钮/链接/输入/radio·checkbox/tab/列头/自研组件 cl-*·cloud-*，并报**弹窗·抽屉状态**与每个元素的**真实文案·role·class·是否 DISABLED**)，只用于发现定位，定位写回 Page Object。简单用例能直接确定定位的**不必触发**，避免拖慢。
    - 自检：`Grep` 搜索 `\.locator\(` 或 `from.*playwright import expect`，确认测试层未出现底层 API 调用。
 
 4. **等待规范**
@@ -208,7 +210,7 @@ python .claude/skills/test-script-dev/scripts/precheck.py <本次测试文件或
 > **为什么必须写**：阶段三是 fresh-context 子智能体，看不见你本阶段的侦察过程。把你"看真实页面/读前端代码"得到的关键结论固化成下表，阶段三修复时会强制先读它、命中即直接用，**不再从零重新 recon/重新猜**——这是减少阶段三反复试错、缩短耗时的核心。
 >
 > **何时必出（条件触发）**：本次**新建/改动了 `sugon_web/pages/` 下的 Page Object**，或交互含**多步向导 / 自定义组件(cl-*) / 多 dropdown / 动态渲染 / 同名元素需 nth** 时，**本表必出**（应与 `recon_page.py` 侦察产物一致）。若本次为极简用例、未新建 Page Object、定位全部可由前端代码直接确定，可在表内写一行"本次无需侦察：定位均由前端代码直接确定"。
-> **禁止凭空填写（防幻觉·硬约束）**：表里**每一行都必须有真实证据来源**——填进"证据来源"列：`skill_runs/recon/` 下的侦察截图路径，或被测前端代码的 `文件:行号`。**严禁凭记忆/猜测/想当然写定位或文案**；没有证据的元素**宁可不写**也不要编造（写错的定位会直接误导阶段三，比不写更糟）。本卡只记录"你已经亲眼/亲手核实过的"结论。
+> **禁止凭空填写（防幻觉·硬约束）**：表里**每一行都必须有真实证据来源**——填进"证据来源"列：`recon_page.py` 的侦察产物（`skill_runs/recon/` 下的侦察截图路径，**或它控制台枚举出的真实元素清单**——增强枚举会直接给出每个元素的 role/class/真实文案/是否 DISABLED 及弹窗/抽屉状态，这些就是写 class/role 类定位的第一手证据），或被测前端代码的 `文件:行号`。**严禁凭记忆/猜测/想当然写定位或文案**；没有证据的元素**宁可不写**也不要编造（写错的定位会直接误导阶段三，比不写更糟）。本卡只记录"你已经亲眼/亲手核实过的"结论。
 > **同步持久化（强制）**：本表与上面的完成清单一并双写进运行报告（`## 阶段二…完成时间` 块内）。
 
 | 元素/动作 | 真实定位(get_by_*/scope) | 已确认文案 | 所在容器(dialog/tab/表格/行) | 向导步数/下拉选项 | 已知交互坑 | 证据来源(recon截图/前端代码行) |

@@ -245,7 +245,7 @@ class TablesMixin:
         try:
             target_row = self.get_row_by_name(name)
         except AssertionError as e:
-            self.logger.error(f"获取数据行失败: {str(e)}")
+            self.logger.warning(f"获取数据行失败: {str(e)}")
             raise
 
         table_index = target_row.evaluate("""

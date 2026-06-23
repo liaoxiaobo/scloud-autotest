@@ -831,7 +831,7 @@ class TestECSBasic:
         """
         name = vm.get("name")
         # 导航到弹性云服务器页面
-        ecs_page.goto_service('弹性云服务器')
+        ecs_page.goto_submenu('弹性云服务器')
 
         with allure_step_log(f"步骤1: 为云服务器{name}安装工具-页面ISO安装"):
             # 调用安装工具方法

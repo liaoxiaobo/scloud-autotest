@@ -35,49 +35,52 @@ def _bms_open_acl_detail(vpc_page, acl_name):
     except Exception as e:
         logger.warning(f"BMS ACL {acl_name} 搜索失败，尝试直接在列表中定位: {e}")
 
-    row = vpc_page.page.locator(".el-table__body-wrapper tbody tr").filter(has_text=acl_name)
+    row = vpc_page.page.locator("tbody tr").filter(has_text=acl_name)
     row.first.wait_for(state="visible", timeout=15000)
-    name_cell = row.first.locator("td").nth(1)
 
-    clicked = False
-    for target in (
-        name_cell.locator("a").filter(has_text=acl_name),
-        name_cell.get_by_text(acl_name, exact=True),
-        name_cell,
-    ):
-        try:
-            target.first.click(timeout=10000)
-            clicked = True
-            break
-        except Exception as e:
-            logger.warning(f"点击 BMS ACL {acl_name} 名称进入详情失败，尝试下一种方式: {e}")
-
-    if not clicked:
-        result = vpc_page.page.evaluate(
-            """aclName => {
-                const visible = el => {
-                    const style = window.getComputedStyle(el);
-                    const rect = el.getBoundingClientRect();
-                    return style && style.visibility !== 'hidden' && style.display !== 'none'
-                        && rect.width > 0 && rect.height > 0;
+    click_result = vpc_page.page.evaluate(
+        """aclName => {
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none'
+                    && rect.width > 0 && rect.height > 0;
+            };
+            const exactText = el => (el.innerText || el.textContent || '').trim() === aclName;
+            const candidates = Array.from(document.querySelectorAll('.detail_link, a, button, span, div'))
+                .filter(el => exactText(el));
+            const target = candidates.find(visible) || candidates[0];
+            if (!target) {
+                return {
+                    status: 'target-not-found',
+                    candidates: candidates.length,
+                    visibleRows: Array.from(document.querySelectorAll('tbody tr'))
+                        .filter(visible)
+                        .slice(0, 5)
+                        .map(row => (row.innerText || '').replace(/\\s+/g, ' ').trim())
                 };
-                const rows = Array.from(document.querySelectorAll('tbody tr')).filter(visible);
-                const row = rows.find(item => (item.innerText || '').includes(aclName));
-                if (!row) {
-                    return 'row-not-found';
-                }
-                const cell = row.querySelector('td:nth-child(2)') || row;
-                const targets = Array.from(cell.querySelectorAll('a, button, span, div'))
-                    .filter(el => visible(el) && (el.innerText || el.textContent || '').trim() === aclName);
-                const target = targets[0] || cell;
-                ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(type => {
-                    target.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
-                });
-                return 'clicked';
-            }""",
-            acl_name,
-        )
-        assert result == "clicked", f"未在网络ACL列表中找到 {acl_name}: {result}"
+            }
+            target.scrollIntoView({block: 'center', inline: 'center'});
+            ['mouseover', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(type => {
+                target.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+            });
+            if (typeof target.click === 'function') {
+                target.click();
+            }
+            return {
+                status: 'clicked',
+                tag: target.tagName,
+                className: `${target.className || ''}`,
+                text: (target.innerText || target.textContent || '').trim(),
+                visible: visible(target)
+            };
+        }""",
+        acl_name,
+    )
+    assert click_result.get("status") == "clicked", (
+        f"点击 BMS ACL {acl_name} 详情入口失败: {click_result}"
+    )
+    logger.info(f"点击 BMS ACL {acl_name} 详情入口: {click_result}")
 
     for _ in range(10):
         try:
@@ -125,6 +128,44 @@ def _bms_open_acl_detail(vpc_page, acl_name):
     raise AssertionError(f"进入 BMS ACL 详情页超时: {acl_name}, current={vpc_page.page.url}")
 
 
+def _bms_acl_page_diagnostics(vpc_page):
+    try:
+        return vpc_page.page.evaluate(
+            """() => {
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style && style.visibility !== 'hidden' && style.display !== 'none'
+                        && rect.width > 0 && rect.height > 0;
+                };
+                const textOf = el => (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                const tabs = Array.from(document.querySelectorAll('[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab'))
+                    .filter(visible)
+                    .map(el => ({
+                        text: textOf(el),
+                        className: `${el.className || ''}`,
+                        selected: el.getAttribute('aria-selected')
+                    }));
+                const buttons = Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
+                    .filter(visible)
+                    .map(el => textOf(el))
+                    .filter(Boolean);
+                const dialogs = Array.from(document.querySelectorAll('.el-dialog, [role="dialog"]'))
+                    .filter(visible)
+                    .map(el => textOf(el).slice(0, 120));
+                return {
+                    url: location.href,
+                    tabs,
+                    buttons,
+                    dialogs,
+                    text: textOf(document.querySelector('#cloud-container-content') || document.body).slice(0, 500)
+                };
+            }"""
+        )
+    except Exception as e:
+        return {"url": vpc_page.page.url, "diagnostics_error": str(e)}
+
+
 def _bms_switch_acl_rule_tab(vpc_page, tab_name):
     result = vpc_page.page.evaluate(
         """tabName => {
@@ -158,6 +199,31 @@ def _bms_switch_acl_rule_tab(vpc_page, tab_name):
     )
     assert result in ("clicked", "already-active"), f"切换 BMS ACL 页签失败: {tab_name}, result={result}"
     vpc_page.wait_for_page_ready()
+    for _ in range(10):
+        active = vpc_page.page.evaluate(
+            """tabName => {
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style && style.visibility !== 'hidden' && style.display !== 'none'
+                        && rect.width > 0 && rect.height > 0;
+                };
+                const normalize = text => (text || '').replace(/\\s+/g, '').trim();
+                return Array.from(document.querySelectorAll('[role="tab"], .el-tabs__item, .cloud-tabs-tab, .cloud-tab'))
+                    .filter(visible)
+                    .some(el => {
+                        const classes = `${el.className || ''}`;
+                        return normalize(el.innerText || el.textContent) === normalize(tabName)
+                            && (el.getAttribute('aria-selected') === 'true'
+                                || /(^|\\s)(is-active|active|cloud-tabs-tab-active)(\\s|$)/.test(classes));
+                    });
+            }""",
+            tab_name,
+        )
+        if active:
+            return
+        vpc_page.page.wait_for_timeout(500)
+    raise AssertionError(f"切换 BMS ACL 页签后未激活: {tab_name}, diagnostics={_bms_acl_page_diagnostics(vpc_page)}")
 
 
 def _bms_acl_rule_rows_text(vpc_page):
@@ -173,38 +239,94 @@ def _bms_acl_rule_rows_text(vpc_page):
     )
 
 
-def _bms_click_acl_rule_create(vpc_page):
+def _bms_click_acl_rule_create(vpc_page, tab_name):
     result = vpc_page.page.evaluate(
-        """() => {
+        """tabName => {
             const visible = el => {
                 const style = window.getComputedStyle(el);
                 const rect = el.getBoundingClientRect();
                 return style && style.visibility !== 'hidden' && style.display !== 'none'
                     && rect.width > 0 && rect.height > 0;
             };
-            const buttons = Array.from(document.querySelectorAll('button, .cloud-button, .el-button, [role="button"]'))
-                .filter(el => visible(el) && (el.innerText || el.textContent || '').includes('新建'));
+            const textOf = el => (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+            const buttons = Array.from(document.querySelectorAll(
+                '.noOverflow .cloud-button-btn.cl-btn-primary, '
+                + '#cloud-container-content .cloud-button-btn.cl-btn-primary, '
+                + '#cloud-container-content button, '
+                + '#cloud-container-content .el-button, '
+                + '#cloud-container-content [role="button"]'
+            )).filter(el => visible(el) && textOf(el) === '新建' && !el.closest('.el-dialog, [role="dialog"]'));
             if (!buttons.length) {
-                return 'button-not-found';
+                return {
+                    status: 'button-not-found',
+                    tabName,
+                    buttons: Array.from(document.querySelectorAll(
+                        '#cloud-container-content .cloud-button-btn, '
+                        + '#cloud-container-content button, '
+                        + '#cloud-container-content .el-button, '
+                        + '#cloud-container-content [role="button"]'
+                    ))
+                        .filter(visible)
+                        .map(textOf)
+                        .filter(Boolean)
+                };
             }
-            buttons[0].click();
-            return 'clicked';
-        }"""
+            const activePane = Array.from(document.querySelectorAll('.el-tab-pane, [role="tabpanel"], .cloud-tabs-panel'))
+                .find(el => visible(el) && (textOf(el).includes(tabName) || textOf(el).includes('新建')));
+            const target = buttons.find(btn => activePane && activePane.contains(btn)) || buttons[0];
+            target.scrollIntoView({block: 'center', inline: 'center'});
+            ['mouseover', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(type => {
+                target.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+            });
+            if (typeof target.click === 'function') {
+                target.click();
+            }
+            return {
+                status: 'clicked',
+                tabName,
+                buttonText: textOf(target),
+                buttonClass: `${target.className || ''}`,
+                allButtons: buttons.map(textOf)
+            };
+        }""",
+        tab_name,
     )
-    assert result == "clicked", f"未找到 BMS ACL 规则新建按钮: {result}"
+    assert result.get("status") == "clicked", f"未找到 BMS ACL 规则新建按钮: {result}"
+    logger.info(f"BMS ACL {tab_name} 新建按钮点击结果: {result}")
 
 
 def _bms_fill_acl_allow_all_dialog(vpc_page, tab_name):
     dialog_name = f"新建{tab_name}"
     dialog = vpc_page.page.locator(".el-dialog:visible, [role='dialog']:visible").filter(has_text=dialog_name)
-    dialog.wait_for(state="visible", timeout=15000)
+    try:
+        dialog.wait_for(state="visible", timeout=15000)
+    except Exception as e:
+        raise AssertionError(
+            f"BMS ACL {tab_name} 新建弹窗未出现: {e}; diagnostics={_bms_acl_page_diagnostics(vpc_page)}"
+        ) from e
+
+    policy_input = dialog.locator(".el-form-item").filter(has_text="策略").locator(
+        "input[placeholder='请选择策略']"
+    ).first
+    try:
+        if not (policy_input.input_value(timeout=1000) or "").strip():
+            policy_input.click(force=True)
+            vpc_page.page.locator("li:visible").filter(has_text="允许").first.click()
+    except Exception as e:
+        raise AssertionError(
+            f"BMS ACL {tab_name} 新建弹窗选择策略失败: {e}; diagnostics={_bms_acl_page_diagnostics(vpc_page)}"
+        ) from e
 
     src_ip_input = dialog.locator(".el-form-item").filter(has_text="源IP地址").locator("textarea, input[type='text']").first
     src_ip_input.fill("0.0.0.0/0")
     dest_ip_input = dialog.locator(".el-form-item").filter(has_text="目的IP地址").locator("textarea, input[type='text']").first
     dest_ip_input.fill("0.0.0.0/0")
 
-    dialog.get_by_text("确定", exact=True).click()
+    ok_button = dialog.locator(".cloud-button-btn.cl-btn-primary").filter(has_text="确定")
+    if ok_button.count() > 0:
+        ok_button.first.click(force=True)
+    else:
+        dialog.get_by_text("确定", exact=True).click()
     vpc_page.wait_for_page_ready()
 
 
@@ -224,7 +346,7 @@ def _bms_ensure_acl_allow_all_rule(vpc_page, direction):
         logger.info(f"ACL {BMS_ACL_NAME} 已存在 {direction} IPv4 全放通规则")
         return
 
-    _bms_click_acl_rule_create(vpc_page)
+    _bms_click_acl_rule_create(vpc_page, tab_name)
     _bms_fill_acl_allow_all_dialog(vpc_page, tab_name)
     logger.info(f"ACL {BMS_ACL_NAME} 已按BMS页面流程创建 {direction} IPv4 全放通规则")
 
@@ -232,9 +354,8 @@ def _bms_ensure_acl_allow_all_rule(vpc_page, direction):
 def _ensure_bms_acl_allow_all(vpc_page):
     if _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
         logger.info(f"ACL {BMS_ACL_NAME} 已存在，复用")
-        return
-
-    vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
+    else:
+        vpc_page.acl_create(BMS_ACL_NAME, desc="BMS自动化专用ACL")
 
     try:
         acl_data = vpc_page.get_row_data(BMS_ACL_NAME)
@@ -433,6 +554,30 @@ def _prepare_bms_instance_vpc(vpc_page):
         "acl_name": BMS_ACL_NAME,
         "security_group": BMS_SECURITY_GROUP_NAME,
     }
+
+
+def _get_prepared_bms_instance_vpc(vpc_page):
+    """读取 network_prepare 已准备好的 BMS 实例网络环境。"""
+    missing = []
+    if not _row_exists(vpc_page, "网络ACL", BMS_ACL_NAME):
+        missing.append(f"网络ACL {BMS_ACL_NAME}")
+    if not _row_exists(vpc_page, "安全组", BMS_SECURITY_GROUP_NAME):
+        missing.append(f"安全组 {BMS_SECURITY_GROUP_NAME}")
+
+    reusable_vpc = _find_reusable_bms_vpc(vpc_page)
+    if not reusable_vpc:
+        missing.append(f"VPC {BMS_VPC_PREFIX}*")
+    if missing:
+        raise AssertionError(
+            "BMS网络前置未准备完成，请先执行 test_bms_000_network_prepare.py；缺失: "
+            + ", ".join(missing)
+        )
+
+    logger.info(
+        f"BMS网络前置已准备: VPC={reusable_vpc['vpc_name']}, "
+        f"子网={reusable_vpc['subnet_name']}, 安全组={BMS_SECURITY_GROUP_NAME}, ACL={BMS_ACL_NAME}"
+    )
+    return reusable_vpc
 
 
 @allure.epic("计算")
@@ -723,7 +868,7 @@ class TestBmsSoftCreate:
         # === 步骤8: SSH检查BMS网卡 ===
         with allure_step_log("步骤8: SSH检查BMS网卡"):
             # 获取 master02 的 IP 地址
-            node_info = ssh_host.run(f"kubectl get nodes {actual_node} -owide", return_rc=True)
+            node_info = ssh_host.run(f"sudo kubectl get nodes {actual_node} -owide", return_rc=True)
             master02_ip = None
             for line in node_info.get("stdout", "").split('\n'):
                 parts = line.split()
@@ -731,6 +876,7 @@ class TestBmsSoftCreate:
                     master02_ip = parts[5]
                     break
             if not master02_ip:
+                logger.warning(f"未从 kubectl 节点信息中解析到 {actual_node} 的 Internal-IP，使用节点名直连")
                 master02_ip = actual_node
             logger.info(f"master02 节点地址: {master02_ip}")
 
@@ -740,22 +886,22 @@ class TestBmsSoftCreate:
             pkey_path = get_file_abspath(config.get("pkey"))
             ssh_node.connect(host=master02_ip, username="scloudadmin", pkey=pkey_path, use_jumphost=True)
 
-            time.sleep(300)
             bms_nic_name = None
-            for i in range(3):
+            for waited in range(0, 901, 30):
                 r = ssh_node.run("ip a | grep bms", return_rc=True)
                 if r["rc"] == 0 and "bms-nic" in r["stdout"]:
                     # ip a 输出格式: "bms-nic-3157: <flags> ..."，冒号不是名称一部分
                     m = re.search(r"(bms-nic[0-9a-zA-Z_-]+)", r["stdout"])
                     if m:
                         bms_nic_name = m.group(1)
-                        logger.info(f"网卡: {bms_nic_name}")
+                        logger.info(f"发现BMS网卡: {bms_nic_name}，等待{waited}s")
                         break
-                if i < 2:
-                    time.sleep(300)
+                if waited < 900:
+                    logger.info(f"暂未发现 bms-nic 网卡，30s后重试 ({waited}/900s)")
+                    time.sleep(30)
             if not bms_nic_name:
                 ssh_node.close()
-                pytest.skip("未找到bms-nic网卡")
+                pytest.skip("未在15分钟内找到bms-nic网卡")
 
         try:
             # === 步骤9: 记录 ===
@@ -821,9 +967,9 @@ class TestBmsSoftCreate:
         if skip_to_step14:
             logger.info("检测到已有实例，跳过步骤13（创建实例），直接进入步骤14")
         else:
-            with allure_step_log("步骤12b: 准备BMS实例专用VPC/ACL/安全组"):
+            with allure_step_log("步骤12b: 读取BMS实例专用VPC/安全组"):
                 vpc_page = VpcPage(bms_page.page)
-                bms_network_env = _prepare_bms_instance_vpc(vpc_page)
+                bms_network_env = _get_prepared_bms_instance_vpc(vpc_page)
 
             # === 步骤13-14: 创建裸金属实例并等待运行中（使用 fixture 工厂函数） ===
             instance_name = bms_instance(
