@@ -131,9 +131,10 @@ def bucket(obs_page, request):
     count = params.get('count', 1)
     base_name = params.get('name') or random_data()
     capacity = params.get('capacity', '10')
+    object_limit = params.get('object_limit', None)
 
     # 过滤控制参数，只保留业务参数传给 helper
-    create_params = {k: v for k, v in params.items() if k not in ('count', 'name', 'capacity')}
+    create_params = {k: v for k, v in params.items() if k not in ('count', 'name', 'capacity', 'object_limit')}
 
     bucket_items = []
 
@@ -148,14 +149,19 @@ def bucket(obs_page, request):
                 break
             try:
                 empty_bucket(obs_page, old_name)
-                bucket_items.append({"name": old_name, "capacity": capacity, "reused": True})
+                # 复用旧桶时强制对齐配额，避免旧桶容量/对象数限制与本次测试要求不符
+                if capacity is not None or object_limit is not None:
+                    obs_page.obs_bucket_modify_quota(
+                        old_name, capacity=capacity, object_limit=object_limit
+                    )
+                bucket_items.append({"name": old_name, "capacity": capacity, "object_limit": object_limit, "reused": True})
             except Exception as e:
                 logger.warning(f"复用桶 {old_name} 失败: {e}")
 
         # 复用不足时创建新桶
         for i in range(count - len(bucket_items)):
             name = f"{base_name}-{i}" if count > 1 else base_name
-            item = create_bucket(obs_page, name=name, capacity=capacity, **create_params)
+            item = create_bucket(obs_page, name=name, capacity=capacity, object_limit=object_limit, **create_params)
             item["reused"] = False
             bucket_items.append(item)
 

@@ -17,7 +17,10 @@
 - **solve, don't punt**：对可预见错误显式处理并给出可操作提示，不把异常甩给调用者。
 
 借鉴 anthropics/skills 的 webapp-testing：先 `wait_for_load_state('networkidle')`
-再 inspect DOM；元素枚举范式参考其 examples/element_discovery.py。
+再 inspect DOM。元素枚举采用浏览器端单次 `page.evaluate`，与 `sugon_web/utils/hooks.py`
+失败现场 domsnap 同一套增强启发式（借鉴 browser-use 的 is_interactive 思路 + 项目自研
+组件 cl-*/cloud-*），额外给出弹窗/抽屉状态、radio/checkbox、运行态 DISABLED、class，
+使阶段二"写定位前"侦察与阶段三失败现场拿到同等丰富的元素清单。
 
 用法示例：
     python recon_page.py --service "云服务器"          # 不带 --host：默认用 sugon_web/config/base.yaml 配置的当前测试环境（推荐）
@@ -83,56 +86,152 @@ def _bootstrap_config(args):
     return Config
 
 
+# 浏览器端【单次 page.evaluate】枚举"可定位/可交互元素"的 JS。
+# 与 sugon_web/utils/hooks.py 失败现场 domsnap 的 `_DOM_SNAPSHOT_JS` 同一套启发式（借鉴 browser-use 的
+# is_interactive 思路 + 项目自研组件 cl-*/cloud-*），目的：让阶段二"写定位前"的主动侦察，拿到与阶段三失败
+# 现场同等丰富的元素清单（含弹窗/抽屉状态、radio/checkbox、自研组件、DISABLED、class），从源头一次写对定位、
+# 减少进入阶段三的失败与修复轮次。单次 evaluate 在浏览器内采集，比逐元素 is_visible 往返更快、更不易漏。
+_RECON_DOM_JS = r"""
+(MAX) => {
+  const txt = (e) => ((e.innerText || e.textContent || '').trim().replace(/\s+/g, ' ')).slice(0, 60);
+  const vis = (e) => { try { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0'; } catch (_) { return false; } };
+  const attrs = (e) => {
+    const out = [];
+    for (const k of ['id','name','placeholder','aria-label','type','role','href']) {
+      const v = e.getAttribute && e.getAttribute(k); if (v) out.push(k + '=' + String(v).slice(0,40));
+    }
+    const cls = ((e.getAttribute && e.getAttribute('class')) || '').trim(); if (cls) out.push('class=' + cls.slice(0,70));
+    const dis = (e.disabled === true) || (e.getAttribute && (e.getAttribute('aria-disabled') === 'true' || ((e.getAttribute('class')||'').includes('is-disabled'))));
+    if (dis) out.push('【DISABLED】');
+    return out.join(' ');
+  };
+  // 全局导航 chrome（左侧菜单树 / 顶部菜单），每页都一样、极少是定位目标，排除以免挤占名额、淹没页面内容
+  const isChrome = (e) => { try { const c = (e.getAttribute && e.getAttribute('class')) || '';
+      return /cloud-left-menu|app-mainframe|one-tree-/.test(c); } catch (_) { return false; } };
+  const collect = (sel, skipChrome) => {
+    const out = []; const seen = new Set();
+    let nodes; try { nodes = document.querySelectorAll(sel); } catch (_) { return out; }
+    nodes.forEach((e) => {
+      if (out.length >= MAX) return;
+      if (!vis(e)) return;
+      if (skipChrome && isChrome(e)) return;
+      const t = txt(e), a = attrs(e);
+      const key = (e.tagName || '') + '|' + t + '|' + a; if (seen.has(key)) return; seen.add(key);
+      out.push({ tag: (e.tagName || '').toLowerCase(), text: t, attrs: a });
+    });
+    return out;
+  };
+  // 表格数据行（列表页核心交互：点实体名进详情 / 点行内"操作"项——云控制台最高频、也最常超时失败的一步）
+  const rows = [];
+  try {
+    const seenRow = new Set();
+    document.querySelectorAll(".el-table__body-wrapper tbody tr, .cl-table tbody tr, table tbody tr").forEach((tr) => {
+      if (rows.length >= MAX) return;
+      if (!vis(tr)) return;
+      const rowText = txt(tr); if (!rowText) return;
+      if (seenRow.has(rowText)) return; seenRow.add(rowText);
+      const links = [];
+      try {
+        tr.querySelectorAll("a, .el-link, [role=button], .cl-button, .cloud-button-btn, .cloud-table-dropdown-item, [class*='btn'], [class*='link']").forEach((a) => {
+          if (links.length >= 10) return;
+          if (!vis(a)) return;
+          const t = txt(a); if (t) links.push(t);
+        });
+      } catch (_) {}
+      rows.push({ text: rowText.slice(0, 120), links: links });
+    });
+  } catch (_) {}
+  const dialogs = [];
+  try {
+    document.querySelectorAll("[role=dialog],.el-dialog,.el-drawer,.el-message-box,.cl-dialog,.cloud-dialog").forEach((d) => {
+      if (!vis(d)) return;
+      const tEl = d.querySelector('.el-dialog__title,.el-drawer__title,.cl-dialog-title,.cloud-dialog-title,header,h1,h2,h3');
+      dialogs.push(((tEl ? (tEl.innerText || '') : '').trim().slice(0, 60)) || '(无标题)');
+    });
+  } catch (_) {}
+  return {
+    url: location.href,
+    title: document.title,
+    dialogs: dialogs,
+    buttons: collect("button,[role=button],a,.el-link,.cl-button,.cloud-button-btn,.cloud-table-dropdown-item,[class*='btn']", true),
+    inputs: collect("input,textarea,select,[contenteditable='true']", false),
+    radios: collect("[role=radio],[role=checkbox],input[type=radio],input[type=checkbox],.el-radio,.el-checkbox", false),
+    tabs: collect("[role=tab],.el-tabs__item", false),
+    headers: collect("th,.el-table__header-wrapper th,.cl-table-header", false),
+    rows: rows,
+  };
+}
+"""
+
+
 def _enumerate(page, grep):
-    """从真实渲染态枚举候选可定位元素（借鉴 element_discovery.py）。只读。"""
+    """从真实渲染态枚举候选可定位元素（浏览器端单次 evaluate，与 hooks.py domsnap 同套增强启发式）。只读。
 
-    def _match(text):
-        return grep is None or (text and grep.lower() in text.lower())
+    相比旧版仅枚举 button/a/input/tab/th，本版额外给出：**表格数据行 + 行内可点击项**（列表页点实体名
+    进详情/点行操作最高频）、弹窗/抽屉状态（治"内联误判为弹窗"高频根因）、radio/checkbox、自研组件
+    cl-*/cloud-*、运行态 DISABLED、class 属性，并滤除每页都一样的左侧导航菜单 chrome——让阶段二一次写对定位。
+    """
 
-    print("\n========== 候选新定位清单（真实渲染态） ==========")
-    print(f"当前 URL: {page.url}")
+    def _match(row):
+        if grep is None:
+            return True
+        hay = ((row.get("text") or "") + " " + (row.get("attrs") or "")).lower()
+        return grep.lower() in hay
 
-    kinds = [
-        ("按钮 button", "button"),
-        ("链接 a[href]", "a[href]"),
-        ("输入/选择 input,textarea,select", "input, textarea, select"),
-        ("标签页 [role=tab]", "[role='tab']"),
-        ("表格列头 th", "th"),
+    print("\n========== 候选新定位清单（真实渲染态·增强枚举） ==========")
+    try:
+        data = page.evaluate(_RECON_DOM_JS, MAX_ITEMS_PER_KIND)
+    except Exception as e:
+        print(f"元素枚举失败（页面可能未就绪，可稍后重试或换 --url-hash/--service）：{e}")
+        print("==================================================\n")
+        return
+
+    print(f"当前 URL: {data.get('url', '')}")
+    print(f"页面标题: {data.get('title', '')}")
+
+    dialogs = data.get("dialogs") or []
+    if dialogs:
+        print("\n[⚠️ 弹窗/抽屉状态] 检测到打开的弹窗/抽屉：" + "；".join(dialogs))
+        print("  → 目标元素很可能在该弹窗/抽屉作用域内（注意可能 teleport 到 body 下），定位应在其内查找。")
+    else:
+        print("\n[⚠️ 弹窗/抽屉状态] 未检测到打开的弹窗/抽屉 → 当前应为页面/内联表单，勿误判为弹窗（弹窗 vs 内联误判是高频定位根因）。")
+
+    # 表格数据行（列表页核心：点实体名进详情 / 点行内"操作"项——最高频也最常超时失败的一步）
+    def _row_match(r):
+        if grep is None:
+            return True
+        hay = ((r.get("text") or "") + " " + " ".join(r.get("links") or [])).lower()
+        return grep.lower() in hay
+    trows = [r for r in (data.get("rows") or []) if _row_match(r)]
+    print(f"\n[表格数据行] 命中 {len(trows)} 行（列表页“点实体名进详情 / 点行内操作”就到这里找目标行的可点击项）：")
+    if not trows:
+        print("  - （未捕获到表格数据行：当前页可能不是列表页，或数据行尚未渲染）")
+    for _r in trows:
+        _links = _r.get("links") or []
+        _ls = ("　可点击项：" + " | ".join(_links)) if _links else "　（行内未发现可点击链接/按钮）"
+        print(f"  - 行：{_r.get('text', '')}{_ls}")
+
+    sections = [
+        ("可点击元素（按钮/链接/role=button/cl-button 等·已滤除左侧导航菜单）", data.get("buttons")),
+        ("输入/选择（input/textarea/select）", data.get("inputs")),
+        ("单选/多选（radio/checkbox）", data.get("radios")),
+        ("标签页 tab", data.get("tabs")),
+        ("表格列头/表头（th / cl-table-header）", data.get("headers")),
     ]
-    for title, selector in kinds:
-        try:
-            elements = page.locator(selector).all()
-        except Exception as e:
-            print(f"\n[{title}] 枚举失败（跳过）: {e}")
-            continue
-        rows = []
-        for el in elements:
-            try:
-                if not el.is_visible(timeout=VISIBLE_TIMEOUT_MS):
-                    continue
-                text = (el.inner_text() or "").strip().replace("\n", " ")
-                role = el.get_attribute("role")
-                name = el.get_attribute("name") or el.get_attribute("id") or el.get_attribute("placeholder")
-                etype = el.get_attribute("type")
-                desc = f"text='{text[:40]}'" if text else ""
-                attrs = " ".join(filter(None, [
-                    f"role={role}" if role else "",
-                    f"name/id/ph={name}" if name else "",
-                    f"type={etype}" if etype else "",
-                ]))
-                line = " | ".join(filter(None, [desc, attrs])) or "[无文本/无显著属性]"
-                if _match(text) or _match(name):
-                    rows.append(line)
-            except Exception:
-                continue  # 单个元素读取失败不影响整体枚举
-            if len(rows) >= MAX_ITEMS_PER_KIND:
-                rows.append(f"... （已截断，仅显示前 {MAX_ITEMS_PER_KIND} 条）")
-                break
-        print(f"\n[{title}] 命中 {len(rows)} 条：")
+    for title, rows in sections:
+        rows = [r for r in (rows or []) if _match(r)]
+        print(f"\n[{title}] 命中 {len(rows)} 条（每类最多 {MAX_ITEMS_PER_KIND}）：")
+        if not rows:
+            print("  - （无）")
         for r in rows:
-            print(f"  - {r}")
+            text = r.get("text") or ""
+            desc = f'text="{text}"' if text else "[无文本]"
+            print(f"  - {desc} | tag={r.get('tag', '')} | {r.get('attrs', '')}".rstrip(" |"))
 
-    print("\n建议：优先用 get_by_role(role, name=...) / get_by_text(exact=True) / get_by_placeholder() 选定新定位，禁用 XPath。")
+    print("\n建议：优先用 get_by_role(role, name=真实文案) / get_by_text(exact=True) / get_by_placeholder() / get_by_label() 选定定位，禁用 XPath。")
+    print("列表页进详情 / 点行操作：到【表格数据行】找目标行的可点击项点击；禁止自己拼 URL 用 page.goto，也禁止 evaluate 读 __vue__ 内部数据 / 合成 click。")
+    print("标了【DISABLED】的元素当前不可点，应先满足其启用前置条件，勿强点。")
     print("==================================================\n")
 
 

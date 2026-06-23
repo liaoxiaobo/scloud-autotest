@@ -32,60 +32,13 @@ class ObsPage(ObsAssertionMixin, BasePage):
         Args:
             org_name: 组织名称，支持字符串或列表（多级组织路径）。默认"默认组织"。
             project_name: 项目名称，默认"默认项目"
+
+        支持多级组织路径，点击顶部项目选择按钮后在弹窗中依次选择组织树和目标项目。
+        若目标项目未直接出现在列表中，会尝试按"项目名称"搜索；仍失败则刷新页面后重试一次，
+        以应对新创建项目未同步到已挂载组件缓存的情况。
         """
-        # 等待页面完全加载，避免按钮在 DOM 重建时被 detached
-        self.page.wait_for_timeout(2000)
-        # 重试：等待项目按钮出现、匹配、并点击（兼容页面过渡期间的 DOM 重建）
-        for attempt in range(3):
-            try:
-                top_project_btn = self.page.locator(".project_btn").filter(
-                    has_text=re.compile(r"请选择项目|" + re.escape(project_name))
-                )
-                if top_project_btn.count() == 0:
-                    top_project_btn = self.page.locator(".project_btn")
-                expect(top_project_btn.first).to_be_visible(timeout=5000)
-                top_project_btn.first.click()
-                break
-            except Exception:
-                if attempt == 2:
-                    raise
-                self.page.wait_for_timeout(2000)
-        self.page.wait_for_timeout(1000)
-
-        panel = self.page.locator(".project_dialog").first
-        expect(panel).to_be_visible(timeout=10000)
-        # 等待组织树异步加载完成
-        self.page.wait_for_timeout(2000)
-
-        # 在左侧组织树中选择组织（支持多级路径）
+        self.logger.info(f"选择项目: {org_name} -> {project_name}")
         org_names = [org_name] if isinstance(org_name, str) else org_name
-
-        # 使用 JS 直接操作 DOM，避免 Playwright locator 对隐藏元素的限制
-        for i, target in enumerate(org_names):
-            is_leaf = (i == len(org_names) - 1)
-            self.page.evaluate("""
-                (args) => {
-                    const [target, isLeaf] = args;
-                    const tree = document.querySelector('.department_tree');
-                    if (!tree) return;
-                    const items = tree.querySelectorAll('.one-tree-msg-text-content');
-                    for (let item of items) {
-                        if (item.innerText.trim() === target) {
-                            const parent = item.closest('.one-tree-msg');
-                            if (!parent) return;
-                            const icon = parent.querySelector('.one-tree-jiantou');
-                            if (!isLeaf && icon) icon.click();
-                            else parent.click();
-                            break;
-                        }
-                    }
-                }
-            """, [target, is_leaf])
-            self.page.wait_for_timeout(3000)
-
-        # 等待项目列表异步加载，并轮询查找目标项目
-        deadline = time.time() + 15
-        selected = False
 
         def _try_select_project():
             items = self.page.locator(".project_item")
@@ -96,19 +49,88 @@ class ObsPage(ObsAssertionMixin, BasePage):
                     return True
             return False
 
-        while time.time() < deadline:
-            if _try_select_project():
-                selected = True
-                break
-            time.sleep(1)
+        def _attempt_select():
+            # 等待 SPA 路由完成并渲染顶部项目选择按钮（慢环境可能需要数秒）
+            top_btn_ready = False
+            top_project_btn = None
+            for _ in range(30):
+                top_project_btn = self.page.locator(".project_btn").filter(
+                    has_text=re.compile(r"请选择项目|" + re.escape(project_name))
+                )
+                if top_project_btn.count() == 0:
+                    top_project_btn = self.page.locator(".project_btn")
+                if top_project_btn.count() > 0:
+                    try:
+                        expect(top_project_btn.first).to_be_visible(timeout=2000)
+                        top_btn_ready = True
+                        break
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(1000)
 
-        # 未找到则尝试使用搜索框
-        if not selected:
+            if not top_btn_ready or top_project_btn is None:
+                raise AssertionError(
+                    "顶部项目选择按钮未在预期时间内出现，页面可能未正确加载")
+
+            top_project_btn.first.click()
+            self.page.wait_for_timeout(1000)
+
+            panel = self.page.locator(".project_dialog").first
+            expect(panel).to_be_visible(timeout=15000)
+            # 等待组织树异步加载完成
+            self.page.wait_for_timeout(2000)
+
+            # 在左侧组织树中选择组织（支持多级路径）
+            for i, target in enumerate(org_names):
+                is_leaf = (i == len(org_names) - 1)
+                self.page.evaluate("""
+                    (args) => {
+                        const [target, isLeaf] = args;
+                        const tree = document.querySelector('.department_tree');
+                        if (!tree) return;
+                        const items = tree.querySelectorAll('.one-tree-msg-text-content');
+                        for (let item of items) {
+                            if (item.innerText.trim() === target) {
+                                const parent = item.closest('.one-tree-msg');
+                                if (!parent) return;
+                                const icon = parent.querySelector('.one-tree-jiantou');
+                                if (!isLeaf && icon) icon.click();
+                                else parent.click();
+                                break;
+                            }
+                        }
+                    }
+                """, [target, is_leaf])
+                self.page.wait_for_timeout(3000)
+
+            # 等待项目列表异步加载，并轮询查找目标项目
+            deadline = time.time() + 12
+            while time.time() < deadline:
+                if _try_select_project():
+                    return True, panel
+                time.sleep(1)
+
+            # 未找到则尝试切换搜索类型为"项目名称"后再搜索
+            try:
+                key_select = panel.locator(".el-select").first
+                if key_select.count() > 0:
+                    key_select.click()
+                    self.page.wait_for_timeout(500)
+                    project_option = self.page.locator(".el-select-dropdown__item").filter(
+                        has_text="项目名称"
+                    )
+                    if project_option.count() > 0:
+                        project_option.first.click()
+                        self.page.wait_for_timeout(500)
+            except Exception as e:
+                self.logger.warning(f"切换项目搜索类型失败: {e}")
+
             search_input = panel.locator('input[type="text"]').filter(
                 has=self.page.get_by_placeholder(re.compile(r"搜索|请输入"))
             )
             if search_input.count() > 0:
-                self.logger.info(f"项目列表中未直接找到 '{project_name}'，尝试搜索")
+                self.logger.info(f"项目列表中未直接找到 '{project_name}'，尝试按项目名称搜索")
+                search_input.first.fill("")
                 search_input.first.fill(project_name)
                 self.page.wait_for_timeout(500)
                 self.page.keyboard.press("Enter")
@@ -117,9 +139,29 @@ class ObsPage(ObsAssertionMixin, BasePage):
                 deadline = time.time() + 10
                 while time.time() < deadline:
                     if _try_select_project():
-                        selected = True
-                        break
+                        return True, panel
                     time.sleep(1)
+
+            return False, panel
+
+        selected, panel = _attempt_select()
+
+        # 仍失败则刷新页面后重试一次（新创建的项目可能未同步到已挂载的组件缓存）
+        if not selected:
+            self.logger.warning(
+                f"项目 '{project_name}' 未在首次尝试中找到，刷新页面后重试一次"
+            )
+            try:
+                cancel_btn = panel.locator(".dialog_footer").get_by_text("取消", exact=True)
+                if cancel_btn.count() > 0:
+                    cancel_btn.click()
+                    self.page.wait_for_timeout(500)
+            except Exception:
+                pass
+            self.page.reload()
+            self.wait_for_page_ready()
+            self.page.wait_for_timeout(3000)
+            selected, panel = _attempt_select()
 
         if not selected:
             raise AssertionError(
@@ -757,8 +799,9 @@ class ObsPage(ObsAssertionMixin, BasePage):
     def obs_object_upload_check_capacity_blocked(self, file_path):
         """检查上传对象是否因桶容量不足被阻止。
 
-        打开上传弹窗、选择文件后，检查"立即上传"按钮是否被禁用
-        或是否显示容量不足警告。
+        打开上传弹窗、选择文件后，轮询检查"立即上传"按钮是否被禁用
+        或是否显示容量不足警告（兼容 disabled 属性与 is-disabled 类名，
+        并放宽等待时间以应对慢环境）。
 
         Args:
             file_path: 本地文件路径
@@ -766,44 +809,79 @@ class ObsPage(ObsAssertionMixin, BasePage):
         Returns:
             bool: True 表示上传被阻止，False 表示可以上传
         """
-        # 点击上传对象按钮
+        # 点击上传对象按钮并等待弹窗渲染
         self.page.get_by_text("上传对象", exact=True).first.click()
-        self.page.wait_for_timeout(1500)
-
-        # 在弹窗中设置文件
         dialog = self.page.locator(".cv-dialog, .el-dialog").filter(
             has_text="上传对象"
         ).first
+        try:
+            expect(dialog).to_be_visible(timeout=10000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1500)
+
+        # 在弹窗中设置文件
         file_input = self.page.locator("#obsUploadInput")
         if file_input.count() == 0:
             file_input = self.page.locator('input[type="file"]')
         file_input.set_input_files(file_path)
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(1000)
 
-        # 检查"立即上传"按钮是否被禁用
         upload_btn = dialog.get_by_text("立即上传", exact=True).first
-        is_disabled = False
-        try:
-            is_disabled = upload_btn.is_disabled()
-        except Exception:
-            pass
 
-        # 检查是否显示容量不足警告
-        warning_visible = False
-        warning_locator = dialog.locator("div").filter(
-            has_text="文件超出桶可用容量大小"
+        # 轮询等待前端容量校验结果（最多 10 秒）
+        is_blocked = False
+        deadline = time.time() + 10
+        warning_patterns = (
+            "文件超出桶可用容量大小",
+            "超出桶可用容量",
+            "容量不足",
+            "超出容量",
         )
-        if warning_locator.count() > 0:
+        while time.time() < deadline:
+            # 1) 标准 disabled 属性
             try:
-                warning_visible = warning_locator.first.is_visible()
+                if upload_btn.is_disabled():
+                    is_blocked = True
+                    break
             except Exception:
                 pass
 
+            # 2) 自定义组件通过 is-disabled 类名禁用
+            try:
+                btn_parent = upload_btn.locator("xpath=..")
+                parent_class = btn_parent.get_attribute("class") or ""
+                if "is-disabled" in parent_class:
+                    is_blocked = True
+                    break
+            except Exception:
+                pass
+
+            # 3) 容量不足提示文本
+            for text in warning_patterns:
+                warning_locator = dialog.locator(
+                    "div, span, p, .el-form-item__error"
+                ).filter(has_text=text)
+                if warning_locator.count() > 0:
+                    try:
+                        if warning_locator.first.is_visible():
+                            is_blocked = True
+                            break
+                    except Exception:
+                        pass
+            if is_blocked:
+                break
+
+            self.page.wait_for_timeout(500)
+
         # 关闭上传弹窗
-        self.page.keyboard.press("Escape")
+        try:
+            self.page.keyboard.press("Escape")
+        except Exception:
+            pass
         self.page.wait_for_timeout(500)
 
-        return is_disabled or warning_visible
+        return is_blocked
 
     def _close_task_list_panel_if_exists(self):
         """关闭右侧任务列表面板（如果存在）。"""
