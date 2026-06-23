@@ -66,7 +66,7 @@ class TestQosNatv1FipEffectiveness:
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "name_prefix": "qos_", "bind_mfip": True}], indirect=True)
     @pytest.mark.parametrize("eip", [{"count": 3, "pool": "public_net(基础版)"}], indirect=True)
     @allure.title("QoS-NATv1网关FIP限速-生效性验证")
-    def test_qos_natv1_fip_effectiveness(self, vpc_page, vpc, vm, eip, ssh_host, ssh_vm):
+    def test_qos_natv1_fip_effectiveness(self, vpc_page, vpc, vm, eip, ssh_host, ssh_vm, config):
         """测试NATv1网关FIP绑定QoS后的带宽生效性。"""
         qos_name = f"qos-{random_data()}"
         nat_name = f"nat-{random_data()}"
@@ -83,12 +83,7 @@ class TestQosNatv1FipEffectiveness:
             logger.info(f"QoS策略创建成功: {qos_name}")
 
         with allure_step_log("前置准备: 获取管理节点管理网IP并开放5201端口"):
-            result = ssh_host.run(
-                "ip -4 -o addr show brmanage 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1",
-                return_rc=True,
-            )
-            assert result["rc"] == 0, f"获取brmanager IP失败: {result.get('stderr', '')}"
-            mip = result["stdout"].strip()
+            mip = config.get("host")
             assert mip and mip.startswith("172.22."), f"管理网IP格式异常: {mip}"
             logger.info(f"管理节点管理网IP: {mip}")
 
