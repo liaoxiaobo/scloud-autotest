@@ -231,14 +231,7 @@ class EcsNetworkMixin(BasePage):
         if not dialog.is_visible():
             dialog = self.get_by_role("dialog").filter(has_text="设置安全组").last
 
-        try:
-            pagination_trigger = dialog.get_by_placeholder("请选择")
-            if pagination_trigger.count() > 0:
-                pagination_trigger.click()
-                # 寻找 50条/页 选项
-                self.locator("li").filter(has_text="50条/页").last.click()
-        except Exception as e:
-            logger.warning(f"尝试设置分页为50失败: {e}")
+        self._expand_page_size("50")
 
         for sg in sg_names:
             # 找到对应行并勾选

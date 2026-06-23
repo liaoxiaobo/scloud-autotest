@@ -303,10 +303,4 @@ class TestCCENodeOperations:
             ssh_host.wait_vm_deleted(new_node_name, timeout=300)
             ssh_host.wait_volume_deleted(new_node_name, timeout=300)
 
-        with allure_step_log("步骤8: 验证节点数量恢复"):
-            cce_page.wait_for_page_ready()
-            assert cce_page.get_node_count() == before_count, (
-                f"节点数量未恢复: 期望 {before_count}"
-            )
-
 

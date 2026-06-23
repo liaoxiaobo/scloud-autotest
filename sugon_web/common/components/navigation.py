@@ -57,10 +57,10 @@ class NavigationMixin:
             return False
         return True
 
-    def _goto_service_by_path(self, service: str, service_path: str) -> bool:
+    def _goto_service_by_path(self, service: str, service_path: str, force: bool = False) -> bool:
         """通过服务入口路径直达指定服务。"""
         try:
-            if self._is_current_service_path(service_path):
+            if not force and self._is_current_service_path(service_path):
                 self.wait_for_page_ready()
                 self.logger.info(f"当前已在目标服务下，复用现有页面: {service} -> {self.page.url}")
                 return True
@@ -90,7 +90,7 @@ class NavigationMixin:
             self.logger.error(f"通过 URL 直达服务 {service} 失败: {e}")
             raise AssertionError(f"通过 URL 直达服务 {service} 失败: {e}") from e
 
-    def goto_service(self, service: str):
+    def goto_service(self, service: str, force: bool = False):
         """导航到指定服务，通过服务入口路径直达。
 
         Args:
@@ -105,7 +105,7 @@ class NavigationMixin:
 
         service_path = SERVICE_PATH_MAP.get(service)
         try:
-            return self._goto_service_by_path(service, service_path)
+            return self._goto_service_by_path(service, service_path, force=force)
         except Exception as e:
             self.logger.error(f"导航到服务 {service} 失败: {e}")
             raise AssertionError(f"导航到服务 {service} 失败: {e}") from e

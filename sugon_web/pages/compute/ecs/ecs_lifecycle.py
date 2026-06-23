@@ -122,14 +122,7 @@ class EcsLifecycleMixin(BasePage):
 
         rebuild_dialog = self.locator("div[role='dialog'][aria-label='重建云主机']:visible")
         expect(rebuild_dialog).to_be_visible()
-        mode_trigger = self._find_element(
-            [
-                self.locator("div").filter(has_text=re.compile(r"^置备方式精简置备厚置备$")).get_by_placeholder("请选择"),
-                self.locator("form div").filter(has_text="置备方式精简置备厚置备 请选择置备方式").get_by_placeholder("请选择")],
-            "重建云主机置备方式选择框",
-            timeout=3000)
-        mode_trigger.click()
-        self.get_by_role("listitem").filter(has_text=pre_type).click()
+        self.get_by_role("radio", name=pre_type).click()
         self._select_from_named_drawer(drawer_title="选择镜像", item_name=image, open_drawer=True)
         self.dialog_confirm.click()
         logger.info(f"重建云主机完成: {name}, 镜像: {image}")
@@ -239,73 +232,43 @@ class EcsLifecycleMixin(BasePage):
         Args:
             name: 云服务器名称
             spec: {
-                "type": "基础规格" | "自定义规格",  # 规格类型
+                "spec_type": True | False,       # True=基础规格, False=自定义规格
                 "classify": "计算型" | "通用型" | "内存型",  # 规格分类（仅基础规格需要）
-                "CPU": "2",  # CPU核数
-                "Mem": "4",  # 内存大小
-                "flavor_name": "ecs.c6.xlarge"  # 规格名称（可选，用于精确匹配）
-                "shutdown": False | True
+                "CPU": "2",                      # CPU核数
+                "Mem": "4",                      # 内存大小
+                "flavor_name": "ecs.c6.xlarge"   # 规格名称（可选，用于精确匹配）
             }
         """
         cpu = spec.get("CPU", "2")
         mem = spec.get("Mem", "4")
         spec_type = spec.get("spec_type")
-        power_off = spec.get("shutdown", False)
-        need_start = False
 
-        try:
-            if power_off:
-                self.ecs_operations(name, "关机")
-                self.assert_status(name, "关机")
-                need_start = True  # 标记需要恢复开机
+        self.click_action(name, "修改规格")
+        if spec_type:
+            classify = spec.get("classify", "计算型")
+            flavor_name = spec.get("flavor_name")
 
-            self.click_action(name, "修改规格")
-            if spec_type:
-                classify = spec.get("classify", "计算型")
-                flavor_name = spec.get("flavor_name")
+            if classify:
+                self.get_by_text(classify).click()
 
-                # 选择规格分类
-                if classify:
-                    self.get_by_text(classify).click()
+            if flavor_name:
+                self.get_by_role("row").filter(has_text=flavor_name).get_by_role("radio").click()
+            else:
+                (self.get_by_role("row").filter(has_text=f"{cpu} 核")
+                 .and_(self.get_by_role("row").filter(has_text=f"{mem}.00 GiB"))
+                 .and_(self.get_by_role("row").filter(has_text=f"{classify[:-1]}标准"))
+                 .get_by_role("radio").first.click())
 
-                # 选择具体规格
-                if flavor_name:
-                    # 通过规格名称精确匹配
-                    self.get_by_role("row").filter(has_text=flavor_name).get_by_role("radio").click()
-                else:
-                    # 通过CPU和内存模糊匹配
-                    (self.get_by_role("row").filter(has_text=f"{cpu} 核")
-                     .and_(self.get_by_role("row").filter(has_text=f"{mem}.00 GiB"))
-                     .and_(self.get_by_role("row").filter(has_text=f"{classify[:-1]}标准"))
-                     .get_by_role("radio").first.click())
-
-                self.dialog_confirm.click()
-                self.assert_popup_success("调整实例资源配置成功")
-                logger.info(f"操作完成: 云服务器{name}修改规格为{classify} {cpu}核{mem}GiB")
-
-            else:  # 自定义规格
-                self.get_by_role("radio").filter(has_text="自定义规格").click()
-
-                # 填写CPU和内存
-                self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(1).fill(cpu)
-                self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(2).fill(mem)
-
-                # 点击确定按钮
-                self.get_by_label("修改规格").get_by_text("确定").click()
-                self.assert_popup_success("调整实例资源配置成功")
-                logger.info(f"操作完成: 云服务器{name}修改自定义规格为{cpu}核{mem}GiB")
-
-        except Exception as e:
-            logger.error(f"云服务器{name}修改规格失败: {e}")
-            raise e
-        finally:
-            if need_start:
-                try:
-                    self.ecs_operations(name, "启动")
-                    self.assert_status(name)
-                    logger.info(f"云服务器{name}已恢复开机")
-                except Exception as e:
-                    logger.error(f"云服务器{name}恢复开机失败: {e}")
+            self.dialog_confirm.click()
+            self.assert_popup_success("调整实例资源配置成功")
+            logger.info(f"操作完成: 云服务器{name}修改规格为{classify} {cpu}核{mem}GiB")
+        else:
+            self.get_by_role("radio").filter(has_text="自定义规格").click()
+            self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(1).fill(cpu)
+            self.get_by_role("dialog", name="修改规格").get_by_role("textbox").nth(2).fill(mem)
+            self.get_by_label("修改规格").get_by_text("确定").click()
+            self.assert_popup_success("调整实例资源配置成功")
+            logger.info(f"操作完成: 云服务器{name}修改自定义规格为{cpu}核{mem}GiB")
 
 
     @submenu("弹性云服务器")

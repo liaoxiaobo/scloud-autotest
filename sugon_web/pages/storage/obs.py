@@ -1,4 +1,6 @@
 import re
+import time
+
 from playwright.sync_api import expect
 from sugon_web.assertions.storage import ObsAssertionMixin
 from sugon_web.common.base import BasePage, submenu
@@ -81,27 +83,47 @@ class ObsPage(ObsAssertionMixin, BasePage):
             """, [target, is_leaf])
             self.page.wait_for_timeout(3000)
 
-        # 等待项目列表异步加载
-        self.page.wait_for_timeout(3000)
-        project_items = self.page.locator(".project_item")
-        if project_items.count() > 0:
-            selected = False
-            for i in range(project_items.count()):
-                item = project_items.nth(i)
-                item_text = item.inner_text()
-                if project_name in item_text:
+        # 等待项目列表异步加载，并轮询查找目标项目
+        deadline = time.time() + 15
+        selected = False
+
+        def _try_select_project():
+            items = self.page.locator(".project_item")
+            for i in range(items.count()):
+                item = items.nth(i)
+                if project_name in item.inner_text():
                     item.locator(".el-radio").click()
-                    selected = True
-                    break
-            if not selected:
-                project_items.first.locator(".el-radio").click()
-        else:
-            no_project = panel.locator("text=此部门下没有项目")
-            if no_project.count() > 0:
-                panel.locator(".dialog_footer").get_by_text("取消", exact=True).click()
-                self.page.wait_for_timeout(300)
+                    return True
+            return False
+
+        while time.time() < deadline:
+            if _try_select_project():
+                selected = True
+                break
+            time.sleep(1)
+
+        # 未找到则尝试使用搜索框
+        if not selected:
+            search_input = panel.locator('input[type="text"]').filter(
+                has=self.page.get_by_placeholder(re.compile(r"搜索|请输入"))
+            )
+            if search_input.count() > 0:
+                self.logger.info(f"项目列表中未直接找到 '{project_name}'，尝试搜索")
+                search_input.first.fill(project_name)
+                self.page.wait_for_timeout(500)
+                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(2000)
+                # 搜索后轮询
+                deadline = time.time() + 10
+                while time.time() < deadline:
+                    if _try_select_project():
+                        selected = True
+                        break
+                    time.sleep(1)
+
+        if not selected:
             raise AssertionError(
-                f"环境缺少可用项目：组织路径'{org_names}'下没有项目'{project_name}'")
+                f"项目选择失败：组织路径'{org_names}'下未找到项目'{project_name}'")
 
         # 点击确定
         panel.locator(".dialog_footer").get_by_text("确定", exact=True).click()
@@ -2123,17 +2145,45 @@ class ObsPage(ObsAssertionMixin, BasePage):
         self.page.wait_for_timeout(3000)
         self.wait_for_page_ready()
 
-    def obs_storage_policy_assert_contain(self, rule_name):
+    def obs_storage_policy_assert_contain(self, rule_name, timeout=30):
         """断言存储策略列表中包含指定策略名称。
+
+        针对 Jenkins 等慢环境做轮询等待：创建策略后表格异步刷新，
+        可能晚于单次 10 秒可见性断言才出现目标行。
 
         Args:
             rule_name: 策略名称
+            timeout: 最长等待秒数，默认 30
         """
-        table = self.page.locator(
-            ".cl-table-body, .el-table__body-wrapper"
-        ).first
-        rows = table.locator("tr").filter(has_text=rule_name)
-        expect(rows.first).to_be_visible(timeout=10000)
+        self.logger.info(f"等待存储策略列表中出现 '{rule_name}'")
+        start_time = time.time()
+        last_error = None
+        while time.time() - start_time < timeout:
+            try:
+                table = self.page.locator(
+                    ".cl-table-body, .el-table__body-wrapper"
+                ).first
+                rows = table.locator("tr").filter(has_text=rule_name)
+                if rows.count() > 0:
+                    expect(rows.first).to_be_visible(timeout=1000)
+                    self.logger.info(f"存储策略列表中包含 '{rule_name}'")
+                    return
+            except Exception as e:
+                last_error = e
+            self.page.wait_for_timeout(1000)
+
+        # 失败前打印最终表格快照用于诊断
+        try:
+            final_text = self.page.locator(
+                ".cl-table-body, .el-table__body-wrapper"
+            ).first.evaluate("el => el.innerText")
+            self.logger.error(f"最终策略列表文本: {final_text[:1000]}")
+        except Exception as dump_error:
+            self.logger.error(f"最终表格文本 dump 失败: {dump_error}")
+
+        raise AssertionError(
+            f"存储策略列表中未找到 '{rule_name}'"
+        ) from last_error
 
     def obs_storage_policy_get_row_data(self, rule_name):
         """获取存储策略列表中指定策略名称的行数据。

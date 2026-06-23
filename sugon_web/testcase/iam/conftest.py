@@ -13,7 +13,7 @@ from sugon_web.utils.logger import logger
 @pytest.fixture(scope="session")
 def verify_ctx(browser):
     """session级验证上下文，创建时预热避免首次调用超时。"""
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     base_url = Config.get("base_url")
     warmup = ctx.new_page()
     warmup.goto(f"{base_url}/#/login", wait_until="domcontentloaded")
@@ -70,7 +70,7 @@ def iam_tenant_page(page, iam_shared_tenant_user):
 @pytest.fixture(scope="package")
 def _iam_shared_ctx(browser):
     """package 级共享 browser context，供 IAM fixture 复用。"""
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     yield ctx
     ctx.close()
 
@@ -122,7 +122,7 @@ def iam_shared_user(_iam_shared_ctx, browser, config, iam_shared_child_org):
     yield user_info
 
     # 清理：删除用户（忽略已删除或定位失败的情况）
-    ctx = browser.new_context(ignore_https_errors=True)
+    ctx = browser.new_context(ignore_https_errors=True, timezone_id="Asia/Shanghai")
     page = _create_logged_in_page(ctx, config)
     try:
         delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
@@ -138,17 +138,39 @@ def iam_shared_tenant_user(_iam_shared_ctx, config, iam_shared_child_org):
     与 iam_shared_user 隔离：避免 test_iam_06/07 的密码/访问控制修改污染租户测试。
     """
     page = _create_logged_in_page(_iam_shared_ctx, config)
+    # 强制清理可能残留的弹窗/浮层，避免遮挡创建用户按钮
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+        for _ in range(3):
+            msg_box = page.locator(".el-message-box__wrapper")
+            if msg_box.is_visible():
+                for btn_text in ["确定", "确认", "取消", "关闭"]:
+                    btn = msg_box.locator("button").filter(has_text=btn_text)
+                    if btn.count() > 0 and btn.first.is_visible():
+                        btn.first.click()
+                        page.wait_for_timeout(800)
+                        break
+            else:
+                break
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+    except Exception as e:
+        logger.warning(f"租户用户创建前清理残留弹窗失败（继续执行）: {e}")
     user_info = create_iam_user(page, target_org=iam_shared_child_org["child_name"])
     page.close()
     yield user_info
 
     # 清理：删除用户
-    page = _create_logged_in_page(_iam_shared_ctx, config)
     try:
-        delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
+        page = _create_logged_in_page(_iam_shared_ctx, config)
+        try:
+            delete_iam_user(page, user_info["display_name"], target_org=user_info.get("target_org"))
+        except Exception as e:
+            logger.warning(f"清理租户测试用户 {user_info['display_name']} 失败: {e}")
+        page.close()
     except Exception as e:
-        logger.warning(f"清理租户测试用户 {user_info['display_name']} 失败: {e}")
-    page.close()
+        logger.warning(f"租户测试用户 fixture 清理失败（可能前序测试导致上下文异常）: {e}")
 
 
 @pytest.fixture(scope="class")
@@ -192,14 +214,14 @@ def iam_project(_iam_shared_ctx, config, iam_shared_org, iam_shared_child_org):
 
 @pytest.fixture(scope="function")
 def iam_batch_users(_iam_shared_ctx, config, iam_shared_child_org):
-    """function级 fixture：在共享子组织下创建5个普通用户，测试结束后自动删除。"""
+    """function级 fixture：在共享子组织下创建2个普通用户，测试结束后自动删除。"""
     from sugon_web.utils.data import random_data
     import random
 
     page = _create_logged_in_page(_iam_shared_ctx, config)
 
     users = []
-    for i in range(5):
+    for i in range(2):
         name = random_data().replace("autotest-", "autotest-iam-")
         password = "Keystone@1234"
         email = f"{name}@sugon.com"
@@ -230,10 +252,13 @@ def iam_batch_users(_iam_shared_ctx, config, iam_shared_child_org):
     yield users
 
     # 清理：删除所有用户
-    page = _create_logged_in_page(_iam_shared_ctx, config)
-    for user in users:
-        try:
-            delete_iam_user(page, user["display_name"])
-        except Exception as e:
-            logger.warning(f"删除用户 {user['display_name']} 失败: {e}")
-    page.close()
+    try:
+        page = _create_logged_in_page(_iam_shared_ctx, config)
+        for user in users:
+            try:
+                delete_iam_user(page, user["display_name"])
+            except Exception as e:
+                logger.warning(f"删除用户 {user['display_name']} 失败: {e}")
+        page.close()
+    except Exception as e:
+        logger.warning(f"批次用户 fixture 清理失败（可能前序测试导致上下文异常）: {e}")

@@ -1,7 +1,7 @@
 import re
 import time
 import pytest
-from playwright.sync_api import Locator
+from playwright.sync_api import Locator, expect
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.utils.logger import logger
 
@@ -26,21 +26,46 @@ class BmsPage(BasePage):
         expected = self._SOFT_SUBMENU_URL_MAP.get(name)
         self.goto_service("裸金属")
         if expected:
-            if expected not in self.page.url:
-                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
-                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
-                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
-                base = self.page.url.split('#')[0].rstrip('/')
+            base = self.page.url.split('#')[0].rstrip('/')
+            target_url = f"{base}/#{expected}"
+
+            def _on_expected_route():
+                return expected in self.page.url and "#/error" not in self.page.url
+
+            def _goto_target(wait_ms=2500):
                 self.page.goto(base)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(1500)
-                self.page.goto(f"{base}#{expected}")
+                self.page.goto(target_url)
                 self.page.wait_for_load_state("domcontentloaded")
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(wait_ms)
+
+            if not _on_expected_route():
+                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
+                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
+                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
+                _goto_target()
                 # 若被重定向到 no-permission，尝试通过菜单点击导航
                 if "no-permission" in self.page.url:
                     self.logger.warning(f"URL 导航到 {expected} 被重定向到 no-permission，尝试菜单点击")
                     self._click_bms_submenu(name)
+                # 偶发进入前端 error 路由或落到其他 BMS 子页面时，先重新打开服务根页再直达目标 hash；
+                # 仍失败时再尝试菜单点击，避免后续误报为搜索框定位失败。
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 导航到 {name} 后未到达期望路由，"
+                        f"当前URL={self.page.url}，重试直达: {target_url}"
+                    )
+                    _goto_target(wait_ms=3000)
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 直达 {target_url} 后仍未到达期望路由，"
+                        f"当前URL={self.page.url}，尝试左侧菜单点击"
+                    )
+                    self._click_bms_submenu(name)
+                    self.page.wait_for_timeout(3000)
+                if not _on_expected_route():
+                    raise RuntimeError(f"进入BMS{name}页失败，当前URL={self.page.url}, 目标URL={target_url}")
             # 裸金属实例页面表格和搜索框加载较慢，增加等待时间
             wait_ms = 4000 if name == "裸金属实例" else 2500
             self.page.wait_for_timeout(wait_ms)
@@ -99,18 +124,37 @@ class BmsPage(BasePage):
     def bms_search(self, keyword: str):
         """BMS 页面专用搜索，使用回车触发，避免 _btn_search 定位不稳定问题。"""
         self.logger.info(f"[bms_search] 开始搜索: {keyword}")
+        try:
+            self.close_dialog_if_exists()
+        except Exception as e:
+            logger.debug(f"[bms_search] 关闭残留弹窗失败，继续搜索: {e}")
         self.page.wait_for_timeout(1000)
-        # 优先查找 BMS 页面搜索输入框
-        inp = self.page.locator("input[placeholder*='搜索(实例名称)'], input[placeholder*='搜索（名称）'], input[placeholder*='搜索(名称)']").first
+        # 优先查找 BMS 各子菜单页面搜索输入框
+        inp = self.page.locator(
+            "input[placeholder*='搜索(实例名称)'], "
+            "input[placeholder*='搜索（实例名称）'], "
+            "input[placeholder*='搜索（名称）'], "
+            "input[placeholder*='搜索(名称)'], "
+            "input[placeholder*='搜索（带外IP）'], "
+            "input[placeholder*='搜索(带外IP)'], "
+            "input[placeholder*='搜索（物理机）'], "
+            "input[placeholder*='搜索(物理机)'], "
+            "input[placeholder*='搜索（网络名称）'], "
+            "input[placeholder*='搜索(网络名称)']"
+        ).first
         if inp.count() == 0:
             inp = self.page.locator(".input-with-select input, .el-input__inner").first
-        if inp.count() == 0:
+        if inp.count() == 0 or not inp.is_editable():
             # 最终回退到通用搜索输入
             inp = self._input_search
         inp.fill(keyword)
         self.page.keyboard.press("Enter")
         self.page.wait_for_timeout(2000)
         self.logger.info(f"[bms_search] 搜索完成: {keyword}")
+
+    def search(self, keyword: str):
+        """BMS 页面搜索入口，统一使用回车触发的专用搜索逻辑。"""
+        self.bms_search(keyword)
 
     # ---- buttons & dialog ----
 
@@ -164,6 +208,14 @@ class BmsPage(BasePage):
         # 统计可见对话框数量
         visible_dialogs = [d for d in self.page.locator(".sugon-dialog, .el-dialog, [role='dialog']").all() if d.is_visible()]
         logger.info(f"[_confirm_sugon_dialog] 可见对话框数量: {len(visible_dialogs)}")
+        visible_dialogs_locator = self.page.locator(".sugon-dialog:visible, .el-dialog:visible, [role='dialog']:visible")
+
+        def _wait_dialogs_closed():
+            try:
+                expect(visible_dialogs_locator).to_have_count(0, timeout=5000)
+            except Exception as e:
+                logger.warning(f"[_confirm_sugon_dialog] 对话框关闭等待超时: {e}")
+                self.page.wait_for_timeout(1000)
 
         if len(visible_dialogs) == 0 and not required:
             logger.info("[_confirm_sugon_dialog] 无可见对话框且非必需，直接返回")
@@ -199,6 +251,7 @@ class BmsPage(BasePage):
                             except Exception as e:
                                 logger.warning(f"[_confirm_sugon_dialog] JS点击失败: {e}")
                         self.page.wait_for_timeout(1000)
+                        _wait_dialogs_closed()
                         return
         try:
             logger.info("[_confirm_sugon_dialog] 尝试使用 dialog_confirm 定位器")
@@ -207,6 +260,7 @@ class BmsPage(BasePage):
             except Exception:
                 self.dialog_confirm.click(force=True)
             self.page.wait_for_timeout(1000)
+            _wait_dialogs_closed()
             return
         except Exception as e:
             logger.warning(f"[_confirm_sugon_dialog] dialog_confirm 点击失败: {e}")
@@ -218,6 +272,7 @@ class BmsPage(BasePage):
                         logger.info("[_confirm_sugon_dialog] 通过对话框内搜索找到可见确定按钮")
                         btn.click(force=True)
                         self.page.wait_for_timeout(1000)
+                        _wait_dialogs_closed()
                         return
         except Exception as e:
             logger.warning(f"[_confirm_sugon_dialog] 对话框内搜索确定按钮失败: {e}")
@@ -230,10 +285,10 @@ class BmsPage(BasePage):
         logger.info(f"[_js_click_action] 开始执行操作 '{action}'")
         row_text = ""
         try:
-            row_text = row.text_content()[:80]
+            row_text = (row.text_content() or "").strip()
         except Exception:
             pass
-        logger.info(f"[_js_click_action] 目标行文本: {row_text}")
+        logger.info(f"[_js_click_action] 目标行文本: {row_text[:120]}")
 
         # 先展开下拉菜单
         more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text=re.compile(r"更多|⋯|⋮"))
@@ -249,6 +304,20 @@ class BmsPage(BasePage):
         else:
             logger.info(f"[_js_click_action] 未找到'更多'按钮，操作可能直接可见")
 
+        # 下拉菜单通常挂载到 body，不一定在当前行 DOM 内。
+        global_items = self.page.locator(
+            ".cloud-table-dropdown-item, .el-dropdown-menu__item, [role='menuitem']"
+        ).filter(has_text=action)
+        for index in range(global_items.count()):
+            try:
+                item = global_items.nth(index)
+                if item.is_visible(timeout=1000):
+                    item.click(force=True)
+                    logger.info(f"[_js_click_action] 成功点击全局可见菜单项 '{action}'")
+                    return True
+            except Exception as e:
+                logger.debug(f"[_js_click_action] 全局菜单项第 {index + 1} 个不可点击: {e}")
+
         # 尝试标准点击下拉菜单项（要求元素可见可交互）
         items = row.locator(".cloud-table-dropdown-item").filter(has_text=action)
         item_count = items.count()
@@ -258,15 +327,26 @@ class BmsPage(BasePage):
                 items.first.wait_for(state="visible", timeout=3000)
                 items.first.click()
                 logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
-                return
+                return True
             except Exception as e:
-                logger.warning(f"[_js_click_action] 标准点击失败（元素不可见或不可交互）: {e}")
+                logger.info(f"[_js_click_action] 标准点击不可用，准备使用 JavaScript 点击 '{action}': {e}")
 
         # 回退到 JavaScript
         logger.info(f"[_js_click_action] 回退到 JavaScript 点击 '{action}'")
         result = self.page.evaluate(
             """([t, a]) => {
                 const allRows = document.querySelectorAll('table tr');
+                const isVisible = (el) => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+                };
+                for (const i of document.querySelectorAll('.cloud-table-dropdown-item, .el-dropdown-menu__item, [role="menuitem"]')) {
+                    if (i.textContent.trim() === a && isVisible(i)) {
+                        i.click();
+                        return 'global-dropdown-clicked';
+                    }
+                }
                 for (const r of allRows) {
                     if (r.textContent.includes(t)) {
                         for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
@@ -292,6 +372,46 @@ class BmsPage(BasePage):
                 return 'row-not-found';
             }""", [row_text, action])
         logger.info(f"[_js_click_action] JavaScript 点击结果: {result}")
+        if result in ("not-found", "row-not-found"):
+            logger.error(f"[_js_click_action] JavaScript 未找到操作 '{action}'，结果: {result}")
+            return False
+        return True
+
+    def _get_switch_group_row(self, group_name: str, node_name: str = ""):
+        """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
+        candidates = []
+        for row in self._get_rows():
+            try:
+                text = row.text_content(timeout=3000) or ""
+                if group_name in text:
+                    candidates.append((row, text))
+                    if node_name and node_name in text:
+                        logger.info(f"找到交换机组 '{group_name}' 且绑定节点 '{node_name}' 的目标行")
+                        return row
+            except Exception:
+                continue
+        if candidates:
+            for row, text in candidates:
+                if "--" in text or "—" in text:
+                    logger.info(f"未找到绑定节点 '{node_name}' 的行，优先使用已解绑行: {text[:120]}")
+                    return row
+            logger.info(f"未找到绑定节点 '{node_name}' 的交换机组行，回退使用第一条匹配: {candidates[0][1][:120]}")
+            return candidates[0][0]
+        return None
+
+    def _get_switch_group_name_from_row(self, row: Locator, fallback: str = ""):
+        try:
+            name = row.evaluate("""row => {
+                const cells = Array.from(row.querySelectorAll('td'))
+                    .map(td => (td.innerText || '').trim())
+                    .filter(Boolean);
+                return cells[0] || '';
+            }""")
+            if name:
+                return name
+        except Exception as e:
+            logger.debug(f"[_get_switch_group_name_from_row] 解析交换机组名称失败: {e}")
+        return fallback
 
     def _get_rows(self):
         return self.page.locator("tbody tr").all()
@@ -299,14 +419,33 @@ class BmsPage(BasePage):
     def _get_row_by_name(self, name: str):
         try:
             loc = self.page.get_by_role("row", name=name)
-            if loc.count() > 0:
-                return loc
+            if loc.count() == 1:
+                return loc.first
+            if loc.count() > 1:
+                logger.info(f"[_get_row_by_name] '{name}' 匹配到多行，改用逐行遍历避免 strict mode")
         except Exception:
             pass
         for r in self._get_rows():
             try:
                 if name in r.text_content():
                     return r
+            except Exception:
+                continue
+        return None
+
+    def _get_row_by_cell_text(self, text: str, cell_index: int = 1, exact: bool = True):
+        """按指定单元格文本定位表格行，避免只按整行包含导致误判。"""
+        for row in self._get_rows():
+            try:
+                row_text = row.text_content(timeout=3000) or ""
+                if "暂无数据" in row_text:
+                    continue
+                cells = row.locator("td")
+                if cells.count() <= cell_index:
+                    continue
+                value = re.sub(r"\s+", " ", cells.nth(cell_index).text_content(timeout=3000) or "").strip()
+                if (exact and value == text) or (not exact and text in value):
+                    return row
             except Exception:
                 continue
         return None
@@ -331,12 +470,31 @@ class BmsPage(BasePage):
             self.page.wait_for_timeout(2000)
 
     def bms_network_delete(self, name):
+        self._goto_submenu_safe("网络")
         self.page.wait_for_timeout(500)
-        for i, r in enumerate(self._get_rows()):
-            if name in r.text_content():
-                self._js_click_action(r, "删除")
-                self._confirm_sugon_dialog()
-                return
+        self.bms_search(name)
+        row = self._get_row_by_cell_text(name, cell_index=1)
+        if not row:
+            logger.info(f"网络 '{name}' 不存在，无需删除")
+            return False
+        if not self._js_click_action(row, "删除"):
+            raise AssertionError(f"未找到网络 '{name}' 的删除操作")
+        self._confirm_sugon_dialog(required=True)
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            self.page.wait_for_timeout(3000)
+            self._goto_submenu_safe("网络")
+            self.bms_search(name)
+            if not self._get_row_by_cell_text(name, cell_index=1):
+                logger.info(f"网络 '{name}' 已删除")
+                return True
+        raise AssertionError(f"网络 '{name}' 删除后仍存在")
+
+    def bms_network_exists(self, name: str):
+        """判断网络列表中是否存在指定网络名称。"""
+        self._goto_submenu_safe("网络")
+        self.bms_search(name)
+        return self._get_row_by_cell_text(name, cell_index=1) is not None
 
     def bms_network_cleanup(self):
         self.page.wait_for_timeout(1000)
@@ -356,23 +514,196 @@ class BmsPage(BasePage):
 
     # ---- agent ----
 
+    def _dialog_form_control(self, dialog: Locator, label_text: str, selector: str) -> Locator:
+        """在对话框内按表单 label 精确定位控件。"""
+        form_items = dialog.locator(".el-form-item")
+        for index in range(form_items.count()):
+            item = form_items.nth(index)
+            try:
+                label = item.locator(".el-form-item__label").first.text_content(timeout=1000) or ""
+                label = re.sub(r"[\s:*：]+", "", label)
+                if label == re.sub(r"[\s:*：]+", "", label_text):
+                    control = item.locator(selector)
+                    if control.count() > 0:
+                        return control.first
+            except Exception:
+                continue
+        return dialog.locator(".el-form-item").filter(has_text=label_text).locator(selector).first
+
+    def _visible_select_options(self):
+        """读取当前可见 ElementUI 下拉框选项。"""
+        return self.page.evaluate(
+            """() => {
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return el.getAttribute('aria-hidden') !== 'true'
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && style.opacity !== '0'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const dropdowns = Array.from(document.querySelectorAll('body > div.el-select-dropdown, .el-select-dropdown'))
+                    .filter(isVisible);
+                const dropdown = dropdowns[dropdowns.length - 1];
+                if (!dropdown) return [];
+                return Array.from(dropdown.querySelectorAll('li.el-select-dropdown__item, li'))
+                    .filter((item) => isVisible(item) && !item.classList.contains('is-disabled'))
+                    .map((item) => (item.textContent || '').trim())
+                    .filter(Boolean);
+            }"""
+        )
+
+    def _wait_visible_select_options(self, timeout=10000, interval=500):
+        """等待当前可见下拉框选项出现。"""
+        deadline = time.time() + timeout / 1000
+        last_texts = []
+        while time.time() < deadline:
+            last_texts = self._visible_select_options()
+            if last_texts:
+                return last_texts
+            self.page.wait_for_timeout(interval)
+        return last_texts
+
+    def _click_visible_select_option(self, option_text: str = "", exclude_texts=None):
+        """点击当前可见 ElementUI 下拉框中的指定选项；未指定时选第一个有效项。"""
+        exclude_texts = exclude_texts or []
+        clicked = self.page.evaluate(
+            """({optionText, excludeTexts}) => {
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return el.getAttribute('aria-hidden') !== 'true'
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && style.opacity !== '0'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const dropdowns = Array.from(document.querySelectorAll('body > div.el-select-dropdown, .el-select-dropdown'))
+                    .filter(isVisible);
+                const dropdown = dropdowns[dropdowns.length - 1];
+                if (!dropdown) return '';
+                const items = Array.from(dropdown.querySelectorAll('li.el-select-dropdown__item, li'))
+                    .filter((item) => isVisible(item) && !item.classList.contains('is-disabled'));
+                const target = items.find((item) => {
+                    const text = (item.textContent || '').trim();
+                    if (!text || excludeTexts.includes(text)) return false;
+                    return optionText ? text === optionText : true;
+                });
+                if (!target) return '';
+                const opts = {bubbles: true, cancelable: true, view: window};
+                target.dispatchEvent(new MouseEvent('mousedown', opts));
+                target.dispatchEvent(new MouseEvent('mouseup', opts));
+                target.dispatchEvent(new MouseEvent('click', opts));
+                return (target.textContent || '').trim();
+            }""",
+            {"optionText": option_text, "excludeTexts": exclude_texts},
+        )
+        if not clicked:
+            raise Exception(f"未找到可点击的下拉选项: {option_text or '<first>'}")
+        return clicked
+
     def bms_agent_register(self, node_name, ip_address="10.0.13.13"):
+        """注册BMS代理。
+
+        对话框中的"选择节点"下拉框实际展示的是Region（如RegionOne/RegionTwo），
+        而非物理机节点名。选择Region后会触发网络列表的API加载。
+        必须使用Playwright原生click触发Vue的change事件，JS click不会触发API调用。
+        """
         self._goto_submenu_safe("代理")
-        # 尝试注册，若IP冲突则切换IP重试
         for ip_suffix in range(13, 20):
             current_ip = f"10.0.13.{ip_suffix}"
             self._click_cl_btn("注册代理")
             d = self.page.locator('[role="dialog"]').filter(has_text="注册代理").last
-            d.locator(".el-form-item").filter(has_text="选择节点").locator("input").click()
-            self.page.wait_for_timeout(500)
-            self.page.locator(".el-select-dropdown:visible li").filter(has_text=node_name).first.click()
-            d.locator(".el-form-item").filter(has_text="网络").locator("input").click()
-            self.page.wait_for_timeout(500)
-            self.page.locator(".el-select-dropdown:visible li").first.click()
-            d.locator(".el-form-item").filter(has_text="IP地址").locator("input").fill(current_ip)
+            d.wait_for(state="visible", timeout=10000)
+            self.page.wait_for_timeout(1500)
+
+            # 1. 选择节点/Region（不同版本展示不同文案）—— 使用原生事件触发 Vue change
+            node_selected = False
+            last_net_texts = []
+            for attempt in range(5):
+                try:
+                    node_input = self._dialog_form_control(d, "选择节点", ".el-input")
+                    node_input.click()
+                    self.page.wait_for_timeout(1000)
+                    all_texts = self._wait_visible_select_options(timeout=10000)
+                    logger.info(f"[bms_agent_register] 节点/Region下拉选项(attempt {attempt + 1}): {all_texts}")
+                    if not all_texts:
+                        self.page.keyboard.press("Escape")
+                        self.page.wait_for_timeout(500)
+                        continue
+                    # 选择节点下拉在不同版本可能展示 Region 或物理机名；优先选择目标物理机。
+                    candidate_names = [node_name] if node_name in all_texts else all_texts
+                    if node_name not in all_texts:
+                        logger.warning(f"[bms_agent_register] 目标节点 '{node_name}' 不在下拉选项中，回退尝试: {all_texts}")
+                    for candidate_index, region_name in enumerate(candidate_names):
+                        try:
+                            if candidate_index > 0:
+                                node_input.click()
+                                self.page.wait_for_timeout(1000)
+                            self._click_visible_select_option(region_name)
+                            logger.info(f"[bms_agent_register] 已选择节点/Region: {region_name}")
+                            self.page.wait_for_timeout(3000)
+                            net_input = self._dialog_form_control(d, "网络", ".el-input")
+                            net_input.click(timeout=5000)
+                            self.page.wait_for_timeout(1000)
+                            net_texts = self._wait_visible_select_options(timeout=10000)
+                            last_net_texts = net_texts
+                            logger.info(f"[bms_agent_register] 节点/Region '{region_name}' 的网络选项: {net_texts}")
+                            valid_nets = [
+                                n for n in net_texts
+                                if n != region_name and "无数据" not in n and "暂无数据" not in n
+                            ]
+                            if valid_nets:
+                                selected_network = self._click_visible_select_option(valid_nets[0])
+                                logger.info(f"[bms_agent_register] 已选择网络: {selected_network}")
+                                node_selected = True
+                                break
+                            self.page.keyboard.press("Escape")
+                            self.page.wait_for_timeout(500)
+                        except Exception as e:
+                            logger.warning(f"[bms_agent_register] 节点/Region '{region_name}' 未找到可用网络: {e}")
+                            self.page.keyboard.press("Escape")
+                            self.page.wait_for_timeout(500)
+                    if node_selected:
+                        break
+                    # 如果没有Region有网络，继续下一轮重试
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(500)
+                    continue
+                except Exception as e:
+                    logger.warning(f"[bms_agent_register] 选择Region失败(attempt {attempt + 1}): {e}")
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(1000)
+            if not node_selected:
+                raise Exception(f"无法选择节点/Region或网络，下拉框无可用网络选项: {last_net_texts}")
+
+            # 3. 填写IP并提交
+            self._dialog_form_control(d, "IP地址", "input").fill(current_ip)
             self._confirm_sugon_dialog()
-            self.page.wait_for_timeout(500)
-            # 检查是否成功
+            # 强制关闭所有残留对话框（含错误提示、关闭动画期间的对话框）
+            self.page.wait_for_timeout(2000)
+            for _ in range(5):
+                any_visible = False
+                for dlg in self.page.locator(".el-dialog__wrapper").all():
+                    try:
+                        if dlg.is_visible():
+                            any_visible = True
+                            break
+                    except Exception:
+                        pass
+                if any_visible:
+                    logger.warning("[bms_agent_register] 检测到可见对话框残留，按Escape关闭")
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(800)
+                else:
+                    break
+
+            # 检查IP冲突
             try:
                 if self.popup.is_visible() and "已经被使用" in self.popup.text_content():
                     self.page.keyboard.press("Escape")
@@ -381,6 +712,31 @@ class BmsPage(BasePage):
             except: pass
             return
         raise Exception("所有IP地址均已被使用")
+
+    def bms_agent_wait_healthy(self, node_name: str, max_wait: int = 600, poll_interval: int = 30):
+        """等待BMS代理状态变为健康，返回代理行数据；超时返回 None。"""
+        deadline = time.time() + max_wait
+        last_status = "未找到"
+        while time.time() < deadline:
+            self._goto_submenu_safe("代理")
+            self.bms_search(node_name)
+            try:
+                agent_data = self.get_row_data(node_name)
+            except Exception as e:
+                logger.warning(f"[bms_agent_wait_healthy] 未找到代理 '{node_name}'，继续等待: {e}")
+                agent_data = None
+
+            if agent_data:
+                last_status = str(agent_data.get("状态", "")).strip()
+                if "健康" in last_status:
+                    logger.info(f"代理 '{node_name}' 状态已为健康")
+                    return agent_data
+                logger.info(f"代理 '{node_name}' 当前状态为 '{last_status}'，继续等待健康")
+
+            self.page.wait_for_timeout(poll_interval * 1000)
+
+        logger.warning(f"代理 '{node_name}' 未在 {max_wait}s 内变为健康，最后状态: {last_status}")
+        return None
 
     def bms_agent_install_pxe(self, node_name):
         row = self._get_row_by_name(node_name)
@@ -438,10 +794,23 @@ class BmsPage(BasePage):
         return False
 
     def bms_agent_delete(self, node_name):
+        self._goto_submenu_safe("代理")
+        self.search(node_name)
         row = self._get_row_by_name(node_name)
-        if row:
-            self._js_click_action(row, "删除")
-            self._confirm_sugon_dialog()
+        if not row:
+            logger.info(f"代理 '{node_name}' 不存在，无需删除")
+            return
+
+        clicked = self._js_click_action(row, "删除")
+        if not clicked:
+            raise RuntimeError(f"代理 '{node_name}' 的删除操作未点击成功")
+        self._confirm_sugon_dialog(required=True)
+        try:
+            self.assert_popup_success()
+        except AssertionError as e:
+            logger.warning(f"未捕获到代理删除成功提示，继续轮询列表确认: {e}")
+
+        self._wait_for_row_absence("代理", node_name, label="代理", timeout=300)
 
     def bms_agent_cleanup(self):
         self.page.wait_for_timeout(1500)
@@ -544,10 +913,12 @@ class BmsPage(BasePage):
 
     def bms_discovery_delete(self, name):
         self._goto_discovery()
+        self.search(name)
         row = self._get_row_by_name(name)
         if row:
             self._js_click_action(row, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("发现", name, label="发现任务")
 
     def bms_discovery_cleanup(self):
         self._goto_discovery()
@@ -610,10 +981,12 @@ class BmsPage(BasePage):
 
     def bms_register_delete(self, bmc_ip):
         self._goto_submenu_safe("注册")
+        self.search(bmc_ip)
         row = self._get_row_by_name(bmc_ip)
         if row:
             self._js_click_action(row, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("注册", bmc_ip, label="注册信息", cell_index=3)
 
     def bms_register_cleanup(self):
         self._goto_submenu_safe("注册")
@@ -634,6 +1007,26 @@ class BmsPage(BasePage):
                 return rows
             self.page.wait_for_timeout(interval)
         return []
+
+    def _wait_for_row_absence(self, submenu_name: str, keyword: str, *, label: str, timeout: int = 120,
+                              poll_interval: int = 5, cell_index: int | None = None,
+                              navigate_as_service: bool = False):
+        """轮询等待指定行从当前列表中消失。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if navigate_as_service:
+                self.goto_service(submenu_name)
+            else:
+                self._goto_submenu_safe(submenu_name)
+            self.search(keyword)
+            self.page.wait_for_timeout(2000)
+            row = (self._get_row_by_cell_text(keyword, cell_index=cell_index)
+                   if cell_index is not None else self._get_row_by_name(keyword))
+            if not row:
+                logger.info(f"{label} '{keyword}' 已删除")
+                return True
+            self.page.wait_for_timeout(poll_interval * 1000)
+        raise AssertionError(f"{label} '{keyword}' 删除后仍存在")
 
     def _click_el_radio(self, row_locator):
         """点击 Element UI 的 el-radio（优先点击包装器）。"""
@@ -656,12 +1049,56 @@ class BmsPage(BasePage):
     # ---- instance ----
 
     def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
-                               security_group="", server_name="", network_name=""):
+                               security_group="", server_name="", network_name="", subnet_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
         self.page.wait_for_load_state("networkidle")
         logger.info(f"创建实例: {name}")
         self.page.wait_for_timeout(2000)
+
+        # 前置检查：镜像列表和服务器列表必须非空
+        image_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"^镜像$"))
+        try:
+            image_section.locator("table tbody tr").first.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
+        image_rows = image_section.locator("table tbody tr").all()
+        if not image_rows:
+            # 再次尝试 JS 检查
+            has_images = self.page.evaluate("""() => {
+                const items = document.querySelectorAll('.el-form-item');
+                for (const item of items) {
+                    const label = item.querySelector('label');
+                    if (label && label.textContent.trim() === '镜像') {
+                        return item.querySelectorAll('table tbody tr').length > 0;
+                    }
+                }
+                return false;
+            }""")
+            if not has_images:
+                raise RuntimeError("环境缺少裸金属镜像，无法创建实例")
+
+        server_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"服务器"))
+        if server_section.count() == 0:
+            server_section = self.page.locator(".el-form-item").filter(has_text=re.compile(r"server", re.IGNORECASE))
+        server_rows = server_section.locator("table tbody tr").all() if server_section.count() > 0 else []
+        if not server_rows:
+            has_servers = self.page.evaluate("""() => {
+                const items = document.querySelectorAll('.el-form-item');
+                for (const item of items) {
+                    const label = item.querySelector('label');
+                    if (label && label.textContent.includes('服务器')) {
+                        const rows = item.querySelectorAll('table tbody tr');
+                        for (const row of rows) {
+                            if (!row.textContent.includes('暂无数据')) return true;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            }""")
+            if not has_servers:
+                raise RuntimeError("环境没有可用的裸金属服务器，无法创建实例")
 
         # 1. 填写名称
         try:
@@ -877,13 +1314,13 @@ class BmsPage(BasePage):
                             selected = True
                             logger.info(f"[bms_instance_create] 服务器选择成功({server_name})")
                             break
-            if not selected and server_rows:
+            if not selected and bmc_ip and server_rows:
                 for row in server_rows:
                     txt = row.text_content() or ""
-                    if "172.22.2.173" in txt:
+                    if bmc_ip in txt:
                         if self._click_el_radio(row):
                             selected = True
-                            logger.info("[bms_instance_create] 服务器选择成功(172.22.2.173)")
+                            logger.info(f"[bms_instance_create] 服务器选择成功({bmc_ip})")
                             break
             if not selected and server_rows:
                 if self._click_el_radio(server_rows[0]):
@@ -892,7 +1329,7 @@ class BmsPage(BasePage):
                     logger.warning("[bms_instance_create] 服务器行无radio")
             elif not server_rows:
                 logger.warning("[bms_instance_create] 未找到服务器行，尝试JS选择")
-                result = self.page.evaluate("""() => {
+                result = self.page.evaluate("""(bmcIp) => {
                     const items = document.querySelectorAll('.el-form-item');
                     for (const item of items) {
                         const label = item.querySelector('label');
@@ -901,7 +1338,7 @@ class BmsPage(BasePage):
                             if (!table) return 'no-table';
                             const rows = table.querySelectorAll('tbody tr');
                             for (const row of rows) {
-                                if (row.textContent.includes('172.22.2.173')) {
+                                if (bmcIp && row.textContent.includes(bmcIp)) {
                                     const radio = row.querySelector('.el-radio');
                                     if (radio && !radio.classList.contains('is-disabled')) {
                                         radio.click(); return 'found-bmc';
@@ -916,7 +1353,7 @@ class BmsPage(BasePage):
                         }
                     }
                     return 'no-section';
-                }""")
+                }""", bmc_ip)
                 logger.info(f"[bms_instance_create] 服务器JS选择结果: {result}")
             self.page.wait_for_timeout(1500)
         except Exception as e:
@@ -999,7 +1436,18 @@ class BmsPage(BasePage):
                 # 选择子网
                 net_selects[1].click()
                 self.page.wait_for_timeout(500)
-                self.page.locator(".el-select-dropdown:visible li").first.click()
+                subnet_opts = self.page.locator(".el-select-dropdown:visible li")
+                if subnet_name:
+                    subnet_opt = subnet_opts.filter(has_text=subnet_name)
+                    if subnet_opt.count() > 0:
+                        subnet_opt.first.click()
+                        logger.info(f"[bms_instance_create] 子网选择成功({subnet_name})")
+                    else:
+                        subnet_opts.first.click()
+                        logger.info("[bms_instance_create] 子网选择成功(第一个)")
+                else:
+                    subnet_opts.first.click()
+                    logger.info("[bms_instance_create] 子网选择成功(第一个)")
                 self.page.wait_for_timeout(500)
                 # 分配模式（自动分配）
                 if len(net_selects) >= 3:
@@ -1099,6 +1547,7 @@ class BmsPage(BasePage):
 
     def bms_instance_delete(self, name):
         self._goto_submenu_safe("裸金属实例")
+        self.search(name)
         row = self._get_row_by_name(name)
         if row:
             try:
@@ -1106,6 +1555,7 @@ class BmsPage(BasePage):
             except Exception:
                 self.click_action(name, "删除")
             self._confirm_sugon_dialog()
+            self._wait_for_row_absence("裸金属实例", name, label="裸金属实例")
 
     def bms_instance_cleanup(self):
         self._goto_submenu_safe("裸金属实例")
@@ -1119,17 +1569,20 @@ class BmsPage(BasePage):
 
     # ---- bind / unbind EIP ----
 
-    def bms_instance_bind_eip(self, instance_name: str, pool_name: str = "public_net(基础版)", eip_ip: str = "") -> str:
+    def bms_instance_bind_eip(self, instance_name: str, pool_name: str = None, eip_ip: str = "") -> str:
         """为裸金属实例绑定公网IP。
 
         Args:
             instance_name: 裸金属实例名称
-            pool_name: 资源池名称，默认 "public_net(基础版)"
+            pool_name: 资源池名称，默认从 Config 读取
             eip_ip: 指定要绑定的弹性公网IP，为空则自动选择第一个可用IP
 
         Returns:
             str: 绑定的公网IP地址
         """
+        if pool_name is None:
+            from sugon_web.config.config import Config
+            pool_name = Config.get("network") or "public_net(基础版)"
         self._goto_submenu_safe("裸金属实例")
         row = self._get_row_by_name(instance_name)
         if not row:
@@ -1346,9 +1799,25 @@ class BmsPage(BasePage):
         if not row:
             raise Exception(f"未找到实例 '{instance_name}'")
 
+        # 预安装 echarts.init 拦截器，记录弹窗中创建的实例
+        self.page.evaluate("""() => {
+            if (!window._echartsHookInstalled && window.echarts && window.echarts.init) {
+                window._echarts_instances = [];
+                const origInit = window.echarts.init;
+                window.echarts.init = function(dom, theme, opts) {
+                    const inst = origInit.apply(this, arguments);
+                    if (inst && dom) {
+                        window._echarts_instances.push({id: inst.id, domTag: dom.tagName, domClass: dom.className});
+                    }
+                    return inst;
+                };
+                window._echartsHookInstalled = true;
+            }
+        }""")
+
         self._js_click_action(row, "查看监控")
-        # 监控图表加载需要时间，给予充足等待
-        self.page.wait_for_timeout(5000)
+        # 监控图表加载需要时间，Jenkins 环境给予更充足等待
+        self.page.wait_for_timeout(15000)
 
         # 监控可能是弹窗或新页面，优先查找弹窗
         monitor_dlg = self.page.locator('[role="dialog"]').filter(
@@ -1369,75 +1838,183 @@ class BmsPage(BasePage):
         mem_value = ""
 
         # 策略1：通过 echarts API 直接读取图表数据
+        # 1a. 先尝试从拦截器记录的实例 ID 读取（优先读取当前可见区域的）
+        # 1b. 再尝试标准 getInstanceByDom
         chart_data = self.page.evaluate("""() => {
             const results = [];
-            if (!window.echarts) return results;
+            if (!window.echarts) return {results, diagnostics: {reason: 'no_echarts'}};
+            const diagnostics = {hookCount: 0, byDomCount: 0, byIdCount: 0, byHookCount: 0, visibleHookCount: 0, canvasCount: 0, attrCount: 0};
+
+            // 辅助函数：判断元素是否在视口内且可见
+            function isVisible(el) {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+            }
+
+            // 1a. 从拦截器记录的实例 ID 读取，优先读取当前可见的 canvas 对应的实例
+            if (window._echarts_instances && window._echarts_instances.length > 0) {
+                diagnostics.hookCount = window._echarts_instances.length;
+                for (const rec of window._echarts_instances) {
+                    try {
+                        const ec = window.echarts.getInstanceById(rec.id);
+                        if (ec) {
+                            diagnostics.byHookCount++;
+                            // 尝试通过 dom 找到对应元素并检查可见性
+                            let domEl = null;
+                            if (rec.domTag && rec.domClass) {
+                                const candidates = document.querySelectorAll(rec.domTag + '.' + rec.domClass.split(' ').join('.'));
+                                for (const c of candidates) {
+                                    const cEc = window.echarts.getInstanceByDom(c);
+                                    if (cEc && cEc.id === rec.id) { domEl = c; break; }
+                                }
+                            }
+                            const visible = domEl ? isVisible(domEl) : true;
+                            if (visible) diagnostics.visibleHookCount++;
+                            const opt = ec.getOption();
+                            const title = opt.title?.[0]?.text || '';
+                            // 同时检查 series 和 dataset 两种数据源
+                            let seriesData = (opt.series || []).map(s => {
+                                const data = s.data || [];
+                                const last = data[data.length - 1];
+                                return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
+                            });
+                            // 如果 series 为空但 dataset 有数据，构造 seriesData
+                            if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                                const src = opt.dataset.source;
+                                if (src.length > 1) {
+                                    // dataset.source[0] 是表头，后面是数据行
+                                    const header = src[0];
+                                    const lastRow = src[src.length - 1];
+                                    for (let i = 1; i < header.length; i++) {
+                                        seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                    }
+                                }
+                            }
+                            results.push({title, seriesData, source: 'hook', visible});
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            // 1b. 标准 getInstanceByDom（仅处理可见 canvas）
             document.querySelectorAll('canvas').forEach(c => {
+                diagnostics.canvasCount++;
                 try {
                     const ec = window.echarts.getInstanceByDom(c);
-                    if (ec) {
+                    if (ec && isVisible(c)) {
+                        diagnostics.byDomCount++;
                         const opt = ec.getOption();
                         const title = opt.title?.[0]?.text || '';
-                        const seriesData = (opt.series || []).map(s => {
+                        let seriesData = (opt.series || []).map(s => {
                             const data = s.data || [];
                             const last = data[data.length - 1];
-                            return {
-                                name: s.name || '',
-                                lastValue: Array.isArray(last) ? last[1] : last,
-                                dataCount: data.length
-                            };
+                            return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                         });
-                        results.push({title, seriesData});
+                        if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                            const src = opt.dataset.source;
+                            if (src.length > 1) {
+                                const header = src[0];
+                                const lastRow = src[src.length - 1];
+                                for (let i = 1; i < header.length; i++) {
+                                    seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                }
+                            }
+                        }
+                        results.push({title, seriesData, source: 'dom', visible: true});
                     }
                 } catch(e) {}
             });
+
+            // 1c. _echarts_instance 属性（仅处理可见元素）
             document.querySelectorAll('[_echarts_instance]').forEach(el => {
+                diagnostics.attrCount++;
                 try {
                     const id = el.getAttribute('_echarts_instance');
-                    if (id && window.echarts.getInstanceById) {
+                    if (id && window.echarts.getInstanceById && isVisible(el)) {
                         const ec = window.echarts.getInstanceById(id);
                         if (ec) {
+                            diagnostics.byIdCount++;
                             const opt = ec.getOption();
                             const title = opt.title?.[0]?.text || '';
-                            const seriesData = (opt.series || []).map(s => {
+                            let seriesData = (opt.series || []).map(s => {
                                 const data = s.data || [];
                                 const last = data[data.length - 1];
-                                return {
-                                    name: s.name || '',
-                                    lastValue: Array.isArray(last) ? last[1] : last,
-                                    dataCount: data.length
-                                };
+                                return {name: s.name || '', lastValue: Array.isArray(last) ? last[1] : last, dataCount: data.length};
                             });
-                            results.push({title, seriesData});
+                            if (seriesData.length === 0 && opt.dataset && opt.dataset.source) {
+                                const src = opt.dataset.source;
+                                if (src.length > 1) {
+                                    const header = src[0];
+                                    const lastRow = src[src.length - 1];
+                                    for (let i = 1; i < header.length; i++) {
+                                        seriesData.push({name: header[i], lastValue: lastRow[i], dataCount: src.length - 1});
+                                    }
+                                }
+                            }
+                            results.push({title, seriesData, source: 'attr', visible: true});
                         }
                     }
                 } catch(e) {}
             });
-            return results;
-        }""")
-        logger.info(f"echarts API 读取图表数据: {chart_data}")
 
-        for chart in chart_data:
+            return {results, diagnostics};
+        }""")
+        logger.info(f"echarts 诊断信息: {chart_data.get('diagnostics')}")
+        logger.info(f"echarts API 读取图表数据: {chart_data.get('results')}")
+        chart_data = chart_data.get('results', [])
+
+        # 优先处理当前可见区域的图表数据，再处理隐藏的（其他 tab）
+        visible_charts = [c for c in chart_data if c.get("visible", True)]
+        charts_to_process = visible_charts if visible_charts else chart_data
+        logger.info(f"echarts 处理: 可见图表 {len(visible_charts)} 个, 总计 {len(chart_data)} 个")
+
+        for chart in charts_to_process:
             title = chart.get("title", "")
             for s in chart.get("seriesData", []):
                 val = s.get("lastValue")
+                series_name = s.get("name", "")
+                data_count = s.get("dataCount", 0)
                 if val is not None and str(val) != "":
                     val_str = str(val)
-                    if "CPU使用率" in title or ("CPU" in title and "使用率" in title):
-                        if not cpu_value:
-                            cpu_value = val_str + "%" if "%" not in val_str else val_str
-                            logger.info(f"从echarts获取CPU [{title}]: {cpu_value}")
-                    elif "内存使用率" in title or ("内存" in title and "使用率" in title):
-                        if not mem_value:
-                            mem_value = val_str + "%" if "%" not in val_str else val_str
-                            logger.info(f"从echarts获取内存 [{title}]: {mem_value}")
+                    # 通过 title 或 series name 匹配 CPU 使用率
+                    is_cpu = (
+                        "CPU使用率" in title
+                        or ("CPU" in title and "使用率" in title)
+                        or "cpu使用率" in series_name.lower()
+                        or series_name.lower() == "cpu"
+                        or "cpu" in series_name.lower()
+                    )
+                    # 通过 title 或 series name 匹配内存使用率
+                    is_mem = (
+                        "内存使用率" in title
+                        or ("内存" in title and "使用率" in title)
+                        or "内存使用率" in series_name
+                        or series_name.lower() == "memory"
+                        or "mem" in series_name.lower()
+                    )
+                    # 额外判断：如果 title 为空但 dataCount > 0，且 seriesName 包含 cpu/mem，也视为有效
+                    if not title and data_count > 0:
+                        if "cpu" in series_name.lower():
+                            is_cpu = True
+                        if "mem" in series_name.lower():
+                            is_mem = True
+                    if is_cpu and not cpu_value:
+                        cpu_value = val_str + "%" if "%" not in val_str else val_str
+                        logger.info(f"从echarts获取CPU [title={title}, series={series_name}]: {cpu_value}")
+                    elif is_mem and not mem_value:
+                        mem_value = val_str + "%" if "%" not in val_str else val_str
+                        logger.info(f"从echarts获取内存 [title={title}, series={series_name}]: {mem_value}")
 
-        # 策略2：悬浮到各个 canvas 图表的多个位置，读取 tooltip
+        # 策略2：悬浮到各个**可见** canvas 图表的多个位置，读取 tooltip
         if not cpu_value or not mem_value:
             canvases = monitor_container.locator("canvas").all()
             logger.info(f"找到 {len(canvases)} 个 canvas 元素，尝试悬浮读取 tooltip")
 
-            for idx, canvas in enumerate(canvases[:8]):
+            visible_canvases = [c for c in canvases if c.is_visible()]
+            logger.info(f"其中可见 canvas: {len(visible_canvases)} 个")
+
+            for idx, canvas in enumerate(visible_canvases[:8]):
                 if cpu_value and mem_value:
                     break
                 try:
@@ -1495,6 +2072,36 @@ class BmsPage(BasePage):
                             break
                 except Exception as e:
                     logger.warning(f"canvas[{idx}] 悬浮读取失败: {e}")
+
+        # 策略2b：通过 DOM 文本直接读取可见的图表数值（不依赖 echarts API / tooltip）
+        if not cpu_value or not mem_value:
+            dom_values = self.page.evaluate("""() => {
+                const result = {cpu: '', memory: ''};
+                // 查找所有可能包含指标名称和数值的元素
+                const cells = document.querySelectorAll('[role="dialog"] .chart-title, [role="dialog"] .monitor-title, [role="dialog"] .chart-header, [role="dialog"] h3, [role="dialog"] h4, [role="dialog"] .title');
+                for (const cell of cells) {
+                    const text = (cell.innerText || cell.textContent || '').trim();
+                    const parent = cell.closest('.chart-wrapper, .monitor-item, [class*="chart"], [class*="monitor"]') || cell.parentElement;
+                    if (!parent) continue;
+                    const parentText = (parent.innerText || parent.textContent || '').trim();
+                    // 在父容器内查找包含 % 的数值
+                    const pctMatches = parentText.match(/(\d+\.?\d*)\s*%/g);
+                    const firstPct = pctMatches ? pctMatches[0].replace(/\s*%/, '') + '%' : '';
+                    if (!result.cpu && (text.includes('CPU使用率') || text.includes('CPU使用率'))) {
+                        result.cpu = firstPct;
+                    }
+                    if (!result.memory && (text.includes('内存使用率') || text.includes('内存使用率'))) {
+                        result.memory = firstPct;
+                    }
+                }
+                return result;
+            }""")
+            if dom_values.get('cpu') and not cpu_value:
+                cpu_value = dom_values['cpu']
+                logger.info(f"从 DOM 文本获取CPU: {cpu_value}")
+            if dom_values.get('memory') and not mem_value:
+                mem_value = dom_values['memory']
+                logger.info(f"从 DOM 文本获取内存: {mem_value}")
 
         # 策略3：如果悬浮未获取到数值，检查图表区域是否显示"暂无数据"
         if not cpu_value and not mem_value:
@@ -2557,6 +3164,77 @@ class BmsPage(BasePage):
 
         logger.info(f"[bms_instance_rebuild] 实例 '{instance_name}' 重建操作已提交")
         self.page.wait_for_timeout(2000)
+
+    # ---- switch group (exchange unit) ----
+
+    def bms_switch_group_unbind(self, group_name: str, node_name: str = ""):
+        """解绑交换机组中的物理机。
+
+        Args:
+            group_name: 交换机组名称
+            node_name: 要解绑的节点名，为空则选择第一个可用节点
+        """
+        self.goto_service("交换机组")
+        self.page.wait_for_timeout(3000)
+        row = self._get_switch_group_row(group_name, node_name)
+        if not row:
+            logger.warning(f"未找到交换机组 '{group_name}'，跳过解绑")
+            return
+        actual_group_name = self._get_switch_group_name_from_row(row, group_name)
+        row_text = row.text_content(timeout=3000) or ""
+        if "--" in row_text or "—" in row_text:
+            logger.info(f"交换机组 '{actual_group_name}' 已处于未绑定状态，跳过解绑")
+            return actual_group_name
+
+        if not self._js_click_action(row, "解绑物理机"):
+            raise RuntimeError(f"交换机组 '{actual_group_name}' 的 '解绑物理机' 操作未点击成功")
+
+        # 处理解绑对话框：需要选择要解绑的节点
+        d = self.page.locator('[role="dialog"]').filter(has_text="解绑物理机").last
+        d.wait_for(state="visible", timeout=10000)
+        input_box = d.locator("input:visible").first
+        input_box.click(force=True)
+        self.page.wait_for_timeout(500)
+        opts = self.page.locator(".el-select-dropdown:visible li")
+        if opts.count() > 0:
+            if node_name:
+                matched = opts.filter(has_text=node_name)
+                if matched.count() > 0:
+                    matched.first.click()
+                else:
+                    first_text = opts.first.text_content(timeout=3000).strip()
+                    logger.info(f"未找到匹配 '{node_name}' 的选项，回退选择第一个: {first_text}")
+                    opts.first.click()
+            else:
+                opts.first.click()
+        else:
+            logger.warning("解绑对话框无可用节点选项")
+        # 多选下拉框点击选项后不会自动关闭，需要按 Escape 关闭后再点确定
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(500)
+        confirm = d.locator("button:visible, .cloud-button-btn:visible").filter(has_text="确定").first
+        confirm.click(force=True)
+        self.page.wait_for_timeout(10000)  # 解绑是异步的，等待10秒
+        logger.info(f"交换机组 '{actual_group_name}' 解绑物理机操作已提交")
+        return actual_group_name
+
+    def bms_switch_group_delete(self, group_name: str):
+        """删除交换机组。
+
+        Args:
+            group_name: 交换机组名称
+        """
+        self.goto_service("交换机组")
+        self.search(group_name)
+        self.page.wait_for_timeout(3000)
+        row = self._get_row_by_name(group_name)
+        if not row:
+            logger.warning(f"未找到交换机组 '{group_name}'，跳过删除")
+            return
+        self._js_click_action(row, "删除")
+        self._confirm_sugon_dialog()
+        self._wait_for_row_absence("交换机组", group_name, label="交换机组", navigate_as_service=True)
+        logger.info(f"交换机组 '{group_name}' 删除成功")
 
     # ---- full cleanup ----
 

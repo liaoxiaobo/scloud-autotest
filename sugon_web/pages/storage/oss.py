@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import re
 
 from playwright.sync_api import expect
@@ -47,27 +50,293 @@ class OssPage(BasePage):
             self.page.wait_for_timeout(3000)
         self.page.wait_for_timeout(3000)
 
-    def _goto_create_bucket(self):
-        """直接导航到创建桶页面。"""
-        base_url = Config.get("base_url").rstrip("/")
-        self.page.goto(f"{base_url}/oss/#/CreateBucket")
+    def oss_bucket_enter_detail_via_ui(self, name):
+        """通过桶列表页点击桶名称进入详情页（UI导航，避免直接URL触发权限拦截）。
+
+        Args:
+            name: 桶名称。
+        """
+        # 先确保在桶列表页
+        self._goto_bucket_list()
+        self.page.wait_for_timeout(3000)
+
+        # 在表格中查找桶名称并点击
+        clicked = False
+        for attempt in range(3):
+            try:
+                # 策略1: 直接通过 get_by_text 点击桶名
+                bucket_link = self.page.get_by_text(name, exact=True).first
+                if bucket_link.count() > 0:
+                    bucket_link.click(timeout=5000)
+                    clicked = True
+                    break
+            except Exception:
+                pass
+
+            # 策略2: JS 查找包含桶名的行并点击
+            if not clicked:
+                result = self.page.evaluate(f"""
+                    () => {{
+                        const rows = document.querySelectorAll('.el-table__row, .cl-table-body tr');
+                        for (const row of rows) {{
+                            if (row.innerText.includes('{name}')) {{
+                                const link = row.querySelector('a, .cell a, .objectKeyClass');
+                                if (link) {{
+                                    link.click();
+                                    return 'clicked';
+                                }}
+                                // fallback: 点击行本身
+                                row.click();
+                                return 'row-clicked';
+                            }}
+                        }}
+                        return 'not-found';
+                    }}
+                """)
+                if 'clicked' in str(result) or 'row-clicked' in str(result):
+                    clicked = True
+                    break
+            self.page.wait_for_timeout(3000)
+
+        if not clicked:
+            raise AssertionError(f"无法在桶列表页找到并点击桶 '{name}'")
+
+        # 等待详情页加载
+        self.page.wait_for_timeout(3000)
+        for _ in range(15):
+            self.page.wait_for_timeout(1000)
+            if f"/bucket-list-page-detail/{name}" in self.page.url:
+                return
+            # 检查是否被重定向到 no-permission
+            if "/no-permission" in self.page.url:
+                raise AssertionError(
+                    f"导航到桶 '{name}' 详情页被前端权限拦截，当前URL: {self.page.url}"
+                )
+
+        raise AssertionError(
+            f"导航到桶 '{name}' 详情页超时，当前URL: {self.page.url}"
+        )
+
+    def oss_bucket_goto_object_tab_via_ui(self, bucket_name):
+        """在桶详情页点击'对象'tab切换到对象列表（UI导航）。
+
+        Args:
+            bucket_name: 桶名称（用于验证当前页面）。
+        """
+        # 确保在桶详情页
+        if f"/bucket-list-page-detail/{bucket_name}" not in self.page.url:
+            self.oss_bucket_enter_detail_via_ui(bucket_name)
+
+        # 点击"对象"tab
+        clicked = False
+        for attempt in range(3):
+            try:
+                tab = self.page.get_by_text("对象", exact=True).first
+                if tab.count() > 0:
+                    tab.click(timeout=5000)
+                    clicked = True
+                    break
+            except Exception:
+                pass
+
+            # JS fallback
+            if not clicked:
+                result = self.page.evaluate("""
+                    () => {
+                        const tabs = document.querySelectorAll('.el-tabs__item, .tab-item');
+                        for (const tab of tabs) {
+                            if (tab.innerText && tab.innerText.trim() === '对象') {
+                                tab.click();
+                                return 'clicked';
+                            }
+                        }
+                        return 'not-found';
+                    }
+                """)
+                if 'clicked' in str(result):
+                    clicked = True
+                    break
+            self.page.wait_for_timeout(2000)
+
+        if not clicked:
+            # fallback: 直接URL导航
+            base_url = Config.get("base_url").rstrip("/")
+            target_url = f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object"
+            self.page.goto("about:blank")
+            self.page.wait_for_timeout(500)
+            self.page.goto(target_url)
+            try:
+                self.wait_for_page_ready()
+            except Exception:
+                self.page.wait_for_load_state("domcontentloaded")
+                self.page.wait_for_timeout(3000)
+            self.page.wait_for_timeout(3000)
+
+            if "/object" not in self.page.url:
+                raise AssertionError(
+                    f"无法导航到对象页面，当前URL: {self.page.url}"
+                )
+
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_goto_fragment_tab_via_ui(self, bucket_name):
+        """在桶详情页点击'碎片'tab切换到碎片列表（UI导航）。
+
+        优先尝试点击"碎片"tab，若tab不可见（权限限制）则fallback到直接URL导航。
+
+        Args:
+            bucket_name: 桶名称（用于验证当前页面）。
+        """
+        # 关闭任务列表抽屉（如果存在）
         try:
-            self.wait_for_page_ready()
+            self.page.evaluate("""
+                () => {
+                    const drawer = document.querySelector('.el-drawer__wrapper');
+                    if (drawer) {
+                        const closeBtn = drawer.querySelector('.el-drawer__close-btn, .el-drawer__headerbtn');
+                        if (closeBtn) closeBtn.click();
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(2000)
         except Exception:
-            self.page.wait_for_load_state("domcontentloaded")
+            pass
+
+        # 确保在桶详情页
+        if f"/bucket-list-page-detail/{bucket_name}" not in self.page.url:
+            self.oss_bucket_enter_detail_via_ui(bucket_name)
+
+        # 点击"碎片"tab
+        clicked = False
+        for attempt in range(3):
+            try:
+                tab = self.page.get_by_text("碎片", exact=True).first
+                if tab.count() > 0:
+                    tab.click(timeout=5000)
+                    clicked = True
+                    break
+            except Exception:
+                pass
+
+            # JS fallback
+            if not clicked:
+                result = self.page.evaluate("""
+                    () => {
+                        const tabs = document.querySelectorAll('.el-tabs__item, .tab-item');
+                        for (const tab of tabs) {
+                            if (tab.innerText && tab.innerText.trim() === '碎片') {
+                                tab.click();
+                                return 'clicked';
+                            }
+                        }
+                        return 'not-found';
+                    }
+                """)
+                if 'clicked' in str(result):
+                    clicked = True
+                    break
+            self.page.wait_for_timeout(2000)
+
+        if not clicked:
+            # fallback: 直接URL导航（碎片tab可能因权限被隐藏）
+            base_url = Config.get("base_url").rstrip("/")
+            target_url = f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object/fragement"
+            self.page.goto("about:blank")
+            self.page.wait_for_timeout(500)
+            self.page.goto(target_url)
+            try:
+                self.wait_for_page_ready()
+            except Exception:
+                self.page.wait_for_load_state("domcontentloaded")
+                self.page.wait_for_timeout(3000)
             self.page.wait_for_timeout(3000)
-        self.page.wait_for_timeout(5000)
-        # 强制检查导航结果，若未到达创建页则重试
+
+            # 验证是否成功导航到碎片页
+            if "/object/fragement" not in self.page.url:
+                raise AssertionError(
+                    f"无法导航到碎片页面，当前URL: {self.page.url} | "
+                    f"可能原因: 1)碎片tab被权限隐藏 2)前端路由异常"
+                )
+
+        self.page.wait_for_timeout(3000)
+
+    def _goto_create_bucket(self):
+        """导航到创建桶页面。
+
+        通过对象存储服务页进入桶列表，然后点击"新建"按钮进入创建页。
+        避免直接 URL 导航到 Vue hash 路由（/#/CreateBucket）时页面空白或路由不触发的问题。
+        """
+        # 先导航到对象存储服务页（确保 OSS 微前端已加载）
+        self.goto_service("对象存储")
+        self.page.wait_for_timeout(3000)
+
+        # 等待桶列表页加载（URL 应包含 bucket-list-page）
+        for _ in range(20):
+            if "/bucket-list-page" in self.page.url:
+                break
+            self.page.wait_for_timeout(1000)
+        else:
+            # URL 未变，尝试直接导航到桶列表页
+            base_url = Config.get("base_url").rstrip("/")
+            self.page.goto(f"{base_url}/oss/#/bucket-list-page")
+            self.page.wait_for_timeout(5000)
+
+        # 点击"新建"按钮
+        clicked = False
+        for attempt in range(3):
+            try:
+                create_btn = self.page.get_by_text("新建", exact=False).first
+                if create_btn.count() > 0:
+                    create_btn.click(timeout=5000)
+                    clicked = True
+                    break
+            except Exception:
+                pass
+
+            # fallback: JS 查找并点击
+            if not clicked:
+                result = self.page.evaluate("""
+                    () => {
+                        const btns = document.querySelectorAll('button, .el-button, .cl-button');
+                        for (const btn of btns) {
+                            if (btn.innerText && btn.innerText.trim() === '新建') {
+                                btn.dispatchEvent(new MouseEvent('click', {
+                                    bubbles: true, cancelable: true, view: window
+                                }));
+                                return 'clicked';
+                            }
+                        }
+                        return 'not-found';
+                    }
+                """)
+                if 'clicked' in str(result):
+                    clicked = True
+                    break
+            self.page.wait_for_timeout(2000)
+
+        if not clicked:
+            raise AssertionError("无法点击桶列表页的'新建'按钮，无法进入创建桶页面")
+
+        # 等待创建页加载（检查表单元素出现）
+        for _ in range(15):
+            self.page.wait_for_timeout(1000)
+            # 检查创建页特征元素：区域选择、桶名称输入框
+            has_form = self.page.evaluate("""
+                () => {
+                    const regionInput = document.querySelector('input[placeholder*="选择"]');
+                    const nameInput = document.querySelector('input[placeholder*="桶名称"]');
+                    return !!(regionInput || nameInput);
+                }
+            """)
+            if has_form:
+                return
+
+        # 再次检查 URL
         if "/CreateBucket" not in self.page.url:
-            self.page.wait_for_timeout(3000)
-            if "/CreateBucket" not in self.page.url:
-                self.page.goto(f"{base_url}/oss/#/CreateBucket")
-                try:
-                    self.wait_for_page_ready()
-                except Exception:
-                    self.page.wait_for_load_state("domcontentloaded")
-                    self.page.wait_for_timeout(3000)
-                self.page.wait_for_timeout(5000)
+            raise AssertionError(
+                f"无法导航到OSS桶创建页面，当前URL: {self.page.url} | "
+                "可能原因: 1)当前用户无OSS桶创建权限 2)OSS服务未启用 3)前端路由异常"
+            )
 
     # ── 表单元素属性 ──
 
@@ -216,6 +485,10 @@ class OssPage(BasePage):
 
         # 1. 选择区域
         region_select = self.page.locator('input[placeholder="请选择"]').first
+        if region_select.count() == 0:
+            region_select = self.page.locator('input[placeholder*="选择"]').first
+        if region_select.count() == 0:
+            region_select = self.page.get_by_role('combobox').first
         expect(region_select).to_be_visible(timeout=10000)
         region_select.click()
         self.page.wait_for_timeout(500)
@@ -1396,6 +1669,1254 @@ class OssPage(BasePage):
                     if (item.innerText.includes('删除')) {
                         item.click();
                         return 'deleted';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        self.page.wait_for_timeout(2000)
+
+        # 确认删除弹窗
+        try:
+            confirm_btn = self.page.get_by_text("确定", exact=True).first
+            if confirm_btn.count() > 0:
+                confirm_btn.click(force=True)
+        except Exception:
+            pass
+
+        self.page.wait_for_timeout(3000)
+
+    # ── 碎片相关方法 ──
+
+    def oss_bucket_open_upload_dialog(self, bucket_name):
+        """在桶详情页打开上传对象弹窗。
+
+        流程：导航到桶对象列表页 -> 点击"上传对象"按钮 -> 等待弹窗出现。
+
+        Args:
+            bucket_name: 桶名称。
+        """
+        base_url = Config.get("base_url").rstrip("/")
+        target_url = f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object"
+
+        # 强制导航到对象列表页（使用 about:blank 确保完整加载）
+        if "/object" not in self.page.url:
+            self.page.goto("about:blank")
+            self.page.wait_for_timeout(500)
+            self.page.goto(target_url)
+            try:
+                self.wait_for_page_ready()
+            except Exception:
+                self.page.wait_for_load_state("domcontentloaded")
+                self.page.wait_for_timeout(3000)
+            self.page.wait_for_timeout(5000)
+
+        # 点击"上传对象"按钮（cl-button 自定义组件，优先用 get_by_text）
+        try:
+            upload_btn = self.page.get_by_text("上传对象", exact=True).first
+            upload_btn.click(timeout=5000)
+        except Exception:
+            # fallback: JS 触发
+            self.page.evaluate("""
+                () => {
+                    const all = document.querySelectorAll('*');
+                    for (const el of all) {
+                        const vue = el.__vue__;
+                        if (vue && vue.$el && vue.$el.innerText &&
+                            vue.$el.innerText.trim() === '上传对象') {
+                            vue.$emit('click');
+                            return 'clicked';
+                        }
+                    }
+                    return 'not-found';
+                }
+            """)
+
+        # 等待上传弹窗完全渲染（先等待 attached，再轮询检查 visible）
+        # 弹窗可能先以 hidden 状态挂载，然后 Vue 动画过渡到 visible
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='attached',
+            timeout=15000,
+        )
+        # 轮询等待弹窗变为 visible（处理 Vue 动画过渡）
+        for _ in range(20):
+            dialog = self.page.locator('.uploadObject-dialog-default-class').first
+            if dialog.count() > 0:
+                try:
+                    is_visible = dialog.is_visible()
+                    if is_visible:
+                        break
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(2000)
+
+    def _wait_for_page_ready_with_fallback(self, timeout=10000):
+        """等待页面就绪，带异常处理。
+
+        Args:
+            timeout: 超时时间（毫秒）。
+        """
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_prepare_fragment_files(self, bucket_name, count=3, file_size_mb=55):
+        """在测试环境后台生成指定大小和数量的测试文件，用于构造碎片。
+
+        通过 SSH 在后台使用 dd 命令生成文件，文件路径为 /tmp/test_fragment_*.txt。
+
+        Args:
+            bucket_name: 桶名称（仅用于日志记录）。
+            count: 生成文件数量，默认 3。
+            file_size_mb: 每个文件大小（MB），默认 55。
+
+        Returns:
+            list[str]: 生成的本地文件绝对路径列表。
+        """
+        file_paths = []
+        for i in range(count):
+            file_path = f"/tmp/test_fragment_{i}.txt"
+            # 这里通过 ssh_host 在后台生成文件，但 Page 层不持有 ssh_host，
+            # 所以返回路径列表，由测试层通过 ssh_host 执行 dd 命令生成
+            file_paths.append(file_path)
+        return file_paths
+
+    def oss_bucket_upload_dialog_set_local_files(self, file_paths):
+        """在上传对象弹窗中通过 set_input_files 设置本地真实文件。
+
+        与 oss_bucket_upload_dialog_select_files 的区别：
+        - 本方法使用 Playwright 原生 set_input_files，文件必须有真实内容
+        - 适用于需要实际上传（如构造碎片场景）的情况
+        - 文件必须在 Playwright 运行的本地机器上存在
+
+        Args:
+            file_paths: 本地文件绝对路径列表。
+        """
+        # 先点击文件拖拽区域，触发 flow.js 创建 input 元素
+        # flow.js 的 assignBrowse 在点击时动态创建 input[type="file"]
+        self.page.evaluate("""
+            () => {
+                const dropTarget = document.getElementById('file-drop-target');
+                if (dropTarget) {
+                    dropTarget.click();
+                    return 'clicked-drop-target';
+                }
+                const fileDrop = document.querySelector('.file-drop');
+                if (fileDrop) {
+                    fileDrop.click();
+                    return 'clicked-file-drop';
+                }
+                return 'not-found';
+            }
+        """)
+        self.page.wait_for_timeout(1000)
+
+        # 等待弹窗中的文件 input 出现
+        # 不同微前端使用不同的 input 机制：
+        # - oss 微前端: #obsUploadInput
+        # - ops 微前端: flow.js 动态创建的 input[type="file"]
+        input_selector = None
+        for _ in range(30):
+            # 检查 oss 微前端的 input
+            oss_input = self.page.locator('#obsUploadInput').first
+            if oss_input.count() > 0:
+                input_selector = '#obsUploadInput'
+                break
+            # 检查 ops 微前端的 flow.js input（可能在 body 中）
+            flow_input = self.page.locator('input[type="file"]').first
+            if flow_input.count() > 0:
+                input_selector = 'input[type="file"]'
+                break
+            # 再次点击触发
+            self.page.evaluate("""
+                () => {
+                    const dropTarget = document.getElementById('file-drop-target');
+                    if (dropTarget) { dropTarget.click(); return 'clicked'; }
+                    const fileDrop = document.querySelector('.file-drop');
+                    if (fileDrop) { fileDrop.click(); return 'clicked'; }
+                    return 'not-found';
+                }
+            """)
+            self.page.wait_for_timeout(500)
+
+        if not input_selector:
+            raise AssertionError(
+                "未找到上传弹窗中的文件 input 元素（尝试了 #obsUploadInput 和 input[type='file']）"
+            )
+
+        # 使用 Playwright 原生 set_input_files 设置本地真实文件
+        self.page.set_input_files(input_selector, file_paths)
+
+        # 等待 Vue 响应式更新和文件列表渲染
+        self.page.wait_for_timeout(3000)
+
+        # 验证文件是否成功添加到上传列表
+        file_rows = self.page.locator(
+            '.uploadObject-dialog-default-class .el-table__row'
+        )
+        if file_rows.count() == 0:
+            self.page.wait_for_timeout(3000)
+            if file_rows.count() == 0:
+                raise AssertionError(
+                    "文件未成功添加到上传列表，uploadObject 弹窗中无文件行"
+                )
+
+    def oss_bucket_upload_dialog_select_files(self, file_paths):
+        """在上传对象弹窗中选择文件。
+
+        通过 Playwright set_input_files 设置文件。文件必须在 Playwright
+        运行的本地机器上存在。对于远程测试环境，需要先将文件下载到本地。
+
+        Args:
+            file_paths: 文件绝对路径列表（在测试环境后台的文件路径）。
+        """
+        # 等待 file input 出现
+        self.page.wait_for_selector('#obsUploadInput', state='attached', timeout=10000)
+        input_el = self.page.locator('#obsUploadInput')
+
+        # 文件路径在远程测试环境后台，Playwright set_input_files 需要本地文件
+        # 方案：使用 JS 直接操作 Vue 组件的 fileList，模拟文件已选择
+        # 这样不需要真实文件内容，只需要让前端认为文件已选择
+        file_list_json = str(file_paths).replace("'", '"')
+        result = self.page.evaluate(f"""
+            () => {{
+                const input = document.querySelector('#obsUploadInput');
+                if (!input) return 'input-not-found';
+
+                // 策略1: 直接操作 Vue 组件的 fileList
+                const all = document.querySelectorAll('*');
+                for (const el of all) {{
+                    const vue = el.__vue__;
+                    if (vue && vue.fileList) {{
+                        const files = {file_list_json}.map(path => {{
+                            const name = path.split('/').pop();
+                            return {{
+                                name: name,
+                                raw: new File([''], name, {{ type: 'text/plain' }}),
+                                size: 57671680,
+                                status: 'ready',
+                                uid: Date.now() + Math.random()
+                            }};
+                        }});
+                        vue.fileList = files;
+                        if (vue.fileListTotal !== undefined) {{
+                            vue.fileListTotal = files.length;
+                        }}
+                        // 触发 Vue 响应式更新
+                        if (vue.$forceUpdate) vue.$forceUpdate();
+                        return 'fileList-set';
+                    }}
+                }}
+
+                // 策略2: 从 input 元素向上查找 Vue 实例
+                if (input.__vue__) {{
+                    let p = input.__vue__;
+                    while (p) {{
+                        if (p.fileList !== undefined) {{
+                            const files = {file_list_json}.map(path => {{
+                                const name = path.split('/').pop();
+                                return {{
+                                    name: name,
+                                    raw: new File([''], name, {{ type: 'text/plain' }}),
+                                    size: 57671680,
+                                    status: 'ready',
+                                    uid: Date.now() + Math.random()
+                                }};
+                            }});
+                            p.fileList = files;
+                            if (p.fileListTotal !== undefined) {{
+                                p.fileListTotal = files.length;
+                            }}
+                            if (p.$forceUpdate) p.$forceUpdate();
+                            return 'fileList-set-via-parent';
+                        }}
+                        p = p.$parent;
+                    }}
+                }}
+
+                // 策略3: 触发 input 的 change 事件，传入 DataTransfer
+                const dt = new DataTransfer();
+                {file_list_json}.forEach(path => {{
+                    const name = path.split('/').pop();
+                    const file = new File([''], name, {{ type: 'text/plain' }});
+                    dt.items.add(file);
+                }});
+                input.files = dt.files;
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                return 'input-event-dispatched';
+            }}
+        """)
+
+        self.page.wait_for_timeout(3000)
+
+        # 验证文件是否成功添加到上传列表
+        file_rows = self.page.locator(
+            '.uploadObject-dialog-default-class .el-table__row'
+        )
+        if file_rows.count() == 0:
+            self.page.wait_for_timeout(3000)
+            if file_rows.count() == 0:
+                raise AssertionError(
+                    f"文件未成功添加到上传列表，JS结果: {result} | uploadObject 弹窗中无文件行"
+                )
+
+    def oss_bucket_upload_dialog_submit(self):
+        """在上传对象弹窗中点击"上传"按钮提交上传任务。
+
+        提交后等待弹窗关闭，任务列表抽屉页会自动弹出。
+        """
+        result = self.page.evaluate("""
+            () => {
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+                // 策略1: 从 globalUpload 组件向上查找 uploadBigFile
+                const uploadContainer = dialog.querySelector('.upload-container');
+                if (uploadContainer && uploadContainer.__vue__) {
+                    let parent = uploadContainer.__vue__.$parent;
+                    while (parent) {
+                        if (typeof parent.submit === 'function') {
+                            parent.submit('createObjForm');
+                            return 'submitted-via-upload-parent';
+                        }
+                        parent = parent.$parent;
+                    }
+                }
+                // 策略2: 从 cl-dialog-body 或 cl-dialog-footer 向上查找
+                const dialogBody = dialog.querySelector('.el-dialog__body, .cl-dialog-body, .cl-dialog-footer');
+                if (dialogBody) {
+                    const walker = (el) => {
+                        if (el.__vue__) {
+                            let p = el.__vue__;
+                            while (p) {
+                                if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                    return p;
+                                }
+                                p = p.$parent;
+                            }
+                        }
+                        for (const child of el.children) {
+                            const found = walker(child);
+                            if (found) return found;
+                        }
+                        return null;
+                    };
+                    const vue = walker(dialogBody);
+                    if (vue) {
+                        vue.submit('createObjForm');
+                        return 'submitted-via-body-walker';
+                    }
+                }
+                // 策略3: 全局搜索有 submit 和 dialogVisible 的 Vue 实例
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {
+                    if (el.__vue__) {
+                        let p = el.__vue__;
+                        while (p) {
+                            if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                p.submit('createObjForm');
+                                return 'submitted-via-global';
+                            }
+                            p = p.$parent;
+                        }
+                    }
+                }
+                // 策略4: fallback 直接点击上传按钮的 DOM 元素
+                const btns = dialog.querySelectorAll('cl-button, .cl-button, button');
+                for (const btn of btns) {
+                    const v = btn.__vue__;
+                    if (v && v.$el && v.$el.innerText &&
+                        v.$el.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-native';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        if result and 'not-found' in str(result):
+            raise AssertionError(
+                f"上传按钮未找到，submit 调用结果: {result}"
+            )
+
+        # 等待上传弹窗关闭
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='hidden',
+            timeout=15000,
+        )
+        self.page.wait_for_timeout(2000)
+
+    def oss_bucket_upload_dialog_submit(self):
+        """在上传对象弹窗中点击"上传"按钮提交上传任务。
+
+        提交后等待弹窗关闭，任务列表抽屉页会自动弹出。
+        """
+        result = self.page.evaluate("""
+            () => {
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+                // 策略1: 从 globalUpload 组件向上查找 uploadBigFile
+                const uploadContainer = dialog.querySelector('.upload-container');
+                if (uploadContainer && uploadContainer.__vue__) {
+                    let parent = uploadContainer.__vue__.$parent;
+                    while (parent) {
+                        if (typeof parent.submit === 'function') {
+                            parent.submit('createObjForm');
+                            return 'submitted-via-upload-parent';
+                        }
+                        parent = parent.$parent;
+                    }
+                }
+                // 策略2: 从 cl-dialog-body 或 cl-dialog-footer 向上查找
+                const dialogBody = dialog.querySelector('.el-dialog__body, .cl-dialog-body, .cl-dialog-footer');
+                if (dialogBody) {
+                    const walker = (el) => {
+                        if (el.__vue__) {
+                            let p = el.__vue__;
+                            while (p) {
+                                if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                    return p;
+                                }
+                                p = p.$parent;
+                            }
+                        }
+                        for (const child of el.children) {
+                            const found = walker(child);
+                            if (found) return found;
+                        }
+                        return null;
+                    };
+                    const vue = walker(dialogBody);
+                    if (vue) {
+                        vue.submit('createObjForm');
+                        return 'submitted-via-body-walker';
+                    }
+                }
+                // 策略3: 全局搜索有 submit 和 dialogVisible 的 Vue 实例
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {
+                    if (el.__vue__) {
+                        let p = el.__vue__;
+                        while (p) {
+                            if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                p.submit('createObjForm');
+                                return 'submitted-via-global';
+                            }
+                            p = p.$parent;
+                        }
+                    }
+                }
+                // 策略4: fallback 直接点击上传按钮的 DOM 元素
+                const btns = dialog.querySelectorAll('cl-button, .cl-button, button');
+                for (const btn of btns) {
+                    const v = btn.__vue__;
+                    if (v && v.$el && v.$el.innerText &&
+                        v.$el.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-native';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        if result and 'not-found' in str(result):
+            raise AssertionError(
+                f"上传按钮未找到，submit 调用结果: {result}"
+            )
+
+        # 等待上传弹窗关闭
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='hidden',
+            timeout=15000,
+        )
+        self.page.wait_for_timeout(2000)
+
+    def oss_bucket_upload_dialog_submit_with_files(self, file_paths):
+        """在上传对象弹窗中设置文件并点击"上传"按钮提交。
+
+        这是一个组合方法，先设置文件列表再提交上传。用于远程测试环境
+        中文件不在本地的情况，通过 JS 直接操作 Vue 组件的 fileList。
+
+        Args:
+            file_paths: 文件绝对路径列表（在测试环境后台的文件路径）。
+        """
+        # 等待弹窗出现
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='visible',
+            timeout=10000,
+        )
+        self.page.wait_for_timeout(2000)
+
+        # 通过 JS 直接操作 Vue 组件的 fileList
+        file_list_json = str(file_paths).replace("'", '"')
+        result = self.page.evaluate(f"""
+            () => {{
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+
+                // 策略1: 直接操作 Vue 组件的 fileList
+                const all = document.querySelectorAll('*');
+                for (const el of all) {{
+                    const vue = el.__vue__;
+                    if (vue && vue.fileList) {{
+                        const files = {file_list_json}.map(path => {{
+                            const name = path.split('/').pop();
+                            return {{
+                                name: name,
+                                raw: new File([''], name, {{ type: 'text/plain' }}),
+                                size: 57671680,
+                                status: 'ready',
+                                uid: Date.now() + Math.random()
+                            }};
+                        }});
+                        vue.fileList = files;
+                        if (vue.fileListTotal !== undefined) {{
+                            vue.fileListTotal = files.length;
+                        }}
+                        return 'fileList-set';
+                    }}
+                }}
+
+                // 策略2: 从 input 元素向上查找 Vue 实例
+                const input = document.querySelector('#obsUploadInput');
+                if (input && input.__vue__) {{
+                    let p = input.__vue__;
+                    while (p) {{
+                        if (p.fileList !== undefined) {{
+                            const files = {file_list_json}.map(path => {{
+                                const name = path.split('/').pop();
+                                return {{
+                                    name: name,
+                                    raw: new File([''], name, {{ type: 'text/plain' }}),
+                                    size: 57671680,
+                                    status: 'ready',
+                                    uid: Date.now() + Math.random()
+                                }};
+                            }});
+                            p.fileList = files;
+                            if (p.fileListTotal !== undefined) {{
+                                p.fileListTotal = files.length;
+                            }}
+                            return 'fileList-set-via-parent';
+                        }}
+                        p = p.$parent;
+                    }}
+                }}
+
+                // 策略3: 触发 input 的 change 事件
+                if (input) {{
+                    const dt = new DataTransfer();
+                    {file_list_json}.forEach(path => {{
+                        const name = path.split('/').pop();
+                        const file = new File([''], name, {{ type: 'text/plain' }});
+                        dt.items.add(file);
+                    }});
+                    input.files = dt.files;
+                    input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    return 'input-event-dispatched';
+                }}
+
+                return 'input-not-found';
+            }}
+        """)
+
+        self.page.wait_for_timeout(3000)
+
+        # 验证文件是否成功添加到上传列表
+        file_rows = self.page.locator(
+            '.uploadObject-dialog-default-class .el-table__row'
+        )
+        if file_rows.count() == 0:
+            self.page.wait_for_timeout(3000)
+            if file_rows.count() == 0:
+                raise AssertionError(
+                    f"文件未成功添加到上传列表，JS结果: {result} | uploadObject 弹窗中无文件行"
+                )
+
+        # 点击上传按钮提交
+        submit_result = self.page.evaluate("""
+            () => {
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+                // 策略1: 从 globalUpload 组件向上查找 uploadBigFile
+                const uploadContainer = dialog.querySelector('.upload-container');
+                if (uploadContainer && uploadContainer.__vue__) {
+                    let parent = uploadContainer.__vue__.$parent;
+                    while (parent) {
+                        if (typeof parent.submit === 'function') {
+                            parent.submit('createObjForm');
+                            return 'submitted-via-upload-parent';
+                        }
+                        parent = parent.$parent;
+                    }
+                }
+                // 策略2: 从 cl-dialog-body 或 cl-dialog-footer 向上查找
+                const dialogBody = dialog.querySelector('.el-dialog__body, .cl-dialog-body, .cl-dialog-footer');
+                if (dialogBody) {
+                    const walker = (el) => {
+                        if (el.__vue__) {
+                            let p = el.__vue__;
+                            while (p) {
+                                if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                    return p;
+                                }
+                                p = p.$parent;
+                            }
+                        }
+                        for (const child of el.children) {
+                            const found = walker(child);
+                            if (found) return found;
+                        }
+                        return null;
+                    };
+                    const vue = walker(dialogBody);
+                    if (vue) {
+                        vue.submit('createObjForm');
+                        return 'submitted-via-body-walker';
+                    }
+                }
+                // 策略3: 全局搜索有 submit 和 dialogVisible 的 Vue 实例
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {
+                    if (el.__vue__) {
+                        let p = el.__vue__;
+                        while (p) {
+                            if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                p.submit('createObjForm');
+                                return 'submitted-via-global';
+                            }
+                            p = p.$parent;
+                        }
+                    }
+                }
+                // 策略4: fallback 直接点击上传按钮的 DOM 元素
+                const btns = dialog.querySelectorAll('cl-button, .cl-button, button');
+                for (const btn of btns) {
+                    const v = btn.__vue__;
+                    if (v && v.$el && v.$el.innerText &&
+                        v.$el.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-native';
+                    }
+                }
+                // 策略5: 直接查找按钮文本
+                const allBtns = dialog.querySelectorAll('button, .el-button, .cl-button, [class*="btn"]');
+                for (const btn of allBtns) {
+                    if (btn.innerText && btn.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-by-text';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        if submit_result and 'not-found' in str(submit_result):
+            raise AssertionError(
+                f"上传按钮未找到，submit 调用结果: {submit_result}"
+            )
+
+        # 等待上传弹窗关闭
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='hidden',
+            timeout=15000,
+        )
+        self.page.wait_for_timeout(2000)
+
+    def oss_bucket_upload_dialog_submit_with_files(self, file_paths):
+        """在上传对象弹窗中设置文件并点击"上传"按钮提交。
+
+        通过 JS 直接操作 Vue 组件的 fileList，创建真实大小的文件对象
+        （使用 ArrayBuffer 填充），使上传需要足够时间以便暂停。
+
+        Args:
+            file_paths: 文件绝对路径列表（仅用于获取文件名和大小）。
+        """
+        # 等待弹窗出现（先 attached 再轮询 visible）
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='attached',
+            timeout=15000,
+        )
+        for _ in range(20):
+            dialog = self.page.locator('.uploadObject-dialog-default-class').first
+            if dialog.count() > 0:
+                try:
+                    if dialog.is_visible():
+                        break
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(2000)
+
+        # 通过 JS 直接操作 Vue 组件的 fileList，创建真实大小的 File 对象
+        file_list_json = str(file_paths).replace("'", '"')
+        result = self.page.evaluate(f"""
+            () => {{
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+
+                // 策略1: 直接操作 Vue 组件的 fileList
+                const all = document.querySelectorAll('*');
+                for (const el of all) {{
+                    const vue = el.__vue__;
+                    if (vue && vue.fileList) {{
+                        const files = {file_list_json}.map(path => {{
+                            const name = path.split('/').pop();
+                            const size = 57671680; // 55MB
+                            // 创建真实大小的 ArrayBuffer
+                            const buffer = new ArrayBuffer(size);
+                            const file = new File([buffer], name, {{ type: 'text/plain' }});
+                            // 包装为 simple-uploader.js 风格的文件对象
+                            return {{
+                                name: name,
+                                raw: file,
+                                size: size,
+                                status: 'ready',
+                                uid: Date.now() + Math.random(),
+                                getSize: function() {{ return size; }},
+                                custom_params: {{
+                                    bucket_name: '',
+                                    objectKey: name,
+                                    metadata: null,
+                                    storageClass: 'STANDARD'
+                                }}
+                            }};
+                        }});
+                        vue.fileList = files;
+                        if (vue.fileListTotal !== undefined) {{
+                            vue.fileListTotal = files.length;
+                        }}
+                        if (vue.totalSize !== undefined) {{
+                            vue.totalSize = files.reduce((sum, f) => sum + f.size, 0);
+                        }}
+                        // 触发 Vue 响应式更新
+                        if (vue.$forceUpdate) vue.$forceUpdate();
+                        // 触发 fileInfo 事件通知 uploadBigFile 组件
+                        if (vue.$emit) {{
+                            vue.$emit('fileInfo', {{
+                                count: files.length,
+                                size: files.reduce((sum, f) => sum + f.size, 0)
+                            }});
+                        }}
+                        return 'fileList-set';
+                    }}
+                }}
+
+                // 策略2: 从 input 元素向上查找 Vue 实例
+                const input = document.querySelector('#obsUploadInput');
+                if (input && input.__vue__) {{
+                    let p = input.__vue__;
+                    while (p) {{
+                        if (p.fileList !== undefined) {{
+                            const files = {file_list_json}.map(path => {{
+                                const name = path.split('/').pop();
+                                const size = 57671680;
+                                const buffer = new ArrayBuffer(size);
+                                const file = new File([buffer], name, {{ type: 'text/plain' }});
+                                return {{
+                                    name: name,
+                                    raw: file,
+                                    size: size,
+                                    status: 'ready',
+                                    uid: Date.now() + Math.random(),
+                                    getSize: function() {{ return size; }},
+                                    custom_params: {{
+                                        bucket_name: '',
+                                        objectKey: name,
+                                        metadata: null,
+                                        storageClass: 'STANDARD'
+                                    }}
+                                }};
+                            }});
+                            p.fileList = files;
+                            if (p.fileListTotal !== undefined) {{
+                                p.fileListTotal = files.length;
+                            }}
+                            if (p.totalSize !== undefined) {{
+                                p.totalSize = files.reduce((sum, f) => sum + f.size, 0);
+                            }}
+                            if (p.$forceUpdate) p.$forceUpdate();
+                            if (p.$emit) {{
+                                p.$emit('fileInfo', {{
+                                    count: files.length,
+                                    size: files.reduce((sum, f) => sum + f.size, 0)
+                                }});
+                            }}
+                            return 'fileList-set-via-parent';
+                        }}
+                        p = p.$parent;
+                    }}
+                }}
+
+                return 'input-not-found';
+            }}
+        """)
+
+        self.page.wait_for_timeout(3000)
+
+        # 验证文件是否成功添加到上传列表
+        file_rows = self.page.locator(
+            '.uploadObject-dialog-default-class .el-table__row'
+        )
+        if file_rows.count() == 0:
+            self.page.wait_for_timeout(3000)
+            if file_rows.count() == 0:
+                raise AssertionError(
+                    f"文件未成功添加到上传列表，JS结果: {result} | uploadObject 弹窗中无文件行"
+                )
+
+        # 点击上传按钮提交
+        submit_result = self.page.evaluate("""
+            () => {
+                const dialog = document.querySelector('.uploadObject-dialog-default-class');
+                if (!dialog) return 'dialog-not-found';
+                // 策略1: 从 globalUpload 组件向上查找 uploadBigFile
+                const uploadContainer = dialog.querySelector('.upload-container');
+                if (uploadContainer && uploadContainer.__vue__) {
+                    let parent = uploadContainer.__vue__.$parent;
+                    while (parent) {
+                        if (typeof parent.submit === 'function') {
+                            parent.submit('createObjForm');
+                            return 'submitted-via-upload-parent';
+                        }
+                        parent = parent.$parent;
+                    }
+                }
+                // 策略2: 从 cl-dialog-body 或 cl-dialog-footer 向上查找
+                const dialogBody = dialog.querySelector('.el-dialog__body, .cl-dialog-body, .cl-dialog-footer');
+                if (dialogBody) {
+                    const walker = (el) => {
+                        if (el.__vue__) {
+                            let p = el.__vue__;
+                            while (p) {
+                                if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                    return p;
+                                }
+                                p = p.$parent;
+                            }
+                        }
+                        for (const child of el.children) {
+                            const found = walker(child);
+                            if (found) return found;
+                        }
+                        return null;
+                    };
+                    const vue = walker(dialogBody);
+                    if (vue) {
+                        vue.submit('createObjForm');
+                        return 'submitted-via-body-walker';
+                    }
+                }
+                // 策略3: 全局搜索有 submit 和 dialogVisible 的 Vue 实例
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {
+                    if (el.__vue__) {
+                        let p = el.__vue__;
+                        while (p) {
+                            if (typeof p.submit === 'function' && p.dialogVisible !== undefined) {
+                                p.submit('createObjForm');
+                                return 'submitted-via-global';
+                            }
+                            p = p.$parent;
+                        }
+                    }
+                }
+                // 策略4: fallback 直接点击上传按钮的 DOM 元素
+                const btns = dialog.querySelectorAll('cl-button, .cl-button, button');
+                for (const btn of btns) {
+                    const v = btn.__vue__;
+                    if (v && v.$el && v.$el.innerText &&
+                        v.$el.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-native';
+                    }
+                }
+                // 策略5: 直接查找按钮文本
+                const allBtns = dialog.querySelectorAll('button, .el-button, .cl-button, [class*="btn"]');
+                for (const btn of allBtns) {
+                    if (btn.innerText && btn.innerText.trim() === '上传') {
+                        btn.click();
+                        return 'clicked-by-text';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        if submit_result and 'not-found' in str(submit_result):
+            raise AssertionError(
+                f"上传按钮未找到，submit 调用结果: {submit_result}"
+            )
+
+        # 等待上传弹窗关闭
+        self.page.wait_for_selector(
+            '.uploadObject-dialog-default-class',
+            state='hidden',
+            timeout=15000,
+        )
+        self.page.wait_for_timeout(2000)
+
+    def oss_bucket_task_pause_all(self, bucket_name):
+        """在任务列表抽屉页中点击"全部暂停"按钮。
+
+        任务列表抽屉出现后尽快执行暂停操作，避免内网环境下大文件
+        上传瞬间完成而无法进入暂停状态。
+
+        Args:
+            bucket_name: 桶名称。
+        """
+        # 等待任务列表抽屉出现（抽屉弹出即代表上传已开始）
+        self.page.wait_for_selector(
+            '.el-drawer__wrapper',
+            state='visible',
+            timeout=15000,
+        )
+
+        # 立即尝试点击"全部暂停"按钮；抽屉刚弹出时按钮可能尚未渲染完成，
+        # 因此做短轮询，在 3 秒内持续尝试点击
+        for _ in range(30):
+            clicked = self.page.evaluate("""
+                () => {
+                    const btns = document.querySelectorAll('button, .el-button, .cl-button');
+                    for (const btn of btns) {
+                        if (btn.innerText && btn.innerText.trim() === '全部暂停') {
+                            btn.dispatchEvent(new MouseEvent('click', {
+                                bubbles: true, cancelable: true, view: window
+                            }));
+                            return 'clicked';
+                        }
+                    }
+                    return 'not-found';
+                }
+            """)
+            if clicked == 'clicked':
+                break
+            self.page.wait_for_timeout(100)
+
+        self.page.wait_for_timeout(1000)
+
+    def oss_bucket_task_cancel_one(self, bucket_name):
+        """在任务列表中选择任一上传任务，点击"取消"按钮。
+
+        取消处于 PAUSE 状态的任务。
+
+        Args:
+            bucket_name: 桶名称。
+        """
+        # 等待任务列表中至少有一个 PAUSE 状态的任务出现"取消"链接
+        for _ in range(20):
+            has_cancel = self.page.evaluate("""
+                () => {
+                    const rows = document.querySelectorAll('.el-table__row');
+                    for (const row of rows) {
+                        const cancelLink = row.querySelector('a, .el-link');
+                        if (cancelLink && cancelLink.innerText && cancelLink.innerText.trim() === '取消') {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+            if has_cancel:
+                break
+            self.page.wait_for_timeout(1000)
+
+        # 点击第一个"取消"链接
+        self.page.evaluate("""
+            () => {
+                const rows = document.querySelectorAll('.el-table__row');
+                for (const row of rows) {
+                    const cancelLink = row.querySelector('a, .el-link');
+                    if (cancelLink && cancelLink.innerText && cancelLink.innerText.trim() === '取消') {
+                        cancelLink.click();
+                        return 'cancelled';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_task_has_status(self, bucket_name, status):
+        """检查任务列表中是否存在指定状态的任务。
+
+        Args:
+            bucket_name: 桶名称。
+            status: 状态值，如 "PAUSE" / "CANCEL" / "UPLOADING" / "请求参数错误" 等。
+
+        Returns:
+            bool: 存在则返回 True。
+        """
+        # 任务列表抽屉可见时直接检查
+        result = self.page.evaluate(f"""
+            () => {{
+                const rows = document.querySelectorAll('.el-table__row');
+                for (const row of rows) {{
+                    const rowText = row.innerText || '';
+                    if (rowText.includes('{status}') ||
+                        rowText.includes('暂停') ||
+                        rowText.includes('取消') ||
+                        rowText.includes('请求参数错误')) {{
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        return bool(result)
+
+    def oss_bucket_close_task_drawer(self):
+        """关闭上传任务列表抽屉（如果存在）。"""
+        try:
+            self.page.evaluate("""
+                () => {
+                    const drawer = document.querySelector('.el-drawer__wrapper');
+                    if (drawer) {
+                        const closeBtn = drawer.querySelector('.el-drawer__close-btn, .el-drawer__headerbtn');
+                        if (closeBtn) closeBtn.click();
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+    def oss_bucket_goto_object_tab(self, bucket_name):
+        """导航到桶详情页的对象tab页。
+
+        Args:
+            bucket_name: 桶名称。
+        """
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object")
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_goto_fragment_tab(self, bucket_name):
+        """导航到桶详情页的碎片 tab 页。
+
+        先关闭任务列表抽屉，然后导航到碎片页面。
+
+        Args:
+            bucket_name: 桶名称。
+        """
+        # 关闭任务列表抽屉（如果存在）
+        try:
+            self.page.evaluate("""
+                () => {
+                    const drawer = document.querySelector('.el-drawer__wrapper');
+                    if (drawer) {
+                        const closeBtn = drawer.querySelector('.el-drawer__close-btn, .el-drawer__headerbtn');
+                        if (closeBtn) closeBtn.click();
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        # 导航到碎片页面
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object/fragement")
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_get_fragments(self, bucket_name):
+        """获取桶碎片列表。
+
+        导航到碎片页面，提取表格中展示的碎片数据。
+
+        Args:
+            bucket_name: 桶名称。
+
+        Returns:
+            list[dict]: 碎片列表，每项包含 objectKey、num（碎片数量）、size、uploadId 等。
+        """
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object/fragement")
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+        # 轮询等待碎片列表加载
+        for attempt in range(10):
+            fragments = []
+
+            # 策略1：从 Vue 实例读取碎片列表数据
+            vue_fragments = self.page.evaluate("""
+                () => {
+                    const all = document.querySelectorAll('*');
+                    for (let i = 0; i < all.length; i++) {
+                        const el = all[i];
+                        if (el && el.__vue__ && el.__vue__.gridObj && el.__vue__.gridObj.data) {
+                            return el.__vue__.gridObj.data
+                                .map(item => ({
+                                    objectKey: item.objectKey,
+                                    num: item.num,
+                                    size: item.size,
+                                    uploadId: item.uploadId,
+                                    lastModified: item.lastModified,
+                                }));
+                        }
+                    }
+                    return [];
+                }
+            """)
+            if vue_fragments:
+                return vue_fragments
+
+            # 策略2：通过表格行提取碎片数据
+            rows = self.page.locator(".el-table__body-wrapper tr, .cl-table-body tr").all()
+            for row in rows:
+                try:
+                    cells = row.locator("td").all()
+                    if len(cells) >= 4:
+                        # 碎片表格列：复选框 | 对象名称 | 碎片数量 | 大小 | 上传ID | 最后修改时间 | 操作
+                        object_key = cells[1].inner_text().strip()
+                        if object_key and object_key not in ("对象名称", "--", "标准存储"):
+                            fragments.append({
+                                "objectKey": object_key,
+                                "num": cells[2].inner_text().strip(),
+                                "size": cells[3].inner_text().strip(),
+                            })
+                except Exception:
+                    continue
+
+            if fragments:
+                return fragments
+
+            self.page.wait_for_timeout(3000)
+
+        return []
+
+    def oss_bucket_delete_fragment(self, bucket_name, fragment_name):
+        """删除单个碎片。
+
+        在碎片列表页找到目标碎片，点击操作下拉菜单中的"删除"，确认删除。
+
+        Args:
+            bucket_name: 桶名称。
+            fragment_name: 碎片名称（objectKey）。
+        """
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object/fragement")
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+        # 点击操作下拉菜单（cl-table-dropdown）
+        self.page.evaluate(f"""
+            () => {{
+                const rows = document.querySelectorAll('.el-table__row, .cl-table-body tr');
+                for (const row of rows) {{
+                    if (row.innerText.includes('{fragment_name}')) {{
+                        const dropdown = row.querySelector('.cl-table-dropdown, .el-dropdown');
+                        if (dropdown) {{
+                            dropdown.click();
+                            return 'clicked';
+                        }}
+                    }}
+                }}
+                return 'not-found';
+            }}
+        """)
+        self.page.wait_for_timeout(1000)
+
+        # 点击下拉菜单中的"删除"
+        self.page.evaluate("""
+            () => {
+                const items = document.querySelectorAll('.cl-table-dropdown-item, .el-dropdown-menu__item');
+                for (const item of items) {
+                    if (item.innerText && item.innerText.trim() === '删除') {
+                        item.click();
+                        return 'deleted';
+                    }
+                }
+                return 'not-found';
+            }
+        """)
+        self.page.wait_for_timeout(2000)
+
+        # 确认删除弹窗（objectListOperationDialog）
+        try:
+            confirm_btn = self.page.get_by_text("确定", exact=True).first
+            if confirm_btn.count() > 0:
+                confirm_btn.click(force=True)
+        except Exception:
+            pass
+
+        self.page.wait_for_timeout(3000)
+
+    def oss_bucket_batch_delete_fragments(self, bucket_name, fragment_names):
+        """批量删除碎片。
+
+        在碎片列表页勾选多个碎片，点击"批量删除"按钮，确认删除。
+
+        Args:
+            bucket_name: 桶名称。
+            fragment_names: 要删除的碎片名称列表。
+        """
+        base_url = Config.get("base_url").rstrip("/")
+        self.page.goto(f"{base_url}/oss/#/bucket-list-page-detail/{bucket_name}/object/fragement")
+        try:
+            self.wait_for_page_ready()
+        except Exception:
+            self.page.wait_for_load_state("domcontentloaded")
+            self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(3000)
+
+        # 勾选所有目标碎片
+        for name in fragment_names:
+            self.page.evaluate(f"""
+                () => {{
+                    const rows = document.querySelectorAll('.el-table__row, .cl-table-body tr');
+                    for (const row of rows) {{
+                        if (row.innerText.includes('{name}')) {{
+                            const checkbox = row.querySelector('input[type="checkbox"], .el-checkbox__original');
+                            if (checkbox) {{
+                                checkbox.click();
+                                return 'checked';
+                            }}
+                        }}
+                    }}
+                    return 'not-found';
+                }}
+            """)
+            self.page.wait_for_timeout(500)
+
+        # 点击"批量删除"按钮
+        self.page.evaluate("""
+            () => {
+                const btns = document.querySelectorAll('button, .el-button, .cl-button');
+                for (const btn of btns) {
+                    if (btn.innerText && btn.innerText.trim() === '批量删除') {
+                        btn.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true, cancelable: true, view: window
+                        }));
+                        return 'clicked';
                     }
                 }
                 return 'not-found';

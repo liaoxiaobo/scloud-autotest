@@ -1,5 +1,9 @@
+from typing import Any
+
 from sugon_web.utils.logger import logger
 from sugon_web.utils.data import random_data
+
+from .vm_fixture.metadata_collector import _build_vm_metadata
 
 
 def create_labels(ecs_page, *, count=1):
@@ -23,3 +27,39 @@ def delete_labels(ecs_page, label_names):
     ecs_page.goto_submenu("标签")
     ecs_page.batch_delete_label(label_names)
     logger.info(f"标签清理完成: {label_names}")
+
+
+def collect_vm_metadata(
+    ecs_page: Any,
+    ssh_host: Any,
+    vm_name: str,
+) -> dict[str, Any]:
+    """收集指定虚机的元数据（含 ``port_id`` / ``project_id``）。
+
+    适用于 fixture 创建的虚机以及用例中动态创建、克隆、恢复的虚机。
+    调用前需确保 ``ecs_page`` 已处于 ECS 列表页（或能定位到该虚机行）。
+
+    Args:
+        ecs_page: ECS 页面对象。
+        ssh_host: 已连接的 SSH 后端客户端，需支持 ``guest_show`` 方法。
+        vm_name: 虚机名称。
+
+    Returns:
+        包含以下键的字典：
+        - ``name`` (str): 虚机名称
+        - ``id`` (str): 虚机 ID
+        - ``ip`` (str): 固定 IPv4
+        - ``ipv6`` (str): 固定 IPv6（如有）
+        - ``public_ip`` (str): 公网 IP（如有）
+        - ``host`` (str): 物理机
+        - ``flavor`` (str): 规格
+        - ``image`` (str): 镜像名称
+        - ``project`` (str): 项目名称
+        - ``network`` (str): 网络名称
+        - ``subnet`` (str): 子网名称
+        - ``mfip`` (str | None): MFIP（默认 None）
+        - ``port_id`` (str | None): 网卡端口 ID（SSH 可用时填充）
+        - ``project_id`` (str | None): 项目 ID（SSH 可用时填充）
+    """
+    row_data = ecs_page.get_row_data(vm_name)
+    return dict(_build_vm_metadata(row_data, vm_name, ssh_host=ssh_host))

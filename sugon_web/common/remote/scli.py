@@ -269,8 +269,7 @@ class ScliMixin:
             --property architecture={arch} \
             --property hw_firmware_type={hw_firmware_type} \
             --file {image_name} \
-            --backend {backend} \
-            --progress '
+            --backend {backend}'
 
         for key, value in kwargs.items():
             cmd = cmd + f"--property {key}={value} "
@@ -281,7 +280,7 @@ class ScliMixin:
         img_source = Config.get("image_source")
         full_url = rf"{img_source}{img_path}/{image}"
         if image not in self.run("ls"):
-            self.run(f"sudo curl {full_url} -o {image}")
+            self.run(f"sudo curl -fsS {full_url} -o {image}")
             self.file_exist(image)
 
     def glance_image_delete(self, name):
