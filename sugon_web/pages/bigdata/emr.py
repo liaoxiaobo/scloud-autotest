@@ -131,7 +131,7 @@ class EMRPage(BasePage):
         subnet: str = "Autotest:10.",
         security_group: str = "default",
         disk_type: str = None,
-        disk_size: int = 100,
+        disk_size: int = 60,
     ):
         """创建 E-MapReduce 集群。"""
         self.btn_create.click()
@@ -156,29 +156,39 @@ class EMRPage(BasePage):
         sleep(1)
 
         selected_disk_type = disk_type if disk_type and disk_type != "default" else self.volume_type
-        for row_index in range(self.locator(".el-table__expand-icon").count()):
-            expand_icon = self.locator(".el-table__expand-icon").nth(row_index)
+        expand_icons = self.locator(".el-table__expand-icon")
+        for row_index in range(expand_icons.count()):
+            expand_icon = expand_icons.nth(row_index)
             if "expanded" not in (expand_icon.get_attribute("class") or ""):
                 expand_icon.click()
                 sleep(0.5)
-
-        for dropdown in self.locator(".el-form-item").filter(has_text="数据盘类型").locator("input[placeholder='请选择']").all():
-            if dropdown.input_value().strip():
+            form_items = self.locator(".el-form-item").filter(has_text="数据盘类型")
+            if form_items.count() <= row_index:
                 continue
-            dropdown.scroll_into_view_if_needed()
-            dropdown.click()
-            option_pattern = re.compile(rf"类型：\s*{re.escape(selected_disk_type)}\s*[；;]")
-            option = self.page.locator("body > div.el-select-dropdown:visible").last.locator("li").filter(
-                has_text=option_pattern
-            ).first
-            option.scroll_into_view_if_needed()
-            try:
-                option.click(timeout=3000)
-            except Exception:
-                option.click(force=True, timeout=3000)
 
-        for spin in self.locator(".el-form-item").filter(has_text="数据盘大小").locator("input[role='spinbutton']").all():
+            disk_type_item = form_items.nth(row_index)
+            dropdown = disk_type_item.locator("input[placeholder='请选择']").first
+            current_value = dropdown.input_value().strip()
+            if current_value != selected_disk_type:
+                dropdown.scroll_into_view_if_needed()
+                dropdown.click()
+                option_pattern = re.compile(rf"类型：\s*{re.escape(selected_disk_type)}\s*[；;]")
+                option = self.page.locator("body > div.el-select-dropdown:visible").last.locator("li").filter(
+                    has_text=option_pattern
+                ).first
+                option.scroll_into_view_if_needed()
+                try:
+                    option.click(timeout=3000)
+                except Exception:
+                    option.click(force=True, timeout=3000)
+                sleep(1)
+
+            disk_size_items = self.locator(".el-form-item").filter(has_text="数据盘大小")
+            if disk_size_items.count() <= row_index:
+                continue
+            spin = disk_size_items.nth(row_index).locator("input[role='spinbutton']").first
             spin.fill(str(disk_size))
+            sleep(1)
 
         self.get_by_text("点击创建", exact=True).click()
 
@@ -321,14 +331,14 @@ class EMRPage(BasePage):
     @submenu("实例")
     def delete_cluster(self, name: str):
         """删除 E-MapReduce 集群。"""
-        self.click_action(name, "删除集群")
+        self.click_action(name, "删除")
         self.dialog_confirm.click()
 
     @submenu("实例")
     def batch_delete_clusters(self, names: list[str]):
         for name in names:
             self.get_by_role("row", name=re.compile(re.escape(name))).locator("label").first.click()
-        self.get_by_text("删除", exact=True).click()
+        self.get_by_text("批量删除", exact=True).click()
         self.dialog_confirm.click()
 
     @submenu("实例")
