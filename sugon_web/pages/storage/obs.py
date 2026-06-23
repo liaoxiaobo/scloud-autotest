@@ -757,8 +757,9 @@ class ObsPage(ObsAssertionMixin, BasePage):
     def obs_object_upload_check_capacity_blocked(self, file_path):
         """检查上传对象是否因桶容量不足被阻止。
 
-        打开上传弹窗、选择文件后，检查"立即上传"按钮是否被禁用
-        或是否显示容量不足警告。
+        打开上传弹窗、选择文件后，轮询检查"立即上传"按钮是否被禁用
+        或是否显示容量不足警告（兼容 disabled 属性与 is-disabled 类名，
+        并放宽等待时间以应对慢环境）。
 
         Args:
             file_path: 本地文件路径
@@ -766,44 +767,79 @@ class ObsPage(ObsAssertionMixin, BasePage):
         Returns:
             bool: True 表示上传被阻止，False 表示可以上传
         """
-        # 点击上传对象按钮
+        # 点击上传对象按钮并等待弹窗渲染
         self.page.get_by_text("上传对象", exact=True).first.click()
-        self.page.wait_for_timeout(1500)
-
-        # 在弹窗中设置文件
         dialog = self.page.locator(".cv-dialog, .el-dialog").filter(
             has_text="上传对象"
         ).first
+        try:
+            expect(dialog).to_be_visible(timeout=10000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1500)
+
+        # 在弹窗中设置文件
         file_input = self.page.locator("#obsUploadInput")
         if file_input.count() == 0:
             file_input = self.page.locator('input[type="file"]')
         file_input.set_input_files(file_path)
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(1000)
 
-        # 检查"立即上传"按钮是否被禁用
         upload_btn = dialog.get_by_text("立即上传", exact=True).first
-        is_disabled = False
-        try:
-            is_disabled = upload_btn.is_disabled()
-        except Exception:
-            pass
 
-        # 检查是否显示容量不足警告
-        warning_visible = False
-        warning_locator = dialog.locator("div").filter(
-            has_text="文件超出桶可用容量大小"
+        # 轮询等待前端容量校验结果（最多 10 秒）
+        is_blocked = False
+        deadline = time.time() + 10
+        warning_patterns = (
+            "文件超出桶可用容量大小",
+            "超出桶可用容量",
+            "容量不足",
+            "超出容量",
         )
-        if warning_locator.count() > 0:
+        while time.time() < deadline:
+            # 1) 标准 disabled 属性
             try:
-                warning_visible = warning_locator.first.is_visible()
+                if upload_btn.is_disabled():
+                    is_blocked = True
+                    break
             except Exception:
                 pass
 
+            # 2) 自定义组件通过 is-disabled 类名禁用
+            try:
+                btn_parent = upload_btn.locator("xpath=..")
+                parent_class = btn_parent.get_attribute("class") or ""
+                if "is-disabled" in parent_class:
+                    is_blocked = True
+                    break
+            except Exception:
+                pass
+
+            # 3) 容量不足提示文本
+            for text in warning_patterns:
+                warning_locator = dialog.locator(
+                    "div, span, p, .el-form-item__error"
+                ).filter(has_text=text)
+                if warning_locator.count() > 0:
+                    try:
+                        if warning_locator.first.is_visible():
+                            is_blocked = True
+                            break
+                    except Exception:
+                        pass
+            if is_blocked:
+                break
+
+            self.page.wait_for_timeout(500)
+
         # 关闭上传弹窗
-        self.page.keyboard.press("Escape")
+        try:
+            self.page.keyboard.press("Escape")
+        except Exception:
+            pass
         self.page.wait_for_timeout(500)
 
-        return is_disabled or warning_visible
+        return is_blocked
 
     def _close_task_list_panel_if_exists(self):
         """关闭右侧任务列表面板（如果存在）。"""
