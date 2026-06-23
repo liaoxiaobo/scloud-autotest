@@ -36,6 +36,7 @@ validator → fix → repeat 反馈环，避免这些违规被带到阶段三的
 import argparse
 import ast
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -352,6 +353,78 @@ def _check_recon_gate(test_files, explicit_page_files, recon_dir, since_epoch):
     ]
 
 
+def _git_repo_root(start):
+    """返回包含 start 的 git 仓库根（`git rev-parse --show-toplevel`）；
+    不在 git 仓库 / 无 git 命令时返回 None。
+
+    用真实仓库根（而非"含 sugon_web 的目录"）作为 `git show HEAD:<path>` 的相对基准，
+    避免 sugon_web 不在仓库根时（如 submodule / .git 在更上层）相对路径错配导致保护静默失效。
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+        )
+    except (FileNotFoundError, OSError):
+        return None  # 无 git 命令
+    if proc.returncode != 0:
+        return None  # 不在 git 仓库
+    top = proc.stdout.strip()
+    return Path(top) if top else None
+
+
+def _git_head_content(path, repo_root):
+    """返回该文件在 git HEAD 的内容；不在 git 仓库 / 未跟踪 / 无 git 命令时返回 None（静默跳过）。
+
+    repo_root 须为 git 真实仓库根（见 _git_repo_root）；path 不在该仓库根下则返回 None。
+    """
+    try:
+        rel = path.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        return None  # 文件不在该仓库根下
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"HEAD:{rel.as_posix()}"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+        )
+    except (FileNotFoundError, OSError):
+        return None  # 无 git 命令
+    if proc.returncode != 0:
+        return None  # 不是 git 仓库 / 文件未被跟踪 / 无 HEAD
+    return proc.stdout
+
+
+def _check_no_test_deletion(test_files):
+    """机械兜底『已有用例只增不减』：与 git HEAD 比对，若某 test_*.py 的 def test_ 方法数变少 → 违规。
+
+    这是为彻底堵死『因 CSV/MD 与既有文件同名 → 整文件覆盖 → 删掉已有用例』的严重事故而加的硬门禁。
+    仅在『文件被 git 跟踪且当前方法数 < HEAD 方法数』时报违规；新建文件 / 未跟踪 / 无 git 一律静默跳过，
+    不会误伤。本工作流的阶段二/三只应『新增/修改本次相关用例』，绝不应让已有用例总数下降。
+    """
+    root = _project_root()
+    repo_root = _git_repo_root(root) or root
+    violations = []
+    for path in test_files:
+        head_src = _git_head_content(path, repo_root)
+        if head_src is None:
+            continue
+        cur_src = _read(path)
+        if cur_src is None:
+            continue
+        head_methods, _, _ = _count_tests(head_src, path)
+        cur_methods, _, _ = _count_tests(cur_src, path)
+        if cur_methods < head_methods:
+            violations.append(
+                f"[已有用例保护]: {path} 的 def test_ 方法数从 git HEAD 的 {head_methods} 个减少到 {cur_methods} 个，"
+                f"疑似误删/整文件覆盖了已有用例（严重事故）。【立即停止当前任务】：严禁用 git 或任何其它方式自行补救/恢复，"
+                f"在对话框醒目提示用户『测试文件 {path} 的已有用例被误删/覆盖（{head_methods} → {cur_methods} 个），"
+                f"需人工从版本库/备份恢复后再继续』，等待用户处理，不要继续往下执行。"
+            )
+    return violations
+
+
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
         description="test-script-dev 静态门禁：首次执行 pytest 前对 test_*.py 做客观机械校验。",
@@ -424,6 +497,9 @@ def main(argv):
         if args.since and since_epoch is None:
             print(f"[WARN] --since 无法解析：{args.since!r}（应为 'YYYY-MM-DD HH:MM' 或 epoch 秒），本次按『不限时间』判定。")
         all_violations += _check_recon_gate(files, args.page_files, args.recon_dir, since_epoch)
+
+    # 已有用例只增不减（机械兜底·始终执行，防 CSV/MD 同名导致整文件覆盖删除已有用例的严重事故）
+    all_violations += _check_no_test_deletion(files)
 
     # 注：输出统一用 ASCII 标记（[PASS]/[FAIL]），不用 emoji——
     # Windows 控制台默认 GBK，emoji 会触发 UnicodeEncodeError（solve, don't punt）。
