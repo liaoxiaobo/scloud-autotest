@@ -131,7 +131,10 @@ def obs_page(page):
 
 @pytest.fixture(scope="function")
 def ops_page(page):
-    """初始化运维管理页对象"""
+    """初始化运维管理页对象。非 admin 角色暂未适配基础设施服务操作，自动跳过。"""
+    user_role = Config.get("user_role", "admin")
+    if user_role != "admin":
+        pytest.skip(f"基础设施页面仅支持 admin 执行操作，不支持当前测试用户角色 '{user_role}'")
     ops_page = OpsPage(page)
     return ops_page
 

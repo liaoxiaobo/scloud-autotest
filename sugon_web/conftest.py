@@ -38,8 +38,7 @@ def pytest_addoption(parser):
     parser.addoption("--browser-type", action="store", help="指定浏览器类型 (chromium/firefox/webkit)")
     parser.addoption("--headless", action="store", help="是否无头模式 (true/false)")
     parser.addoption("--stor", action="store", help="指定存储类型")
-    parser.addoption("--username", action="store", help="登录用户名")
-    parser.addoption("--password", action="store", help="登录密码")
+    parser.addoption("--user-role", action="store", default=None, help="指定测试用户角色 (admin/dept_admin/user)，未指定时使用 base.yaml 中的 user_role")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
     parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
     parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
@@ -219,6 +218,21 @@ def pytest_collection_modifyitems(config, items):
         if stor:
             item.add_marker(allure.tag(f"stor:{stor}"))
 
+    # 非 admin 角色自动跳过尚未适配的 admin 专属用例
+    user_role = config.getoption("--user-role")
+    if user_role is None:
+        # pytest_collection_modifyitems 在 config fixture 之前运行，
+        # 需要手动加载 base.yaml 才能读取默认 user_role
+        Config.load(host=config.getoption("--host"))
+        user_role = Config.get("user_role", "admin")
+    if user_role != "admin":
+        skip_marker = pytest.mark.skip(
+            reason=f"当前用例仅支持 admin 执行，暂未适配测试用户角色 '{user_role}'"
+        )
+        for item in items:
+            if item.get_closest_marker("requires_admin"):
+                item.add_marker(skip_marker)
+
 
 @pytest.fixture(scope="session")
 def config(pytestconfig):
@@ -228,8 +242,7 @@ def config(pytestconfig):
     browser_type = pytestconfig.getoption("--browser-type")
     headless = pytestconfig.getoption("--headless")
     stor = pytestconfig.getoption("--stor")
-    username = pytestconfig.getoption("--username")
-    password = pytestconfig.getoption("--password")
+    user_role = pytestconfig.getoption("--user-role")
 
     # 加载配置
     Config.load(host=host)
@@ -239,9 +252,20 @@ def config(pytestconfig):
         browser=browser_type,
         headless=headless,
         stor=stor,
-        username=username,
-        password=password
+        user_role=user_role
     )
+
+    # 根据当前角色从 users 配置中读取登录凭据
+    resolved_role = Config.get("user_role", "admin")
+    users = Config.get("users", {})
+    role_cfg = users.get(resolved_role, {})
+    username = role_cfg.get("username", "")
+    password = role_cfg.get("password", "")
+    if not username or not password:
+        logger.warning(f"未找到角色 '{resolved_role}' 的登录凭据配置，请检查 base.yaml/env.yaml 中的 users 配置")
+    Config.set("username", username)
+    Config.set("password", password)
+
     logger.info(f"测试配置加载完成: {Config.get()}")
     return Config
 

@@ -47,6 +47,7 @@ class TestVPCNetwork:
             ssh_vm.ping(vm1_ip)
             logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
 
+    @pytest.mark.requires_admin
     @allure.title("Geneve网络-跨子网两台虚机互通验证")
     def test_vpc_cross_subnet_ping(self, vm, ecs_page, ops_page, ssh_vm):
         """
@@ -125,6 +126,7 @@ class TestVPCNetwork:
             ecs_page.assert_deleted(vm2_name)
             logger.info(f"已手动清理虚机: {vm2_name}")
 
+    @pytest.mark.requires_admin
     @allure.title("分布式Vlan网络-同子网的两台虚机互通验证")
     @pytest.mark.parametrize("vpc", [{
         "network_type": "Vlan",
@@ -270,6 +272,7 @@ class TestVPCNetwork:
     #         ssh_vm.ping(vm1_ip)
     #         logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
 
+    @pytest.mark.requires_admin
     @allure.title("集中式Vlan网络-同子网的两台虚机互通验证")
     @pytest.mark.parametrize("vpc", [{
         "network_type": "Vlan",
@@ -374,6 +377,7 @@ class TestVPCNetwork:
             logger.info(f"已手动清理虚机: {vm1_name}, {vm2_name}")
 
 
+    @pytest.mark.requires_admin
     @allure.title("双栈网络-同子网的两台虚机互通验证")
     @pytest.mark.parametrize("vpc", [{
         "network_type": "Geneve",

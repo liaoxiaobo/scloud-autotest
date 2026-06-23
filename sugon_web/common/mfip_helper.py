@@ -153,10 +153,9 @@ class MfipHelper:
         Returns:
             (page, context) 元组。
         """
-        admin_username = config.get("admin_username", "admin")
-        admin_password = config.get(
-            "admin_password", config.get("password", "keystone_sugon")
-        )
+        admin_cfg = config.get("users", {}).get("admin", {})
+        admin_username = admin_cfg.get("username", "admin")
+        admin_password = admin_cfg.get("password", "keystone_sugon")
 
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()

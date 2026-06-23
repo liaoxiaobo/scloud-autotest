@@ -4,6 +4,7 @@ import pytest
 from typing import Any, Dict, Iterator, List, Tuple, TypedDict, Union
 from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.conftest import _create_logged_in_page
+from sugon_web.config.config import Config
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.ops import OpsPage
@@ -104,6 +105,10 @@ def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
     Raises:
         pytest.skip: 当环境中不存在已启用备份节点时主动跳过。
     """
+    user_role = Config.get("user_role", "admin")
+    if user_role != "admin":
+        pytest.skip(f"当前用例仅支持 admin 执行，暂未适配测试用户角色 '{user_role}'")
+
     with allure_step_log("检查环境备份节点"):
         ecs_page.goto_service("基础设施")
         ecs_page.goto_submenu("备份节点")
@@ -530,9 +535,14 @@ def vm_backup(
         def test_xxx(vm_backup):
             assert len(vm_backup) == 2
     """
+    user_role = config.get("user_role", "admin")
+    if user_role != "admin":
+        pytest.skip(f"当前用例仅支持 admin 执行，暂未适配测试用户角色 '{user_role}'")
+
     page = _create_logged_in_page(browser_context, config)
     ecs_page = EcsPage(page)
     vpc_page = VpcPage(page)
+
     params = _get_request_params(request)
     vm_names: List[str] = []
 

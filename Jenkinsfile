@@ -4,8 +4,7 @@ pipeline {
 //         string(name: 'BRANCH', defaultValue: 'develop', description: '请输入正确Git分支名（如main、develop)', trim: true)
         string(name: 'HOST', defaultValue: '172.22.1.190', description: '请输入环境的管理VIP，未配置 dispatch 的模块/服务会在此环境执行')
         choice(name: 'STOR', choices: ["xstor", "zbs", "ceph", "xbd", "ustor", "usan", "local", "nfs"], description: '请选择存储池类型')
-        string(name: 'USER', defaultValue: 'admin', description: '登录用户名')
-        string(name: 'PWD', defaultValue: 'keystone_sugon', description: '登录用户密码')
+        choice(name: 'USER_ROLE', choices: ["admin", "dept_admin", "user"], description: '请选择测试用户角色')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow。全局 marker 筛选，先筛选用例再分发。为空则执行所有用例')
         string(name: 'PARALLEL_COUNT', defaultValue: '2', description: '测试并行线程数（默认值2，不能超过CPU核心数）')
         string(name: 'HOSTS', defaultValue: '', description: '逗号分隔的环境 HOST 列表，用于从 env.yaml 中筛选参与调度的环境；留空则使用 env.yaml 中所有配置了 dispatch 的环境')
@@ -90,7 +89,7 @@ pipeline {
                                 def bmsJson = currentJob.bms?.trim() ? currentJob.bms : '{}'
                                 def isBmsJob = currentJob.markExpr?.trim() == 'bms'
                                 def pytestTarget = isBmsJob ? "${workspaceDir}/sugon_web/testcase/compute/test_bms_*.py" : "\"${workspaceDir}/sugon_web/testcase/\""
-                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --username=${params.USER} --password=${params.PWD} --env-label=${currentJob.label} ${pytestTarget} --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
+                                def pytestCommand = "pytest --headless=true --host=${currentJob.host} --stor=${currentJob.stor} --user-role=${params.USER_ROLE} --env-label=${currentJob.label} ${pytestTarget} --alluredir \"${workspaceDir}/allure-result/${currentJob.label}\""
 
                                 if (!isBmsJob) {
                                     pytestCommand += " -n ${parallelCount} --dist=loadscope"
@@ -206,7 +205,7 @@ def sendNotification(String result) {
                     "content": [
                         [{
                             "tag": "text",
-                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: ${params.HOST} / ${params.STOR}\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n"
+                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n执行角色: ${params.USER_ROLE}\\n默认环境: ${params.HOST} / ${params.STOR}\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n"
                         }, {
                             "tag": "a",
                             "text": "查看报告",
