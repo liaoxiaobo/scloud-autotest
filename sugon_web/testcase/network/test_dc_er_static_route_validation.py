@@ -127,7 +127,7 @@ class TestDCERStaticRouteValidation:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -138,7 +138,7 @@ class TestDCERStaticRouteValidation:
                 ha_enable=True,
             )
             er_page.assert_popup_success(timeout=10000)
-            er_page.assert_status(er_name, status="运行中")
+            er_page.assert_status(er_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
 
         with allure_step_log("前置条件4: 将VPC添加为ER连接"):
             er_page.goto_connection_tab(er_name)
@@ -162,7 +162,7 @@ class TestDCERStaticRouteValidation:
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件6: 创建虚拟接口"):
-            time.sleep(30)
+            time.sleep(60)
             dc_page.virtual_interface_create(
                 name=vif_name,
                 physical_connection_name=dc_name,

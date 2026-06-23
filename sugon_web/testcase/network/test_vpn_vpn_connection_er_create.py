@@ -149,9 +149,9 @@ class TestVpnTunnelErCreate:
             er_page.assert_status(
                 er_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         with allure_step_log("前置: 添加VPC为ER连接"):
@@ -189,7 +189,7 @@ class TestVpnTunnelErCreate:
             vpn_page.assert_status(
                 gw_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )

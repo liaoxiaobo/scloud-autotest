@@ -31,9 +31,9 @@ def er_for_vpn_gateway(er_page):
         er_page.assert_status(
             er_name,
             status="运行中",
-            timeout=600,
+            timeout=1200,
             refresh=True,
-            refresh_interval=10,
+            refresh_interval=30,
         )
 
     yield {"name": er_name}

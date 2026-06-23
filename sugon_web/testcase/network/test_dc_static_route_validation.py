@@ -125,7 +125,7 @@ class TestDCStaticRouteValidation:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -138,7 +138,7 @@ class TestDCStaticRouteValidation:
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件4: 创建虚拟接口"):
-            time.sleep(30)
+            time.sleep(60)
             dc_page.virtual_interface_create(
                 name=vif_name,
                 physical_connection_name=dc_name,

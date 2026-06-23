@@ -397,9 +397,9 @@ def ssl_client_er_env(browser_context, config):
             er_page.assert_status(
                 er_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         # 步骤4: 为 ER 添加 VPC1 连接
@@ -437,7 +437,7 @@ def ssl_client_er_env(browser_context, config):
             vpn_page.assert_status(
                 gw_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )

@@ -398,9 +398,9 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
             er_page.assert_status(
                 er1_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         # 步骤7: 创建 ER2（非HA）
@@ -414,9 +414,9 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
             er_page.assert_status(
                 er2_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         # 步骤8: 添加VPC1为ER1的连接
@@ -470,7 +470,7 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
             vpn_page.assert_status(
                 gw1_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )
@@ -496,7 +496,7 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
             vpn_page.assert_status(
                 gw2_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )

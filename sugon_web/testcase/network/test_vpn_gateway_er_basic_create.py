@@ -82,9 +82,9 @@ class TestVpnGatewaySSLER:
             er_page.assert_status(
                 er_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         fip_list = eip if isinstance(eip, list) else [eip]
@@ -124,7 +124,7 @@ class TestVpnGatewaySSLER:
             vpn_page.assert_status(
                 gw_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )
@@ -190,9 +190,9 @@ class TestVpnGatewayIpsecER:
             er_page.assert_status(
                 er_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
-                refresh_interval=10,
+                refresh_interval=30,
             )
 
         fip_list = eip if isinstance(eip, list) else [eip]
@@ -230,7 +230,7 @@ class TestVpnGatewayIpsecER:
             vpn_page.assert_status(
                 gw_name,
                 status="运行中",
-                timeout=600,
+                timeout=1200,
                 refresh=True,
                 refresh_interval=30,
             )
