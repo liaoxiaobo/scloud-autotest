@@ -35,17 +35,50 @@ class OpsPage(BasePage):
             timeout: 接口等待超时时间（毫秒）
         """
         self.get_by_placeholder(placeholder).click()
-        dropdown = self.page.locator(".el-select-dropdown:visible")
-        expect(dropdown).to_be_visible(timeout=timeout)
         self.page.wait_for_timeout(500)
 
-        # 统一在下拉框内搜索选项，避免全局 get_by_title 匹配到不可见元素
-        target_item = dropdown.locator(".el-select-dropdown__item").filter(
-            has_text=re.compile(re.escape(value))
-        ).first
-        expect(target_item).to_be_attached(timeout=timeout)
-        target_item.scroll_into_view_if_needed(timeout=timeout)
+        def _js_click_option(target_value: str) -> bool:
+            return self.page.evaluate("""(target) => {
+                const dropdowns = document.querySelectorAll('.el-select-dropdown');
+                for (let i = dropdowns.length - 1; i >= 0; i--) {
+                    const dd = dropdowns[i];
+                    const style = window.getComputedStyle(dd);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const items = dd.querySelectorAll('li.el-select-dropdown__item');
+                    for (const item of items) {
+                        if (item.textContent.trim().includes(target)) {
+                            item.click();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }""", target_value)
 
+        if locator_type == "listitem":
+            if api_url_pattern:
+                try:
+                    with self.page.expect_response(
+                        lambda response: (
+                            response.request.method == "GET"
+                            and api_url_pattern in response.url
+                            and response.status == 200
+                        ),
+                        timeout=timeout,
+                    ):
+                        if not _js_click_option(value):
+                            raise RuntimeError(f"下拉框中未找到选项: {value}")
+                    logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
+                except PlaywrightTimeoutError:
+                    logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
+            else:
+                if not _js_click_option(value):
+                    raise RuntimeError(f"下拉框中未找到选项: {value}")
+                self.page.wait_for_timeout(500)
+            return
+
+        target_item = self.page.locator(".el-select-dropdown:visible").locator(f"[title='{value}']").first
+        expect(target_item).to_be_visible(timeout=timeout)
         if api_url_pattern:
             try:
                 with self.page.expect_response(
@@ -76,8 +109,8 @@ class OpsPage(BasePage):
             exact: 是否精确匹配IP文本
         """
         self.btn_create.click()
-        self._select_dropdown_and_wait_api("请选择项目", project, "title", api_url_pattern="/api/ops/vpc/networks")
-        self._select_dropdown_and_wait_api("请选择网络", network, api_url_pattern="/ports")
+        self._select_dropdown_and_wait_api("请选择项目", project, "listitem", api_url_pattern="/api/ops/vpc/networks")
+        self._select_dropdown_and_wait_api("请选择网络", network, locator_type="listitem", api_url_pattern="/ports")
 
         # 选择端口
         self.get_by_placeholder("请选择端口").click()
@@ -281,27 +314,62 @@ class OpsPage(BasePage):
 
     # ---- switch group ----
 
-    def _goto_switch_group(self):
+    def _goto_switch_group(self, max_retries=2):
         base = self.page.url.split("#")[0].rstrip("/")
+        for attempt in range(max_retries):
+            self.page.goto(base + "/#/index")
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(2000)
+            try:
+                self.page.locator("text=基础设施").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.locator("text=区域资源").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.locator("text=交换机组").first.click()
+            except Exception:
+                self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(2000)
+
+            if "error-msg" in self.page.url:
+                logger.warning(f"[_goto_switch_group] 第 {attempt + 1} 次导航遇到错误页面: {self.page.url}，将重试")
+                self.page.wait_for_timeout(3000)
+                continue
+
+            logger.info(f"[_goto_switch_group] 成功导航到交换机组: {self.page.url}")
+            return
+
+        logger.warning("[_goto_switch_group] 菜单导航多次失败，尝试直接 URL 导航")
+        possible_urls = [
+            base + "/#/ops-switch-group",
+            base + "/#/switch-group",
+            base + "/#/switch-group-list",
+            base + "/#/ops-switch-group-list",
+        ]
+        for url in possible_urls:
+            self.page.goto(url)
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(3000)
+            if "error-msg" not in self.page.url:
+                logger.info(f"[_goto_switch_group] 直接 URL 导航成功: {url}")
+                return
+
         self.page.goto(base + "/#/index")
         self.page.wait_for_load_state("networkidle")
         self.page.wait_for_timeout(2000)
-        try:
-            self.page.locator("text=基础设施").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '基础设施')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_timeout(1500)
-        try:
-            self.page.locator("text=区域资源").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '区域资源')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_timeout(1500)
-        try:
-            self.page.locator("text=交换机组").first.click()
-        except Exception:
-            self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
+        self.page.evaluate("() => { document.evaluate(\"//*[contains(text(), '交换机组')]\", document).iterateNext()?.click(); }")
         self.page.wait_for_load_state("networkidle")
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(3000)
 
     def _sg_dropdown_action(self, name, action):
         self.page.wait_for_timeout(1000)
@@ -359,14 +427,29 @@ class OpsPage(BasePage):
             raise Exception(f"未找到操作 '{action}' 的入口，资源: {name}")
 
     def _confirm_sugon_dialog(self):
+        visible_dialogs_locator = self.page.locator(".sugon-dialog:visible, .el-dialog:visible, [role='dialog']:visible")
+
+        def _wait_dialogs_closed():
+            try:
+                expect(visible_dialogs_locator).to_have_count(0, timeout=5000)
+            except Exception as e:
+                logger.warning(f"[_confirm_sugon_dialog] 对话框关闭等待超时: {e}")
+                self.page.wait_for_timeout(1000)
+
         for dlg in self.page.locator(".sugon-dialog").all():
             if dlg.is_visible():
                 dlg.locator("button, .cloud-button-btn").filter(has_text="确定").first.click()
+                self.page.wait_for_timeout(1000)
+                _wait_dialogs_closed()
                 return
         try:
             self.dialog_confirm.click()
+            self.page.wait_for_timeout(1000)
+            _wait_dialogs_closed()
         except Exception:
             self.page.locator("button, .cloud-button-btn").filter(has_text="确定").last.click()
+            self.page.wait_for_timeout(1000)
+            _wait_dialogs_closed()
 
     def switch_group_create(self, name):
         self._goto_switch_group()
@@ -440,9 +523,18 @@ class OpsPage(BasePage):
 
     def switch_group_delete(self, name):
         self._goto_switch_group()
+        self.search(name)
         self._sg_dropdown_action(name, "删除")
         self._confirm_sugon_dialog()
-        self.page.wait_for_timeout(2000)
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            self._goto_switch_group()
+            self.search(name)
+            if not self.get_row_data(name):
+                logger.info(f"交换机组 '{name}' 已删除")
+                return
+            self.page.wait_for_timeout(5000)
+        raise AssertionError(f"交换机组 '{name}' 删除后仍存在")
 
     def clean_all_switch_groups(self):
         self._goto_switch_group()

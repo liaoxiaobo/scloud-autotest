@@ -1,0 +1,159 @@
+# 自动化运行前资源画像。
+#
+# 口径说明：
+# - module_peak 是从当前 testcase/fixture 代码中提炼的“模块内峰值/保守值”。
+# - value 表示空闲资源最低要求；脚本可按模块聚合。
+# - scale_with_workers=true 的资源会随 xdist worker 数放大。
+# - iam_quota_max 是 IAM 配额类用例会尝试分配/验证的最大配额值，不等同于实际消耗。
+
+module_peak:
+  compute:
+    resources:
+      ecs_instances: {value: 4, unit: count, scale_with_workers: true, note: "ECS批量/快照/迁移场景，最大一次约3台，额外预留1台"}
+      ecs_system_disk_gib: {value: 100, unit: GiB, scale_with_workers: true, note: "4台 * 默认25GiB系统盘"}
+      evs_extra_gib: {value: 600, unit: GiB, scale_with_workers: true, note: "云硬盘挂载、镜像盘、扩容、快照回滚等场景预留"}
+      snapshots: {value: 6, unit: count, scale_with_workers: true}
+      images: {value: 10, unit: count, scale_with_workers: true, note: "IMS top10 和动态镜像导入"}
+      mfip: {value: 3, unit: count, scale_with_workers: true}
+      bms_instances: {value: 1, unit: count, scale_with_workers: false, note: "BMS回归复用 base.yaml 中的 bms.instance_name"}
+      bms_bmc_ips: {value: 1, unit: count, scale_with_workers: false}
+  network:
+    resources:
+      vpc: {value: 4, unit: count, scale_with_workers: true}
+      subnets: {value: 8, unit: count, scale_with_workers: true}
+      ecs_instances: {value: 6, unit: count, scale_with_workers: true, note: "SLB/ACL/TM/CA/VPC场景常见4台，额外预留"}
+      ecs_system_disk_gib: {value: 150, unit: GiB, scale_with_workers: true}
+      eip: {value: 6, unit: count, scale_with_workers: true, note: "VPN/QoS/NAT/SLB公网场景"}
+      mfip: {value: 6, unit: count, scale_with_workers: true}
+      vip: {value: 2, unit: count, scale_with_workers: true}
+      ports: {value: 6, unit: count, scale_with_workers: true}
+      security_groups: {value: 4, unit: count, scale_with_workers: true}
+      acl: {value: 2, unit: count, scale_with_workers: true}
+      slb_v1: {value: 1, unit: count, scale_with_workers: true}
+      slb_v2: {value: 1, unit: count, scale_with_workers: true}
+      nat_gateway: {value: 1, unit: count, scale_with_workers: true}
+      vpn_gateway: {value: 1, unit: count, scale_with_workers: true}
+      er: {value: 1, unit: count, scale_with_workers: true}
+      dc_physical_connection: {value: 1, unit: count, scale_with_workers: true}
+      dc_virtual_gateway: {value: 1, unit: count, scale_with_workers: true}
+      dc_virtual_interface: {value: 1, unit: count, scale_with_workers: true}
+      cfw: {value: 1, unit: count, scale_with_workers: false, note: "cfw fixture 当前创建后不自动删除"}
+      qos_policy: {value: 2, unit: count, scale_with_workers: true}
+      ip_group: {value: 2, unit: count, scale_with_workers: true}
+      certificates: {value: 2, unit: count, scale_with_workers: true}
+  storage:
+    resources:
+      evs_volumes: {value: 6, unit: count, scale_with_workers: true}
+      evs_extra_gib: {value: 1200, unit: GiB, scale_with_workers: true, note: "EVS 500GiB边界、扩容、共享盘、快照恢复预留"}
+      snapshots: {value: 6, unit: count, scale_with_workers: true}
+      obs_buckets: {value: 4, unit: count, scale_with_workers: true}
+      obs_capacity_gib: {value: 40, unit: GiB, scale_with_workers: true, note: "默认桶10GiB，最多3桶并预留"}
+      oss_buckets: {value: 1, unit: count, scale_with_workers: true}
+      kms_keys: {value: 2, unit: count, scale_with_workers: true}
+      local_test_data_gib: {value: 2, unit: GiB, scale_with_workers: false, note: "large_file.bin约1GiB，批量文件约75MiB"}
+  database:
+    resources:
+      mysql_instances: {value: 1, unit: count, scale_with_workers: true}
+      pgsql_instances: {value: 1, unit: count, scale_with_workers: true}
+      mongodb_instances: {value: 2, unit: count, scale_with_workers: true, note: "副本集+分片集群共享fixture"}
+      doris_instances: {value: 1, unit: count, scale_with_workers: true}
+      kingbase_instances: {value: 1, unit: count, scale_with_workers: true}
+      xscale_instances: {value: 1, unit: count, scale_with_workers: true}
+      db_disk_gib: {value: 1000, unit: GiB, scale_with_workers: true, note: "覆盖单机/高可用/集群创建、扩容、XScale默认多节点"}
+      eip: {value: 2, unit: count, scale_with_workers: true}
+      mfip: {value: 2, unit: count, scale_with_workers: true}
+  middleware:
+    resources:
+      redis_instances: {value: 2, unit: count, scale_with_workers: true, note: "单机+集群共享fixture"}
+      kafka_instances: {value: 1, unit: count, scale_with_workers: true}
+      css_instances: {value: 1, unit: count, scale_with_workers: true}
+      rabbitmq_instances: {value: 1, unit: count, scale_with_workers: true}
+      prometheus_instances: {value: 1, unit: count, scale_with_workers: true}
+      middleware_disk_gib: {value: 500, unit: GiB, scale_with_workers: true}
+      eip: {value: 2, unit: count, scale_with_workers: true}
+      mfip: {value: 2, unit: count, scale_with_workers: true}
+  container:
+    resources:
+      cce_clusters: {value: 1, unit: count, scale_with_workers: true}
+      cce_nodes: {value: 6, unit: count, scale_with_workers: true, note: "最大5节点集群+新增节点"}
+      cce_node_disk_gib: {value: 360, unit: GiB, scale_with_workers: true, note: "6节点 * 60GiB"}
+      evs_extra_gib: {value: 150, unit: GiB, scale_with_workers: true, note: "节点挂载新盘50GiB + PVC/扩容预留"}
+      storage_class: {value: 2, unit: count, scale_with_workers: true}
+      pvc: {value: 4, unit: count, scale_with_workers: true}
+      eip: {value: 2, unit: count, scale_with_workers: true}
+      mfip: {value: 2, unit: count, scale_with_workers: true}
+  backup:
+    resources:
+      ecs_instances: {value: 4, unit: count, scale_with_workers: true, note: "2台源ECS + 恢复新建资源预留"}
+      ecs_system_disk_gib: {value: 100, unit: GiB, scale_with_workers: true}
+      evs_extra_gib: {value: 300, unit: GiB, scale_with_workers: true, note: "每台源ECS 2块25GiB数据盘 + 恢复/快照余量"}
+      backup_storage_gib: {value: 300, unit: GiB, scale_with_workers: true, note: "全量/增量/恢复数据保守预留"}
+      backup_nodes_enabled: {value: 1, unit: count, scale_with_workers: false}
+      eip: {value: 2, unit: count, scale_with_workers: true}
+      mfip: {value: 2, unit: count, scale_with_workers: true}
+      backup_tasks: {value: 2, unit: count, scale_with_workers: true}
+  security:
+    resources:
+      vpc: {value: 1, unit: count, scale_with_workers: false, note: "session级安全测试专用VPC"}
+      subnets: {value: 1, unit: count, scale_with_workers: false}
+      usm_instances: {value: 1, unit: count, scale_with_workers: false}
+      ver_instances: {value: 1, unit: count, scale_with_workers: false}
+      vdb_instances: {value: 1, unit: count, scale_with_workers: false}
+      apt_instances: {value: 1, unit: count, scale_with_workers: true}
+      security_cpu_cores: {value: 14, unit: cores, scale_with_workers: true, note: "USM 2核 + VER/VDB/APT各4核"}
+      security_memory_gib: {value: 32, unit: GiB, scale_with_workers: true}
+      security_disk_gib: {value: 1000, unit: GiB, scale_with_workers: true}
+      eip: {value: 1, unit: count, scale_with_workers: true}
+  iam:
+    resources:
+      iam_orgs: {value: 2, unit: count, scale_with_workers: false, note: "顶级组织+子组织"}
+      iam_users: {value: 8, unit: count, scale_with_workers: true, note: "共享用户、租户用户、批量5用户和余量"}
+      iam_projects: {value: 1, unit: count, scale_with_workers: false}
+
+iam_quota_max:
+  compute:
+    ecs_cpu_cores: {value: 100, unit: cores, service: "云服务器ECS"}
+    ecs_memory_gib: {value: 100, unit: GiB, service: "云服务器ECS"}
+    ecs_system_disk_gib: {value: 1000, unit: GiB, service: "云服务器ECS"}
+    secs_instances: {value: 100, unit: count, service: "机密云服务器SECS"}
+    bms_instances: {value: 100, unit: count, service: "裸金属BMS"}
+  storage:
+    evs_capacity_gib: {value: 1000, unit: GiB, service: "云硬盘EVS"}
+    evs_snapshot_gib: {value: 1000, unit: GiB, service: "云硬盘EVS"}
+    sfs_cpu_cores: {value: 100, unit: cores, service: "文件存储SFS"}
+    sfs_memory_gib: {value: 100, unit: GiB, service: "文件存储SFS"}
+    sfs_vm_count: {value: 100, unit: count, service: "文件存储SFS"}
+    sfs_volume_gib: {value: 1000, unit: GiB, service: "文件存储SFS"}
+    oss_bucket_gib: {value: 1000, unit: GiB, service: "对象存储OSS"}
+    obs_bucket_gib: {value: 1000, unit: GiB, service: "对象存储(专业版) OBS"}
+  network:
+    eip_count: {value: 100, unit: count, service: "弹性公网IP"}
+    cfw_cpu_cores: {value: 100, unit: cores, service: "云防火墙CFW"}
+    cfw_memory_gib: {value: 1000, unit: GiB, service: "云防火墙CFW"}
+    vpc_count: {value: 100, unit: count, service: "虚拟私有云"}
+    slb_count: {value: 100, unit: count, service: "负载均衡"}
+  database:
+    db_cpu_cores: {value: 100, unit: cores, service: "各数据库服务"}
+    db_memory_gib: {value: 100, unit: GiB, service: "各数据库服务"}
+    db_volume_gib: {value: 1000, unit: GiB, service: "各数据库服务"}
+  middleware:
+    middleware_cpu_cores: {value: 100, unit: cores, service: "各中间件服务"}
+    middleware_memory_gib: {value: 100, unit: GiB, service: "各中间件服务"}
+    middleware_volume_gib: {value: 1000, unit: GiB, service: "各中间件服务"}
+  container:
+    cce_cpu_cores: {value: 100, unit: cores, service: "云容器引擎CCE"}
+    cce_memory_gib: {value: 100, unit: GiB, service: "云容器引擎CCE"}
+    cce_volume_gib: {value: 1000, unit: GiB, service: "云容器引擎CCE"}
+    scr_cpu_cores: {value: 100, unit: cores, service: "容器镜像服务SCR"}
+    scr_memory_gib: {value: 100, unit: GiB, service: "容器镜像服务SCR"}
+    scr_volume_gib: {value: 1000, unit: GiB, service: "容器镜像服务SCR"}
+  security:
+    security_cpu_cores: {value: 100, unit: cores, service: "VER/VDB/APT/WAF/USM等安全服务"}
+    security_memory_gib: {value: 100, unit: GiB, service: "VER/VDB/APT/WAF/USM等安全服务"}
+    security_volume_gib: {value: 1000, unit: GiB, service: "VER/VDB/APT/WAF/USM等安全服务"}
+
+notes:
+  - "如果只串行跑单模块，按对应 module_peak 检查即可。"
+  - "如果全量并行跑，建议使用 sum 模式，并按 worker 数放大 scale_with_workers=true 的资源。"
+  - "托管数据库/中间件/安全/容器服务的 CPU/内存/磁盘配额通常在各服务配额下单独检查。"
+  - "CFW 当前不会自动清理，预检查最好同时扫描历史残留实例。"

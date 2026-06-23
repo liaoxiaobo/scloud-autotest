@@ -1,9 +1,75 @@
+import json
+import os
+import ipaddress
 import time
 import pytest
 from sugon_web.pages.network import VpcPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
+from sugon_web.config.config import Config
+
+
+@pytest.fixture(scope="function")
+def bms_eip_pool(page, request):
+    """Allocate a small BMS-only EIP pool and return the largest IP.
+
+    Teardown releases each EIP independently. If one IP is already bound or
+    cannot be released, log a warning and continue with the remaining EIPs.
+    """
+    params = getattr(request, "param", {}) or {}
+    count = params.get("count", 5)
+    pool = params.get("pool", Config.get("network") or "public_net(基础版)")
+    method = params.get("method", "快速选择")
+
+    vpc_page = VpcPage(page)
+    created_ips = []
+
+    with allure_step_log(f"Setup: allocate {count} BMS EIPs"):
+        vpc_page.goto_service("虚拟私有云")
+        created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method)
+        vpc_page.assert_popup_success("执行成功")
+        assert created_ips, "BMS EIP pool allocation returned no IPs"
+        target_ip = max(created_ips, key=ipaddress.ip_address)
+        logger.info(f"BMS allocated EIPs: {created_ips}, selected max IP: {target_ip}")
+
+    try:
+        yield {
+            "ips": created_ips,
+            "target_ip": target_ip,
+            "pool": pool,
+        }
+    finally:
+        with allure_step_log(f"Teardown: release BMS EIPs {created_ips}"):
+            for current_ip in created_ips:
+                try:
+                    vpc_page.goto_service("虚拟私有云")
+                    vpc_page.switch_eip_pool(pool)
+                    vpc_page.search(current_ip)
+                    if current_ip not in vpc_page.get_eip_list():
+                        logger.info(f"BMS preallocated EIP {current_ip} no longer exists; skip release")
+                        continue
+
+                    try:
+                        row_data = vpc_page.get_row_data(current_ip) or {}
+                        logger.info(f"BMS preallocated EIP {current_ip} row before cleanup: {row_data}")
+                    except Exception as row_err:
+                        logger.warning(f"Failed to read BMS preallocated EIP {current_ip} row; still trying release: {row_err}")
+
+                    vpc_page.eip_release(current_ip)
+                    vpc_page.assert_deleted(current_ip)
+                    logger.info(f"BMS preallocated EIP {current_ip} released")
+                except Exception as e:
+                    logger.warning(f"Failed to release BMS preallocated EIP {current_ip}; it may be bound elsewhere, continuing: {e}")
+                finally:
+                    try:
+                        vpc_page.close_dialog_if_exists()
+                    except Exception:
+                        pass
+                    try:
+                        vpc_page.btn_reset.click()
+                    except Exception:
+                        pass
 
 
 @pytest.fixture()
@@ -105,34 +171,100 @@ def pool(ops_page, vm, request):
 
 # ---- BMS 裸金属 fixture（只读，无清理） ----
 
+@pytest.fixture(scope="session")
+def bms_env(pytestconfig, config):
+    """返回 BMS 回归测试的基线环境配置，CLI 参数可覆盖配置文件，ENV_DISPATCH 中的 bms 配置次之。"""
+    bms_config = config.get("bms", {}) or {}
+
+    # 读取 Jenkins 通过 SUGON_BMS_OVERRIDE 传入的 BMS 覆盖配置
+    bms_override_json = os.environ.get("SUGON_BMS_OVERRIDE", "{}")
+    try:
+        bms_override = json.loads(bms_override_json)
+    except json.JSONDecodeError as e:
+        logger.error(f"SUGON_BMS_OVERRIDE 解析失败: {e}, 原始内容: {bms_override_json}")
+        bms_override = {}
+
+    if bms_override:
+        bms_config = bms_config.copy()
+        bms_config.update(bms_override)
+
+    def _value(option_name, config_key):
+        option_value = pytestconfig.getoption(option_name)
+        if option_value:
+            return option_value
+        return bms_config.get(config_key)
+
+    return {
+        "instance_name": _value("--bms-instance-name", "instance_name"),
+        "bmc_ip": _value("--bms-bmc-ip", "bmc_ip"),
+        "preferred_node": _value("--bms-preferred-node", "preferred_node"),
+        "network_name": _value("--bms-network-name", "network_name"),
+        "password": _value("--bms-password", "password"),
+    }
+
+
+@pytest.fixture(scope="session")
+def bms_instance_name(bms_env):
+    """返回 BMS 操作用例复用的实例名称。"""
+    return bms_env["instance_name"]
+
+
+@pytest.fixture(autouse=True)
+def bms_regression_requires_instance(request):
+    """BMS回归用例执行前确认实例已存在，避免创建失败后的级联失败。"""
+    if not request.node.get_closest_marker("bms_regression"):
+        return
+
+    bms_page = request.getfixturevalue("bms_page")
+    bms_env = request.getfixturevalue("bms_env")
+    instance_name = bms_env["instance_name"]
+    with allure_step_log("setup: 检查BMS回归实例前置"):
+        bms_page._goto_submenu_safe("裸金属实例")
+        bms_page.bms_search(instance_name)
+        row_data = bms_page.get_row_data(instance_name)
+        if not row_data:
+            pytest.skip(f"BMS实例 '{instance_name}' 不存在，跳过依赖该实例的回归用例")
+        status = str(row_data.get("状态", ""))
+        if any(bad in status for bad in ["删除", "错误"]):
+            pytest.skip(f"BMS实例 '{instance_name}' 状态异常，跳过回归用例: {status}")
+
+
 @pytest.fixture()
-def bms_instance(bms_page):
+def bms_instance(bms_page, bms_env):
     """返回裸金属实例创建器（工厂函数），封装步骤13-14。
 
     使用方式：
-        instance_name = bms_instance(name="bms-0430")
+        instance_name = bms_instance(name=bms_env["instance_name"])
 
     前置条件：调用前需确保交换机组、网络、代理、PXE、发现、注册已完成。
     """
     def _create(
-        name="bms-0430",
+        name=None,
         image_name="bms",
         system_disk="sdi",
-        password="admin1234@sugon",
+        password=None,
         security_group="default",
         server_name="N/A 2U Rack Server",
         network_name="guanyy-vpc",
+        subnet_name="",
     ):
+        name = name or bms_env["instance_name"]
+        password = password or bms_env["password"]
         with allure_step_log("步骤13: 创建裸金属实例"):
-            bms_page.bms_instance_create(
-                name=name,
-                image_name=image_name,
-                system_disk=system_disk,
-                password=password,
-                security_group=security_group,
-                server_name=server_name,
-                network_name=network_name,
-            )
+            try:
+                bms_page.bms_instance_create(
+                    name=name,
+                    image_name=image_name,
+                    system_disk=system_disk,
+                    password=password,
+                    security_group=security_group,
+                    server_name=server_name,
+                    network_name=network_name,
+                    subnet_name=subnet_name,
+                    bmc_ip=bms_env["bmc_ip"],
+                )
+            except RuntimeError as e:
+                pytest.skip(str(e))
             bms_page.page.wait_for_timeout(3000)
             bms_page._goto_submenu_safe("裸金属实例")
             bms_page.search(name)

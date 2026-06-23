@@ -9,10 +9,18 @@ class LbDetailMixin(SlbDetailMixin):
 
     def goto_lb_pool_detail(self, lb_name, pool_name, force=False):
         """进入指定监听器下资源池详情页"""
-        # 若当前已在目标资源池详情页，避免重复导航导致 select_lb_in_left_list 在错误页面上执行
         current_url = self.page.url
-        if not force and "resource-pool-detail" in current_url and pool_name in current_url:
+        on_pool_detail = "resource-pool-detail" in current_url and pool_name in current_url
+
+        if not force and on_pool_detail:
             self.logger.info(f"当前已在资源池详情页，跳过重复导航: {pool_name}")
+            return
+
+        # force=True 且当前已在资源池详情页时，直接刷新页面而非重新导航
+        # 避免从资源池详情页回退到 SLB 详情页再进入时 select_lb_in_left_list 在错误页面上执行
+        if force and on_pool_detail:
+            self.page.reload(wait_until="networkidle")
+            self.logger.info(f"当前已在资源池详情页，刷新页面: {pool_name}")
             return
 
         self.goto_lb_pool_tab(lb_name)

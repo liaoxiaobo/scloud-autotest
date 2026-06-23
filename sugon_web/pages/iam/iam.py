@@ -1,5 +1,6 @@
 import re
 import time
+from datetime import date, datetime, timedelta
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
@@ -132,9 +133,8 @@ class IamPage(BasePage):
         try:
             expect(tree_div).to_be_visible(timeout=10000)
         except Exception:
-            from sugon_web.config.config import Config
-            base = Config.get("base_url")
-            self.page.goto(f"{base}/iam/#/departmentManage")
+            logger.warning("IAM：组织树未显示，通过服务导航重新进入IAM")
+            self.goto_service("统一身份认证IAM")
             self.wait_for_page_ready()
             self.page.wait_for_timeout(3000)
             expect(tree_div).to_be_visible(timeout=10000)
@@ -142,7 +142,7 @@ class IamPage(BasePage):
         clicked = False
 
         if target_org:
-            # 按名称精准匹配：先定位 .depart_name，再点击其含 click="choose" 的父容器
+            # 按名称精准匹配：先定位 .depart_name 文本，直接点击触发 Vue 事件
             logger.info(f"IAM：按名称精准定位子组织 '{target_org}'")
             depart = tree_div.locator(".depart_name").filter(has_text=target_org)
             for _ in range(5):
@@ -150,17 +150,25 @@ class IamPage(BasePage):
                     break
                 self.page.wait_for_timeout(1500)
             if depart.count() > 0:
-                # 向上找到带 click="choose" 属性的父级 one-tree-msg（Vue 事件在此）
-                click_target = depart.first.locator("xpath=ancestor::*[@click='choose'][1]")
-                if click_target.count() > 0:
-                    click_target.first.scroll_into_view_if_needed()
-                    click_target.first.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(1500)
+                try:
+                    depart.first.scroll_into_view_if_needed()
+                    depart.first.click(timeout=5000)
+                    self.page.wait_for_timeout(2000)
                     if self._tab_user_manage.count() > 0 and self._tab_user_manage.is_visible():
                         logger.info(f"IAM：通过名称 '{target_org}' 成功定位并激活组织树节点")
                         clicked = True
-                else:
-                    logger.warning(f"IAM：未找到 '{target_org}' 的可点击父容器")
+                except Exception:
+                    # 兜底：向上找到带 click="choose" 属性的父级 one-tree-msg（Vue 事件在此）
+                    click_target = depart.first.locator("xpath=ancestor::*[@click='choose'][1]")
+                    if click_target.count() > 0:
+                        click_target.first.scroll_into_view_if_needed()
+                        click_target.first.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(1500)
+                        if self._tab_user_manage.count() > 0 and self._tab_user_manage.is_visible():
+                            logger.info(f"IAM：通过名称 '{target_org}' 成功定位并激活组织树节点")
+                            clicked = True
+                    else:
+                        logger.warning(f"IAM：未找到 '{target_org}' 的可点击父容器")
             else:
                 logger.warning(f"IAM：组织树中未找到节点 '{target_org}'")
 
@@ -194,10 +202,22 @@ class IamPage(BasePage):
                     tree_div = self.page.locator("#iam-department")
                     depart = tree_div.locator(".depart_name").filter(has_text=target_org)
                     if depart.count() > 0:
-                        click_target = depart.first.locator("xpath=ancestor::*[@click='choose'][1]")
-                        if click_target.count() > 0:
-                            click_target.first.evaluate("el => el.click()")
+                        try:
+                            depart.first.scroll_into_view_if_needed()
+                            depart.first.click(timeout=5000)
                             self.page.wait_for_timeout(3000)
+                        except Exception:
+                            click_target = depart.first.locator("xpath=ancestor::*[@click='choose'][1]")
+                            if click_target.count() > 0:
+                                click_target.first.evaluate("el => el.click()")
+                                self.page.wait_for_timeout(3000)
+                    # 点击后强制激活用户管理 tab，触发右侧列表刷新
+                    try:
+                        if self._tab_user_manage.count() > 0 and self._tab_user_manage.is_visible():
+                            self._tab_user_manage.click()
+                            self.page.wait_for_timeout(1500)
+                    except Exception:
+                        pass
                 else:
                     self.page.wait_for_timeout(3000)
             else:
@@ -1801,13 +1821,15 @@ class IamPage(BasePage):
             self.page.wait_for_timeout(500)
             raise EnvironmentError(f"{service_name} 配额修改失败(弹窗未关闭，配额值可能不满足约束)")
 
-    def iam_assert_quota_value(self, service_name: str, metric_name: str, expected_value: str):
-        """断言组织配额页面中指定服务的配额显示值。
+    def iam_read_quota_value(self, service_name: str, metric_name: str) -> str:
+        """读取组织配额页面中指定服务的配额显示值。
 
         Args:
             service_name: 服务名称，如"云服务器ECS"
             metric_name: 指标名称，如"cpu使用量(个)"
-            expected_value: 预期显示值，如"0/1"
+
+        Returns:
+            str: 页面显示值，如"0/50"
         """
         tab_container = self.page.locator("#tabContainer")
         expect(tab_container.first).to_be_visible(timeout=15000)
@@ -1837,7 +1859,17 @@ class IamPage(BasePage):
         # 等待 DOM 稳定后再读取值，避免异步刷新导致 Playwright 重试挂起
         self.page.wait_for_timeout(2000)
         value_el = metric_item.first.locator("xpath=../..").locator(".item-value")
-        actual_value = value_el.first.inner_text().strip()
+        return value_el.first.inner_text().strip()
+
+    def iam_assert_quota_value(self, service_name: str, metric_name: str, expected_value: str):
+        """断言组织配额页面中指定服务的配额显示值。
+
+        Args:
+            service_name: 服务名称，如"云服务器ECS"
+            metric_name: 指标名称，如"cpu使用量(个)"
+            expected_value: 预期显示值，如"0/1"
+        """
+        actual_value = self.iam_read_quota_value(service_name, metric_name)
         assert expected_value in actual_value, \
             f"{service_name}-{metric_name} 配额显示不匹配，预期包含 {expected_value}，实际 {actual_value}"
         logger.info(f"IAM：验证 {service_name}-{metric_name} 配额显示为 {actual_value}")
@@ -1854,8 +1886,7 @@ class IamPage(BasePage):
                 time_hour (int): 允许登录的小时（0-23）
         """
         dialog = self._open_user_operation_dialog(name, "访问控制", "访问控制", target_org)
-        if "ip" in kwargs:
-            self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
+        # 先设置日期和时间，最后设置 IP 并直接提交，避免时间/日期切换导致 IP 被清空
         if "start_date" in kwargs:
             parts = kwargs["start_date"].split("-")
             self._select_date_in_picker(dialog, "设置登录日期",
@@ -1895,6 +1926,29 @@ class IamPage(BasePage):
                 if is_checked:
                     switch_el.click()
                     self.page.wait_for_timeout(500)
+        if "ip" in kwargs and ("start_date" not in kwargs or "end_date" not in kwargs):
+            # 仅设置 IP 时访问控制不会生效，必须同时启用日期范围
+            today = date.today().strftime("%Y-%m-%d")
+            far_future = "2099-12-31"
+            if "start_date" not in kwargs:
+                parts = today.split("-")
+                self._select_date_in_picker(dialog, "设置登录日期",
+                                             int(parts[0]), int(parts[1]), int(parts[2]),
+                                             input_index=0)
+            if "end_date" not in kwargs:
+                parts = far_future.split("-")
+                self._select_date_in_picker(dialog, "设置登录日期",
+                                             int(parts[0]), int(parts[1]), int(parts[2]),
+                                             input_index=1)
+        if "ip" in kwargs:
+            self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
+            # IP 最后设置并触发 blur，确保值被提交
+            ip_input = dialog.locator(".el-form-item").filter(has_text="允许登录IP").locator("input").first
+            if ip_input.count() > 0:
+                ip_input.click()
+                self.page.wait_for_timeout(300)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(300)
         self._submit_and_close_dialog(dialog, f"访问控制({name})")
 
     def _click_batch_operation_option(self, operation: str):
@@ -1992,6 +2046,7 @@ class IamPage(BasePage):
         self.page.wait_for_timeout(300)
 
         # 勾选用户：使用 JS 点击 label 确保 Vue 响应式更新（避免 hidden input 的 viewport 问题）
+        # 前置状态可能残留上次批量操作的选中态，先检查是否已勾选，避免反选
         checked_count = 0
         for name in names:
             try:
@@ -2000,10 +2055,9 @@ class IamPage(BasePage):
                     logger.warning(f"IAM：未找到用户 {name} 所在行，跳过勾选")
                     continue
                 row.scroll_into_view_if_needed()
-                # 点击 checkbox 的 label 或包装器，避免直接点击 hidden input
+                # 使用 JS 点击 label 确保 Vue 响应式更新（避免 hidden input 的 viewport 问题）
                 checkbox_label = row.locator("label.el-checkbox").first
                 if checkbox_label.count() > 0:
-                    # 通过 JS 点击 label，触发 Vue 的 change 事件
                     checkbox_label.evaluate("el => el.click()")
                     self.page.wait_for_timeout(300)
                     checked_count += 1
@@ -2014,6 +2068,8 @@ class IamPage(BasePage):
                         cb_input.evaluate("el => el.click()")
                         self.page.wait_for_timeout(300)
                         checked_count += 1
+                    else:
+                        logger.warning(f"IAM：用户 {name} 所在行未找到 checkbox，跳过勾选")
             except Exception as e:
                 logger.warning(f"IAM：勾选用户 {name} 失败: {e}")
 
@@ -2110,19 +2166,21 @@ class IamPage(BasePage):
                 end_date (str yyyy-MM-dd): 登录日期结束
                 time_day (int): 允许登录的星期几（0=周一, 6=周日）
                 time_hour (int): 允许登录的小时（0-23）
-                clear (bool): 是否清空所有访问控制设置
         """
         dialog = self._open_batch_dialog(names, "访问控制", "访问控制", target_org=target_org)
-        if kwargs.get("clear"):
-            # 清空IP
-            ip_input = dialog.locator(".el-form-item").filter(has_text="允许登录IP").locator("input").first
-            if ip_input.count() > 0:
-                ip_input.fill("")
-            # 清空日期
-            date_inputs = dialog.locator(".el-form-item").filter(has_text="设置登录日期").locator("input")
-            for i in range(date_inputs.count()):
-                date_inputs.nth(i).fill("")
-            # 关闭时间开关
+        if "ip" in kwargs:
+            self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
+        if "start_date" in kwargs:
+            parts = kwargs["start_date"].split("-")
+            self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
+                                         int(parts[0]), int(parts[1]), int(parts[2]),
+                                         input_index=0)
+        if "end_date" in kwargs:
+            parts = kwargs["end_date"].split("-")
+            self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
+                                         int(parts[0]), int(parts[1]), int(parts[2]),
+                                         input_index=1)
+        if "time_day" in kwargs and "time_hour" in kwargs:
             switch_label = dialog.locator(".el-form-item").filter(has_text="设置允许登录时间")
             switch = switch_label.locator(".el-switch")
             if switch.count() > 0:
@@ -2131,38 +2189,16 @@ class IamPage(BasePage):
                 if is_checked:
                     switch_el.click()
                     self.page.wait_for_timeout(500)
-        else:
-            if "ip" in kwargs:
-                self._fill_form_field(dialog, "允许登录IP", kwargs["ip"])
-            if "start_date" in kwargs:
-                parts = kwargs["start_date"].split("-")
-                self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
-                                             int(parts[0]), int(parts[1]), int(parts[2]),
-                                             input_index=0)
-            if "end_date" in kwargs:
-                parts = kwargs["end_date"].split("-")
-                self._select_date_in_picker(dialog, ["设置登录日期", "登录日期", "日期"],
-                                             int(parts[0]), int(parts[1]), int(parts[2]),
-                                             input_index=1)
-            if "time_day" in kwargs and "time_hour" in kwargs:
-                switch_label = dialog.locator(".el-form-item").filter(has_text="设置允许登录时间")
-                switch = switch_label.locator(".el-switch")
-                if switch.count() > 0:
-                    switch_el = switch.first
-                    is_checked = "is-checked" in (switch_el.get_attribute("class") or "")
-                    if is_checked:
-                        switch_el.click()
-                        self.page.wait_for_timeout(500)
-                    switch_el.click()
-                    self.page.wait_for_timeout(1500)
-                time_grid = dialog.locator(".el-checkbox")
-                self.page.wait_for_timeout(2000)
-                idx = 2 + kwargs["time_day"] * 24 + kwargs["time_hour"] - 2
-                if time_grid.count() > idx:
-                    time_grid.nth(idx).click()
-                    self.page.wait_for_timeout(500)
-                    logger.info(
-                        f"IAM：批量访问控制-时间限制 周{kwargs['time_day']+1} {kwargs['time_hour']}:00")
+                switch_el.click()
+                self.page.wait_for_timeout(1500)
+            time_grid = dialog.locator(".el-checkbox")
+            self.page.wait_for_timeout(2000)
+            idx = 2 + kwargs["time_day"] * 24 + kwargs["time_hour"] - 2
+            if time_grid.count() > idx:
+                time_grid.nth(idx).click()
+                self.page.wait_for_timeout(500)
+                logger.info(
+                    f"IAM：批量访问控制-时间限制 周{kwargs['time_day']+1} {kwargs['time_hour']}:00")
         self._submit_and_close_dialog(dialog, f"批量访问控制({len(names)}个)")
 
     # ==================== 项目管理 ====================

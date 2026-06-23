@@ -1,0 +1,132 @@
+# Jenkins/命令行关键词展开配置。
+#
+# Jenkins 只需要传 suite 名称，脚本会展开成具体资源模块、健康检查项和 pytest mark。
+
+suites:
+  all:
+    resource_modules: [all]
+    health_checks: [all]
+    pytest_marks: [preflight]
+
+  resource:
+    resource_modules: [all]
+    health_checks: []
+    pytest_marks: [preflight_resource]
+
+  health:
+    resource_modules: []
+    health_checks: [all]
+    pytest_marks: [preflight_health]
+
+  preflight-all:
+    resource_modules: []
+    health_checks: [all]
+    pytest_marks:
+      - preflight
+      - preflight_health
+
+  all-checks:
+    resource_modules: []
+    health_checks: [all]
+    pytest_marks:
+      - preflight
+      - preflight_health
+
+  frontend:
+    resource_modules: []
+    health_checks:
+      - frontend_reachable
+      - login_ok
+      - ops_page_ok
+    pytest_marks:
+      - preflight
+      - preflight_health
+      - preflight_frontend
+
+  backend:
+    resource_modules: []
+    health_checks:
+      - system_disk_usage_pct
+      - pods_abnormal
+    pytest_marks:
+      - preflight
+      - preflight_health
+      - preflight_backend
+
+  inspection:
+    resource_modules: []
+    health_checks:
+      - inspection_status
+      - inspection_failed
+      - inspection_warnings
+    pytest_marks:
+      - preflight
+      - preflight_health
+      - preflight_inspection
+
+  storage-health:
+    resource_modules: []
+    health_checks:
+      - storage_pool_usable_count
+      - storage_pool_abnormal_count
+      - storage_pool_max_available_gib
+    pytest_marks:
+      - preflight
+      - preflight_health
+      - preflight_storage
+
+  compute:
+    resource_modules: [compute]
+    health_checks: []
+    pytest_marks: [compute]
+
+  network:
+    resource_modules: [network]
+    health_checks: []
+    pytest_marks: [network]
+
+  storage:
+    resource_modules: [storage]
+    health_checks: []
+    pytest_marks: [storage]
+
+  database:
+    resource_modules: [database]
+    health_checks: []
+    pytest_marks: [database]
+
+  middleware:
+    resource_modules: [middleware]
+    health_checks: []
+    pytest_marks: [middleware]
+
+  container:
+    resource_modules: [container]
+    health_checks: []
+    pytest_marks: [container]
+
+  backup:
+    resource_modules: [backup]
+    health_checks: []
+    pytest_marks: [backup]
+
+  security:
+    resource_modules: [security]
+    health_checks: []
+    pytest_marks: [security]
+
+  iam:
+    resource_modules: [iam]
+    health_checks: []
+    pytest_marks: [iam]
+
+  daily-backend:
+    resource_modules: [all]
+    health_checks:
+      - system_disk_usage_pct
+      - pods_abnormal
+      - inspection_status
+      - inspection_failed
+    pytest_marks:
+      - preflight_backend
+      - preflight_inspection

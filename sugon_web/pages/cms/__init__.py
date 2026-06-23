@@ -1,8 +1,12 @@
+from sugon_web.pages.cms.inspection import InspectionMixin
+from sugon_web.pages.cms.storage_pool import StoragePoolMixin
 from sugon_web.pages.network import MonitorMixin
 
 
 class CmsPage(
-    MonitorMixin
+    InspectionMixin,
+    StoragePoolMixin,
+    MonitorMixin,
 ):
     """网络服务页面聚合类。"""
 
