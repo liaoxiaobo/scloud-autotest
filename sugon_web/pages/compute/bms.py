@@ -1048,7 +1048,7 @@ class BmsPage(BasePage):
 
     # ---- instance ----
 
-    def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
+    def bms_instance_create(self, name, image_name="", system_disk="MR9361-16iGiB", password="",
                                security_group="", server_name="", network_name="", subnet_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
@@ -1377,36 +1377,29 @@ class BmsPage(BasePage):
                 disk_section = self.page.locator(".el-form-item").nth(5)
 
             disk_rows = self._wait_for_table_rows(disk_section, timeout=8000)
+            if not disk_rows:
+                raise AssertionError(f"未找到磁盘列表，无法选择引导磁盘: {system_disk}")
+
             selected = False
+            available_disks = []
             for row in disk_rows:
-                txt = row.text_content() or ""
+                txt = (row.text_content() or "").strip()
+                if txt:
+                    available_disks.append(" ".join(txt.split()))
                 if system_disk in txt:
                     if self._click_el_radio(row):
                         selected = True
                         logger.info(f"[bms_instance_create] 磁盘选择成功({system_disk})")
                         break
-            if not selected and disk_rows:
-                if self._click_el_radio(disk_rows[0]):
-                    logger.info("[bms_instance_create] 磁盘选择成功(第一个)")
-                else:
-                    logger.warning("[bms_instance_create] 磁盘行无radio")
-            elif not disk_rows:
-                logger.warning("[bms_instance_create] 未找到磁盘行，尝试JS选择")
-                result = self.page.evaluate("""() => {
-                    const items = document.querySelectorAll('.el-form-item');
-                    for (const item of items) {
-                        const label = item.querySelector('label');
-                        if (label && label.textContent.includes('磁盘')) {
-                            const radios = item.querySelectorAll('table tbody tr .el-radio');
-                            if (radios.length > 0) { radios[0].click(); return true; }
-                        }
-                    }
-                    return false;
-                }""")
-                logger.info(f"[bms_instance_create] 磁盘JS选择结果: {result}")
+                    logger.warning(f"[bms_instance_create] 匹配到磁盘但radio点击失败: {txt}")
+            if not selected:
+                raise AssertionError(
+                    f"未找到可选择的引导磁盘 '{system_disk}'，当前磁盘列表: {available_disks}"
+                )
             self.page.wait_for_timeout(800)
         except Exception as e:
             logger.warning(f"[bms_instance_create] 选择磁盘失败: {e}")
+            raise
 
         # 7. 配置网络
         try:
