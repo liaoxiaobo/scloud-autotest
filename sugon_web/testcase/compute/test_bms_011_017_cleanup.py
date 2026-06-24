@@ -32,6 +32,58 @@ class TestBmsCleanup:
                     page.wait_for_timeout(delay_ms)
         raise AssertionError(f"{action_name} 重试 {attempts} 次后仍失败: {last_error}") from last_error
 
+    def _skip_blocked(self, reason):
+        """Mark downstream cleanup as blocked by an upstream resource dependency."""
+        pytest.skip(f"BLOCKED: {reason}")
+
+    def _bms_row_exists(self, bms_page, submenu_name, keyword, *, cell_index=None, wait_ms=2000):
+        """Check whether a BMS row exists without mutating cleanup state."""
+        bms_page._goto_submenu_safe(submenu_name)
+        bms_page.bms_search(keyword)
+        bms_page.page.wait_for_timeout(wait_ms)
+        try:
+            if cell_index is not None:
+                row = bms_page._get_row_by_cell_text(keyword, cell_index=cell_index)
+            else:
+                row = bms_page._get_row_by_name(keyword)
+            return row is not None and row.is_visible()
+        except Exception as e:
+            logger.warning(f"检查 {submenu_name} 资源 '{keyword}' 是否存在失败: {e}")
+            return False
+
+    def _skip_if_instance_exists(self, bms_page, instance_name, downstream_name):
+        """Skip downstream cleanup while the BMS instance still exists."""
+        if self._bms_row_exists(bms_page, "裸金属实例", instance_name):
+            self._skip_blocked(
+                f"{downstream_name} 依赖实例删除完成，但裸金属实例 '{instance_name}' 仍存在；"
+                "请先处理 test_bms_011_instance_delete"
+            )
+
+    def _skip_if_register_exists(self, bms_page, bmc_ip, downstream_name):
+        """Skip downstream cleanup while the register record still exists."""
+        if self._bms_row_exists(bms_page, "注册", bmc_ip, cell_index=3):
+            self._skip_blocked(
+                f"{downstream_name} 依赖注册信息删除完成，但注册信息 '{bmc_ip}' 仍存在；"
+                "请先处理 test_bms_012_register_delete"
+            )
+
+    def _skip_if_discovery_exists(self, bms_page, bmc_ip, downstream_name):
+        """Skip downstream cleanup while a discovery task still covers the BMC IP."""
+        discovery_name = self._find_discovery_by_bmc_ip(bms_page, bmc_ip)
+        if discovery_name:
+            self._skip_blocked(
+                f"{downstream_name} 依赖发现信息删除完成，但发现任务 '{discovery_name}' 仍覆盖 BMC {bmc_ip}；"
+                "请先处理 test_bms_013_discovery_delete"
+            )
+
+    def _skip_if_agent_exists(self, bms_page, node_name, downstream_name):
+        """Skip downstream cleanup while the BMS agent still exists."""
+        if self._bms_row_exists(bms_page, "代理", node_name):
+            self._skip_blocked(
+                f"{downstream_name} 依赖代理删除完成，但代理 '{node_name}' 仍存在；"
+                "请先处理 test_bms_014_agent_delete"
+            )
+
     def _wait_switch_group_unbound(self, bms_page, group_name, attempts=30):
         """Wait until the switch group physical-machine column becomes unbound."""
         last_row_text = "(未找到行)"
@@ -357,11 +409,14 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-注册信息删除")
     def test_bms_012_register_delete(self, bms_page, ops_page, bms_env):
         """删除裸金属注册信息。"""
+        instance_name = bms_env["instance_name"]
         bmc_ip = bms_env["bmc_ip"]
         discovery_name = "bms-test-autotest"
         group_name = "test-bms-autotest"
         node_name = bms_env["preferred_node"]
         network_name = bms_env["network_name"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "注册信息删除")
 
         # 确保注册信息存在（支持重建）
         self._ensure_register_exists(bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name, network_name)
@@ -378,9 +433,13 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-发现信息删除")
     def test_bms_013_discovery_delete(self, bms_page, bms_env):
         """删除裸金属发现信息。"""
+        instance_name = bms_env["instance_name"]
         discovery_name = "bms-test-autotest"
         bmc_ip = bms_env["bmc_ip"]
         node_name = bms_env["preferred_node"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "发现信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "发现信息删除")
 
         # 确保发现任务存在（支持重建），并获取实际任务名称
         actual_discovery_name = self._ensure_discovery_exists(bms_page, discovery_name, bmc_ip, node_name)
@@ -397,7 +456,13 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-代理信息删除")
     def test_bms_014_agent_delete(self, bms_page, ssh_host, config, bms_env):
         """删除裸金属代理信息并验证后台清理。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
         node_name = bms_env["preferred_node"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "代理信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "代理信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "代理信息删除")
 
         # 确保代理存在（支持重建）
         node_name = self._ensure_agent_exists(bms_page, node_name)
@@ -463,7 +528,15 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-网络信息删除")
     def test_bms_015_network_delete(self, bms_page, bms_env):
         """删除裸金属网络信息。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
+        node_name = bms_env["preferred_node"]
         network_name = bms_env["network_name"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "网络信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "网络信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "网络信息删除")
+        self._skip_if_agent_exists(bms_page, node_name, "网络信息删除")
 
         # 确保网络存在（支持重建）
         self._ensure_network_exists(bms_page, network_name)
@@ -483,9 +556,16 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-交换机信息删除")
     def test_bms_016_switch_group_delete(self, bms_page, ops_page, bms_env):
         """解绑物理机并删除交换机组。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
         group_name = "test-bms-autotest"
         node_name = bms_env["preferred_node"]
         actual_group_name = group_name
+
+        self._skip_if_instance_exists(bms_page, instance_name, "交换机信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "交换机信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "交换机信息删除")
+        self._skip_if_agent_exists(bms_page, node_name, "交换机信息删除")
 
         # 确保交换机组存在且绑定物理机（支持重建）
         self._ensure_switch_group_exists(ops_page, group_name, node_name)
