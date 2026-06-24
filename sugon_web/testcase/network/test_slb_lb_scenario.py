@@ -220,7 +220,6 @@ class TestSlbV1LbScenario:
             responses = collect_lb_http_responses(
                 ssh_host,
                 f"http://{first_eip}:{PORT}/index.html",
-                count=30,
                 interval_sec=1,
                 connect_timeout=10,
             )

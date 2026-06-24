@@ -6,7 +6,7 @@ import pytest
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 TEST_DATA_DIR = Path(__file__).parent.parent / "test_data"

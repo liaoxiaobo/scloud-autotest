@@ -147,6 +147,10 @@ environment.properties
 # Claude Code local settings
 .claude/settings.local.json
 
+# Claude Code skills/agents (local-only, not version controlled)
+.claude/skills/test-script-dev/
+.claude/agents/test-script-phases/
+
 # 参考代码和用例规格目录（不参与版本控制）
 refrence/
 case_specs/

@@ -7,8 +7,6 @@ from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('业务场景覆盖验证')
 class TestECSScenario:
 

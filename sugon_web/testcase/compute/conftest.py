@@ -1,6 +1,7 @@
 import json
 import os
 import ipaddress
+import shlex
 import time
 import pytest
 from sugon_web.pages.network import VpcPage
@@ -8,6 +9,73 @@ from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.config.config import Config
+
+
+BMS_IMAGE_DEFAULTS = {
+    "image_name": "centos76-bms-0511-base",
+    "image_file": "/home/scloudadmin/centos76-bms-0511.raw",
+    "image_url": "http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw",
+    "image_backend": "bms",
+    "image_min_disk": 50,
+}
+
+
+def _bms_config_value(bms_env, key):
+    value = bms_env.get(key)
+    if value not in (None, ""):
+        return value
+    return BMS_IMAGE_DEFAULTS[key]
+
+
+def ensure_bms_image(ssh_host, bms_env=None, image_name=None):
+    """Ensure the BMS bare-metal image exists before instance operations."""
+    bms_env = bms_env or {}
+    image_name = image_name or _bms_config_value(bms_env, "image_name")
+    image_file = _bms_config_value(bms_env, "image_file")
+    image_url = _bms_config_value(bms_env, "image_url")
+    image_backend = _bms_config_value(bms_env, "image_backend")
+    image_min_disk = _bms_config_value(bms_env, "image_min_disk")
+    image_name_arg = shlex.quote(image_name)
+    image_check_cmd = (
+        "source /root/admin-openrc.sh && scli image list | "
+        f"awk -F'|' -v name={image_name_arg} "
+        """'{gsub(/^[ \t]+|[ \t]+$/, "", $3); gsub(/^[ \t]+|[ \t]+$/, "", $5); """
+        """if ($3 == name && $5 == "active") found=1} END {exit found ? 0 : 1}'"""
+    )
+
+    with allure_step_log(f"前置: 检查BMS镜像 {image_name} 状态为active"):
+        result = ssh_host.run(image_check_cmd, return_rc=True)
+        if result["rc"] == 0:
+            logger.info(f"BMS镜像 '{image_name}' 已存在且状态为active，跳过创建")
+            return image_name
+
+    with allure_step_log("前置: 准备BMS镜像文件"):
+        result = ssh_host.run(f"test -f {image_file} && echo 'exists' || echo 'missing'", return_rc=True)
+        assert result["rc"] == 0, f"检查BMS镜像文件失败: {result.get('stderr', '')}"
+        if "missing" in result["stdout"]:
+            result = ssh_host.run(f"curl -L {image_url} -o {image_file}", return_rc=True, timeout=300)
+            assert result["rc"] == 0, f"BMS镜像下载失败: {result.get('stderr', '')}"
+            logger.info(f"BMS镜像文件已下载: {image_file}")
+        else:
+            logger.info(f"BMS镜像文件已存在: {image_file}")
+
+    with allure_step_log(f"前置: 创建BMS镜像 {image_name}"):
+        cmd = (
+            f"source /root/admin-openrc.sh && "
+            f"scli image create --visibility public --disk-format raw --container-format bare "
+            f"--min-disk {image_min_disk} --property hypervisor_type=baremetal --property purpose=ironic "
+            f"--property os_type=linux --property hw_qemu_guest_agent=yes --backend {image_backend} "
+            f"--file {image_file} --name {image_name}"
+        )
+        result = ssh_host.run(cmd, return_rc=True, timeout=1800)
+        assert result["rc"] == 0, f"BMS镜像创建失败: {result.get('stderr', '')}"
+        logger.info(f"BMS镜像 '{image_name}' 创建成功")
+
+    with allure_step_log(f"前置: 验证BMS镜像 {image_name} 状态为active"):
+        result = ssh_host.run(image_check_cmd, return_rc=True)
+        assert result["rc"] == 0, f"BMS镜像创建后未达到active状态: {result.get('stderr', '')}"
+
+    return image_name
 
 
 @pytest.fixture(scope="function")
@@ -200,6 +268,11 @@ def bms_env(pytestconfig, config):
         "preferred_node": _value("--bms-preferred-node", "preferred_node"),
         "network_name": _value("--bms-network-name", "network_name"),
         "password": _value("--bms-password", "password"),
+        "image_name": bms_config.get("image_name") or BMS_IMAGE_DEFAULTS["image_name"],
+        "image_file": bms_config.get("image_file") or BMS_IMAGE_DEFAULTS["image_file"],
+        "image_url": bms_config.get("image_url") or BMS_IMAGE_DEFAULTS["image_url"],
+        "image_backend": bms_config.get("image_backend") or BMS_IMAGE_DEFAULTS["image_backend"],
+        "image_min_disk": bms_config.get("image_min_disk") or BMS_IMAGE_DEFAULTS["image_min_disk"],
     }
 
 
@@ -230,7 +303,13 @@ def bms_regression_requires_instance(request):
 
 
 @pytest.fixture()
-def bms_instance(bms_page, bms_env):
+def bms_image(ssh_host, bms_env):
+    """确保BMS镜像存在，并返回镜像名称。"""
+    return ensure_bms_image(ssh_host, bms_env)
+
+
+@pytest.fixture()
+def bms_instance(bms_page, bms_env, ssh_host):
     """返回裸金属实例创建器（工厂函数），封装步骤13-14。
 
     使用方式：
@@ -240,8 +319,8 @@ def bms_instance(bms_page, bms_env):
     """
     def _create(
         name=None,
-        image_name="bms",
-        system_disk="sdi",
+        image_name=None,
+        system_disk="MR9361-16iGiB",
         password=None,
         security_group="default",
         server_name="N/A 2U Rack Server",
@@ -249,7 +328,9 @@ def bms_instance(bms_page, bms_env):
         subnet_name="",
     ):
         name = name or bms_env["instance_name"]
+        image_name = image_name or bms_env["image_name"]
         password = password or bms_env["password"]
+        ensure_bms_image(ssh_host, bms_env, image_name=image_name)
         with allure_step_log("步骤13: 创建裸金属实例"):
             try:
                 bms_page.bms_instance_create(

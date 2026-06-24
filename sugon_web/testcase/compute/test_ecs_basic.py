@@ -10,8 +10,6 @@ from sugon_web.utils.data import random_data, load_data, retry_check
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than, skip_arch
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('基本功能验证')
 class TestECSBasic:
 
@@ -831,7 +829,7 @@ class TestECSBasic:
         """
         name = vm.get("name")
         # 导航到弹性云服务器页面
-        ecs_page.goto_service('弹性云服务器')
+        ecs_page.goto_submenu('弹性云服务器')
 
         with allure_step_log(f"步骤1: 为云服务器{name}安装工具-页面ISO安装"):
             # 调用安装工具方法

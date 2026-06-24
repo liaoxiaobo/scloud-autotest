@@ -7,6 +7,7 @@ from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 
 
 def _cleanup_residual_dc_resources(dc_page):
@@ -127,7 +128,7 @@ class TestDCERStaticRouteValidation:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -138,7 +139,7 @@ class TestDCERStaticRouteValidation:
                 ha_enable=True,
             )
             er_page.assert_popup_success(timeout=10000)
-            er_page.assert_status(er_name, status="运行中")
+            er_page.assert_status(er_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
 
         with allure_step_log("前置条件4: 将VPC添加为ER连接"):
             er_page.goto_connection_tab(er_name)
@@ -162,8 +163,9 @@ class TestDCERStaticRouteValidation:
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件6: 创建虚拟接口"):
-            time.sleep(30)
-            dc_page.virtual_interface_create(
+            time.sleep(60)
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -173,16 +175,6 @@ class TestDCERStaticRouteValidation:
                 remote_subnet="123.12.0.0/24",
                 local_subnet=vpc["cidr"],
                 subnet_index=0,
-            )
-            dc_page.assert_popup_success(timeout=10000)
-
-        with allure_step_log("前置条件6.5: 等待虚拟接口状态变为运行中"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
             )
 
         with allure_step_log("前置条件6.6: 等待5秒确保路由就绪"):

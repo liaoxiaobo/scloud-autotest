@@ -26,21 +26,46 @@ class BmsPage(BasePage):
         expected = self._SOFT_SUBMENU_URL_MAP.get(name)
         self.goto_service("裸金属")
         if expected:
-            if expected not in self.page.url:
-                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
-                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
-                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
-                base = self.page.url.split('#')[0].rstrip('/')
+            base = self.page.url.split('#')[0].rstrip('/')
+            target_url = f"{base}/#{expected}"
+
+            def _on_expected_route():
+                return expected in self.page.url and "#/error" not in self.page.url
+
+            def _goto_target(wait_ms=2500):
                 self.page.goto(base)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(1500)
-                self.page.goto(f"{base}#{expected}")
+                self.page.goto(target_url)
                 self.page.wait_for_load_state("domcontentloaded")
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(wait_ms)
+
+            if not _on_expected_route():
+                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
+                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
+                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
+                _goto_target()
                 # 若被重定向到 no-permission，尝试通过菜单点击导航
                 if "no-permission" in self.page.url:
                     self.logger.warning(f"URL 导航到 {expected} 被重定向到 no-permission，尝试菜单点击")
                     self._click_bms_submenu(name)
+                # 偶发进入前端 error 路由或落到其他 BMS 子页面时，先重新打开服务根页再直达目标 hash；
+                # 仍失败时再尝试菜单点击，避免后续误报为搜索框定位失败。
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 导航到 {name} 后未到达期望路由，"
+                        f"当前URL={self.page.url}，重试直达: {target_url}"
+                    )
+                    _goto_target(wait_ms=3000)
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 直达 {target_url} 后仍未到达期望路由，"
+                        f"当前URL={self.page.url}，尝试左侧菜单点击"
+                    )
+                    self._click_bms_submenu(name)
+                    self.page.wait_for_timeout(3000)
+                if not _on_expected_route():
+                    raise RuntimeError(f"进入BMS{name}页失败，当前URL={self.page.url}, 目标URL={target_url}")
             # 裸金属实例页面表格和搜索框加载较慢，增加等待时间
             wait_ms = 4000 if name == "裸金属实例" else 2500
             self.page.wait_for_timeout(wait_ms)
@@ -304,7 +329,7 @@ class BmsPage(BasePage):
                 logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
                 return True
             except Exception as e:
-                logger.warning(f"[_js_click_action] 标准点击失败（元素不可见或不可交互）: {e}")
+                logger.info(f"[_js_click_action] 标准点击不可用，准备使用 JavaScript 点击 '{action}': {e}")
 
         # 回退到 JavaScript
         logger.info(f"[_js_click_action] 回退到 JavaScript 点击 '{action}'")
@@ -347,7 +372,10 @@ class BmsPage(BasePage):
                 return 'row-not-found';
             }""", [row_text, action])
         logger.info(f"[_js_click_action] JavaScript 点击结果: {result}")
-        return result not in ("not-found", "row-not-found")
+        if result in ("not-found", "row-not-found"):
+            logger.error(f"[_js_click_action] JavaScript 未找到操作 '{action}'，结果: {result}")
+            return False
+        return True
 
     def _get_switch_group_row(self, group_name: str, node_name: str = ""):
         """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
@@ -1020,7 +1048,7 @@ class BmsPage(BasePage):
 
     # ---- instance ----
 
-    def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
+    def bms_instance_create(self, name, image_name="", system_disk="MR9361-16iGiB", password="",
                                security_group="", server_name="", network_name="", subnet_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
@@ -1349,36 +1377,29 @@ class BmsPage(BasePage):
                 disk_section = self.page.locator(".el-form-item").nth(5)
 
             disk_rows = self._wait_for_table_rows(disk_section, timeout=8000)
+            if not disk_rows:
+                raise AssertionError(f"未找到磁盘列表，无法选择引导磁盘: {system_disk}")
+
             selected = False
+            available_disks = []
             for row in disk_rows:
-                txt = row.text_content() or ""
+                txt = (row.text_content() or "").strip()
+                if txt:
+                    available_disks.append(" ".join(txt.split()))
                 if system_disk in txt:
                     if self._click_el_radio(row):
                         selected = True
                         logger.info(f"[bms_instance_create] 磁盘选择成功({system_disk})")
                         break
-            if not selected and disk_rows:
-                if self._click_el_radio(disk_rows[0]):
-                    logger.info("[bms_instance_create] 磁盘选择成功(第一个)")
-                else:
-                    logger.warning("[bms_instance_create] 磁盘行无radio")
-            elif not disk_rows:
-                logger.warning("[bms_instance_create] 未找到磁盘行，尝试JS选择")
-                result = self.page.evaluate("""() => {
-                    const items = document.querySelectorAll('.el-form-item');
-                    for (const item of items) {
-                        const label = item.querySelector('label');
-                        if (label && label.textContent.includes('磁盘')) {
-                            const radios = item.querySelectorAll('table tbody tr .el-radio');
-                            if (radios.length > 0) { radios[0].click(); return true; }
-                        }
-                    }
-                    return false;
-                }""")
-                logger.info(f"[bms_instance_create] 磁盘JS选择结果: {result}")
+                    logger.warning(f"[bms_instance_create] 匹配到磁盘但radio点击失败: {txt}")
+            if not selected:
+                raise AssertionError(
+                    f"未找到可选择的引导磁盘 '{system_disk}'，当前磁盘列表: {available_disks}"
+                )
             self.page.wait_for_timeout(800)
         except Exception as e:
             logger.warning(f"[bms_instance_create] 选择磁盘失败: {e}")
+            raise
 
         # 7. 配置网络
         try:

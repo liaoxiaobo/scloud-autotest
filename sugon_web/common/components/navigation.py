@@ -170,17 +170,31 @@ class NavigationMixin:
             self.page.wait_for_timeout(500)
 
         if not menu_found:
-            self.logger.info(f"左侧菜单不存在，跳过子菜单导航: {submenu}")
-            self.wait_for_page_ready()
-            # 等待前端路由完成跳转（URL 稳定），慢环境兼容
-            prev_url = ""
-            for _ in range(60):
-                current_url = self.page.url
-                if current_url == prev_url:
-                    break
-                prev_url = current_url
-                self.page.wait_for_timeout(1000)
-            return
+            # 如果当前在服务路径下但没有左侧菜单，说明在服务子页面（如 region-management-list）
+            # 重新导航到服务根页面以加载左侧菜单
+            if service_name and service_path and self._is_current_service_path(service_path):
+                base_url = Config.get("base_url").rstrip("/")
+                self.page.goto(f"{base_url}{service_path}")
+                self.wait_for_page_ready()
+                # 重新检查左侧菜单
+                for _ in range(30):
+                    if self.locator("#cloud-menu-left").count() > 0:
+                        menu_found = True
+                        break
+                    self.page.wait_for_timeout(500)
+
+            if not menu_found:
+                self.logger.info(f"左侧菜单不存在，跳过子菜单导航: {submenu}")
+                self.wait_for_page_ready()
+                # 等待前端路由完成跳转（URL 稳定），慢环境兼容
+                prev_url = ""
+                for _ in range(60):
+                    current_url = self.page.url
+                    if current_url == prev_url:
+                        break
+                    prev_url = current_url
+                    self.page.wait_for_timeout(1000)
+                return
 
         expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)
         menu_left = self.locator("#cloud-menu-left")

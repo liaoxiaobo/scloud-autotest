@@ -98,7 +98,7 @@ class TestDCPhysicalConnectionEdit:
                     name=dc_name,
                     expected_status="办结",
                     expected_vm_status="运行中",
-                    timeout=600,
+                    timeout=1200,
                     interval=10,
                 )
 

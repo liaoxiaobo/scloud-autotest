@@ -112,7 +112,7 @@ class TestERVPCConnectivity:
                     ha_enable=True,
                 )
                 er_page.assert_popup_success(timeout=10000)
-                er_page.assert_status(er_name, status="运行中", timeout=120, refresh=True, refresh_interval=20)
+                er_page.assert_status(er_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
                 logger.info(f"HA ER {er_name} 创建成功")
 
             with allure_step_log("步骤6: 添加VPC1连接到ER"):

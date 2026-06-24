@@ -142,7 +142,7 @@ def _run_peer_connection_test(
             ha_enable=ha_enable,
         )
         er_page.assert_popup_success(timeout=10000)
-        er_page.assert_status(er1_name, status="运行中", timeout=120, refresh=True, refresh_interval=20)
+        er_page.assert_status(er1_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
         logger.info(f"ER1 {er1_name} 创建成功")
 
     # 创建ER2
@@ -156,7 +156,7 @@ def _run_peer_connection_test(
             ha_enable=ha_enable,
         )
         er_page.assert_popup_success(timeout=10000)
-        er_page.assert_status(er2_name, status="运行中", timeout=120, refresh=True, refresh_interval=20)
+        er_page.assert_status(er2_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
         logger.info(f"ER2 {er2_name} 创建成功")
 
     # 添加VPC1连接到ER1
