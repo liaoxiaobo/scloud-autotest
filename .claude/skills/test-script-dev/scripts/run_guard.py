@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""run_guard.py —— 阶段三 pytest 执行守卫（机械硬熔断·针对 kimi 的"自律失效"而设）。
+"""run_guard.py —— 阶段三 pytest 执行守卫（机械硬熔断·针对 AI 的"自律失效"而设）。
 
 为什么需要本脚本（根因）：
     阶段三的修复循环跑在【一次 phase3 子智能体派发内部】，编排层看不到"两轮之间"，
     所以 loop_gate.py（设计给编排层在两轮间调用）根本没机会触发；而轮次上限、状态冻结
-    等又都是写在 agent 体内、靠模型【自觉执行】的软约束——实测 kimi 在长循环里 0 执行
+    等又都是写在 agent 体内、靠模型【自觉执行】的软约束——实测 AI 在长循环里 0 执行
     （运行报告里轮次一直是 0，却跑了 40+ 次 pytest、耗时 10+ 小时）。
     结论：失控的 agent 不会自己停。刹车必须放在【绕不开的咽喉点】——每一次 pytest 调用。
 
@@ -26,10 +26,10 @@
 机械控制（全部确定性，不含 LLM 判断，口径极简：1 次 pytest = 1 次）：
     1) 计数：每经本脚本跑一次 pytest，该测试目标计数 +1、全局计数 +1，落盘 state 文件。
     2) 硬熔断（满足任一即退出码 3 拒绝执行）：
-         - 单测试目标累计 >= --cap-file（默认 30）
-         - 全局累计 >= --cap-global（默认随场景数缩放 = max(40, 场景数 × 8)）
-         - 连续 FREEZE_LIMIT 次"失败在同一位置"（默认 10）→ 原地打转、零前进，停。
-       另：自首次激活起全局墙钟 > 6h → 软提示走 Phase 4.5、倾向"标遗留·转人工"（软兜底，不硬杀）。
+         - 单测试目标累计 >= --cap-file（默认 40）
+         - 全局累计 >= --cap-global（默认随场景数缩放 = max(60, 场景数 × 10)）
+         - 连续 FREEZE_LIMIT 次"失败在同一位置"（默认 15）→ 原地打转、零前进，停。
+         - 自首次激活起【活跃墙钟】> GLOBAL_WALL_HARD_SECS（默认 10h，已扣除长空闲间隔）→ 强制收尾、停。
     3) 冻结检测（零前进熔断）：连续 N 次失败在【同一位置】（同一测试 nodeid + 同一处最深用户代码 file:line，
        与报错文本是否变化无关）→ 判定原地打转、拒绝下一轮；只有【推进到新的失败位置】（真有进展）或某轮通过，
        冻结计数才清零。这样"换 selector 让报错文本变一变"骗不过冻结，杜绝同一阻塞点烧满额度。
@@ -37,7 +37,7 @@
 退出码：
     0   pytest 通过（透传 pytest 退出码 0）
     1   pytest 失败（透传 pytest 非 0 退出码；未达熔断上限，可在修对根因后再跑）
-    3   被守卫拒绝（已达次数上限 或 触发状态冻结）→ 必须停止该测试目标，标记"遗留问题·转人工"，
+    3   被守卫拒绝（已达次数上限 / 触发状态冻结 / 全局活跃墙钟超 10h）→ 必须停止该测试目标，标记"遗留问题·转人工"，
         严禁绕过本脚本裸跑 pytest 继续试。
     2   用法/环境错误。
 
@@ -70,12 +70,13 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-DEFAULT_CAP_FILE = 30          # 单测试目标（= 一个 CSV 需求 / def test_ 方法）次数上限（2026-06-19 团队决策由 20 提高到 30：复杂用例 setup 链长、20 次不够，前面修复易前功尽弃；有"连续相同失败冻结"兜底，提高上限不会退回无限续命）
-GLOBAL_PER_CASE = 8            # 全局上限按"每个场景 8 次"加总缩放：场景数 × 该值（2026-06-17 由 30 收回 8）
-DEFAULT_CAP_GLOBAL = 40        # 全局上限下限（1 个场景时）（2026-06-19 团队决策由 20 提高到 40：给复杂用例更宽裕的全局额度，仍有冻结/墙钟兜底）
-FREEZE_LIMIT = 10             # 连续相同失败达到该值 → 下一轮拒绝（原地打转、无进展）（2026-06-19 团队决策由 5 放宽到 10：弱模型同一失败需更多修复空间；并配合 phase3「连续同指纹强制 recon 取证」避免把额度浪费在盲改）
+DEFAULT_CAP_FILE = 40          # 单测试目标（= 一个 CSV 需求 / def test_ 方法）次数上限（沿革：2026-06-19 由 20→30；2026-06-21 由 30→40：弱模型修复准确度低、复杂用例 setup 链长，给更多修复空间；有"连续相同失败冻结"兜底，提高上限不会退回无限续命）
+GLOBAL_PER_CASE = 10           # 全局上限按"每个场景 N 次"加总缩放：场景数 × 该值（沿革：2026-06-17 由 30→8；2026-06-21 由 8→10：配合单用例上限提高，给整体更宽裕额度）
+DEFAULT_CAP_GLOBAL = 60        # 全局上限下限（1 个场景时）（沿革：2026-06-19 由 20→40；2026-06-21 由 40→60：给复杂用例更宽裕的全局额度，仍有冻结/墙钟兜底）
+FREEZE_LIMIT = 15             # 连续相同失败达到该值 → 下一轮拒绝（原地打转、无进展）（沿革：2026-06-19 由 5→10；2026-06-21 由 10→15：弱模型同一失败需更多修复空间；并配合 phase3「连续同指纹强制 recon 取证」避免把额度浪费在盲改）
 REENTRY_BUDGET = 10           # 回退重入（--reentry）发放的小额全局增量预算：不清零累计全局、把全局上限设为"当前全局位置 + 该值"，给本次回退留出有限的修复空间，避免"回退一进去就被拒"又杜绝"无限续命"；基于当前位置而非累加，故重复 reset 幂等、不叠加
-GLOBAL_WALL_SECS = 6 * 3600    # 全局墙钟软兜底(秒)：自首次激活起累计墙钟超过该时长 → 软提示走 Phase 4.5 质疑、倾向"标遗留·转人工"（软兜底，不硬杀，避免人工空档误杀）
+GLOBAL_WALL_HARD_SECS = 10 * 3600  # 全局活跃墙钟硬上限(秒)：自首次激活起累计【活跃】墙钟超过该时长 → 硬停（退出码 3 拒绝下一次 pytest），强制收尾标"遗留·转人工"。2026-06-21 由原 6h 软兜底改为 10h 硬停（软兜底无约束力、实测被无视跑满 7h+；硬停才有真正上限）
+WALL_IDLE_GAP_SECS = 1800          # 活跃墙钟的"空闲扣除"阈值(秒)：两次 run_guard 调用之间间隔 > 该值即视为中断/挂起、不计入活跃墙钟（既让单个高成本 pytest 70~100min 照常计入，又避免跨夜/中断恢复被瞬间秒杀）
 GUARD_TTL = 4 * 3600           # 守卫哨兵滑动过期(秒)：每次经 run_guard 跑 pytest 都续期；若超过该时长无 run_guard 活动则哨兵自动失效，避免陈旧哨兵长期卡住项目/开发者
 
 # 「已排除方向清单」结构化块标记（写在运行报告里，phase3 每轮追加；run_guard 每轮自动回显给模型，
@@ -247,7 +248,7 @@ def _failure_fingerprint(output):
 
     目的：让"连续相同失败"= "卡在同一处、零前进"，而不是"报错文本恰好一样"。
     实测教训：弱模型一换 selector/等待，报错文本就变（TimeoutError→no elements→未导航），
-    若按文本做指纹，冻结计数每轮清零、永不触发，于是同一阻塞点被烧满 30 次额度（17 个步骤一个没跑）。
+    若按文本做指纹，冻结计数每轮清零、永不触发，于是同一阻塞点被烧满整个单用例额度（17 个步骤一个没跑）。
     改为按"失败位置"做指纹后：只要还卡在同一个测试的同一处代码（即便报错文本变了）→ 指纹不变、冻结累加；
     推进到新的失败位置（= 真有进展，过了旧阻塞点、在更后面失败）→ 指纹变、冻结清零。通用于任何模块。
     """
@@ -333,7 +334,7 @@ def main(argv):
         return 0
 
     if args.reset:
-        # 全局上限随场景数缩放 = max(下限, 场景数 × 每个场景 8 次)
+        # 全局上限随场景数缩放 = max(下限, 场景数 × 每个场景 10 次)
         eff_global = max(args.cap_global, (args.cases or 0) * GLOBAL_PER_CASE)
         if args.reentry:
             # 回退重入：不清零累计全局；全局墙钟基准 first_activated_at 跨回退保留（连续计）；
@@ -348,22 +349,25 @@ def main(argv):
             new_cap = prev_global + REENTRY_BUDGET
             _save(sp, {"global_runs": prev_global, "files": {},
                        "started_at": time.time(), "first_activated_at": first_at,
-                       "cap_global": new_cap})
+                       "cap_global": new_cap,
+                       "last_seen_at": prev.get("last_seen_at", 0),
+                       "idle_secs": prev.get("idle_secs", 0)})
             print(f"[run_guard] 已按【回退重入】重置：{sp}")
             print(f"[run_guard] 全局累计不清零（保留 {prev_global} 次）；从当前全局位置再给 {REENTRY_BUDGET} 次额度 → 新全局上限 {new_cap}（幂等：重复 reset 不叠加预算）；"
                   f"各用例单用例/冻结计数已清空，本次回退可继续修。")
             print(f"[run_guard] 单用例上限={args.cap_file} 次、连续相同失败冻结={FREEZE_LIMIT} 次；"
-                  f"绕过审计窗口已刷新为本次回退起（旧日志不再计入本次单用例额度）；全局墙钟自首次激活连续计（>6h 软提示走 Phase 4.5）。")
+                  f"绕过审计窗口已刷新为本次回退起（旧日志不再计入本次单用例额度）；全局活跃墙钟自首次激活连续计、超 {GLOBAL_WALL_HARD_SECS // 3600}h 硬停（已扣除长空闲间隔，跨夜/中断恢复不会被秒杀）。")
         else:
             now = time.time()
             _save(sp, {"global_runs": 0, "files": {}, "started_at": now,
-                       "first_activated_at": now, "cap_global": eff_global})
+                       "first_activated_at": now, "cap_global": eff_global,
+                       "last_seen_at": now, "idle_secs": 0})
             print(f"[run_guard] 已重置守卫状态：{sp}")
             print(f"[run_guard] 次数上限：单用例(= 一个 CSV 需求/def test_ 方法)={args.cap_file} 次、"
                   f"全局={eff_global} 次（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×{GLOBAL_PER_CASE})）；"
                   f"连续相同失败冻结={FREEZE_LIMIT} 次。")
             print(f"[run_guard] 口径：1 次 pytest = 1 次；审计只数本次 reset 之后产生的日志，旧日志不污染额度。"
-                  f"全局墙钟 >6h → 软提示走 Phase 4.5、倾向标遗留转人工（软兜底，不硬杀）。")
+                  f"全局活跃墙钟超 {GLOBAL_WALL_HARD_SECS // 3600}h → 硬停（退出码 3 拒绝、强制收尾标遗留转人工；已扣除长空闲间隔）。")
         # 写守卫哨兵 + token（供未来 conftest pytest_sessionstart 钩子做"即时拒绝裸跑"用；当前该钩子未实现，
         # 裸跑实际由下方"绕过审计"数日志补算计数兜底，不影响次数上限的正确性）。
         token = secrets.token_hex(16)
@@ -397,17 +401,24 @@ def main(argv):
         f["runs"] = real
         state["global_runs"] = state["global_runs"] + bypass
 
-    # ---- 全局墙钟软兜底（自首次激活 first_activated_at 起累计 > 6h → 软提示走 Phase 4.5，不硬杀）----
-    # 用 first_activated_at（跨回退保留）而非 started_at（每次回退会刷新），保证墙钟是"整个任务"的累计时长。
+    # ---- 全局活跃墙钟（自首次激活 first_activated_at 起、扣除长空闲间隔后的累计活跃时长）----
+    # 用 first_activated_at（跨回退保留）作基准；两次 run_guard 调用间隔 > WALL_IDLE_GAP_SECS 视为中断/挂起、从墙钟扣除，
+    # 从而：① 单个高成本 pytest（70~100min）在一次调用内部、照常计入；② 跨夜/中断恢复不会因真实时长暴涨被秒杀。
+    now_wall = time.time()
     wall_base = state.get("first_activated_at", state.get("started_at", 0))
-    if wall_base:
-        elapsed = time.time() - wall_base
-        if elapsed > GLOBAL_WALL_SECS:
-            print(f"[run_guard] [软兜底] 全局墙钟已超 {GLOBAL_WALL_SECS // 3600}h（自首次激活起 ≈{elapsed/3600:.1f}h）。"
-                  f"按 phase3 正文要求：必须走一次 Phase 4.5 三次失败质疑，并【倾向标遗留·转人工】，"
-                  f"不要再无脑续修；本提示为软兜底，不阻断本次执行。")
+    last_seen = state.get("last_seen_at", 0)
+    if last_seen:
+        gap = now_wall - last_seen
+        if gap > WALL_IDLE_GAP_SECS:
+            state["idle_secs"] = state.get("idle_secs", 0) + gap
+    active_elapsed = (now_wall - wall_base - state.get("idle_secs", 0)) if wall_base else 0
 
     # ---- 执行前硬熔断检查 ----
+    if wall_base and active_elapsed > GLOBAL_WALL_HARD_SECS:
+        state["last_seen_at"] = now_wall
+        _save(sp, state)
+        _refuse(f"全局活跃墙钟已达硬上限（≈{active_elapsed/3600:.1f}h ≥ {GLOBAL_WALL_HARD_SECS // 3600}h）——"
+                f"强制收尾：标记『遗留问题·转人工』、停止阶段三，不再跑任何 pytest（已扣除长空闲间隔）。")
     if state["global_runs"] >= cap_global:
         _refuse(f"全局次数已达上限（{state['global_runs']}/{cap_global}）。")
     if f["runs"] >= cap_file:
@@ -448,6 +459,7 @@ def main(argv):
         return 2
     output = proc.stdout or ""
     print(output)
+    state["last_seen_at"] = time.time()  # 记录本次 pytest 结束时刻：供下次算"空闲间隔"，长间隔（中断/挂起）将从活跃墙钟扣除（下方 rc 分支的 _save 会持久化）
 
     rc = proc.returncode
     if rc == 0:

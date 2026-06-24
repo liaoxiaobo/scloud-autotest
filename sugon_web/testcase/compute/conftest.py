@@ -320,7 +320,7 @@ def bms_instance(bms_page, bms_env, ssh_host):
     def _create(
         name=None,
         image_name=None,
-        system_disk="sdi",
+        system_disk="MR9361-16iGiB",
         password=None,
         security_group="default",
         server_name="N/A 2U Rack Server",

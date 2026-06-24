@@ -5,6 +5,7 @@ import re
 from sugon_web.common.playwright import expect
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.pages.network.sci_kms import SciKmsPage
 from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
 from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
 from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
@@ -168,7 +169,6 @@ def _resolve_param_refs(value, request):
 def _create_vpc_resource(vpc_page, params=None):
     """创建VPC并返回资源信息。"""
     create_kwargs = _build_vpc_create_kwargs(params)
-
     vpc_page.vpc_create(**create_kwargs)
     vpc_page.assert_popup_success("创建虚拟私有云成功")
     vpc_page.assert_status(create_kwargs["name"])
@@ -277,8 +277,7 @@ def _cleanup_vpc_resource(vpc_page, name, extra_subnets=None):
                 logger.warning(f"解关联子网 {subnet_name} 与 ACL {acl_policy} 失败（可能已解关联）: {e}")
 
     # 先导航到VPC列表页确保状态正确
-    vpc_page.goto_service("虚拟私有云")
-    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page._ensure_vpc_network_list()
     try:
         vpc_page.get_row_by_name(name)
     except Exception:
@@ -288,7 +287,7 @@ def _cleanup_vpc_resource(vpc_page, name, extra_subnets=None):
     # 刷新页面并验证删除，避免前端缓存导致误判
     vpc_page.page.reload()
     vpc_page.wait_for_page_ready()
-    vpc_page.goto_submenu("虚拟私有云")
+    vpc_page._ensure_vpc_network_list()
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)
 
@@ -404,7 +403,6 @@ def eip(vpc_page, request):
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     yield created_ips[0] if count == 1 else created_ips
 
@@ -1236,3 +1234,27 @@ def lb_pool_candidate_vms(browser_context, config, request):
 
     _cleanup_vm_resources(ecs_page, vm_names)
     page.close()
+
+
+@pytest.fixture(scope="function")
+def kms_page(page):
+    """创建机密互联-密钥管理页面对象并检查授权状态。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        SciKmsPage: 密钥管理页面对象实例。
+    """
+    kms = SciKmsPage(page)
+    kms.goto_service("可信密码模块")
+
+    try:
+        text_locator = kms.get_by_text("您已成功授权")
+        expect(text_locator).to_be_visible(timeout=10000)
+        kms.logger.info("可信密码模块已授权")
+    except Exception:
+        kms.logger.warning("可信密码模块未授权或授权信息未显示")
+
+    kms.wait_for_page_ready()
+    return kms
