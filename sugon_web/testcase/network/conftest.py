@@ -234,8 +234,48 @@ def _build_vpc_batch_params(params, count):
     return batch_params
 
 
-def _cleanup_vpc_resource(vpc_page, name):
-    """清理VPC资源，确保后端真正删除。"""
+def _cleanup_vpc_resource(vpc_page, name, extra_subnets=None):
+    """清理 VPC 及其关联资源。
+
+    本函数在删除 VPC 之前，先拆除由本 VPC 创建/引入的对外依赖，
+    避免把残留依赖留给后续 teardown 的其他 fixture。
+
+    Args:
+        vpc_page: VpcPage 页面对象，兼具 VPC 与 ACL 的操作能力。
+        name: 待删除的 VPC 名称。
+        extra_subnets: VPC 创建时生成的额外子网元数据列表，元素格式示例：
+            [{"name": "sub-xxx", "cidr": "10.0.1.0/24", "acl_policy": "acl-yyy"}, ...]
+            当子网配置了 acl_policy 时，表示该子网在创建时已绑定到指定 ACL。
+
+    典型问题场景（已修复）：
+        test_acl_enable_disable 通过参数化 vpc 创建了一个绑定到 class 级 acl 的额外子网：
+            @pytest.mark.parametrize(
+                "vpc",
+                [{"extra_subnets": [{"cidr": "10.241.2.0/24", "acl_policy": "@acl"}]}],
+                indirect=True,
+            )
+    使用原则：
+        - 只要通过 vpc fixture 的 extra_subnets 给子网配置了 acl_policy，本函数会自动在
+          删除 VPC 前调用 acl_disassociate_subnet 解除绑定，无需在用例或 acl fixture 里额外处理。
+        - 如果后续新增类似的「VPC 创建时建立、但会阻塞后续 fixture 清理」的依赖，
+          应在本函数中统一前置拆除，而不是分散到各个用例里。
+        - try/except 是故意设计：解关联失败（如已解绑、ACL 已不存在）不应阻塞 VPC 删除。
+
+    前端规则参考：
+        src/page/vpc/acl/index-table.js 中 aclCanDelete 要求 row.rel_subnets.length == 0，
+        否则 src/page/vpc/acl/index.vue 中 batchDeleteDisabled 为 true，批量删除置灰。
+    """
+    extra_subnets = extra_subnets or []
+    for subnet in extra_subnets:
+        acl_policy = subnet.get("acl_policy")
+        subnet_name = subnet.get("name")
+        if acl_policy and subnet_name:
+            try:
+                with allure_step_log(f"清理VPC {name}: 解关联子网 {subnet_name} 与 ACL {acl_policy}"):
+                    vpc_page.acl_disassociate_subnet(acl_policy, subnets=[subnet_name])
+            except Exception as e:
+                logger.warning(f"解关联子网 {subnet_name} 与 ACL {acl_policy} 失败（可能已解关联）: {e}")
+
     # 先导航到VPC列表页确保状态正确
     vpc_page.goto_service("虚拟私有云")
     vpc_page.goto_submenu("虚拟私有云")
@@ -321,7 +361,7 @@ def vpc(browser_context, config, request):
 
     with allure_step_log(f"清理虚拟私有云 {[item['name'] for item in vpc_list]}"):
         for item in vpc_list:
-            _cleanup_vpc_resource(vpc_page, item["name"])
+            _cleanup_vpc_resource(vpc_page, item["name"], item.get("extra_subnets", []))
     page.close()
 
 
