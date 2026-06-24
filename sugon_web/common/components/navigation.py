@@ -99,6 +99,12 @@ class NavigationMixin:
         Raises:
             AssertionError: 未知服务或导航失败
         """
+        # 先关闭可能存在的弹窗，避免菜单点击被拦截
+        try:
+            self.close_dialog_if_exists()
+        except Exception:
+            pass
+
         if service not in SERVICE_PATH_MAP:
             self.logger.error(f"未知的服务: {service}，请检查服务名称或更新导航映射表")
             raise AssertionError(f"未知的服务: {service}")
@@ -122,6 +128,12 @@ class NavigationMixin:
             submenu: 子菜单名称，如 "概览"、"云硬盘"、"回收站"、
                      "快照"、"弹性云服务器"、"虚拟私有云"
         """
+        # 先关闭可能存在的弹窗，避免菜单点击被拦截
+        try:
+            self.close_dialog_if_exists()
+        except Exception:
+            pass
+
         service_name = getattr(self, "service_name", None)
         service_path = SERVICE_PATH_MAP.get(service_name) if service_name else None
         if service_name and service_path and not self._is_current_service_path(service_path):

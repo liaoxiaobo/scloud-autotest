@@ -5,6 +5,7 @@ import re
 from sugon_web.common.playwright import expect
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.pages.network.sci_kms import SciKmsPage
 from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
 from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
 from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
@@ -1193,3 +1194,27 @@ def lb_pool_candidate_vms(browser_context, config, request):
 
     _cleanup_vm_resources(ecs_page, vm_names)
     page.close()
+
+
+@pytest.fixture(scope="function")
+def kms_page(page):
+    """创建机密互联-密钥管理页面对象并检查授权状态。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        SciKmsPage: 密钥管理页面对象实例。
+    """
+    kms = SciKmsPage(page)
+    kms.goto_service("可信密码模块")
+
+    try:
+        text_locator = kms.get_by_text("您已成功授权")
+        expect(text_locator).to_be_visible(timeout=10000)
+        kms.logger.info("可信密码模块已授权")
+    except Exception:
+        kms.logger.warning("可信密码模块未授权或授权信息未显示")
+
+    kms.wait_for_page_ready()
+    return kms
