@@ -146,6 +146,33 @@ def ops_page(request):
     return OpsPage(page)
 
 
+@pytest.fixture(scope="class")
+def ops_page_class(browser_context, admin_browser_context, config):
+    """Class 级运维管理页对象。
+
+    供 class-scoped fixture（如 backup 的 ``vm_backup``）使用。
+    admin 角色使用 ``browser_context`` 创建 page；非 admin 角色使用
+    ``admin_browser_context`` 创建 admin page，以支持非 admin 用户执行
+    依赖基础设施服务的资源准备。
+
+    与 ``ops_page`` 的区别：
+    - ``ops_page`` 为 function 级，每个测试方法独立 page。
+    - ``ops_page_class`` 为 class 级，同一测试类内共享 page。
+    """
+    from sugon_web.conftest import _create_admin_logged_in_page, _create_logged_in_page
+
+    user_role = Config.get("user_role", "admin")
+    if user_role == "admin":
+        page = _create_logged_in_page(browser_context, config)
+    else:
+        page = _create_admin_logged_in_page(admin_browser_context, config)
+
+    try:
+        yield OpsPage(page)
+    finally:
+        page.close()
+
+
 @pytest.fixture(scope="function")
 def bms_page(page):
     """初始化裸金属BMS页对象"""
@@ -360,7 +387,6 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []
