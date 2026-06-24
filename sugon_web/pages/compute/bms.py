@@ -329,6 +329,50 @@ class BmsPage(BasePage):
         if required:
             raise RuntimeError("[_confirm_sugon_dialog] 未找到任何可点击的确定按钮")
 
+    def _hover_more_trigger_by_coordinates(self, row_text: str) -> bool:
+        """Hover the BMS row "more" trigger when Playwright sees it as hidden.
+
+        The cloud table keeps the popover reference at visibility:hidden while it
+        still has a real screen box. Playwright refuses to hover that locator, but
+        moving the mouse to the box opens the menu in the real UI.
+        """
+        try:
+            rect = self.page.evaluate(
+                """(rowText) => {
+                    const needle = (rowText || '').slice(0, 80);
+                    const rows = Array.from(document.querySelectorAll('table tbody tr'));
+                    const row = rows.find((r) => (r.textContent || '').includes(needle));
+                    if (!row) return null;
+                    const candidates = Array.from(row.querySelectorAll(
+                        'button, .cloud-button-btn, .cloud-button, a, span, div'
+                    )).map((el) => {
+                        const text = (el.textContent || '').trim();
+                        const r = el.getBoundingClientRect();
+                        return {
+                            text,
+                            x: r.x + r.width / 2,
+                            y: r.y + r.height / 2,
+                            width: r.width,
+                            height: r.height,
+                        };
+                    }).filter((item) => item.width > 0 && item.height > 0);
+                    const exact = candidates.filter((item) => item.text === '更多');
+                    const loose = candidates.filter((item) => item.text.includes('更多'));
+                    const target = (exact.length ? exact : loose).pop();
+                    return target || null;
+                }""",
+                row_text,
+            )
+            if not rect:
+                return False
+            self.page.mouse.move(rect["x"], rect["y"])
+            self.page.wait_for_timeout(800)
+            logger.info(f"[_js_click_action] 通过坐标 hover '更多' 触发区: {rect}")
+            return True
+        except Exception as e:
+            logger.warning(f"[_js_click_action] 坐标 hover '更多' 触发区失败: {e}")
+            return False
+
     def _js_click_action(self, row: Locator, action: str):
         if row is None:
             raise Exception(f"[_js_click_action] 无法执行 '{action}'：未找到目标行")
@@ -340,17 +384,34 @@ class BmsPage(BasePage):
             pass
         logger.info(f"[_js_click_action] 目标行文本: {row_text[:120]}")
 
-        # 先展开下拉菜单
+        # 先展开下拉菜单。BMS 表格的“更多”是 hover 触发，单纯 click 偶发只命中
+        # 隐藏的 .cloud-table-dropdown-item，导致后续误判为已提交操作。
         more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text=re.compile(r"更多|⋯|⋮"))
         if more_btn.count() == 0:
             more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text="更多")
         if more_btn.count() > 0:
-            logger.info(f"[_js_click_action] 找到'更多'按钮，尝试展开下拉菜单")
-            try:
-                more_btn.first.click(force=True)
-                self.page.wait_for_timeout(800)
-            except Exception as e:
-                logger.warning(f"[_js_click_action] 点击'更多'按钮失败: {e}")
+            logger.info(f"[_js_click_action] 找到'更多'按钮，尝试 hover 展开下拉菜单")
+            hovered = False
+            for index in range(more_btn.count()):
+                try:
+                    candidate = more_btn.nth(index)
+                    if not candidate.is_visible(timeout=1000):
+                        continue
+                    candidate.scroll_into_view_if_needed()
+                    candidate.hover(timeout=3000)
+                    self.page.wait_for_timeout(800)
+                    hovered = True
+                    break
+                except Exception as e:
+                    logger.debug(f"[_js_click_action] hover '更多'候选 {index} 失败: {e}")
+            if not hovered:
+                hovered = self._hover_more_trigger_by_coordinates(row_text)
+            if not hovered:
+                try:
+                    more_btn.first.click(force=True, timeout=3000)
+                    self.page.wait_for_timeout(800)
+                except Exception as click_error:
+                    logger.warning(f"[_js_click_action] 点击'更多'按钮失败: {click_error}")
         else:
             logger.info(f"[_js_click_action] 未找到'更多'按钮，操作可能直接可见")
 
@@ -543,6 +604,20 @@ class BmsPage(BasePage):
             return False
         return True
 
+    def _click_row_action_or_fallback(self, row: Locator, resource_name: str, action: str) -> bool:
+        """Click a row action with BMS-specific handling, then generic table fallback."""
+        try:
+            if self._js_click_action(row, action):
+                return True
+        except Exception as e:
+            logger.warning(f"资源 '{resource_name}' 的 '{action}' JS 点击异常，尝试通用 click_action: {e}")
+        try:
+            self.click_action(resource_name, action)
+            return True
+        except Exception as e:
+            logger.warning(f"资源 '{resource_name}' 的 '{action}' 通用点击也失败: {e}")
+            return False
+
     def _get_switch_group_row(self, group_name: str, node_name: str = ""):
         """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
         candidates = []
@@ -643,7 +718,7 @@ class BmsPage(BasePage):
         if not row:
             logger.info(f"网络 '{name}' 不存在，无需删除")
             return False
-        if not self._js_click_action(row, "删除"):
+        if not self._click_row_action_or_fallback(row, name, "删除"):
             raise AssertionError(f"未找到网络 '{name}' 的删除操作")
         self._confirm_sugon_dialog(required=True)
         deadline = time.time() + 60
@@ -967,8 +1042,7 @@ class BmsPage(BasePage):
             logger.info(f"代理 '{node_name}' 不存在，无需删除")
             return
 
-        clicked = self._js_click_action(row, "删除")
-        if not clicked:
+        if not self._click_row_action_or_fallback(row, node_name, "删除"):
             raise RuntimeError(f"代理 '{node_name}' 的删除操作未点击成功")
         self._confirm_sugon_dialog(required=True)
         try:
@@ -1082,8 +1156,9 @@ class BmsPage(BasePage):
         self.search(name)
         row = self._get_row_by_name(name)
         if row:
-            self._js_click_action(row, "删除")
-            self._confirm_sugon_dialog()
+            if not self._click_row_action_or_fallback(row, name, "删除"):
+                raise RuntimeError(f"发现任务 '{name}' 的删除操作未点击成功")
+            self._confirm_sugon_dialog(required=True)
             self._wait_for_row_absence("发现", name, label="发现任务")
 
     def bms_discovery_cleanup(self):
@@ -1155,7 +1230,7 @@ class BmsPage(BasePage):
                 row_text = (row.text_content() or "").strip()
             except Exception:
                 pass
-            if not self._js_click_action(row, "删除"):
+            if not self._click_row_action_or_fallback(row, bmc_ip, "删除"):
                 raise RuntimeError(
                     f"注册信息 '{bmc_ip}' 的删除操作不可用，可能当前业务状态不允许删除；"
                     f"行信息: {row_text[:200]}"
@@ -1722,11 +1797,24 @@ class BmsPage(BasePage):
         self.search(name)
         row = self._get_row_by_name(name)
         if row:
+            row_text = ""
             try:
-                self._js_click_action(row, "删除")
+                row_text = (row.text_content() or "").strip()
             except Exception:
-                self.click_action(name, "删除")
-            self._confirm_sugon_dialog()
+                pass
+
+            clicked = False
+            try:
+                clicked = self._click_row_action_or_fallback(row, name, "删除")
+            except Exception as e:
+                logger.warning(f"实例 '{name}' 删除点击异常: {e}")
+            if not clicked:
+                raise RuntimeError(
+                    f"裸金属实例 '{name}' 的删除操作不可用或未点击成功；"
+                    f"行信息: {row_text[:200]}"
+                )
+
+            self._confirm_sugon_dialog(required=True)
             self._wait_for_row_absence("裸金属实例", name, label="裸金属实例")
 
     def bms_instance_cleanup(self):
@@ -3447,8 +3535,9 @@ class BmsPage(BasePage):
         if not row:
             logger.warning(f"未找到交换机组 '{group_name}'，跳过删除")
             return
-        self._js_click_action(row, "删除")
-        self._confirm_sugon_dialog()
+        if not self._click_row_action_or_fallback(row, group_name, "删除"):
+            raise RuntimeError(f"交换机组 '{group_name}' 的删除操作未点击成功")
+        self._confirm_sugon_dialog(required=True)
         self._wait_for_row_absence("交换机组", group_name, label="交换机组", navigate_as_service=True)
         logger.info(f"交换机组 '{group_name}' 删除成功")
 
