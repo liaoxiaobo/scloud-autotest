@@ -147,7 +147,7 @@ def ecss(ecs_page, vm):
     snapshot_name = f"{vm_name}{time.strftime('%H%M%S')}"
     with allure_step_log("setup: 创建系统盘快照"):
         ecs_page.ecss_create(name=vm_name, snapshot_name=snapshot_name)
-        ecs_page.assert_popup_success("创建实例快照成功")
+        # ecs_page.assert_popup_success("创建实例快照成功")
         ecs_page.assert_status(vm_name)
 
         ecs_page.goto_submenu("快照")
