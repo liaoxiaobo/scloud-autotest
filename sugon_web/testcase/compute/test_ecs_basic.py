@@ -158,7 +158,7 @@ class TestECSBasic:
             ecs_page.ecs_edit(new_name, name)
 
     @allure.title("弹性云服务器-克隆")
-    def test_ecs_clone(self, ecs_page, vm, ssh_vm, browser, config, ssh_host):
+    def test_ecs_clone(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
 
@@ -180,7 +180,7 @@ class TestECSBasic:
             # 克隆后的虚机绑定mfip，验证md5值
             clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
             mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, clone_meta["port_id"],
+                admin_browser_context, config, clone_meta["port_id"],
                 project_id=clone_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(mfip)
@@ -427,7 +427,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-创建镜像")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
-    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, browser, config, ssh_host):
+    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
         image_name = random_data(length=10)
@@ -459,7 +459,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
             image_meta = collect_vm_metadata(ecs_page, ssh_host, image_vm)
             mfip_new = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, image_meta["port_id"],
+                admin_browser_context, config, image_meta["port_id"],
                 project_id=image_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(mfip_new)

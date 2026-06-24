@@ -206,7 +206,7 @@ def _prepare_single_vm_backup_metadata(
     ssh_vm: Any,
     vm_data: VmInfo,
     backup_nodes: List[str],
-    browser: Any,
+    admin_browser_context: Any,
     config: Any,
     ssh_host: Any,
 ) -> VmInfo:
@@ -223,7 +223,7 @@ def _prepare_single_vm_backup_metadata(
         ssh_vm: SSH fixture，用于连接源虚机并生成校验数据。
         vm_data: 通用 VM helper 返回的一台虚机元数据。
         backup_nodes: 当前环境可用的备份节点列表。
-        browser: Playwright Browser 实例，用于创建 admin context 绑定 MFIP。
+        browser: Playwright Browser 实例，用于创建 admin context 绑定 MFIP。 -> admin_browser_context: 已登录 admin 的 Playwright BrowserContext，用于绑定 MFIP。
         config: 配置对象。
         ssh_host: SSH 后端客户端，用于查询 ``port_id``。
 
@@ -241,7 +241,7 @@ def _prepare_single_vm_backup_metadata(
         arch = row_data.get("架构")
         meta = collect_vm_metadata(ecs_page, ssh_host, vm_data["name"])
         mfip = MfipHelper.bind_mfip_with_admin_context(
-            browser, config, meta["port_id"],
+            admin_browser_context, config, meta["port_id"],
             project_id=meta.get("project_id", "admin-inner-project"),
         )
         ssh_vm.connect(mfip)
@@ -257,7 +257,7 @@ def _enrich_vm_backup_metadata(
     ssh_vm: Any,
     base_vm_list: VmList,
     backup_nodes: List[str],
-    browser: Any,
+    admin_browser_context: Any,
     config: Any,
     ssh_host: Any,
 ) -> VmList:
@@ -268,7 +268,7 @@ def _enrich_vm_backup_metadata(
         ssh_vm: SSH fixture，用于准备源数据。
         base_vm_list: 通用 VM helper 返回的基础虚机元数据列表。
         backup_nodes: 当前环境可用的备份节点列表。
-        browser: Playwright Browser 实例。
+        browser: Playwright Browser 实例。 -> admin_browser_context: 已登录 admin 的 Playwright BrowserContext。
         config: 配置对象。
         ssh_host: SSH 后端客户端。
 
@@ -281,7 +281,7 @@ def _enrich_vm_backup_metadata(
             ssh_vm=ssh_vm,
             vm_data=vm_data,
             backup_nodes=backup_nodes,
-            browser=browser,
+            browser=admin_browser_context,
             config=config,
             ssh_host=ssh_host,
         )
@@ -511,7 +511,7 @@ def backup_page(page: Any) -> BackUpPage:
 @pytest.fixture(scope="class")
 def vm_backup(
     browser_context: Any,
-    browser: Any,
+    admin_browser_context: Any,
     config: Any,
     ssh_vm: Any,
     ssh_host: Any,
@@ -555,7 +555,7 @@ def vm_backup(
         )
         enabled_nodes = _get_enabled_backup_nodes(OpsPage(page))
         vm_list = _enrich_vm_backup_metadata(
-            ecs_page, ssh_vm, base_vm_list, enabled_nodes, browser, config, ssh_host
+            ecs_page, ssh_vm, base_vm_list, enabled_nodes, admin_browser_context, config, ssh_host
         )
         logger.info(f"vm_list: {vm_list}")
 

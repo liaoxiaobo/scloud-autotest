@@ -153,6 +153,7 @@ def bms_page(page):
 @pytest.fixture(scope="class")
 def vm(
     browser_context: Any,
+    admin_browser_context: Any,
     config: Any,
     request: pytest.FixtureRequest,
     ssh_host: Any,
@@ -303,7 +304,7 @@ def vm(
                 )
 
                 if instance_config.get("bind_mfip", True):
-                    _bind_vm_fixture_mfips(page, config, current_metadata)
+                    _bind_vm_fixture_mfips(admin_browser_context, config, current_metadata)
 
                 metadata_list.extend(current_metadata)
         else:
@@ -325,7 +326,7 @@ def vm(
             )
 
             if bind_mfip:
-                _bind_vm_fixture_mfips(page, config, metadata_list)
+                _bind_vm_fixture_mfips(admin_browser_context, config, metadata_list)
 
         # 单实例返回字典，多实例返回列表
         yield metadata_list[0] if len(metadata_list) == 1 else metadata_list

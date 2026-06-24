@@ -13,7 +13,7 @@ from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
 class TestECSScenario:
 
     @allure.title("验证已挂载云硬盘的虚机, 克隆后系统盘和数据盘与源虚机数据一致")
-    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, browser, config, ssh_host):
+    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """测试克隆已挂载云硬盘的虚机"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -57,7 +57,7 @@ class TestECSScenario:
             # 克隆后的虚机绑定mfip，验证md5值
             clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
             mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, clone_meta["port_id"],
+                admin_browser_context, config, clone_meta["port_id"],
                 project_id=clone_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(mfip)
@@ -89,7 +89,7 @@ class TestECSScenario:
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, browser, config, ssh_host):
+    def test_ecs_snapshot_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -152,7 +152,7 @@ class TestECSScenario:
             ecs_page.goto_submenu('弹性云服务器')
             new_meta = collect_vm_metadata(ecs_page, ssh_host, new_vm)
             new_vm_mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, new_meta["port_id"],
+                admin_browser_context, config, new_meta["port_id"],
                 project_id=new_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(new_vm_mfip)
