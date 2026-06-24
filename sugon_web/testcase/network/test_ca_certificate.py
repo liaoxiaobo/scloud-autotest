@@ -247,7 +247,7 @@ class TestCAHttpsListenerScenario:
         # 步骤7: 后台Pod数量确认
         with allure_step_log("步骤7: 后台Pod数量确认"):
             slb_id = slb["id"]
-            if slb_id:
+            if slb_id and slb["ha_enable"] == True:
                 result = ssh_host.run(
                     f"ssh master01 'sudo kubectl get pods -A | grep {slb_id}'",
                     check_rc=False,

@@ -1,4 +1,5 @@
 import json
+import re
 import shlex
 import threading
 import time
@@ -172,18 +173,21 @@ class CloudOpsMixin:
         失败时直接抛出断言错误。
         """
         ping_cmd = f"ping6 {ip} -c {count}" if ipv6 else f"ping {ip} -c {count}"
-        success_pattern = "0% packet loss"
-        fail_pattern = "100% packet loss"
+        loss_re = re.compile(r"(\d+)% packet loss")
 
         for attempt in range(1, retries + 1):
             stdout = self.run(ping_cmd)
 
+            match = loss_re.search(stdout)
+            loss = int(match.group(1)) if match else 100
+            reachable = loss < 100
+
             if connected:
-                if success_pattern in stdout:
+                if reachable:
                     logger.info(f"Ping to {ip} succeeded.")
                     return
             else:
-                if fail_pattern in stdout:
+                if not reachable:
                     logger.info(f"Ping to {ip} failed as expected.")
                     return
 

@@ -247,7 +247,9 @@ class EcsNetworkMixin(BasePage):
 
         for sg in sg_names:
             # 找到对应行并勾选
-            row = dialog.get_by_role("row", name=re.compile(rf"{re.escape(sg)}")).first
+            # row = dialog.get_by_role("row", name=re.compile(rf"^{re.escape(sg)}$")).first
+            name_cell = dialog.locator(".el-table__cell").filter(has_text=re.compile(rf"^{re.escape(sg)}$")).first
+            row = name_cell.locator("xpath=ancestor::tr[1]")
             checkbox = row.locator(".el-checkbox")
 
             # 检查是否已勾选

@@ -299,31 +299,32 @@ def _cleanup_listeners_and_eips(page, ssh_vm, registry):
         return
 
     vpc_page = VpcPage(page)
-    try:
-        # 如果当前在监控详情页（/vpc/#/cloud-server-slb-detail），
-        # goto_service 会复用页面但 #cloud-menu-left 不存在，
-        # 导致 goto_submenu 失败。因此先判断当前URL，必要时直接goto列表页。
-        current_url = page.url
-        if "cloud-server-slb-detail" in current_url:
-            base_url = page.url.split("/vpc/")[0]
-            page.goto(f"{base_url}/vpc/#/vpc-load-balance-list")
-            vpc_page.wait_for_page_ready()
-        else:
-            vpc_page.goto_service("虚拟私有云")
-            vpc_page.goto_submenu("负载均衡（基础版）")
-        _cleanup_backend_servers(ssh_vm, registry)
-        for eip_info in registry.eip_bound_slbs:
-            if isinstance(eip_info, dict):
-                _safe_unbind_slb_eip(
-                    vpc_page, eip_info["slb_name"], eip_info.get("ip_version", "IPv4")
-                )
+    with allure_step_log("Fixture清理: 清理监听器和公网 IP"):
+        try:
+            # 如果当前在监控详情页（/vpc/#/cloud-server-slb-detail），
+            # goto_service 会复用页面但 #cloud-menu-left 不存在，
+            # 导致 goto_submenu 失败。因此先判断当前URL，必要时直接goto列表页。
+            current_url = page.url
+            if "cloud-server-slb-detail" in current_url:
+                base_url = page.url.split("/vpc/")[0]
+                page.goto(f"{base_url}/vpc/#/vpc-load-balance-list")
+                vpc_page.wait_for_page_ready()
             else:
-                # 向后兼容旧格式（纯 slb_name 字符串）
-                _safe_unbind_slb_eip(vpc_page, eip_info)
-        for listener_info in registry.listeners:
-            _safe_delete_listener(page, vpc_page, listener_info)
-    except Exception as exc:
-        logger.warning(f"clean_lb_listener teardown 异常: {exc}")
+                vpc_page.goto_service("虚拟私有云")
+                vpc_page.goto_submenu("负载均衡（基础版）")
+            _cleanup_backend_servers(ssh_vm, registry)
+            for eip_info in registry.eip_bound_slbs:
+                if isinstance(eip_info, dict):
+                    _safe_unbind_slb_eip(
+                        vpc_page, eip_info["slb_name"], eip_info.get("ip_version", "IPv4")
+                    )
+                else:
+                    # 向后兼容旧格式（纯 slb_name 字符串）
+                    _safe_unbind_slb_eip(vpc_page, eip_info)
+            for listener_info in registry.listeners:
+                _safe_delete_listener(page, vpc_page, listener_info)
+        except Exception as exc:
+            logger.warning(f"clean_lb_listener teardown 异常: {exc}")
 
 
 def _safe_delete_ip_group(page, vpc_page, group_name):

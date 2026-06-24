@@ -113,18 +113,28 @@ class TestAclBasic:
                 ssh_vm.connect(vm_a_mfip)
                 ssh_vm.ping(vm_b_ip, connected=True, count=5)
 
-            with allure_step_log("步骤5: 验证重新开启后: 虚机B ping 虚机A,期望可以ping通"):
+            with allure_step_log("步骤5: ACL出方向新建全部放行规则(放行 B→A 回程流量)"):
+                vpc_page.acl_rule_create(
+                    acl_name=acl_name,
+                    direction="出方向",
+                    source_ip="0.0.0.0/0",
+                    dest_ip="0.0.0.0/0",
+                    description="Allow all outbound",
+                )
+
+            with allure_step_log("步骤6: 验证出方向放行后: 虚机B ping 虚机A,期望可以ping通"):
                 ssh_vm.connect(vm_b_mfip)
                 ssh_vm.ping(vm_a_ip, connected=True, count=5)
 
         finally:
-            with allure_step_log("清理: 删除测试创建的入方向规则"):
-                try:
-                    vpc_page.goto_submenu("网络ACL")
-                    vpc_page.acl_rule_delete(acl_name, direction="入方向")
-                except Exception as e:
-                    from sugon_web.utils.logger import logger
-                    logger.warning(f"删除规则失败: {e}")
+            with allure_step_log("清理: 删除测试创建的入方向和出方向规则"):
+                from sugon_web.utils.logger import logger
+                for direction in ("入方向", "出方向"):
+                    try:
+                        vpc_page.goto_submenu("网络ACL")
+                        vpc_page.acl_rule_delete(acl_name, direction=direction)
+                    except Exception as e:
+                        logger.warning(f"删除{direction}规则失败: {e}")
 
     @allure.title("网络ACL-批量开启关闭和删除")
     def test_acl_batch_operations(self, vpc_page):

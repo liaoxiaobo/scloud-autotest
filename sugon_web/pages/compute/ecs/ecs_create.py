@@ -707,27 +707,19 @@ class EcsCreateMixin(BasePage):
             # loc.click()
             # loc.click(force=True)
             loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(2000)
 
             # 等待下拉列表出现并定位选项
-            dropdown_list = self.page.locator(".el-select-dropdown:visible .el-select-dropdown__item")
-            dropdown_list.first.wait_for(state="visible", timeout=3000)
-            # 查找并选择对应的云硬盘类型
+            # 限定到刚打开的那个下拉面板（最后一个可见面板），避免匹配到其他/残留下拉导致误判
             logger.info(f"查找数据盘类型: {vol_type}")
-            items_count = dropdown_list.count()
-            found = False
-            for i in range(items_count):
-                try:
-                    if vol_type in dropdown_list.nth(i).inner_text(timeout=2000):
-                        logger.info(f"找到并点击数据盘类型: {vol_type}")
-                        dropdown_list.nth(i).click()
-                        found = True
-                        break
-                except Exception as e:
-                    logger.warning(f"获取选项 {i} 文本失败: {e}")
-                    continue
-            if not found:
-                error_msg = f"未找到匹配的数据盘类型: {vol_type}"
-                raise AssertionError(error_msg)
+            dropdown = self.page.locator(".el-select-dropdown:visible").last
+            option = dropdown.locator(".el-select-dropdown__item", has_text=vol_type).first
+            try:
+                option.wait_for(state="visible", timeout=5000)
+            except Exception:
+                raise AssertionError(f"未找到匹配的数据盘类型: {vol_type}")
+            logger.info(f"找到并点击数据盘类型: {vol_type}")
+            option.click()
 
             # 设置数据盘大小 - 使用多种定位方式
             self.get_by_role("spinbutton").nth(idx*2).fill(vol_size)
