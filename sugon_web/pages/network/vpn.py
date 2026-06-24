@@ -1703,6 +1703,8 @@ class VpnMixin(BasePage):
         except Exception as e:
             logger.warning(f"通过JS获取客户端日志列表失败: {e}")
         return []
+
+    def ssl_client_export_dialog_open(self):
         """打开导出客户端信息弹窗。
 
         在 SSL 客户端列表页点击"导出客户端信息"按钮，触发导出弹窗打开。
