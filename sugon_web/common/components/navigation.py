@@ -130,6 +130,14 @@ class NavigationMixin:
             self.logger.debug(f"角色 '{user_role}' 未配置 project，跳过项目上下文检查")
             return
 
+        # 等待项目选择器出现，超时则视为页面无该元素
+        top_project_btn = self.page.locator(".project_btn")
+        try:
+            expect(top_project_btn.first).to_be_visible(timeout=3000)
+        except (TimeoutError, AssertionError):
+            self.logger.debug("当前页面无顶部项目选择器，跳过项目上下文切换")
+            return
+
         try:
             self.logger.info(f"服务页面自动切换项目: role={user_role}, project={project_name}")
             self.select_top_project(project_name)
