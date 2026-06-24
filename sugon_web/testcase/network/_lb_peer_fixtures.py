@@ -48,7 +48,7 @@ class PeerConnectCleanupRegistry:
 
 
 @pytest.fixture(scope="class")
-def lb_peer_vms(browser_context, config, vpc, ssh_host, request):
+def lb_peer_vms(browser_context, admin_browser_context, config, vpc, ssh_host, request):
     """为跨 VPC 负载均衡场景在两个 VPC 下各创建 2 台虚机。
 
     依赖 `vpc` fixture 返回长度为 2 的列表，分别作为 vpc1、vpc2。
@@ -95,7 +95,7 @@ def lb_peer_vms(browser_context, config, vpc, ssh_host, request):
             metadata_list = _collect_vm_fixture_metadata(
                 ecs_page, vm_names, vpc_info["name"], vpc_info["subnet_name"], ssh_host
             )
-            _bind_vm_fixture_mfips(page, config, metadata_list)
+            _bind_vm_fixture_mfips(admin_browser_context, config, metadata_list)
 
             grouped[group_key].extend(metadata_list)
             all_vm_names.extend(vm_names)

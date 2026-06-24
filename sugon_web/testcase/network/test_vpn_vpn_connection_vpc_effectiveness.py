@@ -119,9 +119,9 @@ def _create_vpn_tunnel_with_retry(vpn_page, tunnel_name, max_attempts=2, retry_d
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="class")
-def vpn_tunnel_vpc_env(browser_context, config, ssh_host):
-    """创建 VPN 通道连接 VPC 生效性验证所需的全套前置资源（scope=class）。
+@pytest.fixture()
+def vpn_tunnel_vpc_env(browser_context, ops_page, config, ssh_host):
+    """创建 VPN 通道连接 VPC 生效性验证所需的全套前置资源（function scope）。
 
     创建顺序：
     1. VPC1 (vpn_vpc1, 176.176.9.0/24) + VM1 (vpn_vm1)
@@ -145,13 +145,11 @@ def vpn_tunnel_vpc_env(browser_context, config, ssh_host):
     """
     from sugon_web.pages.compute import EcsPage
     from sugon_web.pages.network import VpnPage, VpcPage
-    from sugon_web.pages.ops import OpsPage
 
     page = _create_logged_in_page(browser_context, config)
     vpn_page = VpnPage(page)
     vpc_page = VpcPage(page)
     ecs_page = EcsPage(page)
-    ops_page = OpsPage(page)
 
     # 资源命名 - 使用 vpn_ 前缀
     vpc1_name = f"vpn_{random_data(length=4)}"
