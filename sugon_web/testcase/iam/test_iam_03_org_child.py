@@ -1,3 +1,4 @@
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 
@@ -5,6 +6,7 @@ from sugon_web.utils.logger import allure_step_log, logger
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-组织结构树')
 @allure.story('创建子组织/修改子组织')
+@pytest.mark.requires_admin
 class TestIamOrgChild:
 
     @allure.title("IAM-组织管理-创建子组织")

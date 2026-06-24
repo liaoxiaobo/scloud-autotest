@@ -1,3 +1,4 @@
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.testcase.iam._iam_helpers import verify_login, restore_admin_login
@@ -6,6 +7,7 @@ from sugon_web.testcase.iam._iam_helpers import verify_login, restore_admin_logi
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('创建普通用户')
+@pytest.mark.requires_admin
 class TestIamUserCreate:
 
     @allure.title("IAM-用户管理-创建普通用户")

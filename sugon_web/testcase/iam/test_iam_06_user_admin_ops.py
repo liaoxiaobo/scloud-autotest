@@ -1,3 +1,4 @@
+import pytest
 from datetime import date, timedelta
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
@@ -9,6 +10,7 @@ from sugon_web.testcase.iam._iam_helpers import verify_login
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('用户管理-基础操作')
+@pytest.mark.requires_admin
 class TestIamUserBasicOps:
 
     # === 3436 ===

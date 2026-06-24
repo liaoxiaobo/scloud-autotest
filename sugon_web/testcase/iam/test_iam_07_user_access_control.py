@@ -32,6 +32,7 @@ pytestmark = pytest.mark.usefixtures("acl_cleanup")
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('访问控制-IP')
+@pytest.mark.requires_admin
 class TestAclIP:
     @allure.title("IAM-用户管理-访问控制-IP禁止登录")
     def test_ip_deny(self, iam_page, iam_shared_user, iam_shared_child_org):
@@ -61,6 +62,7 @@ class TestAclIP:
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('访问控制-日期')
+@pytest.mark.requires_admin
 class TestAclDate:
     @allure.title("IAM-用户管理-访问控制-当前日期范围内登录")
     def test_date_range(self, iam_page, iam_shared_user, iam_shared_child_org):
@@ -121,6 +123,7 @@ class TestAclDate:
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('访问控制-时间')
+@pytest.mark.requires_admin
 class TestAclTime:
     @allure.title("IAM-用户管理-访问控制-当前时间允许登录")
     def test_time_match(self, iam_page, iam_shared_user, iam_shared_child_org):
@@ -164,6 +167,7 @@ class TestAclTime:
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-用户管理')
 @allure.story('访问控制-组合')
+@pytest.mark.requires_admin
 class TestAclCombined:
     @allure.title("IAM-用户管理-访问控制-组合非本地IP+时间+当天")
     def test_combined_deny_ip(self, iam_page, iam_shared_user, iam_shared_child_org):
