@@ -2,10 +2,9 @@ import random
 import time
 import pytest
 import allure
-from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.config.config import Config
 from sugon_web.testcase.backup._backup_helpers import _execute_full_backup_and_collect_data
-from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data
 
@@ -279,11 +278,7 @@ class TestResumeCreate:
             assert row_data.get("架构") == backup_task.get("source_arch"), "架构与原始虚机不一致"
 
             # 获取新虚机的 IP 并建立 SSH 连接
-            re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
-            new_mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, re_meta["port_id"],
-                project_id=re_meta.get("project_id", "admin-inner-project"),
-            )
+            new_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, re_vm)
             mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
             login_pwd = mgmt_config.get("登录密码", "admin1234@sugon")
             ssh_vm.connect(new_mfip, pwd=login_pwd)
@@ -425,11 +420,7 @@ class TestResumeCreate:
                 assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
                 assert row_data.get("架构") == original_arch, "架构与原始虚机不一致"
 
-                re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
-                new_mfip = MfipHelper.bind_mfip_with_admin_context(
-                    browser, config, re_meta["port_id"],
-                    project_id=re_meta.get("project_id", "admin-inner-project"),
-                )
+                new_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, re_vm)
                 mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
                 login_pwd = mgmt_config.get("登录密码", "sugon@20")
                 ssh_vm.connect(new_mfip, pwd=login_pwd)

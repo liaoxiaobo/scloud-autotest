@@ -1,7 +1,6 @@
 import allure
 import pytest
-from sugon_web.common.mfip_helper import MfipHelper
-from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_stor
@@ -44,11 +43,7 @@ class TestECSCreate:
             assert ecs_page.get_row_data(name).get("镜像名称") == snapshot_name, "镜像名称快照不一致"
 
             # 登录虚机验证
-            vm_meta = collect_vm_metadata(ecs_page, ssh_host, name)
-            mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, vm_meta["port_id"],
-                project_id=vm_meta.get("project_id", "admin-inner-project"),
-            )
+            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, name)
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
@@ -152,11 +147,7 @@ class TestECSCreate:
 
         with allure_step_log("步骤3: 验证云服务器创建成功"):
             ecs_page.assert_status(vm_name)
-            vm_meta = collect_vm_metadata(ecs_page, ssh_host, vm_name)
-            mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, vm_meta["port_id"],
-                project_id=vm_meta.get("project_id", "admin-inner-project"),
-            )
+            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm_name)
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(vm_name, ssh_vm)
 

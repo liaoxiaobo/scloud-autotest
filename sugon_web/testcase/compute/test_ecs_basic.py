@@ -2,9 +2,8 @@ import re
 import time
 import pytest
 import allure
-from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.config.config import Config
-from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data, retry_check
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than, skip_arch
@@ -176,11 +175,7 @@ class TestECSBasic:
             ecs_page.assert_image_name(clone_name, image_name)
 
             # 克隆后的虚机绑定mfip，验证md5值
-            clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
-            mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, clone_meta["port_id"],
-                project_id=clone_meta.get("project_id", "admin-inner-project"),
-            )
+            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, clone_name)
             ssh_vm.connect(mfip)
             md5_new = ssh_vm.run(f"md5sum /home/{name}")
             assert md5 in md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
@@ -455,11 +450,7 @@ class TestECSBasic:
             ecs_page.assert_status(image_vm)
 
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
-            image_meta = collect_vm_metadata(ecs_page, ssh_host, image_vm)
-            mfip_new = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, image_meta["port_id"],
-                project_id=image_meta.get("project_id", "admin-inner-project"),
-            )
+            mfip_new = bind_vm_mfip(ecs_page, ssh_host, browser, config, image_vm)
             ssh_vm.connect(mfip_new)
             assert md5 in ssh_vm.run(f"md5sum {name}"), f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
 

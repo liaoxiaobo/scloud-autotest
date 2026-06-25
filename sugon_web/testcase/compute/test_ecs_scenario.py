@@ -1,7 +1,6 @@
 import pytest
 import allure
-from sugon_web.common.mfip_helper import MfipHelper
-from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
@@ -53,11 +52,7 @@ class TestECSScenario:
             clone_disk = ecs_page.get_row_data(clone_name).get("挂载云硬盘")
 
             # 克隆后的虚机绑定mfip，验证md5值
-            clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
-            mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, clone_meta["port_id"],
-                project_id=clone_meta.get("project_id", "admin-inner-project"),
-            )
+            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, clone_name)
             ssh_vm.connect(mfip)
 
             # 克隆的虚机重新mount数据盘，验证md5值
@@ -148,11 +143,7 @@ class TestECSScenario:
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
             # ecs_page.goto_service('弹性云服务器')
             ecs_page.goto_submenu('弹性云服务器')
-            new_meta = collect_vm_metadata(ecs_page, ssh_host, new_vm)
-            new_vm_mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, new_meta["port_id"],
-                project_id=new_meta.get("project_id", "admin-inner-project"),
-            )
+            new_vm_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, new_vm)
             ssh_vm.connect(new_vm_mfip)
 
             # 快照新建的虚机重新mount数据盘，验证md5值
