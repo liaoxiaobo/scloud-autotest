@@ -1,6 +1,19 @@
-"""浏览器认证相关工具函数。
+"""
+【职责】为 page 创建或恢复登录态，提供独立的浏览器登录能力。
 
-独立于 pytest fixture 体系，可被 conftest、page objects 或 helpers 直接导入。
+【层级】Utils 层；被 conftest.py 的 `_create_logged_in_page` 与 `MfipHelper` 调用。
+
+【接口】
+- prepare_page_session(page, config, username=None, password=None)：导航到 base_url 并在未登录时完成登录。
+- login(page, username, password, max_retries=3)：在登录页执行用户名密码登录并自动重试。
+
+【示例】
+from sugon_web.common.auth import prepare_page_session
+
+page = browser_context.new_page()
+prepare_page_session(page, config)
+
+【前置依赖】page 需为未导航或处于登录页的 Playwright Page；config 需包含 base_url、username、password。
 """
 
 import re

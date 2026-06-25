@@ -1,3 +1,28 @@
+"""
+【职责】提供页面加载就绪、操作完成、资源中间态完成等等待策略，以及顶部/右下角弹窗定位。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- wait_for_page_ready()：等待 DOM、资源、Element UI loading 遮罩消失。
+- wait_for_operation_complete(timeout=60)：等待 loading 图标/按钮 loading 状态消失。
+- wait_for_source_complete(name, loading_timeout=10, complete_timeout=180)：等待资源行中间态图标出现并消失。
+- popup -> Locator：页面顶部弹窗（.el-message__content）。
+- alert -> Locator：页面右下角弹窗。
+
+【注意】wait_for_page_ready / wait_for_operation_complete 在 Playwright 类中有同名实现，
+BasePage 的 MRO 中 Playwright 优先，页面对象实际调用的是 Playwright 版本
+（wait_for_operation_complete 默认 timeout=30）。本 Mixin 的同名方法仅在未继承 Playwright 时生效。
+
+【示例】
+class MyPage(BasePage):
+    def create_and_wait(self, name):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.btn_submit.click()
+        self.wait_for_operation_complete(timeout=120)
+"""
+
 import time
 
 from playwright.sync_api import expect
