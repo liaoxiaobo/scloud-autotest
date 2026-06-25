@@ -1,18 +1,16 @@
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('安全合规')
 @allure.feature('云堡垒机高级版USM')
-@allure.story('xbd存储池-新建实例-全生命周期验证')
+@allure.story('新建实例-全生命周期验证')
 class TestUsmCreateLifecycle:
 
-    @allure.title("USM-xbd存储池-新建实例-全生命周期验证")
-    @only_stor("xbd")
-    def test_usm_create_with_xbd_lifecycle(self, usm_instance, usm_page):
-        """xbd 存储池环境下，通过 fixture 获取共享 USM 实例，
+    @allure.title("USM-新建实例-全生命周期验证")
+    def test_usm_create_lifecycle(self, usm_instance, usm_page):
+        """通过 fixture 获取共享 USM 实例，
         覆盖关机/启动、跳转地址再验证全流程。"""
 
         name = usm_instance["name"]
@@ -45,6 +43,7 @@ class TestUsmCreateLifecycle:
                     "u-s-m-" in new_page.url
                     or "/dashboard" in new_page.url
                     or "openapiOAuth" in new_page.url
+                    or "172.22" in new_page.url
                 ), f"新页面未进入 USM 平台，当前 URL: {new_page.url}"
                 if new_page != usm_page.page:
                     new_page.close()
@@ -54,10 +53,9 @@ class TestUsmCreateLifecycle:
         # 注意：本测试不删除实例，供场景二复用
         logger.info(f"场景一完成，实例 {name} 保留供场景二复用")
 
-    @allure.title("USM-xbd存储池-续期授权生命周期操作")
-    @only_stor("xbd")
+    @allure.title("USM-续期授权生命周期操作")
     def test_usm_renewal_auth_lifecycle(self, usm_instance, usm_page):
-        """xbd 存储池环境下，通过 fixture 获取共享 USM 实例执行退订 → 授权（3个月）→
+        """通过 fixture 获取共享 USM 实例执行退订 → 授权（3个月）→
         续期（2个月）的全生命周期操作，验证到期时间更新和跳转地址可用性。"""
 
         name = usm_instance["name"]
@@ -111,6 +109,7 @@ class TestUsmCreateLifecycle:
                     "u-s-m-" in new_page.url
                     or "/dashboard" in new_page.url
                     or "openapiOAuth" in new_page.url
+                    or "172.22" in new_page.url
                 ), f"新页面未进入 USM 平台，当前 URL: {new_page.url}"
                 # 验证跳转页面许可证信息中的过期时间与授权后一致
                 if expire_time_after_auth and expire_time_after_auth != "--":

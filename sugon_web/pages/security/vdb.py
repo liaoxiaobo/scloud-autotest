@@ -3,6 +3,7 @@ import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
 from sugon_web.assertions.security import VdbAssertionMixin
+from sugon_web.pages.security.utils import get_security_volume_type
 from sugon_web.utils.logger import logger
 
 
@@ -36,6 +37,15 @@ class VdbPage(VdbAssertionMixin, BasePage):
                 self.page.goto(target_url)
                 self.wait_for_page_ready()
                 continue
+            # 若被重定向到登录页，自动重新登录后重新导航
+            if "/login" in self.page.url:
+                logger.warning(f"VDB 列表页被重定向到登录页，尝试重新登录 (第{attempt}次)")
+                from sugon_web.common.auth import prepare_page_session
+                from sugon_web.config.config import Config
+                prepare_page_session(self.page, Config)
+                self.page.goto(target_url)
+                self.wait_for_page_ready()
+                continue
             loading_mask = self.page.locator(".el-loading-mask:visible, .el-loading-spinner:visible").first
             if loading_mask.count() > 0:
                 logger.info(f"VDB 列表页数据加载中，继续等待 (第{attempt}次)...")
@@ -58,7 +68,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
         """VDB 创建表单：名称输入框"""
         return self.locator(".el-form-item").filter(
             has_text=re.compile(r"^名称")
-        ).get_by_role("textbox")
+        ).locator("input.el-input__inner").first
 
     @property
     def _btn_submit(self):
@@ -219,7 +229,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
         cluster: str = "Autotest",
         base_name: str = None,
         network: str = None,
-        volume_type: str = "xbd-type",
+        volume_type: str = None,
         cpu: str = "4核",
         memory: str = "8GiB",
     ):
@@ -233,7 +243,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
             cluster: 集群名称，默认 Autotest
             base_name: 安全底座名称（None 表示选择第一个可用的）
             network: 专有网络名称（None 表示选择第一个可用的）
-            volume_type: 云硬盘类型，默认 xbd-type
+            volume_type: 云硬盘类型（None 表示根据 Config.stor 自动推断）
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
@@ -250,10 +260,16 @@ class VdbPage(VdbAssertionMixin, BasePage):
             pass
         logger.info("VDB 创建页面加载成功")
 
+        # 等待表单区域渲染（部分环境表单元素异步出现）
+        try:
+            self.locator(".el-form-item").first.wait_for(state="visible", timeout=30000)
+        except Exception:
+            pass
+
         # 名称输入框：等待可见并填充，多次重试
         for fill_attempt in range(3):
             try:
-                self._input_name.wait_for(state="visible", timeout=10000)
+                self._input_name.wait_for(state="visible", timeout=30000)
                 self._input_name.fill(name, timeout=30000)
                 break
             except Exception as e:
@@ -295,12 +311,15 @@ class VdbPage(VdbAssertionMixin, BasePage):
         except Exception as e:
             logger.warning(f"VDB 创建：子网选择失败: {e}")
 
-        if volume_type:
+        vol_type = volume_type or get_security_volume_type()
+        if vol_type:
             try:
-                self._select_form_item("云硬盘类型", volume_type)
+                self._select_form_item("云硬盘类型", vol_type)
             except Exception:
-                logger.warning(f"VDB 创建：未找到云硬盘类型 {volume_type}，选择第一个可用选项")
+                logger.warning(f"VDB 创建：未找到云硬盘类型 {vol_type}，选择第一个可用选项")
                 self._select_form_item_first("云硬盘类型")
+        else:
+            self._select_form_item_first("云硬盘类型")
 
         self._select_flavor(cpu=cpu, memory=memory)
 

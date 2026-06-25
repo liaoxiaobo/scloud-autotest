@@ -1,16 +1,15 @@
 import re
 import allure
+from sugon_web.testcase.security._security_helpers import wait_backend_volume_size
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('安全合规')
 @allure.feature('云堡垒机高级版USM')
-@allure.story('xbd存储池-云硬盘扩容基本功能验证')
+@allure.story('云硬盘扩容基本功能验证')
 class TestUsmVolumeExpansion:
 
-    @allure.title("USM-xbd存储池-云硬盘扩容验证")
-    @only_stor("xbd")
+    @allure.title("USM-云硬盘扩容验证")
     def test_usm_volume_expansion(self, usm_instance, usm_page, ssh_host):
         """通过 fixture 获取共享 USM 实例，执行云硬盘从 300GiB 扩容到 350GiB，
         通过 SSH 后端验证扩容结果。"""
@@ -32,21 +31,16 @@ class TestUsmVolumeExpansion:
             logger.info(f"USM 实例 {name} server_id: {server_id}")
 
         with allure_step_log("步骤4: SSH 连接环境后台，验证云硬盘扩容结果"):
-            # scli guest show 获取云堡垒机信息
+            # 轮询等待后端磁盘大小达到 350GiB（UI 可能比后端先更新）
+            actual_size = wait_backend_volume_size(
+                ssh_host, server_id, expected_size=350, timeout=300
+            )
+            logger.info(f"云硬盘扩容 SSH 后端验证通过: {actual_size}GiB")
+
+            # 重新读取 scli guest show 输出以提取 volume_uuid
             cmd = f"scli guest show {server_id}"
             output = ssh_host.run(cmd, check_rc=True)
             logger.info(f"SSH 执行 {cmd} 输出:\n{output}")
-
-            # 从 volume JSON 字段中直接解析 size
-            size_match = re.search(r'"size"\s*:\s*(\d+)', output)
-            assert size_match is not None, \
-                f"scli guest show 输出中未找到 volume size, 输出前500字符: {output[:500]}"
-            actual_size = int(size_match.group(1))
-            logger.info(f"scli guest show 解析结果: size={actual_size}GiB")
-
-            assert actual_size == 350, \
-                f"云硬盘大小不匹配: scli返回={actual_size}GiB, 期望=350GiB"
-            logger.info("云硬盘扩容 SSH 后端验证通过: 350GiB")
 
             # 从 volume JSON 字段中提取 volume_uuid
             vol_json_match = re.search(
