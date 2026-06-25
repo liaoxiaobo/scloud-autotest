@@ -98,6 +98,7 @@ class TestCCEStorageClassAndVolume:
                 name=pvc_name,
                 capacity=5,
                 storage_class=sc_name,
+                cluster=cluster_name,
                 access_mode="ReadWriteOnce"
             )
             cce_page.assert_popup_success()
@@ -149,6 +150,7 @@ class TestCCEStorageClassAndVolume:
                 name=pvc_name,
                 capacity=5,
                 storage_class=sc_name,
+                cluster=cluster_name,
                 access_mode="ReadWriteOnce"
             )
             cce_page.assert_popup_success()
@@ -185,6 +187,7 @@ class TestCCEStorageClassAndVolume:
                 name=pvc_name,
                 capacity=5,
                 storage_class=sc_name,
+                cluster=cluster_name,
                 access_mode="ReadWriteOnce"
             )
             cce_page.assert_popup_success()
@@ -276,6 +279,7 @@ class TestCCEStorageClassAndVolume:
                 name=pvc_name,
                 capacity=5,
                 storage_class=sc_name,
+                cluster=cluster_name,
                 access_mode="ReadWriteOnce"
             )
             cce_page.assert_popup_success()
