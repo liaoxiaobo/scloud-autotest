@@ -2,7 +2,6 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
-from sugon_web.testcase.storage._sfs_helpers import find_normal_sfs_instance_by_protocol
 
 
 @allure.epic('存储服务')
@@ -12,17 +11,16 @@ class TestSFSAccessGroupCreateDelete:
     """验证文件存储 SFS 实例详情页权限组的新建和删除功能。
 
     场景1：新建权限组（用例 5694）
-    场景2：删除权限组（用例 5695），依赖场景1新建的权限组
+    场景2：删除权限组（用例 5695）
+
+    每个测试方法独立创建/清理 NFS SFS 实例，避免依赖环境预置实例。
     """
 
     @allure.title("文件存储-权限组新建")
-    def test_sfs_access_group_create(self, sfs_page):
+    def test_sfs_access_group_create(self, sfs_page, sfs_instance):
         """在 SFS 实例详情页权限组 Tab 中新建权限组并验证。"""
-        instance_name = find_normal_sfs_instance_by_protocol(sfs_page, "nfs")
-        assert instance_name is not None, (
-            "[Environment] 未找到状态正常的 NFS 协议 SFS 实例，请检查环境"
-        )
-        logger.info(f"使用已存在的 SFS 实例: {instance_name}")
+        instance_name = sfs_instance["name"]
+        logger.info(f"使用本用例创建的 SFS 实例: {instance_name}")
 
         ag_name = f"ag-{random_data()}"
         ag_desc = f"测试权限组_desc_{random_data()}!@#"
@@ -54,16 +52,13 @@ class TestSFSAccessGroupCreateDelete:
         pytest.instance_marker = ag_name
 
     @allure.title("文件存储-权限组删除")
-    def test_sfs_access_group_delete(self, sfs_page):
+    def test_sfs_access_group_delete(self, sfs_page, sfs_instance):
         """在 SFS 实例详情页权限组 Tab 中删除权限组并验证。
 
         包括：单个删除、批量删除、验证不可删除场景（默认权限组、挂载点>0）。
         """
-        instance_name = find_normal_sfs_instance_by_protocol(sfs_page, "nfs")
-        assert instance_name is not None, (
-            "[Environment] 未找到状态正常的 NFS 协议 SFS 实例，请检查环境"
-        )
-        logger.info(f"使用已存在的 SFS 实例: {instance_name}")
+        instance_name = sfs_instance["name"]
+        logger.info(f"使用本用例创建的 SFS 实例: {instance_name}")
 
         ag_name_create = f"ag-del-{random_data()}"
         ag_name_batch1 = f"ag-batch1-{random_data()}"
