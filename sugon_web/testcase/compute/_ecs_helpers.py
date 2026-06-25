@@ -94,3 +94,18 @@ def bind_vm_mfip(
         browser, config, meta["port_id"],
         project_id=meta.get("project_id", "admin-inner-project"),
     )
+
+
+def delete_ecs(ecs_page: Any, name: str) -> None:
+    """尽力删除指定云服务器（移入回收站后彻底删除），供 cleanup 兜底清理使用。
+
+    不做删除断言，失败由调用方（``cleanup`` fixture）捕获记录，避免
+    teardown 阶段因清理报错掩盖用例本身的结果。
+
+    Args:
+        ecs_page: ECS 页面对象。
+        name: 待删除的云服务器名称。
+    """
+    ecs_page.goto_service("弹性云服务器")
+    ecs_page.ecs_remove(name)
+    ecs_page.ecs_delete(name)
