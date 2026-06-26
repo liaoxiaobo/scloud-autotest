@@ -7,14 +7,14 @@ from sugon_web.utils.data import random_data
 
 @allure.epic('容器服务')
 @allure.feature('服务治理SSM')
-@allure.story('网格实例生命周期验证')
+@allure.story('网格实例-列表页')
 class TestSsmMeshInstanceLifecycle:
     """网格实例生命周期测试类：创建、批量删除。
 
     每个用例独立创建/删除网格实例，确保一个 CCE 集群上同一时刻最多只有一个 mesh。
     """
 
-    @allure.title("网格实例-创建时不启用可观测功能")
+    @allure.title("网格实例-创建（不启用可观测）")
     def test_mesh_create_without_observability(self, ssm_page, cce_cluster, ssh_host, ssh_vm):
         """创建不启用可观测功能的网格实例，验证列表字段及后端 istio 组件。"""
         name = f"mesh-{random_data(length=4)}"
@@ -101,14 +101,14 @@ class TestSsmMeshInstanceLifecycle:
 
 @allure.epic('容器服务')
 @allure.feature('服务治理SSM')
-@allure.story('网格实例基础功能验证')
+@allure.story('网格实例-列表页')
 class TestSsmMeshInstanceManagement:
     """网格实例管理功能测试类：搜索、修改、检测。
 
     复用 class 级 mesh_instance fixture 创建的单个网格实例。
     """
 
-    @allure.title("网格实例-列表页搜索")
+    @allure.title("网格实例-搜索")
     def test_mesh_search(self, ssm_page, mesh_instance):
         """验证按网格实例名称搜索功能。"""
         name = mesh_instance["name"]
