@@ -19,7 +19,6 @@ import pytest
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage
-from sugon_web.pages.ops import OpsPage
 from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
 from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
 from sugon_web.testcase.compute.vm_fixture.mfip_binder import _bind_vm_fixture_mfips
@@ -49,7 +48,7 @@ class PeerConnectCleanupRegistry:
 
 
 @pytest.fixture(scope="class")
-def lb_peer_vms(browser_context, config, vpc, request):
+def lb_peer_vms(browser_context, config, vpc, ssh_host, request):
     """为跨 VPC 负载均衡场景在两个 VPC 下各创建 2 台虚机。
 
     依赖 `vpc` fixture 返回长度为 2 的列表，分别作为 vpc1、vpc2。
@@ -68,7 +67,6 @@ def lb_peer_vms(browser_context, config, vpc, request):
 
     page = _create_logged_in_page(browser_context, config)
     ecs_page = EcsPage(page)
-    ops_page = OpsPage(page)
 
     all_vm_names: list[str] = []
     grouped: dict[str, list[dict]] = {"vpc1": [], "vpc2": []}
@@ -95,9 +93,9 @@ def lb_peer_vms(browser_context, config, vpc, request):
                 _create_vm_resources(ecs_page, create_request, vm_names)
 
             metadata_list = _collect_vm_fixture_metadata(
-                ecs_page, vm_names, vpc_info["name"], vpc_info["subnet_name"]
+                ecs_page, vm_names, vpc_info["name"], vpc_info["subnet_name"], ssh_host
             )
-            _bind_vm_fixture_mfips(ecs_page, ops_page, metadata_list, vpc_info["name"])
+            _bind_vm_fixture_mfips(page, config, metadata_list)
 
             grouped[group_key].extend(metadata_list)
             all_vm_names.extend(vm_names)

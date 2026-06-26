@@ -448,6 +448,9 @@ class TablesMixin:
     def select_rows_by_names(self, names: list[str]) -> None:
         """公共方法: 根据名称列表勾选表格行
 
+        兼容 Element UI 表格：行可能没有可访问名称(role=row[name])，
+        因此通过 get_row_by_name 定位行，再点击行内复选框的 label。
+
         Args:
             names: 资源名称列表
         """
@@ -455,9 +458,16 @@ class TablesMixin:
         self._expand_page_size()
 
         for name in names:
-            loc = self.get_by_role("row", name=name).locator("label span").last
-            if not loc.is_checked():
-                loc.click()
+            row = self.get_row_by_name(name)
+            row.scroll_into_view_if_needed()
+            # Element UI 复选框：原生 input 隐藏，点击 label 触发选中
+            checkbox_label = row.locator(".el-checkbox").first
+            checkbox_input = row.locator(".el-checkbox__original").first
+            if checkbox_input.count() > 0 and not checkbox_input.is_checked():
+                if checkbox_label.count() > 0:
+                    checkbox_label.click(force=True)
+                else:
+                    checkbox_input.check(force=True)
                 self.logger.info(f"勾选资源 '{name}'")
 
     def get_row_data_by_locator(self, loc: Locator) -> TableRowData:

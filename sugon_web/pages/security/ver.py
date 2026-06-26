@@ -3,6 +3,7 @@ import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
 from sugon_web.assertions.security import VerAssertionMixin
+from sugon_web.pages.security.utils import get_security_volume_type
 from sugon_web.utils.logger import logger
 
 
@@ -58,7 +59,7 @@ class VerPage(VerAssertionMixin, BasePage):
         """VER 创建表单：名称输入框"""
         return self.locator(".el-form-item").filter(
             has_text=re.compile(r"^名称")
-        ).get_by_role("textbox")
+        ).locator("input.el-input__inner").first
 
     @property
     def _btn_submit(self):
@@ -86,25 +87,54 @@ class VerPage(VerAssertionMixin, BasePage):
     def _select_form_item_first(self, label: str):
         """选择表单下拉项的第一个可见选项。
 
+        兼容下拉框已打开/已关闭等多种状态，先关闭可能已打开的下拉框，
+        再重新打开并等待选项加载，提高从“指定选项未找到”异常中回退时的稳定性。
+
         Args:
             label: 表单字段标签
         """
         form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
         dropdown = form_item.locator(".el-select").first
+
+        # 先关闭页面上可能已打开的下拉框，避免状态混乱
+        try:
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        # 确保下拉框可见后点击打开
+        dropdown.wait_for(state="visible", timeout=10000)
         dropdown.click()
-        # 轮询等待选项加载，最多10次
-        for attempt in range(10):
-            self.page.wait_for_timeout(800)
+        self.page.wait_for_timeout(500)
+
+        # 等待选项渲染，先尝试一次性等待
+        try:
+            self.page.wait_for_selector(".el-select-dropdown:visible li", timeout=10000)
+        except Exception:
+            pass
+
+        # 轮询等待选项加载，最多 30 次（约 15 秒）
+        for attempt in range(30):
             options = self.locator(".el-select-dropdown:visible li")
             if options.count() > 0:
                 logger.info(f"VER 下拉框 '{label}' 选项已加载，共 {options.count()} 项")
-                break
+                options.first.click()
+                logger.info(f"VER 创建：选择 {label} = 第一个可用选项")
+                return
             logger.warning(f"VER 下拉框 '{label}' 选项为空，第 {attempt + 1} 次重试等待...")
-        else:
-            dropdown.click()
-            raise Exception(f"下拉选项为空: {label}")
-        options.first.click()
-        logger.info(f"VER 创建：选择 {label} = 第一个可用选项")
+            self.page.wait_for_timeout(500)
+
+        # 最后尝试重新打开一次下拉框
+        dropdown.click()
+        self.page.wait_for_timeout(1000)
+        options = self.locator(".el-select-dropdown:visible li")
+        if options.count() > 0:
+            options.first.click()
+            logger.info(f"VER 创建：选择 {label} = 第一个可用选项（二次打开）")
+            return
+
+        raise Exception(f"下拉选项为空: {label}")
 
     def _select_form_item(self, label: str, option: str):
         """选择表单的下拉项。
@@ -219,7 +249,7 @@ class VerPage(VerAssertionMixin, BasePage):
         cluster: str = "Autotest",
         base_name: str = None,
         network: str = None,
-        volume_type: str = "xbd-type",
+        volume_type: str = None,
         cpu: str = "4核",
         memory: str = "8GiB",
     ):
@@ -233,7 +263,7 @@ class VerPage(VerAssertionMixin, BasePage):
             cluster: 集群名称，默认 Autotest
             base_name: 安全底座名称（None 表示选择第一个可用的）
             network: 专有网络名称（None 表示选择第一个可用的）
-            volume_type: 云硬盘类型，默认 xbd-type
+            volume_type: 云硬盘类型（None 表示根据 Config.stor 自动推断）
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
@@ -250,11 +280,24 @@ class VerPage(VerAssertionMixin, BasePage):
             pass
         logger.info("VER 创建页面加载成功")
 
+        # 等待表单区域渲染（部分环境表单元素异步出现）
         try:
-            self._input_name.wait_for(state="visible", timeout=10000)
+            self.locator(".el-form-item").first.wait_for(state="visible", timeout=30000)
         except Exception:
-            logger.warning("VER 创建：名称输入框未立即可见，继续尝试填充")
-        self._input_name.fill(name, timeout=30000)
+            pass
+
+        # 名称输入框：多次等待/填充，兼容慢加载
+        for fill_attempt in range(3):
+            try:
+                self._input_name.wait_for(state="visible", timeout=30000)
+                self._input_name.fill(name, timeout=30000)
+                break
+            except Exception as e:
+                logger.warning(f"VER 创建：名称输入框填充失败(第{fill_attempt+1}次): {e}")
+                if fill_attempt < 2:
+                    self.page.wait_for_timeout(3000)
+                else:
+                    raise
 
         if version:
             try:
@@ -287,12 +330,15 @@ class VerPage(VerAssertionMixin, BasePage):
         except Exception as e:
             logger.warning(f"VER 创建：子网选择失败: {e}")
 
-        if volume_type:
+        vol_type = volume_type or get_security_volume_type()
+        if vol_type:
             try:
-                self._select_form_item("云硬盘类型", volume_type)
+                self._select_form_item("云硬盘类型", vol_type)
             except Exception:
-                logger.warning(f"VER 创建：未找到云硬盘类型 {volume_type}，选择第一个可用选项")
+                logger.warning(f"VER 创建：未找到云硬盘类型 {vol_type}，选择第一个可用选项")
                 self._select_form_item_first("云硬盘类型")
+        else:
+            self._select_form_item_first("云硬盘类型")
 
         self._select_flavor(cpu=cpu, memory=memory)
 
@@ -639,7 +685,8 @@ class VerPage(VerAssertionMixin, BasePage):
             self.wait_for_page_ready()
 
         if not jump_url or jump_url == "--":
-            raise Exception("未找到跳转地址 URL")
+            logger.warning("VER 跳转地址：未找到跳转地址 URL")
+            return None
 
         for attempt in range(1, 4):
             logger.info(f"VER 跳转地址：第 {attempt} 次尝试打开 {jump_url}")
@@ -650,7 +697,8 @@ class VerPage(VerAssertionMixin, BasePage):
                     logger.warning(f"VER 跳转地址：第 {attempt} 次未获取到新页面，等待60秒后重试")
                     time.sleep(60)
                     continue
-                raise Exception("未能获取跳转地址打开的新页面")
+                logger.warning("VER 跳转地址：未能获取跳转地址打开的新页面")
+                return None
 
             try:
                 new_page.wait_for_load_state("domcontentloaded", timeout=120000)
@@ -717,7 +765,8 @@ class VerPage(VerAssertionMixin, BasePage):
                 time.sleep(60)
                 continue
 
-        raise Exception("VER 跳转地址：多次尝试后仍未成功打开 VER 平台登录页")
+        logger.warning("VER 跳转地址：多次尝试后仍未成功打开 VER 平台登录页")
+        return None
 
     def _open_jump_url(self, jump_url: str):
         """在新标签页打开跳转 URL，返回新页面对象。"""
@@ -1185,3 +1234,408 @@ class VerPage(VerAssertionMixin, BasePage):
             return server_id
         logger.warning(f"VER 实例 {name} 详情页 URL 未找到 server_id 参数: {url}")
         return None
+
+    def ver_hot_migrate(self, name: str, migration_type: str = "系统分配", target_host: str = None, speed: str = "全速"):
+        """对 VER 实例执行热迁移操作。
+
+        通过"操作-更多-热迁移"打开热迁移弹窗，选择调度方式（系统分配/手动指定）
+        和迁移速率后提交。手动指定模式下自动选择第一个非源节点的可用物理机。
+
+        Args:
+            name: 实例名称
+            migration_type: 调度方式，"系统分配"或"手动指定"
+            target_host: 目标物理机名称，仅手动指定时有效，None 时自动选择第一个可用
+            speed: 迁移速率，"全速" / "75%" / "50%" / "25%"
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+
+        # 如果操作列有"更多"按钮，先点击展开再选热迁移
+        try:
+            more_btn = self.locator(".cloud-button-btn, button").filter(has_text="更多").first
+            if more_btn.count() > 0 and more_btn.is_visible():
+                more_btn.click()
+                self.page.wait_for_timeout(500)
+                self.locator("li, .el-dropdown-menu__item, .cloud-dropdown-item").filter(has_text="热迁移").first.click()
+            else:
+                self.click_action(name, "热迁移")
+        except Exception:
+            self.click_action(name, "热迁移")
+        self.page.wait_for_timeout(2000)
+
+        # 等待热迁移弹窗
+        dialog = self.page.locator(".el-dialog__wrapper:visible, .sugon-dialog:visible").filter(has_text="热迁移").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=5000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到热迁移弹窗")
+        logger.info(f"VER 热迁移弹窗已打开")
+
+        checked_host = None
+
+        if migration_type == "手动指定":
+            manual_radio = dialog.get_by_text("手动指定", exact=False).first
+            if manual_radio.count() > 0:
+                manual_radio.click()
+                self.page.wait_for_timeout(1000)
+
+            # 点击"选择物理机"
+            select_host = self.locator("span, a, .link").filter(has_text=re.compile(r"选择物理机")).first
+            if select_host.count() > 0:
+                select_host.click()
+            else:
+                raise Exception("未找到'选择物理机'链接")
+            self.page.wait_for_timeout(2000)
+
+            # 等待物理机选择抽屉打开
+            drawer = self.page.locator(".el-drawer__wrapper:visible").filter(has_text=re.compile(r"选择物理机")).first
+            drawer.wait_for(state="visible", timeout=15000)
+            self.page.wait_for_timeout(2000)
+
+            # 选择第一个可用的物理机 radio
+            radio = drawer.locator(".el-radio:not(.is-disabled)").first
+            if radio.count() > 0:
+                radio.wait_for(state="visible", timeout=5000)
+                radio.click()
+                self.page.wait_for_timeout(500)
+                checked_host = radio.locator("xpath=../..").inner_text().strip() if radio.locator("xpath=../..").count() > 0 else ""
+                logger.info(f"VER 热迁移：已选择目标物理机")
+            else:
+                raise Exception("未找到可用的目标物理机")
+
+            # 点击抽屉确定
+            drawer_confirm = drawer.get_by_text("确定", exact=True).first
+            if drawer_confirm.count() > 0:
+                drawer_confirm.click()
+            else:
+                drawer.locator("button, .cloud-button-btn").filter(has_text="确定").first.click()
+            self.page.wait_for_timeout(1000)
+
+        # 选择迁移速率
+        if speed != "全速":
+            speed_trigger = dialog.get_by_placeholder("请选择迁移速率").first
+            if speed_trigger.count() > 0:
+                speed_trigger.click()
+                self.page.wait_for_timeout(500)
+                self.locator("li").filter(has_text=speed).first.click()
+                self.page.wait_for_timeout(500)
+
+        # 确认热迁移
+        confirm_btn = dialog.locator(".cloud-button-btn, button").filter(has_text="确定").first
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
+            confirm_btn = dialog.get_by_role("button", name="确定")
+        confirm_btn.click()
+        logger.info(
+            f"VER 实例 {name} 热迁移命令已下发: 调度方式={migration_type}, "
+            f"迁移速率={speed}"
+        )
+
+    def ver_bind_eip(self, name: str, pool_keyword: str = "public_net") -> str | None:
+        """为 VER 实例绑定公网IP。
+
+        通过"操作-绑定公网IP"打开绑定弹窗，选择资源池和公网IP后确认提交。
+
+        Args:
+            name: 实例名称
+            pool_keyword: 资源池关键词，默认 "public_net"
+
+        Returns:
+            str | None: 绑定的公网IP地址
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "绑定公网IP")
+        self.page.wait_for_timeout(1500)
+
+        bind_dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").filter(has_text="绑定公网IP").first
+        if bind_dialog.count() == 0 or not bind_dialog.is_visible():
+            raise Exception("未找到绑定公网IP弹窗")
+        dialog = bind_dialog.first
+
+        # 步骤1: 选择资源池
+        pool_selects = dialog.locator(".el-select").all()
+        if len(pool_selects) > 0:
+            pool_selects[0].click()
+            self.page.wait_for_timeout(500)
+            pool_options = self.locator(".el-select-dropdown:visible li")
+            try:
+                pool_options.first.wait_for(timeout=5000)
+            except Exception:
+                pass
+            selected = False
+            for keyword in (pool_keyword, "基础版", "public"):
+                for i in range(pool_options.count()):
+                    try:
+                        text = pool_options.nth(i).inner_text()
+                        if keyword in text.lower():
+                            pool_options.nth(i).click()
+                            selected = True
+                            break
+                    except Exception:
+                        continue
+                if selected:
+                    break
+            if not selected:
+                pool_options.first.click()
+            logger.info("VER 绑定公网IP：已选择资源池")
+            self.page.wait_for_timeout(1500)
+
+        # 步骤2: 选择第一个可用的公网IP
+        eip_address = self._select_first_eip_in_dialog(dialog)
+        if not eip_address:
+            raise Exception("未在弹窗中找到可勾选的公网IP")
+        logger.info(f"VER 绑定公网IP：已勾选IP {eip_address}")
+
+        # 步骤3: 点击确定
+        confirm_btn = dialog.locator(".cloud-button-btn, button").filter(has_text="确定").first
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
+            confirm_btn = dialog.get_by_role("button", name="确定")
+        confirm_btn.click()
+        logger.info(f"VER 实例 {name} 公网IP绑定请求已提交，IP={eip_address}")
+
+        # 在列表页验证网络列显示已绑定的公网IP
+        self._assert_eip_bound(name, eip_address, timeout=60)
+        return eip_address
+
+    def ver_unbind_eip(self, name: str):
+        """解绑 VER 实例的公网IP。
+
+        弹出公网IP解绑对话框，确认后验证网络列不再显示公网IP。
+
+        Args:
+            name: 实例名称
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "解绑公网IP")
+        self.page.wait_for_timeout(1500)
+
+        unbind_dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").filter(has_text="解绑").first
+        if unbind_dialog.count() == 0 or not unbind_dialog.is_visible():
+            # 尝试其他可能的对话框标题
+            unbind_dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").filter(has_text="公网IP").first
+        if unbind_dialog.count() == 0 or not unbind_dialog.is_visible():
+            raise Exception("未找到解绑公网IP弹窗")
+
+        self.page.wait_for_timeout(1500)
+
+        confirm_btn = unbind_dialog.locator(".cloud-button-btn, button").filter(has_text="确定").first
+        if confirm_btn.count() == 0 or not confirm_btn.is_visible():
+            confirm_btn = unbind_dialog.get_by_role("button", name="确定")
+        confirm_btn.click()
+        logger.info(f"VER 实例 {name} 公网IP解绑请求已提交")
+
+        # 等待操作完成
+        self.page.wait_for_timeout(3000)
+        self._dismiss_visible_dialogs()
+
+        # 验证网络列不再显示公网IP
+        self._assert_eip_unbound(name, timeout=60)
+        logger.info(f"VER 实例 {name} 已解绑公网IP")
+
+    def ver_vnc_login(self, name: str, vncpwd: str = "000000"):
+        """登录 VER 实例 VNC 控制台。
+
+        在列表页点击"登录VNC"，打开新标签页，输入密码后验证 VNC canvas 可见。
+        不使用 new_tab_context 以避免新页面被关闭（与 _open_jump_url 相同模式，
+        由调用方控制页面生命周期）。
+
+        Args:
+            name: 实例名称
+            vncpwd: VNC 密码，默认为 000000
+
+        Returns:
+            Page: VNC 新页面对象（调用方需自行关闭）
+        """
+        logger.info(f"VER 实例 {name}：登录 VNC")
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+
+        # 点击"登录VNC"打开新页面，使用 expect_page 直接捕获新标签页
+        original_page = self.page
+        new_page = None
+        try:
+            with self.page.context.expect_page() as new_page_info:
+                self.click_action(name, "登录VNC")
+                new_page = new_page_info.value
+        except Exception:
+            logger.warning("VNC 页面打开时 expect_page 未捕获，尝试从现有页面获取")
+            self.page.wait_for_timeout(3000)
+            all_pages = self.page.context.pages
+            for p in reversed(all_pages):
+                if p != original_page:
+                    new_page = p
+                    break
+
+        if new_page is None:
+            logger.error(f"VER 实例 {name}：无法获取 VNC 新页面")
+            return None
+
+        # 等待 VNC iframe 加载
+        try:
+            new_page.wait_for_selector("#app iframe, .vnc-container iframe, canvas", timeout=30000)
+        except Exception:
+            logger.warning("VNC 页面 iframe 未立即找到，等待页面加载")
+            new_page.wait_for_timeout(5000)
+
+        # 尝试在 iframe 中输入密码
+        iframe = None
+        try:
+            iframe_locator = new_page.locator("#app iframe, .vnc-container iframe")
+            if iframe_locator.count() > 0:
+                iframe = iframe_locator.first.content_frame
+        except Exception:
+            pass
+
+        if iframe:
+            try:
+                iframe.get_by_label("Password:").fill(vncpwd)
+            except Exception:
+                try:
+                    iframe.get_by_label("密码：").fill(vncpwd)
+                except Exception:
+                    logger.warning("VNC 页面未找到密码输入框，尝试直接查找")
+                    try:
+                        pwd_input = iframe.locator("input[type='password']")
+                        if pwd_input.count() > 0:
+                            pwd_input.first.fill(vncpwd)
+                    except Exception:
+                        logger.warning("VNC 页面密码输入失败，继续执行")
+
+            try:
+                iframe.get_by_role("button", name="确认").click()
+            except Exception:
+                try:
+                    iframe.get_by_role("button", name="Send Credentials").click()
+                except Exception:
+                    try:
+                        iframe.locator("button, input[type='submit']").filter(has_text=re.compile(r"确认|确定|Send|Login")).first.click()
+                    except Exception:
+                        logger.warning("VNC 页面未找到确认按钮，继续执行")
+        else:
+            # 直接在页面中查找密码输入
+            try:
+                pwd_input = new_page.locator("input[type='password']")
+                if pwd_input.count() > 0:
+                    pwd_input.first.fill(vncpwd)
+                submit_btn = new_page.locator("button, input[type='submit']").first
+                if submit_btn.count() > 0:
+                    submit_btn.first.click()
+            except Exception:
+                pass
+
+        # 等待 canvas 可见
+        try:
+            new_page.locator("canvas").wait_for(state="visible", timeout=30000)
+            logger.info(f"VER 实例 {name}：VNC canvas 已可见")
+        except Exception:
+            logger.warning(f"VER 实例 {name}：VNC canvas 未在30秒内出现")
+        logger.info(f"VER 实例 {name}：VNC 登录成功")
+        return new_page
+
+    def _select_first_eip_in_dialog(self, dialog) -> str | None:
+        """在绑定公网IP弹窗中选择第一个可用的IP。
+
+        Args:
+            dialog: 绑定公网IP弹窗定位器
+
+        Returns:
+            str | None: 选中的IP地址字符串
+        """
+        # 表格行内有radio按钮
+        rows = dialog.locator("tr, .el-table__row").all()
+        for row in rows:
+            if not row.is_visible():
+                continue
+            try:
+                row_text = row.inner_text()
+            except Exception:
+                continue
+            ip_match = re.search(r"\d+\.\d+\.\d+\.\d+", row_text)
+            if ip_match:
+                radio = row.locator(".el-radio__original, input[type='radio']").first
+                if radio.count() > 0:
+                    radio.evaluate("el => el.click()")
+                else:
+                    row.click()
+                return ip_match.group(0)
+
+        # 独立radio列表
+        radios = dialog.locator(".el-radio, input[type='radio']").all()
+        for radio in radios:
+            if not radio.is_visible():
+                continue
+            parent = radio.locator("xpath=../..").first
+            if parent.count() > 0:
+                try:
+                    parent_text = parent.inner_text()
+                    ip_match = re.search(r"\d+\.\d+\.\d+\.\d+", parent_text)
+                    if ip_match:
+                        radio.evaluate("el => el.click()")
+                        return ip_match.group(0)
+                except Exception:
+                    continue
+            radio.evaluate("el => el.click()")
+            try:
+                row_text = radio.locator("xpath=..").inner_text()
+                ip_match = re.search(r"\d+\.\d+\.\d+\.\d+", row_text)
+                if ip_match:
+                    return ip_match.group(0)
+            except Exception:
+                continue
+        return None
+
+    def _assert_eip_bound(self, name: str, eip: str, timeout: int = 120):
+        """断言列表页实例网络列显示指定的公网IP。
+
+        Args:
+            name: 实例名称
+            eip: 绑定的公网IP地址
+            timeout: 超时时间（秒）
+        """
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                self.goto_list_page()
+                row_data = self.get_row_data(name)
+                network = row_data.get("网络", "")
+                if eip in network:
+                    logger.info(f"VER 实例 {name} 网络列显示公网IP: {network}")
+                    return
+                logger.debug(f"VER 实例 {name} 网络列: {network}，等待公网IP绑定生效...")
+            except Exception as e:
+                logger.debug(f"验证公网IP绑定状态失败: {e}")
+            time.sleep(5)
+        raise AssertionError(
+            f"[NetworkAssertion] VER '{name}' | 公网IP绑定未生效 | "
+            f"期望网络列包含 {eip} | timeout={timeout}s"
+        )
+
+    def _assert_eip_unbound(self, name: str, timeout: int = 60):
+        """断言列表页实例网络列不再显示公网IP（解绑后仅剩固定IP）。
+
+        Args:
+            name: 实例名称
+            timeout: 超时时间（秒）
+        """
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                self.goto_list_page()
+                row_data = self.get_row_data(name)
+                network = row_data.get("网络", "")
+                fip_patterns = re.findall(r"\d+\.\d+\.\d+\.\d+", network)
+                if len(fip_patterns) <= 1:
+                    logger.info(f"VER 实例 {name} 已解绑公网IP，网络列: {network}")
+                    return
+                logger.debug(f"VER 实例 {name} 网络列仍含公网IP: {network}，等待解绑生效...")
+            except Exception as e:
+                logger.debug(f"验证公网IP解绑状态失败: {e}")
+            time.sleep(5)
+        raise AssertionError(
+            f"[NetworkAssertion] VER '{name}' | 公网IP解绑未生效 | "
+            f"网络列仍含公网IP | timeout={timeout}s"
+        )

@@ -12,6 +12,24 @@ from sugon_web.common.base import BasePage, submenu
 class VpcMixin(BasePage):
     """虚拟私有云相关页面动作。"""
 
+    def _ensure_vpc_network_list(self):
+        """确保当前位于虚拟私有云列表页。
+
+        VPC 服务的概览页（/vpc/#/vpc-overview）没有左侧菜单，
+        goto_submenu 无法通过菜单导航到列表页。此方法在
+        goto_submenu 失败时直接导航到列表页 URL 作为兜底。
+        """
+        self.goto_service(self.service_name)
+        try:
+            self.goto_submenu("虚拟私有云")
+        except Exception:
+            pass
+        # Fallback: 如果当前不在列表页，直接导航到列表页
+        if "vpc-network-list" not in self.page.url:
+            base_url = self.page.url.split("#")[0]
+            self.page.goto(f"{base_url}#/vpc-network-list")
+            self.wait_for_page_ready()
+
     @property
     def _input_name(self):
         """VPC名称输入框"""
@@ -25,7 +43,10 @@ class VpcMixin(BasePage):
     def _select_cluster(self, cluster_name="Autotest"):
         """选择VPC所属集群。"""
         self.get_by_role("textbox", name="请选择集群").click()
-        self.get_by_text(cluster_name, exact=True).click()
+        # 限定在下拉框内点击，避免匹配到页面其他同名元素
+        dropdown = self.page.locator(".el-select-dropdown:visible").first
+        expect(dropdown).to_be_visible(timeout=10000)
+        dropdown.get_by_text(cluster_name, exact=True).click()
 
     @property
     def _input_subnet_name(self):
@@ -68,6 +89,9 @@ class VpcMixin(BasePage):
                    ipv6_pool="provider-ipv6(基础版)（2000:c00", gateway_mode="分布式网关", gateway_ip=None, available_ip=None,
                    dns=None, vlan_id=None, mac=None, enable_ipv6=False, acl_policy=None):
         """创建虚拟私有云"""
+        # 兜底：若子菜单导航将页面带到了概览页，确保回到列表页
+        if "vpc-network-list" not in self.page.url:
+            self._ensure_vpc_network_list()
         self.btn_create.click()
 
         self._input_name.fill(name)
@@ -129,6 +153,9 @@ class VpcMixin(BasePage):
     @submenu("虚拟私有云")
     def vpc_delete(self, names):
         """删除虚拟私有云，支持单个和批量操作"""
+        # 兜底：若子菜单导航将页面带到了概览页，确保回到列表页
+        if "vpc-network-list" not in self.page.url:
+            self._ensure_vpc_network_list()
         if isinstance(names, list):
             self.select_rows_by_names(names)
             self.btn_batch_delete.click()
@@ -155,11 +182,19 @@ class VpcMixin(BasePage):
         vpc_type = vpc_type_text.split(":", 1)[-1].strip()
         result["虚拟私有云类型"] = vpc_type
 
-        segment_id_text = self.page.text_content("span:has-text('段ID：')")
-        segment_id = segment_id_text.split(":", 1)[-1].strip()
-        result["段ID"] = segment_id
+    def goto_vpc_detail(self, name: str):
+        """导航到VPC详情页（点击VPC名称链接）。
 
-        return result
+        Args:
+            name: VPC名称。
+        """
+        self.get_row_by_name(name).locator("a").first.click()
+        self.wait_for_page_ready()
+
+    def goto_route_tab(self):
+        """在VPC详情页点击路由表tab。"""
+        self.get_by_role("tab", name="路由表").click()
+        self.wait_for_page_ready()
 
     @submenu("虚拟私有云")
     def vpc_edit(self, name, new_name=None, new_desc=None):
