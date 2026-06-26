@@ -108,17 +108,34 @@ def cce_cluster(browser_context, config, ssh_host, request):
     """
     from sugon_web.conftest import _create_logged_in_page
 
+    # 临时调试开关：复用环境已有的 CCE 集群（填集群名则复用，空字符串则创建/删除）
+    reuse_name = ""
+
     params = getattr(request, "param", {}) or {}
     page = _create_logged_in_page(browser_context, config)
     cce_page = CcePage(page)
 
-    create_kwargs = _build_cce_create_kwargs(params)
-    cluster_name = create_kwargs["name"]
-
-    with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
-        cce_page.cce_create(**create_kwargs)
-        cce_page.assert_popup_success()
-        cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+    if reuse_name:
+        create_kwargs = _build_cce_create_kwargs({**params, "name": reuse_name})
+        cluster_name = create_kwargs["name"]
+        with allure_step_log(f"前置操作：检查并复用已有CCE集群 {cluster_name}"):
+            cce_page.goto_submenu("集群管理")
+            cce_page.wait_for_page_ready()
+            try:
+                existing_row = cce_page.get_row_data(cluster_name)
+            except AssertionError:
+                existing_row = None
+            if existing_row:
+                logger.info(f"复用已有集群 {cluster_name}，跳过创建")
+            else:
+                raise AssertionError(f"未找到名称为 '{cluster_name}' 的已有CCE集群，请确认集群存在或清空 reuse_name 走创建逻辑")
+    else:
+        create_kwargs = _build_cce_create_kwargs(params)
+        cluster_name = create_kwargs["name"]
+        with allure_step_log(f"前置操作：创建CCE集群 {cluster_name}"):
+            cce_page.cce_create(**create_kwargs)
+            cce_page.assert_popup_success()
+            cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
 
     with allure_step_log(f"前置操作：获取集群 {cluster_name} 运行时信息"):
         node_data = cce_page.get_cluster_node_data(cluster_name)
@@ -141,31 +158,34 @@ def cce_cluster(browser_context, config, ssh_host, request):
         "worker_mfip": worker_mfip,
         "master_node": master_node,
         "worker_node": worker_node,
+        "cce_page": cce_page,
         **create_kwargs,
     }
 
-    with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
-        try:
-            _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
-        except Exception as e:
-            logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
-        finally:
-            page.close()
+    if reuse_name:
+        with allure_step_log(f"后置清理：复用集群 {cluster_name}，跳过删除"):
+            logger.info(f"集群 {cluster_name} 为环境已有资源，不做清理")
+    else:
+        with allure_step_log(f"后置清理：删除CCE集群 {cluster_name}"):
+            try:
+                _cleanup_cce_cluster(cce_page, ssh_host, cluster_name)
+            except Exception as e:
+                logger.warning(f"清理CCE集群失败（可能已删除）: {e}")
+    page.close()
 
 
 @pytest.fixture(scope="class")
-def storage_class(browser_context, config, cce_cluster):
+def storage_class(cce_cluster):
     """创建云硬盘存储类型并在测试类结束后自动清理。
+
+    复用 cce_cluster fixture 创建的 page，避免额外打开新标签页。
 
     Yields:
         dict: 包含 name (str) 和 cluster_name (str)
     """
-    from sugon_web.conftest import _create_logged_in_page
-
     cluster_name = cce_cluster["name"]
     sc_name = f"evs-sc-{random_data(length=4)}"
-    page = _create_logged_in_page(browser_context, config)
-    cce_page = CcePage(page)
+    cce_page = cce_cluster["cce_page"]
 
     with allure_step_log(f"前置操作：创建 StorageClass {sc_name}"):
         cce_page.goto_submenu("集群管理")
@@ -188,8 +208,7 @@ def storage_class(browser_context, config, cce_cluster):
             cce_page.storage_class_delete(sc_name)
         except Exception as e:
             logger.warning(f"清理 StorageClass 失败（可能已删除）: {e}")
-        finally:
-            page.close()
+        # page 由 cce_cluster fixture 在后置清理中统一关闭
 
 
 def _build_scr_create_kwargs(params=None):
