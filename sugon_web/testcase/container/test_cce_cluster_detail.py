@@ -1,18 +1,17 @@
 import allure
 import pytest
 
-from sugon_web.common.playwright import expect
 from sugon_web.utils.data import random_data
 from sugon_web.utils.logger import allure_step_log
 
 
 @allure.epic('容器服务')
 @allure.feature('云容器引擎')
-@allure.story('集群管理-详情页-节点操作')
-class TestCCENodeOperations:
+@allure.story('集群管理-详情页')
+class TestCCEDetail:
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-节点停止调度和开启调度")
+    @allure.title("集群详情-节点停止调度和开启调度")
     def test_node_schedule_stop_and_start(self, cce_page, cce_cluster, node_type):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -36,7 +35,7 @@ class TestCCENodeOperations:
             cce_page.assert_status(node_name, "正常调度", timeout=60)
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-节点添加和删除自定义标签")
+    @allure.title("集群详情-节点添加和删除自定义标签")
     def test_node_label_add_and_delete(self, cce_page, cce_cluster, node_type):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -53,7 +52,7 @@ class TestCCENodeOperations:
             cce_page.cce_node_label_edit(node_name, {})
             cce_page.assert_popup_success()
 
-    @allure.title("集群详情页-未绑定公网IP时绑定域名提示错误")
+    @allure.title("集群详情-绑定公网域名提示错误")
     def test_public_domain_without_ip_error(self, cce_page, cce_cluster):
         cluster_name = cce_cluster["name"]
 
@@ -69,7 +68,7 @@ class TestCCENodeOperations:
             message.wait_for(state="visible", timeout=10000)
             assert "请先绑定公网IP" in message.inner_text()
 
-    @allure.title("集群详情页-绑定和解绑集群公网IP")
+    @allure.title("集群详情-集群公网IP绑定和解绑")
     def test_public_ip_bind_unbind(self, cce_page, cce_cluster):
         cluster_name = cce_cluster["name"]
 
@@ -78,7 +77,7 @@ class TestCCENodeOperations:
             cce_page.goto_detail_page(cluster_name, tab_name="详情")
 
         with allure_step_log("步骤2: 绑定公网IP"):
-            ip = cce_page.cce_public_ip_bind()
+            cce_page.cce_public_ip_bind()
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤3: 验证公网IP绑定成功"):
@@ -92,7 +91,7 @@ class TestCCENodeOperations:
             cce_page.assert_public_ip_displayed(displayed=False)
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-绑定和解绑节点公网IP")
+    @allure.title("集群详情-节点公网IP绑定和解绑")
     def test_node_public_ip_bind_unbind(self, cce_page, cce_cluster, ssh_host, node_type):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -116,7 +115,7 @@ class TestCCENodeOperations:
             ssh_host.ping(ip, connected=False)
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-节点挂载新云硬盘")
+    @allure.title("集群详情-节点挂载新云硬盘")
     def test_node_volume_mount_new(self, cce_page, cce_cluster, node_type, ssh_vm):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -151,7 +150,7 @@ class TestCCENodeOperations:
             assert f"{size}G" in result["stdout"], f"挂载大小不匹配，期望包含 {size}G，实际: {result['stdout']}"
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-修改节点规格")
+    @allure.title("集群详情-修改节点规格")
     def test_node_flavor_change(self, cce_page, cce_cluster, node_type, ssh_host):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -191,7 +190,7 @@ class TestCCENodeOperations:
                 )
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
-    @allure.title("集群详情页-修改节点规格（缩容）")
+    @allure.title("集群详情-节点规格缩容")
     def test_node_flavor_shrink(self, cce_page, cce_cluster, node_type, ssh_host):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
@@ -236,7 +235,7 @@ class TestCCENodeOperations:
                 f"{node_name}规格缩容后端验证失败"
             )
 
-    @allure.title("集群详情页-节点排水")
+    @allure.title("集群详情-节点排水")
     def test_node_drain(self, cce_page, cce_cluster, ssh_vm):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster["worker_node"]
@@ -265,7 +264,7 @@ class TestCCENodeOperations:
         with allure_step_log("步骤6: 验证节点状态恢复正常调度"):
             cce_page.assert_status(node_name, "正常调度", timeout=300)
 
-    @allure.title("集群详情页-新增计算节点")
+    @allure.title("集群详情-新增计算节点")
     def test_node_create(self, cce_page, cce_cluster, ssh_host):
         cluster_name = cce_cluster["name"]
 
@@ -303,4 +302,81 @@ class TestCCENodeOperations:
             ssh_host.wait_vm_deleted(new_node_name, timeout=300)
             ssh_host.wait_volume_deleted(new_node_name, timeout=300)
 
+
+@allure.epic('容器服务')
+@allure.feature('云容器引擎')
+@allure.story('集群管理-存储类型')
+class TestCCEStorageClass:
+
+    @pytest.mark.parametrize("fstype", ["ext4", "xfs"])
+    @allure.title("集群详情-新建云硬盘存储类型(fstype={fstype})")
+    def test_storage_class_create(self, cce_page, cce_cluster, ssh_host, ssh_vm, fstype):
+        cluster_name = cce_cluster["name"]
+        mfip = cce_cluster.get("master_mfip", "")
+        sc_name = f"evs-sc-{random_data(length=4)}"
+
+        with allure_step_log("步骤1: 进入集群详情-存储类型页面"):
+            cce_page.goto_submenu("集群管理")
+            cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
+
+        with allure_step_log(f"步骤2: 创建云硬盘存储类型(fstype={fstype})"):
+            cce_page.storage_class_create(
+                name=sc_name,
+                volume_type=cce_page.volume_type,
+                fstype=fstype,
+                encrypt=False,
+                access_mode="ReadWriteOnce"
+            )
+            cce_page.assert_popup_success()
+
+        with allure_step_log("步骤3: 验证存储类型列表数据"):
+            row_data = cce_page.get_row_data(sc_name)
+            assert row_data, f"列表中未找到 {sc_name}"
+            assert "云硬盘" in row_data.get("类型", "") or "EVS" in row_data.get("类型", ""), f"类型不匹配: {row_data.get('类型', '')}"
+            assert "是" in row_data.get("创建完成", ""), f"创建完成状态不匹配: {row_data.get('创建完成', '')}"
+
+        with allure_step_log(f"步骤4: 后台验证StorageClass yaml(fstype={fstype})"):
+            assert mfip, "未获取到集群 MFIP"
+            ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
+            result = ssh_vm.run(f"kubectl get storageclass {sc_name} -oyaml", return_rc=True)
+            assert result["rc"] == 0, f"kubectl 执行失败: {result.get('stderr', '')}"
+            yaml_content = result["stdout"]
+            assert "storageType" in yaml_content, "yaml 中缺少 storageType"
+            assert f"fstype: {fstype}" in yaml_content, f"yaml 中 fstype 值不匹配，期望 {fstype}"
+
+        with allure_step_log("步骤5: 删除存储类型"):
+            cce_page.storage_class_delete(sc_name)
+            cce_page.assert_deleted(sc_name, timeout=60)
+
+        with allure_step_log("步骤6: 后台验证StorageClass已删除"):
+            result = ssh_vm.run(f"kubectl get storageclass {sc_name}", return_rc=True)
+            assert result["rc"] != 0 or "NotFound" in result.get("stderr", ""), f"StorageClass {sc_name} 未删除"
+
+    @allure.title("集群详情-批量删除云硬盘存储类型")
+    def test_storage_class_batch_delete(self, cce_page, cce_cluster):
+        cluster_name = cce_cluster["name"]
+        sc_names = []
+
+        with allure_step_log("步骤1: 进入集群详情-存储类型页面"):
+            cce_page.goto_submenu("集群管理")
+            cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
+
+        with allure_step_log("步骤2: 预置两个存储类型"):
+            for i in range(2):
+                sc_name = f"evs-sc-{random_data(length=4)}"
+                sc_names.append(sc_name)
+                cce_page.storage_class_create(
+                    name=sc_name,
+                    volume_type=cce_page.volume_type,
+                    fstype="ext4",
+                    encrypt=False,
+                    access_mode="ReadWriteOnce"
+                )
+                cce_page.assert_popup_success()
+
+        with allure_step_log("步骤3: 批量删除存储类型"):
+            cce_page.storage_class_batch_delete(sc_names)
+
+        with allure_step_log("步骤4: 验证存储类型已删除"):
+            cce_page.assert_deleted(sc_names, timeout=60)
 

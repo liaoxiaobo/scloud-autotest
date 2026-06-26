@@ -1,3 +1,4 @@
+import re
 from sugon_web.common.base import submenu
 
 
@@ -112,8 +113,13 @@ class CceClusterMixin:
         Args:
             names: 集群名称列表
         """
-        self.select_rows_by_names(names)
-        self.btn_batch_delete.click()
+        # self.select_rows_by_names(names)
+        # self.btn_batch_delete.click()
+        # self.dialog_confirm.click()
+        for name in names:
+            self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
+
+        self.get_by_text("批量删除").click()
 
         # 处理定时轮询清空 checkbox 导致确认对话框未弹出的偶现情况
         try:

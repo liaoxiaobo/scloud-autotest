@@ -47,15 +47,18 @@ class CceStorageMixin:
         self.dialog_confirm.click()
         self.wait_for_page_ready()
 
-    def storage_volume_create(self, name, capacity, storage_class, access_mode="ReadWriteOnce"):
+    def storage_volume_create(self, name, capacity, storage_class, cluster, namespace="default", access_mode="ReadWriteOnce"):
         """创建存储卷。
 
         Args:
             name: 存储卷名称
             capacity: 存储容量（Gi）
             storage_class: 存储类型名称
+            cluster: 目标 CCE 集群名称
+            namespace: 目标命名空间，默认 "default"
             access_mode: 访问模式，默认"ReadWriteOnce"
         """
+        self._select_cluster_namespace(cluster, namespace=namespace)
         self.btn_create.click()
         dialog = self.page.locator(".el-dialog__wrapper:visible .el-dialog").filter(has_text="添加存储卷").first
         dialog.wait_for(state="visible", timeout=10000)
