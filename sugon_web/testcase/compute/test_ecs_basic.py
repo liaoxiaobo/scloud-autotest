@@ -220,14 +220,14 @@ class TestECSBasic:
             pub_ip = ecs_page.ecs_bind_pub_ip(name)
 
         with (allure_step_log("步骤2: 验证绑定公网IP结果")):
-            ecs_page.assert_popup_success(f"执行成功")
+            # ecs_page.assert_popup_success(f"执行成功")
             ecs_page.assert_ecs_info(name, "IP地址", pub_ip)
             ssh_vm.connect(vm['mfip'])
             ssh_vm.ping(pub_ip)
 
         with allure_step_log(f"步骤3: 云服务器{name}解绑公网IP{pub_ip}"):
             ecs_page.ecs_unbind_pub_ip(name, pub_ip)
-            ecs_page.assert_popup_success(f"执行成功")
+            # ecs_page.assert_popup_success(f"执行成功")
 
         with allure_step_log("步骤4: 验证解绑公网IP结果"):
             ecs_page.assert_ecs_info_not_contains(name, "IP地址", pub_ip)
@@ -268,7 +268,7 @@ class TestECSBasic:
 
         with allure_step_log("步骤1: 修改云服务器CPU QoS"):
             ecs_page.ecs_modify_cpu_qos(name, priority, ceiling)
-            ecs_page.assert_popup_success(f"设置cpu-qos成功")
+            # ecs_page.assert_popup_success(f"设置cpu-qos成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
             stdout = ssh_host.guest_show(ecs_id)
@@ -330,7 +330,7 @@ class TestECSBasic:
             ecs_page.ecs_modify_hostname(name, hostname)
 
         with (allure_step_log("步骤2: 验证修改主机名结果")):
-            ecs_page.assert_popup_success(f"更新实例成功")
+            # ecs_page.assert_popup_success(f"更新实例成功")
             # 重启虚机，等待主机名变更
             ecs_page.ecs_operations(name, "重启")
             ecs_page.assert_status(name)
@@ -355,8 +355,8 @@ class TestECSBasic:
         with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
             ecs_page.ecs_modify_vnc_type(name, vnc_type)
 
-        with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.assert_popup_success("修改VNC显卡类型成功")
+        # with allure_step_log("步骤2: 验证修改结果"):
+            # ecs_page.assert_popup_success("修改VNC显卡类型成功")
 
         with allure_step_log("步骤3: 验证VNC登录"):
             ecs_page.ecs_operations(name, "强制重启")

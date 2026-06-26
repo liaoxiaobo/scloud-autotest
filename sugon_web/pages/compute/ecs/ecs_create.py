@@ -212,7 +212,7 @@ class EcsCreateMixin(BasePage):
         self._advanced_info(request["advanced"])
 
         # 点击创建按钮
-        self.get_by_text("立即创建").click()
+        self.get_by_text("立即创建").click(timeout=120000)
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
@@ -586,11 +586,19 @@ class EcsCreateMixin(BasePage):
 
             supported_sources = ["镜像", "快照", "ISO", "云硬盘"]
             if image_source in supported_sources and image_name:
-                self._select_from_named_drawer(
-                    drawer_title=f"选择{image_source}",
-                    item_name=image_name,
-                    reset_first=(image_source == "ISO"),
-                )
+                try:
+                    self._select_from_named_drawer(
+                        drawer_title=f"选择{image_source}",
+                        item_name=image_name,
+                        reset_first=(image_source == "ISO"),
+                    )
+                except AssertionError as e:
+                    error_msg = str(e)
+                    if "抽屉未关闭" in error_msg or "未找到" in error_msg:
+                        logger.warning(f"_select_from_named_drawer 失败，尝试备用选择方式: {error_msg}")
+                        self._select_image_from_drawer_fallback(image_source, image_name)
+                    else:
+                        raise
             elif image_source == "空启动":
                 pass
             else:
@@ -599,6 +607,70 @@ class EcsCreateMixin(BasePage):
         except Exception as e:
             logger.error(f"选择镜像失败: {str(e)}")
             raise e
+
+    def _select_image_from_drawer_fallback(self, image_source, image_name):
+        """备用方式：从抽屉中选择镜像（处理 cl-table + el-radio 组合）
+
+        针对 _select_from_named_drawer 在 cl-table 自定义渲染的 el-radio 上
+        force=True 点击无法触发 Vue input 事件的问题，使用非 force 点击。
+        """
+        drawer_title = f"选择{image_source}"
+        logger.info(f"使用备用方式选择镜像: {drawer_title}, {image_name}")
+
+        # 打开抽屉
+        self.get_by_text(drawer_title).first.click()
+        self.wait_for_page_ready()
+
+        drawer = self.locator(f"div[role='dialog'][aria-label='{drawer_title}']:visible")
+        expect(drawer).to_be_visible()
+
+        # 搜索镜像
+        search_input = drawer.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
+        if search_input.count() > 0:
+            search_input.fill(image_name)
+            drawer.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
+            self.wait_for_page_ready()
+
+        # 找到目标行
+        row = drawer.locator(
+            "xpath=.//div[contains(@class,'el-table__body-wrapper')]//tr[.//td[2]//*[normalize-space(text())="
+            f"'{image_name}'] or .//td[2][normalize-space(.)='{image_name}']]"
+        ).first
+        expect(row).to_be_visible(timeout=5000)
+
+        # 尝试多种选择方式（不使用 force=True，让 Vue 事件正常触发）
+        select_locators = [
+            row.locator(".el-radio__inner"),
+            row.locator("label[role='radio']"),
+            row.get_by_role("radio"),
+            row.locator("td").first,
+            row.locator("td").nth(1),
+            row,
+        ]
+
+        confirm_btn = drawer.get_by_text("确定", exact=True)
+        last_error = None
+
+        for select_locator in select_locators:
+            if select_locator.count() == 0:
+                continue
+            try:
+                # 不使用 force=True，确保 Vue 事件正常触发
+                select_locator.click()
+                self.page.wait_for_timeout(800)
+                confirm_btn.click()
+                try:
+                    expect(drawer).not_to_be_visible(timeout=10000)
+                    logger.info(f"备用方式选择镜像成功: {image_name}")
+                    return
+                except AssertionError:
+                    last_error = AssertionError(f"{drawer_title} 抽屉未关闭")
+            except Exception as exc:
+                last_error = exc
+
+        if last_error:
+            raise last_error
+        raise AssertionError(f"备用方式未找到 {drawer_title} 中的 {image_name} 可选节点")
 
 
     def _select_from_pool_image(self, image_name, os_version):
@@ -707,6 +779,7 @@ class EcsCreateMixin(BasePage):
             # loc.click()
             # loc.click(force=True)
             loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(2000)
 
             # 等待下拉列表出现并定位选项
             # 限定到刚打开的那个下拉面板（最后一个可见面板），避免匹配到其他/残留下拉导致误判

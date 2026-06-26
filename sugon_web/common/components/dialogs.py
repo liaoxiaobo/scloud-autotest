@@ -16,6 +16,9 @@ class DialogsMixin(BaseElementMixin):
     def dialog_confirm(self) -> Locator:
         """公共元素: 对话框确定按钮"""
         locators = [
+            # sugon-dialog 风格确认弹窗（如 SFS 删除确认）
+            self.locator(".sugon-dialog-box").get_by_text("确定", exact=True),
+            self.locator(".sugon-dialog-footer .cloud-button-btn").filter(has_text="确定").first,
             self.get_by_role("dialog").get_by_text("确定", exact=True),
             self.get_by_role("dialog").locator("span").filter(has_text="确定"),
             self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
@@ -24,7 +27,7 @@ class DialogsMixin(BaseElementMixin):
             self.locator(".sure-footer > div > .cloud-button-btn").first,
             self.get_by_label("虚拟IP管理").get_by_text("确定", exact=True)
         ]
-        return self._find_element(locators, "对话框'确定'按钮")
+        return self._find_element(locators, "对话框'确定'按钮", timeout=5000)
 
     @property
     def dialog_cancel(self) -> Locator:
@@ -64,7 +67,7 @@ class DialogsMixin(BaseElementMixin):
             if not closed:
                 try:
                     dialogs = self.page.locator(
-                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible"
+                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible, .one-dialog-container:visible, .one-dialog-box:visible"
                     )
                     for i in range(min(dialogs.count(), 5)):
                         dialog = dialogs.nth(i)
@@ -93,7 +96,7 @@ class DialogsMixin(BaseElementMixin):
             # 检查是否还有可见对话框，没有则退出
             try:
                 remaining = self.page.locator(
-                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible"
+                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible, .one-dialog-container:visible, .one-dialog-box:visible"
                 )
                 if remaining.count() == 0:
                     break

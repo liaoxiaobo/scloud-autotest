@@ -250,7 +250,7 @@ def capture_failure_dom_summary(page, item, failure_stage):
 
     try:
         project_root = Path(__file__).resolve().parents[2]
-        out_dir = project_root / "screenshots"
+        out_dir = project_root / "dom_snapshots"
         out_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_path = out_dir / f"{item.name}_{timestamp}_domsnap.md"

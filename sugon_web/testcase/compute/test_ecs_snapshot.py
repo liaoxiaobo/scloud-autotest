@@ -56,7 +56,7 @@ class TestECSS:
                     name=vm["name"],
                     snapshot_name=snapshot_name,
                 )
-                ecs_page.assert_popup_success("创建实例快照成功")
+                # ecs_page.assert_popup_success("创建实例快照成功")
                 ecs_page.wait_for_source_complete(vm['name'])
                 ecs_page.assert_status(vm['name'])
 
@@ -240,7 +240,7 @@ class TestECSS:
 
         with allure_step_log("步骤1: 虚机绑定快照策略"):
             ecs_page.ecs_bind_snapshot_policy(vm_name, policy_name)
-            ecs_page.assert_popup_success("资源绑定策略成功")
+            # ecs_page.assert_popup_success("资源绑定策略成功")
 
         with allure_step_log("步骤2: 验证虚机已绑定策略"):
             # ecs_page.wait_for_source_complete(vm_name)

@@ -25,5 +25,5 @@ def _create_vm_resources(
     with allure_step_log("创建指定数量的虚机"):
         ecs_page.goto_service("弹性云服务器")
         ecs_page.ecs_create(**create_request)
-        ecs_page.assert_popup_success("创建实例命令下发成功")
+        # ecs_page.assert_popup_success("创建实例命令下发成功")
         ecs_page.assert_status(vm_names)

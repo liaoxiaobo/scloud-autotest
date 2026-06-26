@@ -78,7 +78,30 @@ class EcsNetworkMixin(BasePage):
             pub_net: 公网资源池
             eip_ip: 指定要绑定的公网IP地址，为None时随机选择可用IP
         """
-        self.click_action(name, "绑定公网IP")
+        # 新版 ECS 列表操作项藏在“更多”展开的大型下拉面板内，
+        # 文案位于 .cloud-button 内部 div，Playwright 判定该内部 div 不可见，
+        # 导致通用 click_action 无法命中。这里直接点对应行的“更多”并定位外层 .cloud-button。
+        row = self.get_row_by_name(name)
+        interactive_row = self._get_interactive_row(row)
+        more_btn = interactive_row.get_by_text("更多", exact=True)
+        more_btn.click()
+        self.page.wait_for_timeout(1000)
+
+        visible_menu = None
+        dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
+        for i in range(dropdown_menus.count()):
+            menu = dropdown_menus.nth(i)
+            if menu.is_visible():
+                visible_menu = menu
+                break
+        if not visible_menu:
+            raise AssertionError(f"未找到 {name} 的可见操作下拉菜单")
+
+        bind_btn = visible_menu.locator(".cloud-button").filter(has_text="绑定公网IP").first
+        if bind_btn.count() == 0 or not bind_btn.is_visible():
+            raise AssertionError(f"未在下拉菜单中找到 {name} 的绑定公网IP 按钮")
+        bind_btn.click()
+
         # 选择端口
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
@@ -247,7 +270,9 @@ class EcsNetworkMixin(BasePage):
 
         for sg in sg_names:
             # 找到对应行并勾选
-            row = dialog.get_by_role("row", name=re.compile(rf"{re.escape(sg)}")).first
+            # row = dialog.get_by_role("row", name=re.compile(rf"^{re.escape(sg)}$")).first
+            name_cell = dialog.locator(".el-table__cell").filter(has_text=re.compile(rf"^{re.escape(sg)}$")).first
+            row = name_cell.locator("xpath=ancestor::tr[1]")
             checkbox = row.locator(".el-checkbox")
 
             # 检查是否已勾选

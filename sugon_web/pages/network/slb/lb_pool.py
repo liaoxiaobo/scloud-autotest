@@ -310,6 +310,24 @@ class LbPoolMixin(LbDetailMixin):
             self.wait_for_page_ready()
             self.logger.info(f"资源池成员激活成功: {vm_name}")
 
+    def _get_pool_config_link(self, page_root, label):
+        """在资源池详情页定位指定标签行的"配置"链接。
+
+        资源池详情页使用 ``cl-item-col`` 组件渲染，label 文本在一个 div 中，
+        对应的"配置"链接位于其相邻兄弟 div（value 区域）内。该方法不依赖
+        DOM 顺序，只依赖标签文本。
+
+        Args:
+            page_root: ``#cloud-container-content`` 范围内的 root locator。
+            label: 标签文本，如 ``会话保持``、``健康检查``、``负载调度算法``。
+
+        Returns:
+            Locator: "配置"链接的 locator。
+        """
+        return page_root.locator("div").filter(
+            has_text=re.compile(rf"^{re.escape(label)}\s*:?\s*$")
+        ).locator("xpath=./following-sibling::div//a").first
+
     def lb_pool_config_health_check(self, lb_name, pool_name, enable=True,
                                     health_type=None, health_request=None,
                                     health_expected_response=None,
@@ -338,11 +356,8 @@ class LbPoolMixin(LbDetailMixin):
 
         # 点击健康检查区域的"配置"按钮
         # 页面上有多个"配置"链接（会话保持、负载调度算法、健康检查），
-        # DOM 顺序在不同版本/状态下可能变化，通过"健康检查"文本上下文定位。
-        config_btn = page_root.locator(
-            "xpath=//*[contains(text(), '健康检查')]/ancestor-or-self::*[.//a[contains(text(), '配置')]][1]//a[contains(text(), '配置')]"
-        ).first
-        # self.locator("div").filter(has_text=re.compile(r"^健康检查$")).locator("xpath=./following-sibling::div//a").click()
+        # 通过"健康检查"标签文本定位，避免依赖 DOM 顺序。
+        config_btn = self._get_pool_config_link(page_root, "健康检查")
         expect(config_btn).to_be_visible(timeout=5000)
         config_btn.click()
 
@@ -530,17 +545,8 @@ class LbPoolMixin(LbDetailMixin):
         page_root = self.locator("#cloud-container-content")
 
         # 点击会话保持区域的"配置"按钮
-        # 资源池详情页的"配置"链接按 DOM 顺序为：会话保持、健康检查、负载调度算法
-        # 会话保持的配置链接始终是第一个
-        config_links = page_root.locator("a").filter(
-            has_text=re.compile(r"^\s*配置\s*$")
-        )
-        count = config_links.count()
-        self.logger.info(f"会话保持配置: 页面找到 {count} 个'配置'链接")
-        if count == 0:
-            raise RuntimeError("无法定位会话保持的'配置'链接")
-        config_link = config_links.nth(0)
-
+        # 通过"会话保持"标签文本定位，避免依赖 DOM 顺序。
+        config_link = self._get_pool_config_link(page_root, "会话保持")
         expect(config_link).to_be_visible(timeout=5000)
         config_link.click()
 
@@ -589,17 +595,8 @@ class LbPoolMixin(LbDetailMixin):
         page_root = self.locator("#cloud-container-content")
 
         # 在"负载调度算法"行点击"配置"链接
-        # 资源池详情页的"配置"链接按 DOM 顺序为：会话保持、健康检查、负载调度算法
-        # 负载调度算法的配置链接始终是最后一个
-        config_links = page_root.locator("a").filter(
-            has_text=re.compile(r"^\s*配置\s*$")
-        )
-        count = config_links.count()
-        self.logger.info(f"负载调度算法配置: 页面找到 {count} 个'配置'链接")
-        if count == 0:
-            raise RuntimeError("无法定位负载调度算法的'配置'链接")
-        config_link = config_links.nth(count - 1)
-
+        # 通过"负载调度算法"标签文本定位，避免依赖 DOM 顺序。
+        config_link = self._get_pool_config_link(page_root, "负载调度算法")
         expect(config_link).to_be_visible(timeout=5000)
         config_link.click()
 
