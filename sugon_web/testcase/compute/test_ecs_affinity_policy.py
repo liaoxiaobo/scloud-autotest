@@ -7,8 +7,6 @@ from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_if_nodes_less_than
 
 
-@allure.epic("计算服务")
-@allure.feature("亲和组")
 @allure.story("亲和组策略验证")
 class TestEcsAffinityPolicy:
     """验证亲和策略：3台虚机运行在同一计算节点上。"""
@@ -42,8 +40,6 @@ class TestEcsAffinityPolicy:
                 )
 
 
-@allure.epic("计算服务")
-@allure.feature("亲和组")
 @allure.story("亲和组策略验证")
 class TestEcsAntiAffinityPolicy:
     """验证反亲和策略：n台虚机分布在n个不同计算节点上；n+1台创建失败。"""
@@ -89,8 +85,6 @@ class TestEcsAntiAffinityPolicy:
             ecs_page.assert_popup_error()
 
 
-@allure.epic("计算服务")
-@allure.feature("亲和组")
 @allure.story("亲和组策略验证")
 class TestEcsWeakAffinityPolicy:
     """验证弱亲和策略：n台虚机绑定弱亲和组后可正常创建，不强求节点分布。"""
@@ -114,8 +108,6 @@ class TestEcsWeakAffinityPolicy:
                 )
 
 
-@allure.epic("计算服务")
-@allure.feature("亲和组")
 @allure.story("亲和组策略验证")
 class TestEcsWeakAntiAffinityPolicy:
     """验证弱反亲和策略：n台虚机绑定弱反亲和组后可正常创建，不强求节点分布。"""

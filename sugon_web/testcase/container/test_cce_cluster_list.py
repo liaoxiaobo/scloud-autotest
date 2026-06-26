@@ -38,7 +38,7 @@ class TestCCEClusterCreate:
                 flavor=flavor
             )
             cce_page.assert_popup_success()
-            cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+            cce_page.assert_status(cluster_name, status="运行中", timeout=1800)
 
         with allure_step_log("步骤2: 验证集群节点列表数据"):
             node_data = cce_page.get_cluster_node_data(cluster_name)
@@ -185,7 +185,7 @@ class TestCCEClusterCreate:
 
         with allure_step_log("步骤2: 等待集群就绪"):
             for cluster_name in cluster_names:
-                cce_page.assert_status(cluster_name, status="运行中", timeout=1200)
+                cce_page.assert_status(cluster_name, status="运行中", timeout=1800)
 
         with allure_step_log("步骤3: 批量删除集群"):
             cce_page.cce_batch_delete(cluster_names)

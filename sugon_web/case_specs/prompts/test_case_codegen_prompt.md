@@ -1,6 +1,6 @@
 # UI自动化测试用例开发规范
 
-> **读者**：本文件面向 AI 编码代理，不是人类。在执行 `test-script-dev`（阶段二）/ `test-self-heal` 期间，用于指导 AI 编写与当前项目风格完全一致的高质量 Playwright + Pytest 测试代码。
+> **读者**：本文件面向 AI 编码代理，不是人类。在执行 `test-script-workflow`（阶段二）/ `test-self-heal` 期间，用于指导 AI 编写与当前项目风格完全一致的高质量 Playwright + Pytest 测试代码。
 > **要解决的核心问题**：简单用例已能套模板写好；复杂用例（步骤多、交互复杂、业务逻辑深）在阶段三耗时长，根因是**编码前预研不足 + 代码归属决策混乱 + 初始代码质量低**。本规范用**强制预研流程**（§4）+ **归属决策树**（§2）+ **复杂场景分解**（§12）对症解决。
 > **本文件的定位**：测试层（`test_*.py`）的编码权威。fixture / 断言 / 页面定位的**细节规范**不在此维护，由各权威文件负责（见 §1），本文件只规定测试层如何**调用与对齐**它们。
 > **铁律**：先理解当前模块既有写法，再按既有风格写。**禁止自创新写法。** 不确定时以"项目真实代码"为准，不凭空构造。
@@ -128,8 +128,6 @@ grep -r "def assert_<对象>" sugon_web/assertions/
 **Step 6 — 定位策略预判（复杂表单/自定义组件时）**
 能读前端代码就按 `page_func_spec.md` 优先级定位；无法仅凭前端代码唯一确定（操作项隐藏需 JS 触发、同名菜单多个、复杂表单多 input）→ 标记"需运行时侦察"，编码时用侦察脚本枚举真实渲染态再写定位，**不凭空构造 locator**。
 
-> **强制侦察（治"凭猜写代码→阶段三反复返工"的核心）**：当本次要**新建一个 Page Object**、或交互含**多步向导 / `cl-button` 等自定义组件 / 多个 dropdown / 动态渲染**时，**编码前必须先跑 `recon_page.py` 侦察真实渲染态**（按钮文案、向导步数、下拉选项文案、容器类名），据此写选择器与流程。**严禁凭需求文案猜按钮/类名/步数**——实测一次复杂用例的阶段三返工几乎全部源于此。组件定位先查 `page_func_spec.md` §1.3 速查表。
-
 ### 4.1 预研完成自检（全部"是"方可编码）
 
 | # | 自检问题 | 验证方式 |
@@ -160,7 +158,7 @@ grep -r "def assert_<对象>" sugon_web/assertions/
 ```python
 import allure
 import pytest
-from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.util import random_data
 
 
@@ -189,6 +187,22 @@ class TestXxx:
 ```
 
 > 骨架是结构基线，不是填空模板。步骤数、fixture、断言层级依据需求与同模块既有风格调整。
+
+### 5.3 用例独立性（解耦）铁律（适用所有模块，非某一模块专属）
+
+> **解耦定义**：每个 `test_` 方法都是自给自足的独立场景——**可单独跑、可任意顺序跑、可重复跑，结果都一致**。用例之间不传递状态、不依赖彼此的执行顺序或残留数据。
+> **为何重要**：解耦差的用例（依赖"上一个用例建好的数据"、共用未清理的残留、依赖页面停留位置）在 `-k` 单跑 / 乱序跑 / 并发跑时会随机失败，是阶段三反复返工的高发根因。本铁律适用于所有业务模块。
+
+**逐条对照编写：**
+
+1. **资源自给**：用例所需基础资源一律由 fixture 注入创建，**禁止**依赖"其它用例已创建好"或"环境已预置"的具名资源；需求写"已预置 X"时按阶段一转写的"自建 / 复用前序场景"方案处理（见需求 MD 与 §8），不照搬"环境已有"的假设。
+2. **唯一命名**：资源名一律 `random_data()`，**禁止**硬编码固定名；衍生资源用"前缀+源名"（如 `clone_<name>`、`snapshot_<name>`），避免乱序/重复/并发跑时同名冲突。
+3. **自导航**：用例开头自行 `goto_service` / `goto_submenu` 跳到目标页，**不依赖**上个用例停留的页面或回收站等残留状态。
+4. **自清理 + 状态复原**：用例内临时创建、fixture teardown 不覆盖的资源（克隆盘、快照、镜像、亲和组等）必须在用例内清理并断言删除成功；对修改类操作（改名/挂载/绑定）测试后改回/卸载/解绑，使共享 fixture 资源恢复初始态、不污染后续用例（fixture 注入的资源由 fixture 清理，用例不重复删）。
+5. **无顺序依赖**：禁止"用例 B 复用用例 A 未清理的残留数据"这类跨用例耦合；确需共享同一套数据的多个用例，必须同测试类 + class-scoped fixture 共享、批次末统一清理（见 §12.3），而非靠执行顺序传递。
+6. **环境前提用 skip 声明**：节点数/存储类型/架构等环境前提，用 `skip_if_nodes_less_than` / `skip_stor` / `skip_arch` 等装饰器声明跳过——**这是合理的环境依赖、不是用例耦合**；禁止用"上个用例顺带把环境准备好了"来替代 skip 判断。
+
+> **解耦 ≠ 步骤无序**：用例内部步骤（准备→操作→校验→清理）本身有先后是正常的，不属于耦合；解耦约束的只是"用例与用例之间"的独立性。
 
 ---
 
@@ -231,7 +245,6 @@ class TestXxx:
 - **批量创建必须用 `count` 参数**（`@pytest.mark.parametrize("vm", [{"basic": {"count": N}}], indirect=True)` 或 `[{"count": N}]`），**严禁手动 `for` 循环创建**。
 - **清理归属于 fixture**：现有 teardown 能覆盖的不在用例里手动删；无法覆盖的按 `fixture_spec.md` 的 yield-based / 注册表模式补充。
 - fixture 内**禁止写断言、禁止写多步页面交互**（委托 helper）；helper 内**禁止 `yield`、禁止 fixture 依赖注入**。
-- fixture **必须定义在 `conftest.py`**：跨模块通用 → `testcase/conftest.py`，模块内通用 → `testcase/{模块}/conftest.py`；**严禁在 `test_*.py` 内定义资源 fixture**（即便当前只本文件用，也应放模块 `conftest.py` 并登记 `fixtures_index.md`）。
 
 **Fixture 委托 Helper 示例**（测试层不写此代码，但需理解此分离，避免把多步操作写进 fixture）：
 ```python
@@ -259,8 +272,6 @@ def create_resource(page, resource_page, name: str) -> dict:
 - 优先在 `dialog` / 当前 `tab` / 目标表格或目标行范围内 scoped 定位；`first()` / `nth()` 仅作缩小范围后的兜底，不作首选。
 - 通用组件（el-select / el-dialog / el-table）的 CSS 交互**下沉 `BasePage`/Mixin**，Page 子类只调语义方法。
 - 新增 Page 公共方法**必须有 docstring**（用途、参数及可选值/默认值、返回值）。
-- **`@submenu` 已自动导航，勿重复**：`@submenu("子菜单")` 会先 `goto_service` 再 `goto_submenu` 才执行方法体（见 `common/components/navigation.py`）。被装饰方法体内、以及测试层调用该方法前，**都不得再写 `goto_service`/`goto_submenu`**；更**不要为"进入某子菜单"单独封装导航方法**（与装饰器重复，且易写出与实际操作不符的日志）。做法：Mixin 设 `service_name` 类属性 + 业务方法加 `@submenu("子菜单")`。
-- **JS 仅作最后兜底，不作首选**：定位优先用上面的 Playwright 原生 scoped 方式；`page.evaluate` / `document.querySelectorAll` 等 JS **仅当原生定位确实无法命中时才兜底**，严禁把"JS 遍历 DOM"当首选实现（与前端类名紧耦合、无自动等待、易 flaky）。
 
 ---
 
@@ -359,10 +370,6 @@ with allure_step_log("步骤3: 验证规则字段"):
 | 9 | 把流程写进 Page | Page 方法跨服务页面编排 | 下沉到 Helper |
 | 10 | 改公共/前端代码 | 改 `common/` / `assertions/` / `refrence/` | 新增方法或新增可选参数 |
 | 11 | 条件过宽 | `assert "运行" in status` | `assert status == "运行中"` 精确匹配 |
-| 12 | 重复导航 | 业务方法已 `@submenu`，测试层/方法体再写 `goto_service`/`goto_submenu` | 直接调业务方法，导航交给装饰器 |
-| 13 | Page 滥用 JS | `page.evaluate`/`querySelectorAll` 遍历 DOM 作首选定位 | Playwright 原生 scoped 定位，JS 仅兜底 |
-| 14 | fixture 放错文件 | 资源 fixture 定义在 `test_*.py` 内 | 放 `conftest.py`，按模块归属 |
-| 15 | 自建 logger | `test_*.py` 内 `import logging` 自取 logger | `from sugon_web.utils.logger import logger` |
 
 ---
 
@@ -412,10 +419,6 @@ with allure_step_log("步骤3: 验证规则字段"):
 - [ ] P1 末态字段集中回读；SSH 断言了 `rc` 和 `stdout`；断言总数约 3–8。
 - [ ] 定位优先 scoped 在 dialog/tab/表格内，基于前端代码而非凭空构造。
 - [ ] 新增 Page 方法/fixture/断言均有完整中文 docstring；新增 fixture 遵循 `fixture_spec.md`、新增断言遵循 `assertion_guidelines.md` 并已登记/归位。
-- [ ] 业务方法已 `@submenu` 的，测试层/方法体未重复 `goto_service`/`goto_submenu`；无多余导航封装方法。
-- [ ] Page 定位以原生 scoped 为主，未把 JS 遍历 DOM 当首选。
-- [ ] 资源 fixture 定义在 `conftest.py`（非 `test_*.py`）。
-- [ ] 日志统一 `from sugon_web.utils.logger import logger`，无局部 `import logging`。
 
 **复杂场景（步骤 > 8 或 3+ 服务时适用）**
 - [ ] 已按页面/服务分组拆分步骤块，跨页面跳转后有状态确认。

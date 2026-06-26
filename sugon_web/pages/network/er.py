@@ -561,8 +561,11 @@ class ErMixin(BasePage):
         with allure_step_log(f"删除路由表规则: {destination}"):
             # 在路由表列表中找到包含目的地址的行，点击删除
             self.click_action(destination, "删除")
-            # 确认删除对话框
-            dialog = self.page.locator(".el-dialog__wrapper:visible")
+            self.page.wait_for_timeout(500)
+            # 确认删除对话框（兼容 el-dialog 与 sugon-dialog 两种实现）
+            dialog = self.page.locator(
+                ".el-dialog__wrapper:visible, .sugon-dialog:visible, .el-message-box__wrapper:visible"
+            ).first
             expect(dialog).to_be_visible(timeout=5000)
             expect(dialog).to_contain_text("删除", timeout=3000)
             self.dialog_confirm.click()

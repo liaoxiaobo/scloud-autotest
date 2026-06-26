@@ -4,7 +4,7 @@ import re
 
 from sugon_web.common.base import BasePage, submenu
 from sugon_web.common.playwright import expect
-from sugon_web.utils.logger import allure_step_log
+from sugon_web.utils.logger import allure_step_log, logger
 
 
 class DcMixin(BasePage):
@@ -734,6 +734,8 @@ class DcMixin(BasePage):
     ):
         """创建虚拟接口。
 
+        若选择物理连接时下拉列表为空，则关闭当前新建页并返回列表页后重试一次。
+
         Args:
             name: 虚拟接口名称，长度2~64字符，支持中文、英文、数字、横线。
             physical_connection_name: 物理连接名称。
@@ -747,106 +749,136 @@ class DcMixin(BasePage):
             bgp_peer_asn: BGP邻居AS号，路由模式为bgp时必填，如 "65533"。
             bgp_md5_password: BGP MD5认证密码，路由模式为bgp时必填，如 "123123"。
         """
-        with allure_step_log("点击新建按钮进入虚拟接口创建页面"):
-            self.btn_create.click()
-            self.page.wait_for_url("**/virtual-interface-add**", timeout=15000)
-            self.wait_for_page_ready()
-            self.page.wait_for_timeout(1000)
 
-        ctx = self.page.locator(".add-box")
-        expect(ctx).to_be_visible(timeout=10000)
+        def _create_once():
+            """执行一次虚拟接口创建流程。
 
-        with allure_step_log("填写虚拟接口名称"):
-            name_input = ctx.get_by_placeholder("请输入名称")
-            name_input.fill(name)
+            Returns:
+                bool: True 表示创建表单已成功提交；False 表示物理连接下拉列表为空，需要外层重试。
+            """
+            with allure_step_log("点击新建按钮进入虚拟接口创建页面"):
+                self.btn_create.click()
+                self.page.wait_for_url("**/virtual-interface-add**", timeout=15000)
+                self.wait_for_page_ready()
+                self.page.wait_for_timeout(1000)
 
-        with allure_step_log("选择物理连接"):
-            pc_select = ctx.get_by_placeholder("请选择物理连接")
-            pc_select.click()
-            self.page.wait_for_timeout(500)
-            dropdown = self.page.locator(".el-select-dropdown:visible")
-            expect(dropdown).to_be_visible(timeout=5000)
-            option = dropdown.locator(".el-select-dropdown__item").filter(has_text=physical_connection_name).first
-            expect(option).to_be_visible(timeout=5000)
-            option.click()
-            self.page.wait_for_timeout(500)
+            ctx = self.page.locator(".add-box")
+            expect(ctx).to_be_visible(timeout=10000)
 
-        with allure_step_log("选择虚拟网关"):
-            vgw_select = ctx.get_by_placeholder("请选择虚拟网关")
-            vgw_select.click()
-            self.page.wait_for_timeout(500)
-            dropdown = self.page.locator(".el-select-dropdown:visible")
-            expect(dropdown).to_be_visible(timeout=5000)
-            option = dropdown.locator(".el-select-dropdown__item").filter(has_text=virtual_gateway_name).first
-            expect(option).to_be_visible(timeout=5000)
-            option.click()
-            self.page.wait_for_timeout(1000)
+            with allure_step_log("填写虚拟接口名称"):
+                name_input = ctx.get_by_placeholder("请输入名称")
+                name_input.fill(name)
 
-        # 虚拟子网条件渲染：ER关联模式的虚拟网关可能不显示此字段
-        subnet_select = ctx.get_by_placeholder("请选择虚拟子网")
-        if subnet_select.count() > 0 and subnet_select.first.is_visible():
-            with allure_step_log("选择虚拟子网"):
-                subnet_select.click()
+            with allure_step_log("选择物理连接"):
+                pc_select = ctx.get_by_placeholder("请选择物理连接")
+                pc_select.click()
                 self.page.wait_for_timeout(500)
                 dropdown = self.page.locator(".el-select-dropdown:visible")
                 expect(dropdown).to_be_visible(timeout=5000)
-                options = dropdown.locator(".el-select-dropdown__item")
-                if options.count() > 0:
-                    options.nth(subnet_index).click()
+                option = dropdown.locator(".el-select-dropdown__item").filter(has_text=physical_connection_name).first
+
+                # 下拉列表偶发为空时关闭新建页，由外层重试一次
+                if option.count() == 0:
+                    logger.warning(
+                        f"虚拟接口创建时物理连接下拉列表为空，未找到 '{physical_connection_name}'，准备重试"
+                    )
+                    return False
+
+                expect(option).to_be_visible(timeout=5000)
+                option.click()
                 self.page.wait_for_timeout(500)
-                # 点击空白处关闭下拉框
-                ctx.click()
-                self.page.wait_for_timeout(300)
 
-        with allure_step_log(f"填写本端网关: {local_gateway}"):
-            self._fill_ip_inputs(ctx, local_gateway, is_local=True)
+            with allure_step_log("选择虚拟网关"):
+                vgw_select = ctx.get_by_placeholder("请选择虚拟网关")
+                vgw_select.click()
+                self.page.wait_for_timeout(500)
+                dropdown = self.page.locator(".el-select-dropdown:visible")
+                expect(dropdown).to_be_visible(timeout=5000)
+                option = dropdown.locator(".el-select-dropdown__item").filter(has_text=virtual_gateway_name).first
+                expect(option).to_be_visible(timeout=5000)
+                option.click()
+                self.page.wait_for_timeout(1000)
 
-        with allure_step_log(f"填写远端网关: {remote_gateway}"):
-            self._fill_ip_inputs(ctx, remote_gateway, is_local=False)
+            # 虚拟子网条件渲染：ER关联模式的虚拟网关可能不显示此字段
+            subnet_select = ctx.get_by_placeholder("请选择虚拟子网")
+            if subnet_select.count() > 0 and subnet_select.first.is_visible():
+                with allure_step_log("选择虚拟子网"):
+                    subnet_select.click()
+                    self.page.wait_for_timeout(500)
+                    dropdown = self.page.locator(".el-select-dropdown:visible")
+                    expect(dropdown).to_be_visible(timeout=5000)
+                    options = dropdown.locator(".el-select-dropdown__item")
+                    if options.count() > 0:
+                        options.nth(subnet_index).click()
+                    self.page.wait_for_timeout(500)
+                    # 点击空白处关闭下拉框
+                    ctx.click()
+                    self.page.wait_for_timeout(300)
 
-        with allure_step_log(f"选择路由模式: {route_mode}"):
-            radio_group = ctx.locator(".el-radio-group")
-            if route_mode == "static":
-                radio_group.get_by_text("静态路由", exact=True).click()
-            else:
-                radio_group.get_by_text("BGP", exact=True).click()
-            self.page.wait_for_timeout(500)
+            with allure_step_log(f"填写本端网关: {local_gateway}"):
+                self._fill_ip_inputs(ctx, local_gateway, is_local=True)
 
-        # ER关联模式下需要填写本端子网
-        if local_subnet:
-            with allure_step_log(f"填写本端子网: {local_subnet}"):
-                local_subnet_item = ctx.locator(".el-form-item").filter(has_text="本端子网")
-                if local_subnet_item.count() > 0 and local_subnet_item.first.is_visible():
-                    local_subnet_textarea = local_subnet_item.first.locator("textarea").first
-                    expect(local_subnet_textarea).to_be_visible(timeout=5000)
-                    local_subnet_textarea.fill(local_subnet)
+            with allure_step_log(f"填写远端网关: {remote_gateway}"):
+                self._fill_ip_inputs(ctx, remote_gateway, is_local=False)
 
-        if route_mode == "static" and remote_subnet:
-            with allure_step_log(f"填写远端子网: {remote_subnet}"):
-                # 远端子网textarea通过label精确定位，避免与描述/本端子网textarea混淆
-                remote_subnet_item = ctx.locator(".el-form-item").filter(has_text="远端子网")
-                expect(remote_subnet_item.first).to_be_visible(timeout=5000)
-                remote_subnet_textarea = remote_subnet_item.first.locator("textarea").first
-                expect(remote_subnet_textarea).to_be_visible(timeout=5000)
-                remote_subnet_textarea.fill(remote_subnet)
+            with allure_step_log(f"选择路由模式: {route_mode}"):
+                radio_group = ctx.locator(".el-radio-group")
+                if route_mode == "static":
+                    radio_group.get_by_text("静态路由", exact=True).click()
+                else:
+                    radio_group.get_by_text("BGP", exact=True).click()
+                self.page.wait_for_timeout(500)
 
-        if route_mode == "bgp" and bgp_peer_asn:
-            with allure_step_log(f"填写BGP邻居AS号: {bgp_peer_asn}"):
-                bgp_as_input = ctx.get_by_placeholder("请输入BGP邻居AS号")
-                expect(bgp_as_input).to_be_visible(timeout=5000)
-                bgp_as_input.fill(bgp_peer_asn)
-                self.page.wait_for_timeout(300)
+            # ER关联模式下需要填写本端子网
+            if local_subnet:
+                with allure_step_log(f"填写本端子网: {local_subnet}"):
+                    local_subnet_item = ctx.locator(".el-form-item").filter(has_text="本端子网")
+                    if local_subnet_item.count() > 0 and local_subnet_item.first.is_visible():
+                        local_subnet_textarea = local_subnet_item.first.locator("textarea").first
+                        expect(local_subnet_textarea).to_be_visible(timeout=5000)
+                        local_subnet_textarea.fill(local_subnet)
 
-        if route_mode == "bgp" and bgp_md5_password:
-            with allure_step_log("填写BGP MD5认证密码"):
-                bgp_md5_input = ctx.get_by_placeholder("请输入BGP MD5认证密码")
-                expect(bgp_md5_input).to_be_visible(timeout=5000)
-                bgp_md5_input.fill(bgp_md5_password)
-                self.page.wait_for_timeout(300)
+            if route_mode == "static" and remote_subnet:
+                with allure_step_log(f"填写远端子网: {remote_subnet}"):
+                    # 远端子网textarea通过label精确定位，避免与描述/本端子网textarea混淆
+                    remote_subnet_item = ctx.locator(".el-form-item").filter(has_text="远端子网")
+                    expect(remote_subnet_item.first).to_be_visible(timeout=5000)
+                    remote_subnet_textarea = remote_subnet_item.first.locator("textarea").first
+                    expect(remote_subnet_textarea).to_be_visible(timeout=5000)
+                    remote_subnet_textarea.fill(remote_subnet)
 
-        with allure_step_log("点击立即创建按钮"):
-            submit_btn = ctx.get_by_text("立即创建", exact=True)
-            submit_btn.dispatch_event("click")
+            if route_mode == "bgp" and bgp_peer_asn:
+                with allure_step_log(f"填写BGP邻居AS号: {bgp_peer_asn}"):
+                    bgp_as_input = ctx.get_by_placeholder("请输入BGP邻居AS号")
+                    expect(bgp_as_input).to_be_visible(timeout=5000)
+                    bgp_as_input.fill(bgp_peer_asn)
+                    self.page.wait_for_timeout(300)
+
+            if route_mode == "bgp" and bgp_md5_password:
+                with allure_step_log("填写BGP MD5认证密码"):
+                    bgp_md5_input = ctx.get_by_placeholder("请输入BGP MD5认证密码")
+                    expect(bgp_md5_input).to_be_visible(timeout=5000)
+                    bgp_md5_input.fill(bgp_md5_password)
+                    self.page.wait_for_timeout(300)
+
+            with allure_step_log("点击立即创建按钮"):
+                submit_btn = ctx.get_by_text("立即创建", exact=True)
+                submit_btn.dispatch_event("click")
+
+            return True
+
+        for attempt in range(2):
+            success = _create_once()
+            if success:
+                return
+            if attempt == 0:
+                with allure_step_log("选择物理连接失败，关闭新建页返回列表后重试"):
+                    self._ensure_virtual_interface_list()
+                    self.page.wait_for_timeout(1000)
+
+        raise AssertionError(
+            f"虚拟接口创建失败：连续2次未能在物理连接下拉列表中找到 '{physical_connection_name}'"
+        )
 
     @submenu("虚拟接口")
     def virtual_interface_connectivity_test(self, name: str, dest_ip: str) -> str:

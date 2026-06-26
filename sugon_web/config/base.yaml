@@ -22,10 +22,10 @@ slow_mo: 0
 # 环境通用配置
 # -----------------------------------------------------------------------------
 # 默认测试环境地址
-host: 172.22.3.150
+host: 172.22.1.190
 
 # 存储池类型 (ceph/usan/local/nfs/xstor等)
-stor: zbs
+stor: xstor
 
 # 默认测试数据
 data: Autotest
@@ -62,6 +62,15 @@ bms:
   network_name: bms
   # BMS 实例登录密码
   password: admin1234@sugon
+  # BMS 创建/重建使用的裸金属镜像
+  image_name: centos76-bms-0511-base
+  # BMS 裸金属镜像在控制节点上的目标路径
+  image_file: /home/scloudadmin/centos76-bms-0511.raw
+  # BMS 裸金属镜像下载地址
+  image_url: http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw
+  # BMS 镜像导入后端和最小系统盘
+  image_backend: bms
+  image_min_disk: 50
 
 # XStor存储配置
 xstor: |

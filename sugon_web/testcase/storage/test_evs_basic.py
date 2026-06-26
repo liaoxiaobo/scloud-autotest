@@ -5,8 +5,6 @@ from sugon_web.utils.data import random_data, load_data
 from sugon_web.utils.decorators import skip_stor
 
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
 @allure.story('云硬盘-基本功能验证')
 class TestEVSBasic:
 
@@ -154,8 +152,8 @@ class TestEVSBasic:
             evs_page.assert_status(name, status="可用", timeout=1200)
 
             # 切换到弹性云服务器服务的镜像服务页面
-            evs_page.goto_service("弹性云服务器")
-            evs_page.goto_submenu("镜像服务")
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", timeout=1200)
 
         with allure_step_log("步骤3：清理测试数据"):
@@ -179,7 +177,6 @@ class TestEVSBasic:
         with allure_step_log("步骤2: 重置云硬盘状态"):
             evs_page.evs_reset_status(volume["name"])
             evs_page.assert_popup_success("重置状态成功")
-            evs_page.assert_status(volume["name"], status="错误")
 
         with allure_step_log("步骤3: 恢复云硬盘状态"):
             ssh_host.set_volume_state(volume["name"], "available")

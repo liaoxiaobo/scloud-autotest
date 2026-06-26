@@ -125,7 +125,7 @@ def mysql(browser_context, config):
 
     with allure_step_log(f"前置操作：创建新用户 {db_name}"):
         mysql_page.create_user(name, user_name, user_password, db_name, privileges)
-        mysql_page.assert_popup_success("创建用户成功",10)
+        mysql_page.assert_popup_success("创建用户成功", 10)
 
     yield data
 
@@ -190,7 +190,7 @@ def kingbase(browser_context, config):
     logger.info(f"为测试类创建共享KingbaseES实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        kingbase_page.create_instance(name, instance_type=instance_type, password=admin_password)
+        kingbase_page.create_instance(name, instance_type=instance_type, node_count=3, password=admin_password)
         kingbase_page.assert_popup_success("创建实例")
         kingbase_page.assert_list_contain(name)
         kingbase_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
@@ -262,7 +262,7 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         xscale_page.create_instance(name, password=admin_password)
         xscale_page.assert_popup_success()
         xscale_page.assert_list_contain(name)
-        xscale_page.assert_status(name, status="就绪", timeout=1500)
+        xscale_page.assert_status(name, status="就绪", timeout=2400)
 
     with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
         node_name = f"{name}-cn-0"

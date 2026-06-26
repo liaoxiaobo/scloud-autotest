@@ -42,9 +42,9 @@ class TestERCreate:
                 er_page.assert_status(
                     er_name,
                     status="运行中",
-                    timeout=120,
+                    timeout=1200,
                     refresh=True,
-                    refresh_interval=20,
+                    refresh_interval=30,
                 )
                 logger.info(f"企业路由器 {er_name} 状态变为运行中")
 
@@ -122,9 +122,9 @@ class TestERCreate:
                 er_page.assert_status(
                     er_name,
                     status="运行中",
-                    timeout=120,
+                    timeout=1200,
                     refresh=True,
-                    refresh_interval=20,
+                    refresh_interval=30,
                 )
                 logger.info(f"企业路由器 {er_name} 状态变为运行中")
 

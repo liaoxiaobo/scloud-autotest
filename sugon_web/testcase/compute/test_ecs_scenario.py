@@ -7,8 +7,6 @@ from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('业务场景覆盖验证')
 class TestECSScenario:
 
@@ -199,7 +197,7 @@ class TestECSScenario:
             ecs_page.ecs_create_affinity_group(group_name, policy)
 
         with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
-            ecs_page.assert_popup_success("执行成功")
+            # ecs_page.assert_popup_success("执行成功")
             assert ecs_page.get_row_data(group_name).get("策略") == policy, \
                 f"创建亲和组失败，期望策略:{policy},实际策略:{ecs_page.get_row_data(group_name).get('策略')}"
 

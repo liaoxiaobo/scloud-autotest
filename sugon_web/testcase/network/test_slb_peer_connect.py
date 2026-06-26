@@ -394,7 +394,7 @@ class _BaseTestHttpPeerForwardScenario:
         peer_name = f"pc-{random_data()}"
 
         # 步骤1: 创建HTTP监听器并添加资源池成员
-        with allure_step_log("步骤1: 创建HTTP监听器并添加资源池成员"):
+        with allure_step_log("步骤1: 创建HTTP监听器"):
             vpc_page.slb_lb_create(
                 slb_name=slb_name,
                 lb_name=lb_name,
@@ -416,6 +416,16 @@ class _BaseTestHttpPeerForwardScenario:
                 "pool_name": pool_name_1,
             })
 
+        # 步骤2: 后端虚机启动web服务
+        with allure_step_log("步骤2: 后端虚机启动web服务并添加资源池成员"):
+            for backend in vpc1_backends:
+                prepare_http_backend(ssh_vm, backend, backend["name"], port=PORT_HTTP)
+                cleanup.add_backend_server(backend, port=PORT_HTTP)
+            # ecs2-1也需要启动web服务（后续作为backend_2成员）
+            prepare_http_backend(
+                ssh_vm, vpc2_backends[0], vpc2_backends[0]["name"], port=PORT_HTTP
+            )
+
             vpc_page.lb_pool_add_vm(
                 vm_names=[b["name"] for b in vpc1_backends],
                 lb_name=lb_name,
@@ -424,19 +434,13 @@ class _BaseTestHttpPeerForwardScenario:
             )
             vpc_page.assert_popup_success("提交成功")
             for backend in vpc1_backends:
-                vpc_page.assert_lb_pool_member_info(
-                    backend["name"], port=PORT_HTTP, resource_status="运行中"
+                vpc_page.wait_lb_pool_member_status(
+                    lb_name=lb_name,
+                    pool_name=pool_name_1,
+                    vm_name=backend["name"],
+                    expected_status="运行中",
+                    timeout=120,
                 )
-
-        # 步骤2: 后端虚机启动web服务
-        with allure_step_log("步骤2: 后端虚机启动web服务"):
-            for backend in vpc1_backends:
-                prepare_http_backend(ssh_vm, backend, backend["name"], port=PORT_HTTP)
-                cleanup.add_backend_server(backend, port=PORT_HTTP)
-            # ecs2-1也需要启动web服务（后续作为backend_2成员）
-            prepare_http_backend(
-                ssh_vm, vpc2_backends[0], vpc2_backends[0]["name"], port=PORT_HTTP
-            )
 
         slb_vip = vpc_page.get_slb_vip(slb_name)
 
@@ -588,6 +592,8 @@ class _BaseTestHttpPeerForwardScenario:
             assert pool_name_2 in rule_text, f"转发规则目标资源池未显示: {rule_text}"
             # 登记转发规则以便 teardown 阶段清理
             cleanup.listeners[0]["forward_rules"] = ["test_domain"]
+            # 转发规则下发到 LB 实例需要短暂收敛，等待后再验证
+            time.sleep(20)
 
         # 步骤12: 配置客户端hosts文件
         with allure_step_log("步骤12: 配置客户端hosts文件"):
@@ -603,10 +609,24 @@ class _BaseTestHttpPeerForwardScenario:
         with allure_step_log("步骤13: 验证域名转发规则"):
             ssh_vm.connect(vpc2_client["mfip"])
 
-            # 13.1: curl http://1example.com:7070 -> backend_2 (源IP算法)
-            # 源IP算法下同一客户端固定到一台后端，所有响应应相同
+            # 诊断：先用 VIP IP 直接访问默认池，确认跨 VPC 基础网络可达
+            diag = ssh_vm.run(
+                f"curl -s -v --connect-timeout 10 "
+                f"http://{slb_vip}:{PORT_HTTP}/index.html",
+                check_rc=False, return_rc=True,
+            )
+            logger.warning(
+                "跨VPC VIP直接访问诊断: rc=%s stdout=%r stderr=%r",
+                diag["rc"], diag.get("stdout", ""), diag.get("stderr", "")
+            )
+
+            # 13.1: curl Host: 1example.com -> backend_2 (源IP算法)
+            # 使用 VIP IP 作为目标，显式指定 Host 头，避免端口影响域名精确匹配
             responses_1 = collect_lb_http_responses(
-                ssh_vm, f"http://1example.com:{PORT_HTTP}", count=6
+                ssh_vm,
+                f"http://{slb_vip}:{PORT_HTTP}/index.html",
+                count=6,
+                headers=["Host: 1example.com"],
             )
             assert len(responses_1) == 6, f"请求次数不足: {len(responses_1)}"
             assert all("this is ecs" in r for r in responses_1), (
@@ -618,9 +638,10 @@ class _BaseTestHttpPeerForwardScenario:
                 f"源IP算法应固定到同一后端，实际响应不一致: {unique_responses}"
             )
 
-            # 13.2: curl http://example.com1:7070 -> backend_1 (默认，仅剩ecs1-2)
+            # 13.2: curl Host: example.com1 -> backend_1 (默认，仅剩ecs1-2)
             result = ssh_vm.run(
-                f"curl -s --connect-timeout 10 http://example.com1:{PORT_HTTP}/index.html",
+                f"curl -s --connect-timeout 10 -H 'Host: example.com1' "
+                f"http://{slb_vip}:{PORT_HTTP}/index.html",
                 check_rc=False,
                 return_rc=True,
             )

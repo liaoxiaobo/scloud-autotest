@@ -16,7 +16,7 @@ PORT = 8080
 
 
 def _collect_and_assert_round_robin(
-    ssh_vm, requester_mfip, lb_vip, port, backend_markers, scene_name, count=20
+    ssh_vm, requester_mfip, lb_vip, port, backend_markers, scene_name, count=90
 ):
     """采集HTTP响应并按轮询算法断言。"""
     ssh_vm.connect(requester_mfip)

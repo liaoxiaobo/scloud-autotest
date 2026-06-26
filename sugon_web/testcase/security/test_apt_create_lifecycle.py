@@ -31,8 +31,8 @@ class TestAptCreateLifecycle:
         with allure_step_log(f"步骤3: 新建APT实例 {name}"):
             apt_page.apt_create(name=name)
             # 创建后通过实例出现在列表中且状态符合预期来验证成功
-            apt_page.assert_apt_status(name, service_status="运行", vm_status="运行", timeout=1200)
-            row_data = apt_page.get_row_data(name)
+            # assert_apt_status 返回匹配时的行数据，避免二次 get_row_data 遇到表格刷新竞态
+            row_data = apt_page.assert_apt_status(name, service_status="运行", vm_status="运行", timeout=1200)
             logger.info(f"APT 实例 {name} 创建完成，行数据: {row_data}")
 
         with allure_step_log(f"步骤4: 进入详情页验证跳转地址"):

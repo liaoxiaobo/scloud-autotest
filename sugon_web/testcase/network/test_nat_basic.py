@@ -551,6 +551,7 @@ class TestNAT:
                 vpc_page.route_rule_delete("0.0.0.0/0")
 
     @allure.title("DNAT场景-探测公网IP公网端口验证规则生效（UDP协议）")
+    @pytest.mark.parametrize("vm", [{"network": {"disable_default_sg": True}}], indirect=True)
     def test_dnat_udp_probe_scenario(self, vpc_page, nat, vpc, vm, ssh_vm, ssh_host):
         """场景二：通过探测公网IP:公网端口（基于UDP协议）来验证dnat规则已生效"""
         nat_name = nat['name']

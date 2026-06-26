@@ -122,14 +122,7 @@ class EcsLifecycleMixin(BasePage):
 
         rebuild_dialog = self.locator("div[role='dialog'][aria-label='重建云主机']:visible")
         expect(rebuild_dialog).to_be_visible()
-        mode_trigger = self._find_element(
-            [
-                self.locator("div").filter(has_text=re.compile(r"^置备方式精简置备厚置备$")).get_by_placeholder("请选择"),
-                self.locator("form div").filter(has_text="置备方式精简置备厚置备 请选择置备方式").get_by_placeholder("请选择")],
-            "重建云主机置备方式选择框",
-            timeout=3000)
-        mode_trigger.click()
-        self.get_by_role("listitem").filter(has_text=pre_type).click()
+        self.get_by_role("radio", name=pre_type).click()
         self._select_from_named_drawer(drawer_title="选择镜像", item_name=image, open_drawer=True)
         self.dialog_confirm.click()
         logger.info(f"重建云主机完成: {name}, 镜像: {image}")

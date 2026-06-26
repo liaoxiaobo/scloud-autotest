@@ -26,21 +26,46 @@ class BmsPage(BasePage):
         expected = self._SOFT_SUBMENU_URL_MAP.get(name)
         self.goto_service("裸金属")
         if expected:
-            if expected not in self.page.url:
-                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
-                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
-                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
-                base = self.page.url.split('#')[0].rstrip('/')
+            base = self.page.url.split('#')[0].rstrip('/')
+            target_url = f"{base}/#{expected}"
+
+            def _on_expected_route():
+                return expected in self.page.url and "#/error" not in self.page.url
+
+            def _goto_target(wait_ms=2500):
                 self.page.goto(base)
                 self.page.wait_for_load_state("domcontentloaded")
                 self.page.wait_for_timeout(1500)
-                self.page.goto(f"{base}#{expected}")
+                self.page.goto(target_url)
                 self.page.wait_for_load_state("domcontentloaded")
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(wait_ms)
+
+            if not _on_expected_route():
+                self.logger.info(f"[_goto_submenu_safe] 导航到 {name}")
+                # SPA hash 路由下仅改变 hash 时 page.goto 可能不触发 Vue Router，
+                # 先回到服务根页面（无 hash），再导航到目标子菜单，确保完整页面切换
+                _goto_target()
                 # 若被重定向到 no-permission，尝试通过菜单点击导航
                 if "no-permission" in self.page.url:
                     self.logger.warning(f"URL 导航到 {expected} 被重定向到 no-permission，尝试菜单点击")
                     self._click_bms_submenu(name)
+                # 偶发进入前端 error 路由或落到其他 BMS 子页面时，先重新打开服务根页再直达目标 hash；
+                # 仍失败时再尝试菜单点击，避免后续误报为搜索框定位失败。
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 导航到 {name} 后未到达期望路由，"
+                        f"当前URL={self.page.url}，重试直达: {target_url}"
+                    )
+                    _goto_target(wait_ms=3000)
+                if not _on_expected_route():
+                    self.logger.warning(
+                        f"[_goto_submenu_safe] 直达 {target_url} 后仍未到达期望路由，"
+                        f"当前URL={self.page.url}，尝试左侧菜单点击"
+                    )
+                    self._click_bms_submenu(name)
+                    self.page.wait_for_timeout(3000)
+                if not _on_expected_route():
+                    raise RuntimeError(f"进入BMS{name}页失败，当前URL={self.page.url}, 目标URL={target_url}")
             # 裸金属实例页面表格和搜索框加载较慢，增加等待时间
             wait_ms = 4000 if name == "裸金属实例" else 2500
             self.page.wait_for_timeout(wait_ms)
@@ -49,50 +74,100 @@ class BmsPage(BasePage):
             self.goto_submenu(name)
 
     def _click_bms_submenu(self, name: str):
-        """通过左侧菜单点击导航到 BMS 软装版下的子菜单，处理重名问题。"""
-        self.logger.info(f"[_click_bms_submenu] 点击菜单: {name}")
-        # 展开软装版父菜单（若未展开）
-        menu_left = self.page.locator("#cloud-menu-left")
-        parent_nodes = menu_left.locator(".one-tree-parent-node")
-        for i in range(parent_nodes.count()):
-            parent = parent_nodes.nth(i)
-            text = parent.inner_text()
-            if "软装版" in text:
-                is_expanded = parent.evaluate("el => el.classList.contains('one-tree-expand')")
-                if not is_expanded:
-                    parent.click()
-                    self.page.wait_for_timeout(500)
-                # 在软装版同级或子级中查找目标菜单项
-                break
-        # 使用 JS 精确查找并点击可见的菜单文本
-        self.page.evaluate(
-            f"""(name) => {{
+        """严格点击 BMS 软装版下的子菜单，避免落到硬装/网络物理机路由。"""
+        self.logger.info(f"[_click_bms_submenu] 点击软装版菜单: {name}")
+        result = self.page.evaluate(
+            r"""(name) => {
                 const menu = document.querySelector('#cloud-menu-left');
                 if (!menu) return 'menu-not-found';
-                const items = menu.querySelectorAll('.one-tree-msg-text');
-                // 优先找在已展开父节点下的匹配项（更可能是软装版下的）
-                for (const item of items) {{
-                    if (item.textContent.trim() === name) {{
-                        const parent = item.closest('.one-tree-parent-node');
-                        const isExpanded = parent && parent.classList.contains('one-tree-expand');
-                        // 找已展开父节点下的项，或没有父节点的项
-                        if (!parent || isExpanded) {{
-                            item.click();
-                            return 'clicked';
-                        }}
-                    }}
-                }}
-                // fallback: 点击第一个匹配
-                for (const item of items) {{
-                    if (item.textContent.trim() === name) {{
-                        item.click();
-                        return 'clicked-fallback';
-                    }}
-                }}
-                return 'not-found';
-            }}""",
+
+                const normalize = (text) => (text || '').replace(/\s+/g, '').trim();
+                const visible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
+                const nodeOf = (el) => el.closest(
+                    '.one-tree-parent-node, .one-tree-child-node, .one-tree-node, li, [role="treeitem"]'
+                ) || el.parentElement || el;
+                const depthOf = (el) => {
+                    const node = nodeOf(el);
+                    const style = window.getComputedStyle(node);
+                    const rect = node.getBoundingClientRect();
+                    const padding = parseFloat(style.paddingLeft || '0') || 0;
+                    const margin = parseFloat(style.marginLeft || '0') || 0;
+                    const level = Number(
+                        node.getAttribute('aria-level')
+                        || node.getAttribute('data-level')
+                        || (node.dataset ? node.dataset.level : '')
+                        || ''
+                    );
+                    if (!Number.isNaN(level) && level > 0) return level * 24 + padding + margin;
+                    return rect.left + padding + margin;
+                };
+                const clickWithEvents = (el) => {
+                    const opts = {bubbles: true, cancelable: true, view: window};
+                    for (const eventName of ['mousedown', 'mouseup', 'click']) {
+                        el.dispatchEvent(new MouseEvent(eventName, opts));
+                    }
+                };
+                const readItems = () => Array.from(menu.querySelectorAll('.one-tree-msg-text'))
+                    .filter(visible)
+                    .map((el) => ({
+                        el,
+                        text: normalize(el.textContent),
+                        top: el.getBoundingClientRect().top,
+                        depth: depthOf(el),
+                    }))
+                    .sort((a, b) => a.top - b.top);
+
+                let textItems = readItems();
+                const softItem = textItems.find((item) => item.text === '软装版');
+                if (!softItem) return 'soft-parent-not-found';
+
+                const softNode = nodeOf(softItem.el);
+                const expanded = softNode.classList.contains('one-tree-expand')
+                    || softNode.getAttribute('aria-expanded') === 'true';
+                if (!expanded) {
+                    clickWithEvents(softItem.el);
+                }
+
+                textItems = readItems();
+                const softIndex = textItems.findIndex((item) => item.text === '软装版');
+                if (softIndex < 0) return 'soft-parent-lost';
+
+                const targetName = normalize(name);
+                const softDepth = textItems[softIndex].depth;
+                let endIndex = textItems.length;
+                for (let i = softIndex + 1; i < textItems.length; i++) {
+                    if (textItems[i].depth <= softDepth + 4 && textItems[i].text !== targetName) {
+                        endIndex = i;
+                        break;
+                    }
+                }
+
+                const softChildren = textItems.slice(softIndex + 1, endIndex);
+                const target = softChildren.find((item) => item.text === targetName);
+                if (!target) {
+                    const candidates = textItems
+                        .filter((item) => item.text === targetName)
+                        .map((item) => `top=${item.top},depth=${item.depth}`)
+                        .join('; ');
+                    return `soft-child-not-found candidates=${candidates || '<none>'}`;
+                }
+
+                clickWithEvents(target.el);
+                return `clicked-soft-child depth=${target.depth} top=${target.top}`;
+            }""",
             name,
         )
+        self.logger.info(f"[_click_bms_submenu] 点击结果: {result}")
+        if not str(result).startswith("clicked-soft-child"):
+            raise RuntimeError(f"未能在BMS软装版菜单下点击子菜单 '{name}': {result}")
         self.page.wait_for_timeout(2500)
         self.logger.info(f"[_click_bms_submenu] 当前 URL: {self.page.url}")
 
@@ -252,7 +327,51 @@ class BmsPage(BasePage):
         except Exception as e:
             logger.warning(f"[_confirm_sugon_dialog] 对话框内搜索确定按钮失败: {e}")
         if required:
-            logger.warning("[_confirm_sugon_dialog] 未找到任何可点击的确定按钮")
+            raise RuntimeError("[_confirm_sugon_dialog] 未找到任何可点击的确定按钮")
+
+    def _hover_more_trigger_by_coordinates(self, row_text: str) -> bool:
+        """Hover the BMS row "more" trigger when Playwright sees it as hidden.
+
+        The cloud table keeps the popover reference at visibility:hidden while it
+        still has a real screen box. Playwright refuses to hover that locator, but
+        moving the mouse to the box opens the menu in the real UI.
+        """
+        try:
+            rect = self.page.evaluate(
+                """(rowText) => {
+                    const needle = (rowText || '').slice(0, 80);
+                    const rows = Array.from(document.querySelectorAll('table tbody tr'));
+                    const row = rows.find((r) => (r.textContent || '').includes(needle));
+                    if (!row) return null;
+                    const candidates = Array.from(row.querySelectorAll(
+                        'button, .cloud-button-btn, .cloud-button, a, span, div'
+                    )).map((el) => {
+                        const text = (el.textContent || '').trim();
+                        const r = el.getBoundingClientRect();
+                        return {
+                            text,
+                            x: r.x + r.width / 2,
+                            y: r.y + r.height / 2,
+                            width: r.width,
+                            height: r.height,
+                        };
+                    }).filter((item) => item.width > 0 && item.height > 0);
+                    const exact = candidates.filter((item) => item.text === '更多');
+                    const loose = candidates.filter((item) => item.text.includes('更多'));
+                    const target = (exact.length ? exact : loose).pop();
+                    return target || null;
+                }""",
+                row_text,
+            )
+            if not rect:
+                return False
+            self.page.mouse.move(rect["x"], rect["y"])
+            self.page.wait_for_timeout(800)
+            logger.info(f"[_js_click_action] 通过坐标 hover '更多' 触发区: {rect}")
+            return True
+        except Exception as e:
+            logger.warning(f"[_js_click_action] 坐标 hover '更多' 触发区失败: {e}")
+            return False
 
     def _js_click_action(self, row: Locator, action: str):
         if row is None:
@@ -265,17 +384,34 @@ class BmsPage(BasePage):
             pass
         logger.info(f"[_js_click_action] 目标行文本: {row_text[:120]}")
 
-        # 先展开下拉菜单
+        # 先展开下拉菜单。BMS 表格的“更多”是 hover 触发，单纯 click 偶发只命中
+        # 隐藏的 .cloud-table-dropdown-item，导致后续误判为已提交操作。
         more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text=re.compile(r"更多|⋯|⋮"))
         if more_btn.count() == 0:
             more_btn = row.locator("button, .cloud-button-btn, a, span").filter(has_text="更多")
         if more_btn.count() > 0:
-            logger.info(f"[_js_click_action] 找到'更多'按钮，尝试展开下拉菜单")
-            try:
-                more_btn.first.click(force=True)
-                self.page.wait_for_timeout(800)
-            except Exception as e:
-                logger.warning(f"[_js_click_action] 点击'更多'按钮失败: {e}")
+            logger.info(f"[_js_click_action] 找到'更多'按钮，尝试 hover 展开下拉菜单")
+            hovered = False
+            for index in range(more_btn.count()):
+                try:
+                    candidate = more_btn.nth(index)
+                    if not candidate.is_visible(timeout=1000):
+                        continue
+                    candidate.scroll_into_view_if_needed()
+                    candidate.hover(timeout=3000)
+                    self.page.wait_for_timeout(800)
+                    hovered = True
+                    break
+                except Exception as e:
+                    logger.debug(f"[_js_click_action] hover '更多'候选 {index} 失败: {e}")
+            if not hovered:
+                hovered = self._hover_more_trigger_by_coordinates(row_text)
+            if not hovered:
+                try:
+                    more_btn.first.click(force=True, timeout=3000)
+                    self.page.wait_for_timeout(800)
+                except Exception as click_error:
+                    logger.warning(f"[_js_click_action] 点击'更多'按钮失败: {click_error}")
         else:
             logger.info(f"[_js_click_action] 未找到'更多'按钮，操作可能直接可见")
 
@@ -283,10 +419,34 @@ class BmsPage(BasePage):
         global_items = self.page.locator(
             ".cloud-table-dropdown-item, .el-dropdown-menu__item, [role='menuitem']"
         ).filter(has_text=action)
+        unavailable_items = []
         for index in range(global_items.count()):
             try:
                 item = global_items.nth(index)
                 if item.is_visible(timeout=1000):
+                    disabled_info = item.evaluate(
+                        """el => {
+                            const disabledAncestor = el.closest('.is-disabled, .disabled, [aria-disabled="true"]');
+                            const disabled = Boolean(
+                                el.disabled
+                                || el.getAttribute('disabled') !== null
+                                || el.getAttribute('aria-disabled') === 'true'
+                                || el.classList.contains('is-disabled')
+                                || el.classList.contains('disabled')
+                                || disabledAncestor
+                            );
+                            return {
+                                disabled,
+                                className: el.className || '',
+                                ariaDisabled: el.getAttribute('aria-disabled') || '',
+                                text: (el.textContent || '').trim(),
+                            };
+                        }"""
+                    )
+                    if disabled_info.get("disabled"):
+                        unavailable_items.append(f"visible-disabled:{disabled_info}")
+                        logger.warning(f"[_js_click_action] 菜单项 '{action}' 可见但不可用: {disabled_info}")
+                        continue
                     item.click(force=True)
                     logger.info(f"[_js_click_action] 成功点击全局可见菜单项 '{action}'")
                     return True
@@ -299,15 +459,44 @@ class BmsPage(BasePage):
         logger.info(f"[_js_click_action] 下拉菜单项 '{action}' 匹配数量: {item_count}")
         if item_count > 0:
             try:
-                items.first.wait_for(state="visible", timeout=3000)
-                items.first.click()
-                logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
-                return True
+                for index in range(item_count):
+                    item = items.nth(index)
+                    try:
+                        item.wait_for(state="visible", timeout=1000)
+                    except Exception:
+                        unavailable_items.append(f"row-hidden:index={index}")
+                        continue
+                    disabled_info = item.evaluate(
+                        """el => {
+                            const disabledAncestor = el.closest('.is-disabled, .disabled, [aria-disabled="true"]');
+                            const disabled = Boolean(
+                                el.disabled
+                                || el.getAttribute('disabled') !== null
+                                || el.getAttribute('aria-disabled') === 'true'
+                                || el.classList.contains('is-disabled')
+                                || el.classList.contains('disabled')
+                                || disabledAncestor
+                            );
+                            return {
+                                disabled,
+                                className: el.className || '',
+                                ariaDisabled: el.getAttribute('aria-disabled') || '',
+                                text: (el.textContent || '').trim(),
+                            };
+                        }"""
+                    )
+                    if disabled_info.get("disabled"):
+                        unavailable_items.append(f"row-visible-disabled:{disabled_info}")
+                        logger.warning(f"[_js_click_action] 行内菜单项 '{action}' 可见但不可用: {disabled_info}")
+                        continue
+                    item.click()
+                    logger.info(f"[_js_click_action] 成功标准点击下拉菜单项 '{action}'")
+                    return True
             except Exception as e:
-                logger.warning(f"[_js_click_action] 标准点击失败（元素不可见或不可交互）: {e}")
+                logger.info(f"[_js_click_action] 标准点击不可用，准备尝试安全 JavaScript 点击 '{action}': {e}")
 
-        # 回退到 JavaScript
-        logger.info(f"[_js_click_action] 回退到 JavaScript 点击 '{action}'")
+        # 回退到 JavaScript：只点击可见且未禁用的真实菜单项，不再移除隐藏/禁用样式。
+        logger.info(f"[_js_click_action] 回退到安全 JavaScript 点击 '{action}'")
         result = self.page.evaluate(
             """([t, a]) => {
                 const allRows = document.querySelectorAll('table tr');
@@ -316,30 +505,48 @@ class BmsPage(BasePage):
                     const rect = el.getBoundingClientRect();
                     return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
                 };
+                const isDisabled = (el) => Boolean(
+                    el.disabled
+                    || el.getAttribute('disabled') !== null
+                    || el.getAttribute('aria-disabled') === 'true'
+                    || el.classList.contains('is-disabled')
+                    || el.classList.contains('disabled')
+                    || el.closest('.is-disabled, .disabled, [aria-disabled="true"]')
+                );
+                const describe = (el) => {
+                    const style = window.getComputedStyle(el);
+                    return [
+                        `text=${(el.textContent || '').trim()}`,
+                        `visible=${isVisible(el)}`,
+                        `disabled=${isDisabled(el)}`,
+                        `display=${style.display}`,
+                        `visibility=${style.visibility}`,
+                        `class=${el.className || ''}`,
+                        `ariaDisabled=${el.getAttribute('aria-disabled') || ''}`,
+                    ].join(',');
+                };
                 for (const i of document.querySelectorAll('.cloud-table-dropdown-item, .el-dropdown-menu__item, [role="menuitem"]')) {
                     if (i.textContent.trim() === a && isVisible(i)) {
+                        if (isDisabled(i)) {
+                            return `global-dropdown-disabled ${describe(i)}`;
+                        }
                         i.click();
                         return 'global-dropdown-clicked';
                     }
                 }
                 for (const r of allRows) {
                     if (r.textContent.includes(t)) {
-                        for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
-                            i.classList.remove('cloud-table-dropdown-item-btn-hide');
-                            i.style.display = 'block';
-                            i.style.visibility = 'visible';
-                        }
-                        for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
-                            if (i.textContent.trim() === a) {
-                                i.click();
-                                return 'dropdown-clicked';
-                            }
-                        }
-                        for (const i of r.querySelectorAll('a, button, .el-button, span')) {
-                            if (i.textContent.trim() === a && i.offsetParent !== null) {
+                        const candidates = Array.from(r.querySelectorAll(
+                            '.cloud-table-dropdown-item, .el-dropdown-menu__item, [role="menuitem"], a, button, .el-button, span'
+                        )).filter((i) => i.textContent.trim() === a);
+                        for (const i of candidates) {
+                            if (isVisible(i) && !isDisabled(i)) {
                                 i.click();
                                 return 'element-clicked';
                             }
+                        }
+                        if (candidates.length > 0) {
+                            return `action-unavailable ${candidates.map(describe).join(' | ')}`;
                         }
                         return 'not-found';
                     }
@@ -347,7 +554,69 @@ class BmsPage(BasePage):
                 return 'row-not-found';
             }""", [row_text, action])
         logger.info(f"[_js_click_action] JavaScript 点击结果: {result}")
-        return result not in ("not-found", "row-not-found")
+        if result in ("global-dropdown-clicked", "element-clicked"):
+            return True
+
+        if action != "删除":
+            logger.info(f"[_js_click_action] 非删除操作 '{action}' 尝试兼容隐藏菜单项点击")
+            legacy_result = self.page.evaluate(
+                """([t, a]) => {
+                    const allRows = document.querySelectorAll('table tr');
+                    const isDisabled = (el) => Boolean(
+                        el.disabled
+                        || el.getAttribute('disabled') !== null
+                        || el.getAttribute('aria-disabled') === 'true'
+                        || el.classList.contains('is-disabled')
+                        || el.classList.contains('disabled')
+                        || el.closest('.is-disabled, .disabled, [aria-disabled="true"]')
+                    );
+                    for (const r of allRows) {
+                        if (r.textContent.includes(t)) {
+                            for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
+                                i.classList.remove('cloud-table-dropdown-item-btn-hide');
+                                i.style.display = 'block';
+                                i.style.visibility = 'visible';
+                            }
+                            for (const i of r.querySelectorAll('.cloud-table-dropdown-item')) {
+                                if (i.textContent.trim() === a) {
+                                    if (isDisabled(i)) {
+                                        return `hidden-dropdown-disabled class=${i.className || ''}`;
+                                    }
+                                    i.click();
+                                    return 'hidden-dropdown-clicked';
+                                }
+                            }
+                            return 'not-found';
+                        }
+                    }
+                    return 'row-not-found';
+                }""", [row_text, action]
+            )
+            logger.info(f"[_js_click_action] 兼容隐藏菜单项点击结果: {legacy_result}")
+            if legacy_result == "hidden-dropdown-clicked":
+                return True
+
+        if result not in ("global-dropdown-clicked", "element-clicked"):
+            logger.error(
+                f"[_js_click_action] 操作 '{action}' 不可点击，结果: {result}; "
+                f"不可用菜单项: {unavailable_items or '<none>'}"
+            )
+            return False
+        return True
+
+    def _click_row_action_or_fallback(self, row: Locator, resource_name: str, action: str) -> bool:
+        """Click a row action with BMS-specific handling, then generic table fallback."""
+        try:
+            if self._js_click_action(row, action):
+                return True
+        except Exception as e:
+            logger.warning(f"资源 '{resource_name}' 的 '{action}' JS 点击异常，尝试通用 click_action: {e}")
+        try:
+            self.click_action(resource_name, action)
+            return True
+        except Exception as e:
+            logger.warning(f"资源 '{resource_name}' 的 '{action}' 通用点击也失败: {e}")
+            return False
 
     def _get_switch_group_row(self, group_name: str, node_name: str = ""):
         """按交换机组名称定位行；有节点名时优先返回绑定该节点的行。"""
@@ -449,7 +718,7 @@ class BmsPage(BasePage):
         if not row:
             logger.info(f"网络 '{name}' 不存在，无需删除")
             return False
-        if not self._js_click_action(row, "删除"):
+        if not self._click_row_action_or_fallback(row, name, "删除"):
             raise AssertionError(f"未找到网络 '{name}' 的删除操作")
         self._confirm_sugon_dialog(required=True)
         deadline = time.time() + 60
@@ -773,8 +1042,7 @@ class BmsPage(BasePage):
             logger.info(f"代理 '{node_name}' 不存在，无需删除")
             return
 
-        clicked = self._js_click_action(row, "删除")
-        if not clicked:
+        if not self._click_row_action_or_fallback(row, node_name, "删除"):
             raise RuntimeError(f"代理 '{node_name}' 的删除操作未点击成功")
         self._confirm_sugon_dialog(required=True)
         try:
@@ -888,8 +1156,9 @@ class BmsPage(BasePage):
         self.search(name)
         row = self._get_row_by_name(name)
         if row:
-            self._js_click_action(row, "删除")
-            self._confirm_sugon_dialog()
+            if not self._click_row_action_or_fallback(row, name, "删除"):
+                raise RuntimeError(f"发现任务 '{name}' 的删除操作未点击成功")
+            self._confirm_sugon_dialog(required=True)
             self._wait_for_row_absence("发现", name, label="发现任务")
 
     def bms_discovery_cleanup(self):
@@ -956,19 +1225,32 @@ class BmsPage(BasePage):
         self.search(bmc_ip)
         row = self._get_row_by_name(bmc_ip)
         if row:
-            self._js_click_action(row, "删除")
-            self._confirm_sugon_dialog()
+            row_text = ""
+            try:
+                row_text = (row.text_content() or "").strip()
+            except Exception:
+                pass
+            if not self._click_row_action_or_fallback(row, bmc_ip, "删除"):
+                raise RuntimeError(
+                    f"注册信息 '{bmc_ip}' 的删除操作不可用，可能当前业务状态不允许删除；"
+                    f"行信息: {row_text[:200]}"
+                )
+            self._confirm_sugon_dialog(required=True)
             self._wait_for_row_absence("注册", bmc_ip, label="注册信息", cell_index=3)
+        else:
+            logger.info(f"注册信息 '{bmc_ip}' 不存在，无需删除")
 
     def bms_register_cleanup(self):
         self._goto_submenu_safe("注册")
         for r in self._get_rows():
             try:
-                self._js_click_action(r, "删除")
-                self._confirm_sugon_dialog()
+                if not self._js_click_action(r, "删除"):
+                    logger.warning("注册信息清理跳过：删除操作不可用")
+                    continue
+                self._confirm_sugon_dialog(required=True)
                 self.page.wait_for_timeout(1000)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"注册信息清理失败: {e}")
 
     def _wait_for_table_rows(self, section_locator, timeout=10000, interval=500):
         """轮询等待表格行出现。"""
@@ -1020,7 +1302,7 @@ class BmsPage(BasePage):
 
     # ---- instance ----
 
-    def bms_instance_create(self, name, image_name="", system_disk="sdi", password="",
+    def bms_instance_create(self, name, image_name="", system_disk="MR9361-16iGiB", password="",
                                security_group="", server_name="", network_name="", subnet_name="", bmc_ip=""):
         self._goto_submenu_safe("裸金属实例")
         self._click_cl_btn("新建")
@@ -1349,36 +1631,29 @@ class BmsPage(BasePage):
                 disk_section = self.page.locator(".el-form-item").nth(5)
 
             disk_rows = self._wait_for_table_rows(disk_section, timeout=8000)
+            if not disk_rows:
+                raise AssertionError(f"未找到磁盘列表，无法选择引导磁盘: {system_disk}")
+
             selected = False
+            available_disks = []
             for row in disk_rows:
-                txt = row.text_content() or ""
+                txt = (row.text_content() or "").strip()
+                if txt:
+                    available_disks.append(" ".join(txt.split()))
                 if system_disk in txt:
                     if self._click_el_radio(row):
                         selected = True
                         logger.info(f"[bms_instance_create] 磁盘选择成功({system_disk})")
                         break
-            if not selected and disk_rows:
-                if self._click_el_radio(disk_rows[0]):
-                    logger.info("[bms_instance_create] 磁盘选择成功(第一个)")
-                else:
-                    logger.warning("[bms_instance_create] 磁盘行无radio")
-            elif not disk_rows:
-                logger.warning("[bms_instance_create] 未找到磁盘行，尝试JS选择")
-                result = self.page.evaluate("""() => {
-                    const items = document.querySelectorAll('.el-form-item');
-                    for (const item of items) {
-                        const label = item.querySelector('label');
-                        if (label && label.textContent.includes('磁盘')) {
-                            const radios = item.querySelectorAll('table tbody tr .el-radio');
-                            if (radios.length > 0) { radios[0].click(); return true; }
-                        }
-                    }
-                    return false;
-                }""")
-                logger.info(f"[bms_instance_create] 磁盘JS选择结果: {result}")
+                    logger.warning(f"[bms_instance_create] 匹配到磁盘但radio点击失败: {txt}")
+            if not selected:
+                raise AssertionError(
+                    f"未找到可选择的引导磁盘 '{system_disk}'，当前磁盘列表: {available_disks}"
+                )
             self.page.wait_for_timeout(800)
         except Exception as e:
             logger.warning(f"[bms_instance_create] 选择磁盘失败: {e}")
+            raise
 
         # 7. 配置网络
         try:
@@ -1522,11 +1797,24 @@ class BmsPage(BasePage):
         self.search(name)
         row = self._get_row_by_name(name)
         if row:
+            row_text = ""
             try:
-                self._js_click_action(row, "删除")
+                row_text = (row.text_content() or "").strip()
             except Exception:
-                self.click_action(name, "删除")
-            self._confirm_sugon_dialog()
+                pass
+
+            clicked = False
+            try:
+                clicked = self._click_row_action_or_fallback(row, name, "删除")
+            except Exception as e:
+                logger.warning(f"实例 '{name}' 删除点击异常: {e}")
+            if not clicked:
+                raise RuntimeError(
+                    f"裸金属实例 '{name}' 的删除操作不可用或未点击成功；"
+                    f"行信息: {row_text[:200]}"
+                )
+
+            self._confirm_sugon_dialog(required=True)
             self._wait_for_row_absence("裸金属实例", name, label="裸金属实例")
 
     def bms_instance_cleanup(self):
@@ -1560,7 +1848,8 @@ class BmsPage(BasePage):
         if not row:
             raise Exception(f"未找到实例 '{instance_name}'")
 
-        self._js_click_action(row, "绑定公网IP")
+        if not self._js_click_action(row, "绑定公网IP"):
+            raise RuntimeError(f"实例 '{instance_name}' 的绑定公网IP操作不可用")
         self.page.wait_for_timeout(3000)
 
         dlg = self.page.locator('[role="dialog"]').filter(has_text="绑定公网IP").last
@@ -1751,21 +2040,64 @@ class BmsPage(BasePage):
         if not row:
             raise Exception(f"未找到实例 '{instance_name}'")
 
-        self._js_click_action(row, "解除绑定公网IP")
+        if not self._js_click_action(row, "解除绑定公网IP"):
+            raise RuntimeError(f"实例 '{instance_name}' 的解除绑定公网IP操作不可用")
         self._confirm_sugon_dialog()
         self.page.wait_for_timeout(2000)
         self.assert_popup_success()
         logger.info(f"实例 '{instance_name}' 解绑公网IP成功")
 
-    def bms_instance_view_monitor(self, instance_name: str) -> dict:
-        """查看裸金属实例监控信息。通过悬浮图表读取 tooltip 数值。
+    def bms_instance_view_monitor(self, instance_name: str, wait_timeout: int = 300, poll_interval: int = 15) -> dict:
+        """查看裸金属实例监控信息，轮询等待监控数据就绪。
 
         Args:
             instance_name: 裸金属实例名称
+            wait_timeout: 等待监控数据出现的最长时间（秒）
+            poll_interval: 每次重新打开监控弹窗的间隔/加载等待时间（秒）
 
         Returns:
             dict: 包含 cpu_text、memory_text 的字典
         """
+        deadline = time.time() + wait_timeout
+        attempt = 1
+        last_data = {"cpu_text": "", "memory_text": "", "no_data": True}
+        while True:
+            logger.info(
+                f"第 {attempt} 次读取实例 '{instance_name}' 监控数据，"
+                f"剩余等待时间: {max(0, int(deadline - time.time()))}s"
+            )
+            data = self._bms_instance_view_monitor_once(
+                instance_name,
+                initial_wait_ms=min(max(1, poll_interval), max(1, int(deadline - time.time()))) * 1000,
+            )
+            last_data = data
+            if data.get("cpu_text") and data.get("memory_text"):
+                return data
+
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                logger.warning(f"实例 '{instance_name}' 监控数据等待超时，最后读取结果: {last_data}")
+                return last_data
+
+            logger.info(
+                f"实例 '{instance_name}' 监控数据暂未就绪，"
+                f"CPU={data.get('cpu_text') or '<empty>'}, "
+                f"内存={data.get('memory_text') or '<empty>'}, "
+                f"no_data={data.get('no_data')}，继续轮询"
+            )
+            try:
+                self.close_dialog_if_exists()
+            except Exception as e:
+                logger.debug(f"关闭监控弹窗失败，尝试按 Escape 继续: {e}")
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(1000)
+            attempt += 1
+
+    def _bms_instance_view_monitor_once(self, instance_name: str, initial_wait_ms: int = 15000) -> dict:
+        """单次打开监控弹窗并读取图表数据。"""
         self._goto_submenu_safe("裸金属实例")
         row = self._get_row_by_name(instance_name)
         if not row:
@@ -1789,7 +2121,7 @@ class BmsPage(BasePage):
 
         self._js_click_action(row, "查看监控")
         # 监控图表加载需要时间，Jenkins 环境给予更充足等待
-        self.page.wait_for_timeout(15000)
+        self.page.wait_for_timeout(initial_wait_ms)
 
         # 监控可能是弹窗或新页面，优先查找弹窗
         monitor_dlg = self.page.locator('[role="dialog"]').filter(
@@ -2047,7 +2379,7 @@ class BmsPage(BasePage):
 
         # 策略2b：通过 DOM 文本直接读取可见的图表数值（不依赖 echarts API / tooltip）
         if not cpu_value or not mem_value:
-            dom_values = self.page.evaluate("""() => {
+            dom_values = self.page.evaluate(r"""() => {
                 const result = {cpu: '', memory: ''};
                 // 查找所有可能包含指标名称和数值的元素
                 const cells = document.querySelectorAll('[role="dialog"] .chart-title, [role="dialog"] .monitor-title, [role="dialog"] .chart-header, [role="dialog"] h3, [role="dialog"] h4, [role="dialog"] .title');
@@ -3203,8 +3535,9 @@ class BmsPage(BasePage):
         if not row:
             logger.warning(f"未找到交换机组 '{group_name}'，跳过删除")
             return
-        self._js_click_action(row, "删除")
-        self._confirm_sugon_dialog()
+        if not self._click_row_action_or_fallback(row, group_name, "删除"):
+            raise RuntimeError(f"交换机组 '{group_name}' 的删除操作未点击成功")
+        self._confirm_sugon_dialog(required=True)
         self._wait_for_row_absence("交换机组", group_name, label="交换机组", navigate_as_service=True)
         logger.info(f"交换机组 '{group_name}' 删除成功")
 

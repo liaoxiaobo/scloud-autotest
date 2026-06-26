@@ -7,11 +7,14 @@ from sugon_web.utils.data import get_file_abspath
 from sugon_web.utils.logger import allure_step_log, logger
 
 
+BMS_NIC_CHECK_CMD = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH; ip a | grep bms"
+
+
 @allure.epic("计算")
 @allure.feature("裸金属BMS-软装版")
-@allure.story("软装版裸金属BMS实例-资源清理与镜像创建")
+@allure.story("软装版裸金属BMS实例-资源清理")
 class TestBmsCleanup:
-    """验证裸金属BMS软装版资源清理流程和镜像创建功能。"""
+    """验证裸金属BMS软装版资源清理流程。"""
 
     # ---------- 资源重建辅助方法 ----------
 
@@ -28,6 +31,58 @@ class TestBmsCleanup:
                 if attempt < attempts:
                     page.wait_for_timeout(delay_ms)
         raise AssertionError(f"{action_name} 重试 {attempts} 次后仍失败: {last_error}") from last_error
+
+    def _skip_blocked(self, reason):
+        """Mark downstream cleanup as blocked by an upstream resource dependency."""
+        pytest.skip(f"BLOCKED: {reason}")
+
+    def _bms_row_exists(self, bms_page, submenu_name, keyword, *, cell_index=None, wait_ms=2000):
+        """Check whether a BMS row exists without mutating cleanup state."""
+        bms_page._goto_submenu_safe(submenu_name)
+        bms_page.bms_search(keyword)
+        bms_page.page.wait_for_timeout(wait_ms)
+        try:
+            if cell_index is not None:
+                row = bms_page._get_row_by_cell_text(keyword, cell_index=cell_index)
+            else:
+                row = bms_page._get_row_by_name(keyword)
+            return row is not None and row.is_visible()
+        except Exception as e:
+            logger.warning(f"检查 {submenu_name} 资源 '{keyword}' 是否存在失败: {e}")
+            return False
+
+    def _skip_if_instance_exists(self, bms_page, instance_name, downstream_name):
+        """Skip downstream cleanup while the BMS instance still exists."""
+        if self._bms_row_exists(bms_page, "裸金属实例", instance_name):
+            self._skip_blocked(
+                f"{downstream_name} 依赖实例删除完成，但裸金属实例 '{instance_name}' 仍存在；"
+                "请先处理 test_bms_011_instance_delete"
+            )
+
+    def _skip_if_register_exists(self, bms_page, bmc_ip, downstream_name):
+        """Skip downstream cleanup while the register record still exists."""
+        if self._bms_row_exists(bms_page, "注册", bmc_ip, cell_index=3):
+            self._skip_blocked(
+                f"{downstream_name} 依赖注册信息删除完成，但注册信息 '{bmc_ip}' 仍存在；"
+                "请先处理 test_bms_012_register_delete"
+            )
+
+    def _skip_if_discovery_exists(self, bms_page, bmc_ip, downstream_name):
+        """Skip downstream cleanup while a discovery task still covers the BMC IP."""
+        discovery_name = self._find_discovery_by_bmc_ip(bms_page, bmc_ip)
+        if discovery_name:
+            self._skip_blocked(
+                f"{downstream_name} 依赖发现信息删除完成，但发现任务 '{discovery_name}' 仍覆盖 BMC {bmc_ip}；"
+                "请先处理 test_bms_013_discovery_delete"
+            )
+
+    def _skip_if_agent_exists(self, bms_page, node_name, downstream_name):
+        """Skip downstream cleanup while the BMS agent still exists."""
+        if self._bms_row_exists(bms_page, "代理", node_name):
+            self._skip_blocked(
+                f"{downstream_name} 依赖代理删除完成，但代理 '{node_name}' 仍存在；"
+                "请先处理 test_bms_014_agent_delete"
+            )
 
     def _wait_switch_group_unbound(self, bms_page, group_name, attempts=30):
         """Wait until the switch group physical-machine column becomes unbound."""
@@ -305,11 +360,10 @@ class TestBmsCleanup:
     # ---------- 测试方法 ----------
 
     @allure.title("裸金属BMS-实例删除")
-    def test_bms_011_instance_delete(self, bms_page, ops_page, ssh_host, config, bms_instance, bms_env):
+    def test_bms_011_instance_delete(self, bms_page, bms_env):
         """删除裸金属实例并验证注册状态变更。
 
-        若实例不存在，自动调用 BMS_001 完整创建流程先创建再删除，
-        使 cleanup 文件可独立运行，无需 Jenkins 按序调度创建用例。
+        该用例只负责销毁阶段；实例不存在时直接跳过，避免清理用例反向创建资源。
         """
         instance_name = bms_env["instance_name"]
         bmc_ip = bms_env["bmc_ip"]
@@ -328,15 +382,7 @@ class TestBmsCleanup:
             instance_exists = False
 
         if not instance_exists:
-            logger.info(f"实例 '{instance_name}' 不存在，先执行镜像创建 + 完整创建流程...")
-            # 1) 先创建镜像，确保实例创建时有可用镜像
-            TestBmsCleanup().test_bms_017_image_create(ssh_host)
-            # 2) 执行完整创建流程（BMS_001）
-            from sugon_web.testcase.compute.test_bms_001_soft_create import TestBmsSoftCreate
-            TestBmsSoftCreate().test_bms_create_with_page_image(
-                ops_page, bms_page, ssh_host, config, bms_instance, bms_env
-            )
-            logger.info("实例创建完成，继续执行删除测试")
+            pytest.skip(f"BMS实例 '{instance_name}' 不存在，跳过销毁用例；请先执行创建流程")
 
         # 步骤1：搜索并删除实例
         with allure_step_log("步骤1: 搜索并删除裸金属实例"):
@@ -363,11 +409,14 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-注册信息删除")
     def test_bms_012_register_delete(self, bms_page, ops_page, bms_env):
         """删除裸金属注册信息。"""
+        instance_name = bms_env["instance_name"]
         bmc_ip = bms_env["bmc_ip"]
         discovery_name = "bms-test-autotest"
         group_name = "test-bms-autotest"
         node_name = bms_env["preferred_node"]
         network_name = bms_env["network_name"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "注册信息删除")
 
         # 确保注册信息存在（支持重建）
         self._ensure_register_exists(bms_page, ops_page, bmc_ip, discovery_name, group_name, node_name, network_name)
@@ -384,9 +433,13 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-发现信息删除")
     def test_bms_013_discovery_delete(self, bms_page, bms_env):
         """删除裸金属发现信息。"""
+        instance_name = bms_env["instance_name"]
         discovery_name = "bms-test-autotest"
         bmc_ip = bms_env["bmc_ip"]
         node_name = bms_env["preferred_node"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "发现信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "发现信息删除")
 
         # 确保发现任务存在（支持重建），并获取实际任务名称
         actual_discovery_name = self._ensure_discovery_exists(bms_page, discovery_name, bmc_ip, node_name)
@@ -403,7 +456,13 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-代理信息删除")
     def test_bms_014_agent_delete(self, bms_page, ssh_host, config, bms_env):
         """删除裸金属代理信息并验证后台清理。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
         node_name = bms_env["preferred_node"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "代理信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "代理信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "代理信息删除")
 
         # 确保代理存在（支持重建）
         node_name = self._ensure_agent_exists(bms_page, node_name)
@@ -443,7 +502,12 @@ class TestBmsCleanup:
             deadline = time.time() + 300
             cleaned = False
             while time.time() < deadline:
-                result = ssh_node.run("ip a | grep bms", return_rc=True)
+                result = ssh_node.run(BMS_NIC_CHECK_CMD, return_rc=True, return_stderr=True)
+                if result["rc"] not in (0, 1):
+                    ssh_node.close()
+                    raise AssertionError(
+                        f"检查BMS网卡清理状态命令执行失败: rc={result['rc']}, stderr={result.get('stderr', '')}"
+                    )
                 if result and "bms" not in result.get("stdout", ""):
                     cleaned = True
                     break
@@ -464,7 +528,15 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-网络信息删除")
     def test_bms_015_network_delete(self, bms_page, bms_env):
         """删除裸金属网络信息。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
+        node_name = bms_env["preferred_node"]
         network_name = bms_env["network_name"]
+
+        self._skip_if_instance_exists(bms_page, instance_name, "网络信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "网络信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "网络信息删除")
+        self._skip_if_agent_exists(bms_page, node_name, "网络信息删除")
 
         # 确保网络存在（支持重建）
         self._ensure_network_exists(bms_page, network_name)
@@ -484,9 +556,16 @@ class TestBmsCleanup:
     @allure.title("裸金属BMS-交换机信息删除")
     def test_bms_016_switch_group_delete(self, bms_page, ops_page, bms_env):
         """解绑物理机并删除交换机组。"""
+        instance_name = bms_env["instance_name"]
+        bmc_ip = bms_env["bmc_ip"]
         group_name = "test-bms-autotest"
         node_name = bms_env["preferred_node"]
         actual_group_name = group_name
+
+        self._skip_if_instance_exists(bms_page, instance_name, "交换机信息删除")
+        self._skip_if_register_exists(bms_page, bmc_ip, "交换机信息删除")
+        self._skip_if_discovery_exists(bms_page, bmc_ip, "交换机信息删除")
+        self._skip_if_agent_exists(bms_page, node_name, "交换机信息删除")
 
         # 确保交换机组存在且绑定物理机（支持重建）
         self._ensure_switch_group_exists(ops_page, group_name, node_name)
@@ -521,46 +600,3 @@ class TestBmsCleanup:
             bms_page.search(actual_group_name)
             bms_page.assert_list_not_contain(actual_group_name, "名称")
 
-    @allure.title("裸金属BMS-镜像创建")
-    def test_bms_017_image_create(self, ssh_host):
-        """通过SSH在后台创建裸金属镜像并在前端验证。"""
-        image_file = "/home/scloudadmin/centos76-bms-0511.raw"
-        image_url = "http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw"
-        image_name = "centos76-bms-0511-autotest"
-
-        # 步骤0：检查镜像是否已存在于 glance
-        with allure_step_log("步骤0: 检查镜像是否已存在"):
-            result = ssh_host.run(f"source /root/admin-openrc.sh && openstack image show {image_name}", return_rc=True)
-            if result["rc"] == 0:
-                logger.info(f"镜像 '{image_name}' 已存在于 glance，跳过创建")
-                return
-
-        # 步骤1：检查并下载镜像文件
-        with allure_step_log("步骤1: 检查并下载镜像文件"):
-            result = ssh_host.run(f"test -f {image_file} && echo 'exists' || echo 'missing'", return_rc=True)
-            assert result["rc"] == 0
-            if "missing" in result["stdout"]:
-                result = ssh_host.run(f"cd /home/scloudadmin && curl -O {image_url}", return_rc=True, timeout=300)
-                assert result["rc"] == 0, f"镜像下载失败: {result.get('stderr', '')}"
-                logger.info("镜像下载完成")
-            else:
-                logger.info("镜像文件已存在，跳过下载")
-
-        # 步骤2：创建裸金属镜像
-        with allure_step_log("步骤2: 创建裸金属镜像"):
-            cmd = (
-                f"source /root/admin-openrc.sh && "
-                f"scli image create --visibility public --disk-format raw --container-format bare "
-                f"--min-disk 50 --property hypervisor_type=baremetal --property purpose=ironic "
-                f"--property os_type=linux --property hw_qemu_guest_agent=yes --backend bms "
-                f"--file {image_file} --name {image_name} --progress"
-            )
-            result = ssh_host.run(cmd, return_rc=True, timeout=1800)
-            assert result["rc"] == 0, f"镜像创建失败: {result.get('stderr', '')}"
-            logger.info(f"镜像 '{image_name}' 创建成功")
-
-        # 步骤3：在前端验证镜像存在
-        with allure_step_log("步骤3: 在前端验证镜像存在"):
-            # 这里需要镜像服务的页面对象，暂时用日志记录
-            # 实际执行时可通过 image_page 导航到镜像服务进行验证
-            logger.info(f"镜像 '{image_name}' 已创建，请在前端镜像服务中验证")

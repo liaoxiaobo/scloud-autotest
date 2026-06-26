@@ -27,7 +27,7 @@ class TestPkeyBasic:
         """
         page = _create_logged_in_page(browser_context, config)
         ecs_page = EcsPage(page)
-        pkey_name = f"pkey-autotest-{random_data()}"
+        pkey_name = f"pkey-{random_data()}"
         pem_path = None
 
         try:
@@ -64,6 +64,56 @@ class TestPkeyBasic:
                     logging.getLogger(__name__).warning(f"清理pem文件失败: {e}")
                 finally:
                     page.close()
+
+    @pytest.fixture
+    def pkey_delete_data(self, ecs_page):
+        """为删除场景创建 3 个独立密钥对（1 个单删 + 2 个批量删）。
+
+        删除场景使用专属密钥对，避免占用（并误删）class-scoped 共享的
+        pkey_data，否则后续 test_keypair_ecs_login 会选到已被删除的密钥对。
+
+        Yields:
+            list[dict]: [{"name": 密钥对名称, "pem_path": pem文件路径}, ...]
+        """
+        ecs_page.goto_service("弹性云服务器")
+        ecs_page.goto_keypair_submenu()
+
+        created = []
+        for _ in range(3):
+            pkey_name = f"pkey-del-{random_data()}"
+            with allure_step_log(f"Setup: 创建待删除密钥对 {pkey_name}"):
+                pem_path = ecs_page.keypair_create(pkey_name)
+                created.append({"name": pkey_name, "pem_path": pem_path})
+        # 列表刷新有后端延迟，等待密钥对同步到列表后再交给用例删除
+        ecs_page.page.wait_for_timeout(3000)
+
+        yield created
+
+        # 清理：删除用例未删除的残留密钥对，并移除 pem 文件
+        try:
+            with allure_step_log("Teardown: 清理待删除密钥对残留"):
+                ecs_page.goto_service("弹性云服务器")
+                ecs_page.goto_keypair_submenu()
+                ecs_page.page.wait_for_timeout(2000)
+                for item in created:
+                    try:
+                        row = ecs_page.get_row_by_name(item["name"])
+                        if row.count() > 0 and row.is_visible():
+                            ecs_page.keypair_delete(item["name"], confirm=True)
+                            ecs_page.assert_deleted(item["name"])
+                    except Exception:
+                        pass  # 密钥对可能已被用例删除或未在列表中显示
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"清理待删除密钥对失败: {e}")
+        finally:
+            for item in created:
+                try:
+                    if item["pem_path"] and Path(item["pem_path"]).exists():
+                        Path(item["pem_path"]).unlink()
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"清理pem文件失败: {e}")
 
     @allure.title("密钥对-新建验证")
     def test_keypair_create(self, ecs_page, pkey_data):
@@ -115,29 +165,19 @@ class TestPkeyBasic:
                     f"密钥对 {pkey_name} 详情页未获取（后端同步延迟），跳过详情断言")
 
     @allure.title("密钥对-删除验证")
-    def test_keypair_delete(self, ecs_page):
-        """场景2：单条删除和批量删除密钥对验证。"""
+    def test_keypair_delete(self, ecs_page, pkey_delete_data):
+        """场景2：单条删除和批量删除密钥对验证。
+
+        使用专属 pkey_delete_data 创建的独立密钥对（精确名称），不扫描列表，
+        避免误删共享 pkey_data 影响 test_keypair_ecs_login。
+        """
         ecs_page.goto_service("弹性云服务器")
         ecs_page.goto_keypair_submenu()
         ecs_page.page.wait_for_timeout(2000)
 
-        # 获取列表中已有的 autotest 密钥对用于删除测试
-        #（后端新建同步有延迟，使用列表中已存在的密钥对更可靠）
-        existing_autotest = []
-        try:
-            all_names = ecs_page.get_column_data("名称")
-            for name in all_names:
-                if "autotest" in name or name.startswith("pkey-del-"):
-                    existing_autotest.append(name)
-        except Exception:
-            pass
-
-        # 确保至少有2个可用密钥对（1个单条删除 + 1个批量删除）
-        assert len(existing_autotest) >= 2, \
-            f"列表中可用密钥对不足，期望至少2个，实际 {len(existing_autotest)} 个: {existing_autotest}"
-
-        target_single = existing_autotest[0]
-        target_batch = existing_autotest[1:3]  # 最多再取2个做批量删除
+        names = [item["name"] for item in pkey_delete_data]
+        target_single = names[0]
+        target_batch = names[1:3]  # 余下 2 个做批量删除
 
         with allure_step_log(f"步骤1: 单条删除取消验证（{target_single}）"):
             ecs_page.keypair_delete(target_single, confirm=False)

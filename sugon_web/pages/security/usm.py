@@ -5,6 +5,7 @@ import pytest
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
 from sugon_web.assertions.security import UsmAssertionMixin
+from sugon_web.pages.security.utils import get_security_volume_type
 from sugon_web.utils.logger import logger
 
 
@@ -45,6 +46,15 @@ class UsmPage(UsmAssertionMixin, BasePage):
             # 若被重定向到无权限页，重新导航
             if "/no-permission" in self.page.url:
                 logger.warning(f"USM 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
+                self.page.goto(target_url)
+                self.wait_for_page_ready()
+                continue
+            # 若被重定向到登录页，自动重新登录后重新导航
+            if "/login" in self.page.url:
+                logger.warning(f"USM 列表页被重定向到登录页，尝试重新登录 (第{attempt}次)")
+                from sugon_web.common.auth import prepare_page_session
+                from sugon_web.config.config import Config
+                prepare_page_session(self.page, Config)
                 self.page.goto(target_url)
                 self.wait_for_page_ready()
                 continue
@@ -282,7 +292,7 @@ class UsmPage(UsmAssertionMixin, BasePage):
             base_name: 安全底座名称（None 表示选择第一个可用的）
             network: 专有网络名称（None 表示选择第一个可用的）
             subnet: 子网名称（None 表示选择第一个可用的）
-            volume_type: 云硬盘类型（None 表示使用默认 xbd-type）
+            volume_type: 云硬盘类型（None 表示根据 Config.stor 自动推断）
             cpu: 规格 CPU，默认 2核
             memory: 规格内存，默认 8GiB
         """
@@ -358,11 +368,11 @@ class UsmPage(UsmAssertionMixin, BasePage):
                     logger.info("USM 创建：选择 IP 地址")
                 self.page.wait_for_timeout(500)
 
-        vol_type = volume_type or self.volume_type
+        vol_type = volume_type or get_security_volume_type()
         try:
             self._select_form_item("云硬盘类型", vol_type)
         except Exception:
-            logger.warning(f"云硬盘类型 '{vol_type}' 不可用，选择第一个可用选项")
+            logger.warning(f"USM 创建：云硬盘类型 '{vol_type}' 不可用，选择第一个可用选项")
             form_item = self.locator(".el-form-item").filter(has_text=re.compile(r"^云硬盘类型"))
             form_item.get_by_placeholder(re.compile(r"请选择")).first.click()
             self.page.wait_for_timeout(500)
