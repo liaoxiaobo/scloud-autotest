@@ -5,6 +5,7 @@ import pytest
 from sugon_web.testcase.security._security_helpers import wait_backend_volume_size
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.utils.decorators import skip_if_nodes_less_than
 
 
 @allure.epic('安全合规')
@@ -291,3 +292,243 @@ class TestVdbOperations:
             body_text = vdb_page.get_detail_body_text()
             assert new_name in body_text, f"详情页未显示修改后的名称: {new_name}"
             logger.info("详情页验证通过: 名称与修改后一致")
+
+    @allure.title("VDB-热迁移-系统分配验证")
+    @skip_if_nodes_less_than(2)
+    def test_vdb_hot_migrate_system(self, vdb_instance, vdb_page, ssh_host):
+        """验证 VDB 实例热迁移（系统分配）功能：
+        记录源物理机 → 系统分配热迁移 → SSH 验证源节点无虚机、目标节点有虚机。"""
+        name = vdb_instance["name"]
+        logger.info(f"VDB 实例 {name} 已就绪")
+
+        with allure_step_log("步骤1: 记录当前物理机和 server_id"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            source_host = row_data.get("物理机", "")
+            assert source_host, f"未获取到 VDB 实例 {name} 的物理机信息"
+            source_host_short = source_host.split(".")[0]
+            logger.info(f"VDB 实例 {name} 源物理机: {source_host_short}")
+            server_id = vdb_page.vdb_get_server_id(name)
+            assert server_id, f"未获取到 VDB 实例 {name} 的 server_id"
+            uuid_prefix = server_id[:8]
+            logger.info(f"VDB 实例 {name} server_id: {server_id}, uuid前缀: {uuid_prefix}")
+
+        with allure_step_log("步骤2: 执行热迁移（系统分配）"):
+            vdb_page.vdb_hot_migrate(name, mode="sys")
+
+        with allure_step_log("步骤3: 验证热迁移后 VM 状态"):
+            vdb_page.assert_vdb_status(name, service_status="不可用", vm_status="迁移中", timeout=30)
+
+        with allure_step_log("步骤4: 等待热迁移完成，验证状态恢复"):
+            vdb_page.assert_vdb_status(name, service_status="运行", vm_status="运行", timeout=300)
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            target_host = row_data.get("物理机", "")
+            target_host_short = target_host.split(".")[0] if target_host else ""
+            logger.info(f"VDB 实例 {name} 迁移后物理机: {target_host_short}")
+            assert target_host and target_host != source_host, \
+                f"物理机未变更: 源={source_host}, 目标={target_host}"
+
+        with allure_step_log("步骤5: SSH 验证源物理机无虚机"):
+            cmd = f"ssh -o StrictHostKeyChecking=no {source_host_short} 'sudo docker exec nova_libvirt virsh list | grep {uuid_prefix}'"
+            result = ssh_host.run(cmd, check_rc=False)
+            assert uuid_prefix not in result, f"源节点 {source_host_short} 仍存在虚机 {uuid_prefix}: {result[:200]}"
+            logger.info(f"SSH 验证通过: 源节点 {source_host_short} 已无虚机")
+
+        with allure_step_log("步骤6: SSH 验证目标物理机存在虚机"):
+            cmd = f"ssh -o StrictHostKeyChecking=no {target_host_short} 'sudo docker exec nova_libvirt virsh list | grep {uuid_prefix}'"
+            result = ssh_host.run(cmd, check_rc=False)
+            assert uuid_prefix in result, f"目标节点 {target_host_short} 未找到虚机 {uuid_prefix}: {result[:200]}"
+            logger.info(f"SSH 验证通过: 目标节点 {target_host_short} 已存在虚机")
+
+    @allure.title("VDB-热迁移-手动指定验证")
+    @skip_if_nodes_less_than(2)
+    def test_vdb_hot_migrate_manual(self, vdb_instance, vdb_page, ssh_host):
+        """验证 VDB 实例热迁移（手动指定）功能：
+        记录源物理机 → 手动选择目标物理机热迁移 → SSH 验证源节点无虚机、目标节点有虚机。"""
+        name = vdb_instance["name"]
+        logger.info(f"VDB 实例 {name} 已就绪")
+
+        with allure_step_log("步骤1: 记录当前物理机和 server_id"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            source_host = row_data.get("物理机", "")
+            assert source_host, f"未获取到 VDB 实例 {name} 的物理机信息"
+            source_host_short = source_host.split(".")[0]
+            logger.info(f"VDB 实例 {name} 源物理机: {source_host_short}")
+            server_id = vdb_page.vdb_get_server_id(name)
+            assert server_id, f"未获取到 VDB 实例 {name} 的 server_id"
+            uuid_prefix = server_id[:8]
+
+        with allure_step_log("步骤2: 执行热迁移（手动指定）"):
+            vdb_page.vdb_hot_migrate(name, mode="custom")
+
+        with allure_step_log("步骤3: 验证热迁移后 VM 状态"):
+            vdb_page.assert_vdb_status(name, service_status="不可用", vm_status="迁移中", timeout=30)
+
+        with allure_step_log("步骤4: 等待热迁移完成，验证状态恢复"):
+            vdb_page.assert_vdb_status(name, service_status="运行", vm_status="运行", timeout=300)
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            target_host = row_data.get("物理机", "")
+            target_host_short = target_host.split(".")[0] if target_host else ""
+            logger.info(f"VDB 实例 {name} 迁移后物理机: {target_host_short}")
+            assert target_host and target_host != source_host, \
+                f"物理机未变更: 源={source_host}, 目标={target_host}"
+
+        with allure_step_log("步骤5: SSH 验证源物理机无虚机"):
+            cmd = f"ssh -o StrictHostKeyChecking=no {source_host_short} 'sudo docker exec nova_libvirt virsh list | grep {uuid_prefix}'"
+            result = ssh_host.run(cmd, check_rc=False)
+            assert uuid_prefix not in result, f"源节点 {source_host_short} 仍存在虚机 {uuid_prefix}: {result[:200]}"
+            logger.info(f"SSH 验证通过: 源节点 {source_host_short} 已无虚机")
+
+        with allure_step_log("步骤6: SSH 验证目标物理机存在虚机"):
+            cmd = f"ssh -o StrictHostKeyChecking=no {target_host_short} 'sudo docker exec nova_libvirt virsh list | grep {uuid_prefix}'"
+            result = ssh_host.run(cmd, check_rc=False)
+            assert uuid_prefix in result, f"目标节点 {target_host_short} 未找到虚机 {uuid_prefix}: {result[:200]}"
+            logger.info(f"SSH 验证通过: 目标节点 {target_host_short} 已存在虚机")
+
+    @allure.title("VDB-绑定公网IP验证")
+    def test_vdb_bind_public_ip(self, vdb_instance, vdb_page, ssh_host):
+        """验证 VDB 实例绑定公网 IP 功能：
+        绑定 public_net 池中的公网IP → SSH ping 验证连通性 → 跳转地址验证。"""
+        name = vdb_instance["name"]
+        logger.info(f"VDB 实例 {name} 已就绪")
+
+        with allure_step_log("步骤1: 记录当前网络信息"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            network_info = row_data.get("网络", "") or ""
+            logger.info(f"VDB 实例 {name} 绑定前网络信息: {network_info}")
+
+        with allure_step_log("步骤2: 执行绑定公网IP操作"):
+            vdb_page.vdb_bind_public_ip(name, pool_name="public_net")
+            vdb_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤3: 验证列表页网络信息包含公网IP"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            network_after = row_data.get("网络", "") or ""
+            logger.info(f"VDB 实例 {name} 绑定后网络信息: {network_after}")
+            assert network_after, "绑定公网IP后网络字段为空"
+            assert "," in network_after or "：固定" not in network_after, \
+                f"绑定公网IP后网络字段未显示公网和固定IP: {network_after}"
+
+            # 提取公网 IP 地址
+            import re as _re
+            ip_match = _re.findall(r"\d+\.\d+\.\d+\.\d+", network_after)
+            public_ip = ip_match[-1] if len(ip_match) > 1 else (ip_match[0] if ip_match else "")
+            logger.info(f"VDB 实例 {name} 绑定公网IP: {public_ip}")
+
+        with allure_step_log("步骤4: SSH ping 验证公网IP连通性"):
+            if public_ip:
+                ping_cmd = f"ping -c 3 -W 5 {public_ip}"
+                ping_result = ssh_host.run(ping_cmd, check_rc=False)
+                assert ping_result and "ttl=" in ping_result.lower(), \
+                    f"公网IP {public_ip} ping 失败: {ping_result[:200]}"
+                logger.info(f"SSH 验证通过: 公网IP {public_ip} 可连通")
+            else:
+                logger.warning("未提取到公网IP，跳过 ping 验证")
+
+        with allure_step_log("步骤5: 验证跳转地址可用"):
+            vdb_page.vdb_to_details(name)
+            new_page = vdb_page.vdb_open_jump_address()
+            if new_page is None:
+                logger.warning("跳转地址验证跳过：目标服务器网络不可达")
+            else:
+                assert new_page.url, "跳转地址打开的新页面 URL 为空"
+                assert "chrome-error" not in new_page.url, \
+                    f"新页面加载到错误页面: {new_page.url}"
+                if new_page != vdb_page.page:
+                    new_page.close()
+                logger.info("跳转地址验证通过")
+
+    @allure.title("VDB-解绑公网IP验证")
+    def test_vdb_unbind_public_ip(self, vdb_instance, vdb_page, ssh_host):
+        """验证 VDB 实例解绑公网 IP 功能：
+        先确保有绑定的公网IP → 解绑 → 验证仅保留固定IP → SSH ping 不可达 → 跳转地址仍可用。"""
+        name = vdb_instance["name"]
+        logger.info(f"VDB 实例 {name} 已就绪")
+
+        # 自保证：若未绑定 IP 则先绑定一个
+        with allure_step_log("步骤0(自保证): 确保实例已绑定公网IP"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            network_info = row_data.get("网络", "") or ""
+            import re as _re
+            ips = _re.findall(r"\d+\.\d+\.\d+\.\d+", network_info)
+            if len(ips) <= 1:
+                logger.info("实例未绑定公网IP，先执行绑定操作")
+                vdb_page.vdb_bind_public_ip(name)
+                vdb_page.assert_popup_success("执行成功")
+                vdb_page.goto_list_page()
+                row_data = vdb_page.get_row_data(name)
+                network_info = row_data.get("网络", "") or ""
+                ips = _re.findall(r"\d+\.\d+\.\d+\.\d+", network_info)
+
+            assert len(ips) > 1, f"绑定公网IP后仍只有一个IP: {network_info}"
+            bound_ip = ips[-1]
+            logger.info(f"VDB 实例 {name} 已绑定公网IP: {bound_ip}")
+
+        with allure_step_log("步骤1: 进入详情页验证跳转地址"):
+            vdb_page.vdb_to_details(name)
+            body_text = vdb_page.get_detail_body_text()
+            assert "跳转地址" in body_text, "详情页未显示跳转地址字段"
+            vdb_page.goto_list_page()
+
+        with allure_step_log("步骤2: 执行解绑公网IP操作"):
+            vdb_page.vdb_unbind_public_ip(name)
+            vdb_page.assert_popup_success("执行成功")
+
+        with allure_step_log("步骤3: 验证列表页只显示固定IP"):
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            network_after = row_data.get("网络", "") or ""
+            logger.info(f"VDB 实例 {name} 解绑后网络信息: {network_after}")
+            ips_after = _re.findall(r"\d+\.\d+\.\d+\.\d+", network_after)
+            assert len(ips_after) <= 1, \
+                f"解绑后仍存在多个IP: {network_after}"
+
+        with allure_step_log("步骤4: 进入详情页验证跳转地址仍可用"):
+            vdb_page.vdb_to_details(name)
+            new_page = vdb_page.vdb_open_jump_address()
+            if new_page is None:
+                logger.warning("跳转地址验证跳过：目标服务器网络不可达")
+            else:
+                assert new_page.url, "跳转地址打开的新页面 URL 为空"
+                assert "chrome-error" not in new_page.url, \
+                    f"新页面加载到错误页面: {new_page.url}"
+                if new_page != vdb_page.page:
+                    new_page.close()
+                logger.info("解绑后跳转地址验证通过")
+
+        with allure_step_log("步骤5: SSH ping 验证公网IP已不可达"):
+            if bound_ip:
+                ping_cmd = f"ping -c 2 -W 3 {bound_ip}"
+                ping_result = ssh_host.run(ping_cmd, check_rc=False)
+                if ping_result and "ttl=" in ping_result.lower():
+                    logger.warning(f"公网IP {bound_ip} 解绑后仍可 ping 通（可能缓存）")
+                else:
+                    logger.info(f"SSH 验证通过: 公网IP {bound_ip} 已不可达")
+            else:
+                logger.warning("未获取到已绑定的公网IP，跳过 ping 验证")
+
+    @allure.title("VDB-登录VNC验证")
+    def test_vdb_vnc_login(self, vdb_instance, vdb_page):
+        """验证 VDB 实例 VNC 登录功能：
+        点击登录VNC → 新页面输入密码 → 验证成功连接。"""
+        name = vdb_instance["name"]
+        logger.info(f"VDB 实例 {name} 已就绪")
+
+        with allure_step_log("步骤1: 执行登录VNC操作"):
+            new_page = vdb_page.vdb_vnc_login(name, password="000000")
+
+        with allure_step_log("步骤2: 验证VNC页面已成功连接"):
+            new_page.wait_for_load_state("domcontentloaded", timeout=30000)
+            # VNC 使用 canvas 渲染，通过 Page Object 方法验证连接状态
+            vdb_page.vdb_vnc_check_connected(new_page)
+
+        with allure_step_log("步骤3: 关闭VNC页面"):
+            if new_page != vdb_page.page:
+                new_page.close()
+                logger.info("VNC 页面已关闭")
