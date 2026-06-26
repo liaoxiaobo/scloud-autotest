@@ -11,6 +11,7 @@ from .peer_connect import PeerConnectMixin
 from .qos import QosMixin
 from .sg import SgMixin
 from .tm import TmMixin
+from .transfer_strategy import TransferStrategyMixin
 from .slb import SlbMixin, SlbPage
 from .vpc import VpcMixin
 from .vpn import VpnMixin
@@ -64,4 +65,10 @@ class VpnPage(VpnMixin):
     service_name = "专有网络VPN"
 
 
-__all__ = ["VpcPage", "CfwPage", "DcPage", "ErPage", "TmPage", "VpnPage", "SlbPage", "SlbMixin"]
+class TransferStrategyPage(TransferStrategyMixin):
+    """传输策略组页面类。"""
+
+    service_name = "虚拟私有云"
+
+
+__all__ = ["VpcPage", "CfwPage", "DcPage", "ErPage", "TmPage", "TransferStrategyPage", "VpnPage", "SlbPage", "SlbMixin"]
