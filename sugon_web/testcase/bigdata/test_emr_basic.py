@@ -94,8 +94,8 @@ class TestEMRBasic:
 
         with allure_step_log("步骤二：验证磁盘扩容结果"):
             emr_page.assert_popup_success("提交成功")
-            emr_page.assert_status("COMMON", status="变配中", timeout=600, refresh=True)
-            emr_page.assert_status("COMMON", status="运行", timeout=1600, refresh=True)
+            emr_page.assert_status("WEB", status="变配中", timeout=600, refresh=True)
+            emr_page.assert_status("WEB", status="运行", timeout=1600, refresh=True)
 
     @allure.title("E-MapReduce-扩容新增节点")
     def test_add_node(self, emr_page, emr):
