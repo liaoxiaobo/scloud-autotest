@@ -1,18 +1,16 @@
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('安全合规')
 @allure.feature('云堡垒机高级版USM')
-@allure.story('xbd存储池-规格升级基本功能验证')
+@allure.story('规格升级基本功能验证')
 class TestUsmSpecUpgrade:
 
-    @allure.title("USM-xbd存储池-规格升级验证")
-    @only_stor("xbd")
+    @allure.title("USM-规格升级验证")
     def test_usm_spec_upgrade(self, usm_instance, usm_page, ssh_host):
-        """xbd 存储池环境下，通过 fixture 获取共享 USM 实例执行规格升级，
+        """通过 fixture 获取共享 USM 实例执行规格升级，
         验证升级前后规格信息变化，并通过 SSH 后端验证 vcpu 和 memory_mb 字段。"""
 
         name = usm_instance["name"]
