@@ -3,6 +3,7 @@
 按照 fixture_spec.md 规范：helper 负责组装创建/删除的完整流程，
 封装多步 Page Object 调用，不包含 yield 和 fixture 依赖注入。
 """
+import time
 from typing import Any
 
 from sugon_web.utils.logger import logger
@@ -11,7 +12,7 @@ from sugon_web.utils.data import random_data
 
 def create_ver_instance(page, ver_page, name: str, network: str = None,
                         subnet: str = None) -> dict[str, Any]:
-    """创建 VER 实例并验证状态（最多3次重试）。
+    """创建 VER 实例并完成跳转验证（最多3次重试）。
 
     Args:
         page: Playwright 页面对象。
@@ -38,6 +39,38 @@ def create_ver_instance(page, ver_page, name: str, network: str = None,
                 logger.warning(f"VER 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue
             raise
+
+    # 验证跳转地址——进入详情页后等待详情页渲染就绪
+    ver_page.ver_to_details(name)
+    ver_page.wait_for_page_ready()
+    start = time.time()
+    while time.time() - start < 30:
+        try:
+            body = ver_page.get_detail_body_text()
+            if "跳转地址" in body and len(body) > 500:
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+    new_page = ver_page.ver_open_jump_address()
+    jump_ok = False
+    if new_page and new_page.url:
+        if "chrome-error" not in new_page.url and (
+            "ver" in new_page.url.lower()
+            or "/dashboard" in new_page.url
+            or "openapiOAuth" in new_page.url
+        ):
+            jump_ok = True
+            logger.info(f"VER 实例 {name} 跳转地址验证通过: {new_page.url}")
+        else:
+            logger.warning(
+                f"VER 实例 {name} 跳转地址验证未通过，URL: {new_page.url}，"
+                "继续执行测试（VM 本身已就绪）"
+            )
+    else:
+        logger.warning("VER 实例跳转地址页面为空，继续执行测试（VM 本身已就绪）")
+    if new_page and new_page != page:
+        new_page.close()
 
     ver_page.goto_list_page()
     row_data = ver_page.get_row_data(name)

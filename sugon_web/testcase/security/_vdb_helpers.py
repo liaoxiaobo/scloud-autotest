@@ -31,7 +31,7 @@ def create_vdb_instance(page, vdb_page, name: str, network: str = None,
                 actual_name = random_data().replace("autotest-", "autotest-vdb-")
             logger.info(f"第 {attempt} 次尝试创建 VDB 实例: {actual_name}")
             vdb_page.vdb_create(name=actual_name, network=network)
-            vdb_page.assert_vdb_status(actual_name, service_status="运行", vm_status="运行", timeout=1800)
+            vdb_page.assert_vdb_status(actual_name, service_status="运行", vm_status="运行", timeout=1200)
             name = actual_name
             break
         except (AssertionError, Exception) as e:
