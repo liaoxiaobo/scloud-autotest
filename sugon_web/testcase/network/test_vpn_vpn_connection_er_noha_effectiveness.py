@@ -169,10 +169,11 @@ def _cleanup_route_rule(vpc_page, vpc_name, dest_cidr):
         logger.warning(f"清理路由 {dest_cidr} 最终失败，已记录并继续后续清理")
 
 
-def _create_vpn_tunnel_with_retry(vpn_page, tunnel_name, max_attempts=2, retry_delay=10, **kwargs):
-    """模块级 helper：创建 VPN 通道，失败时等待后重试。
+def _create_vpn_tunnel_with_retry(vpn_page, tunnel_name, max_attempts=2, **kwargs):
+    """创建 VPN 通道，弹窗提示失败时关闭弹窗后重试。
 
-    因 VPN 通道创建偶发后端异步未就绪导致失败，重试可提高成功率。
+    兼容产品缺陷：弹窗可能显示"VPN通道创建失败"，但后端实际已创建资源。
+    重试前会先检查资源是否已存在，避免重复创建。
     """
     for attempt in range(1, max_attempts + 1):
         try:
@@ -184,19 +185,31 @@ def _create_vpn_tunnel_with_retry(vpn_page, tunnel_name, max_attempts=2, retry_d
             return
         except Exception as e:
             logger.warning(f"VPN通道 {tunnel_name} 第{attempt}次创建尝试失败: {e}")
-            # 失败后检查是否实际已创建成功
-            vpn_page._ensure_vpn_tunnel_list()
-            vpn_page.wait_for_page_ready()
+
+            # 关闭可能残留的创建弹窗，避免阻塞后续操作
             try:
+                vpn_page.close_dialog_if_exists()
+                vpn_page.wait_for_page_ready()
+            except Exception:
+                pass
+
+            # 兼容产品缺陷：弹窗显示失败但资源可能已创建
+            try:
+                vpn_page._ensure_vpn_tunnel_list()
+                vpn_page.wait_for_page_ready()
                 vpn_page.get_row_by_name(tunnel_name)
-                logger.info(f"VPN通道 {tunnel_name} 已存在，视为创建成功")
+                logger.warning(
+                    f"产品缺陷: VPN通道 {tunnel_name} 弹窗显示失败但资源已创建，继续后续步骤"
+                )
                 return
             except Exception:
-                if attempt < max_attempts:
-                    logger.info(f"等待{retry_delay}秒后第{attempt + 1}次创建...")
-                    sleep(retry_delay)
-                else:
-                    raise
+                pass
+
+            if attempt < max_attempts:
+                logger.info(f"VPN通道 {tunnel_name} 关闭弹窗后准备第{attempt + 1}次创建")
+                vpn_page.page.wait_for_timeout(2000)
+            else:
+                raise
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +488,9 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
                 refresh_interval=30,
             )
 
+        with allure_step_log("前置: 等待VPN网关1就绪（10秒）"):
+            vpn_page.page.wait_for_timeout(10000)
+
         # 步骤11: 创建 VPN 网关2（IPSEC类型，连接ER2，使用fip2）
         with allure_step_log("前置: 创建VPN网关2"):
             vpn_page._ensure_vpn_gateway_list()
@@ -500,6 +516,9 @@ def vpn_tunnel_er_noha_env(browser_context, config, ssh_host):
                 refresh=True,
                 refresh_interval=30,
             )
+
+        with allure_step_log("前置: 等待VPN网关2就绪（10秒）"):
+            vpn_page.page.wait_for_timeout(10000)
 
         # 获取VPN网关实际公网IP
         with allure_step_log("前置: 获取VPN网关实际公网IP"):
