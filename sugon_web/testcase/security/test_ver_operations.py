@@ -4,7 +4,6 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
-from sugon_web.utils.decorators import only_stor
 
 
 @allure.epic('安全合规')
@@ -13,7 +12,6 @@ from sugon_web.utils.decorators import only_stor
 class TestVerOperations:
 
     @allure.title("VER-新建实例-全生命周期验证")
-    @only_stor("xbd")
     def test_ver_create_lifecycle_shutdown_boot_jump(self, ver_instance, ver_page):
         """通过 fixture 获取共享 VER 实例，覆盖跳转验证、关机/启动、再验证全流程。"""
         name = ver_instance["name"]
@@ -66,7 +64,6 @@ class TestVerOperations:
         logger.info(f"场景一完成，实例 {name} 保留供后续场景复用")
 
     @allure.title("VER-退订-授权-续期生命周期操作")
-    @only_stor("xbd")
     def test_ver_unsubscribe_authorize_renew(self, ver_instance, ver_page):
         """通过 fixture 获取共享 VER 实例执行退订 → 授权（3个月）→
         续期（2个月）的全生命周期操作，验证到期时间更新和跳转地址可用性。"""
@@ -201,7 +198,6 @@ class TestVerOperations:
         logger.info(f"场景二完成，实例 {name} 保留供后续场景复用")
 
     @allure.title("VER-规格升级验证")
-    @only_stor("xbd")
     def test_ver_spec_upgrade(self, ver_instance, ver_page, ssh_host):
         """通过 fixture 获取共享 VER 实例执行规格升级，
         验证升级前后规格信息变化，并通过 SSH 后端验证 vcpu 和 memory_mb 字段。"""
@@ -281,7 +277,6 @@ class TestVerOperations:
         logger.info(f"规格升级完成，实例 {name} 由 fixture 自动清理")
 
     @allure.title("VER-云硬盘扩容验证")
-    @only_stor("xbd")
     def test_ver_volume_expansion(self, ver_instance, ver_page, ssh_host):
         """通过 fixture 获取共享 VER 实例，执行云硬盘从 300GiB 扩容到 350GiB，
         通过 SSH 后端验证扩容结果。"""
@@ -351,7 +346,6 @@ class TestVerOperations:
         logger.info(f"云硬盘扩容完成，实例 {name} 由 fixture 自动清理")
 
     @allure.title("VER-实例-修改名称验证")
-    @only_stor("xbd")
     def test_ver_rename(self, ver_instance, ver_page):
         """验证 VER 实例修改名称功能：
         修改名称后列表页和详情页均展示新名称。"""
