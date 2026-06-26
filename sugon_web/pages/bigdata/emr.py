@@ -294,6 +294,38 @@ class EMRPage(BasePage):
             f"节点: {node_name} | 期望: '{status}' | 实际: '{current_status}' | 超时未收敛"
         )
 
+    def assert_node_group_status(
+        self, name: str, group_name: str, status: str = "运行", timeout: int = 300, refresh: bool = False, refresh_interval: int = 5
+    ):
+        start_time = time.time()
+        current_status = "未知"
+        first_check = True
+
+        while time.time() - start_time < timeout:
+            try:
+                if refresh and not first_check:
+                    self.btn_refresh.click()
+                    self.wait_for_page_ready()
+                first_check = False
+
+                self.ensure_detail_tab(name, "节点管理")
+                tab = self._active_detail_tab()
+                row = tab.locator("tr.el-table__row").filter(has_text=re.compile(rf"\b{re.escape(group_name)}\b", re.I)).first
+                row.wait_for(state="visible", timeout=10000)
+                current_status = row.inner_text()
+                if status in current_status:
+                    self.logger.info(f"节点组状态验证成功: {group_name} -> {status}")
+                    return
+            except Exception as e:
+                self.logger.debug(f"检查节点组状态时出错: {e}")
+
+            sleep(refresh_interval)
+
+        raise AssertionError(
+            f"[StatusAssertion] 节点组状态 | 状态收敛失败 | "
+            f"节点组: {group_name} | 期望: '{status}' | 实际: '{current_status}' | 超时未收敛"
+        )
+
     def assert_common_node_absent(
         self, name: str, node_name: str, timeout: int = 300, refresh: bool = False, refresh_interval: int = 5
     ):
@@ -527,16 +559,7 @@ class EMRPage(BasePage):
         self._active_detail_tab().get_by_text("更多操作", exact=True).click()
         self.page.locator("body .el-dropdown-menu:visible").last.get_by_text(action, exact=True).click()
 
-    def _first_node_group_action(self, action: str):
-        tab = self._active_detail_tab()
-        action_button = tab.locator(".blue-link").filter(has_text=re.compile(rf"^{re.escape(action)}$")).first
-        if action_button.count() == 0:
-            raise AssertionError(f"当前没有可用的节点组操作: {action}")
-        action_button.click()
-
-    @submenu("实例")
-    def change_specification(self, name: str):
-        self.ensure_detail_tab(name, "节点管理")
+    def _node_group_action(self, group_name: str, action: str):
         tab = self._active_detail_tab()
         name_rows = tab.locator(".el-table__fixed .el-table__fixed-body-wrapper tbody tr.el-table__row")
         if name_rows.count() == 0:
@@ -549,21 +572,26 @@ class EMRPage(BasePage):
                 text = row.inner_text().strip()
             except Exception:
                 continue
-            if re.search(r"\bWEB\b", text, re.I):
+            if re.search(rf"\b{re.escape(group_name)}\b", text, re.I):
                 target_index = i
                 break
 
         if target_index is None:
-            raise AssertionError("未找到 WEB 节点组行")
+            raise AssertionError(f"未找到 {group_name} 节点组行")
 
         action_rows = tab.locator(".el-table__fixed-right .el-table__fixed-body-wrapper tbody tr.el-table__row")
         if action_rows.count() == 0:
             action_rows = tab.locator(".el-table__body-wrapper tbody tr.el-table__row")
         if action_rows.count() <= target_index:
-            raise AssertionError(f"未找到 WEB 节点组对应的操作列行，目标索引: {target_index}")
+            raise AssertionError(f"未找到 {group_name} 节点组对应的操作列行，目标索引: {target_index}")
 
-        action_row = action_rows.nth(target_index)
-        action_row.get_by_text("修改规格", exact=True).first.click()
+        action_button = action_rows.nth(target_index).get_by_text(action, exact=True).first
+        action_button.click()
+
+    @submenu("实例")
+    def change_specification(self, name: str):
+        self.ensure_detail_tab(name, "节点管理")
+        self._node_group_action("WEB", "修改规格")
         specification_name = "emr.d6 emr.d6.2xlarge 8核"
         self.get_by_role("row", name=specification_name).get_by_role("radio").click()
         self.dialog_confirm.click()
@@ -571,7 +599,7 @@ class EMRPage(BasePage):
     @submenu("实例")
     def expand_disk(self, name: str, size: int = 70):
         self.ensure_detail_tab(name, "节点管理")
-        self._first_node_group_action("磁盘扩容")
+        self._node_group_action("WEB", "磁盘扩容")
         dialog = self.page.locator("div.el-dialog:visible").last
         dialog.locator("input[role='spinbutton']").first.fill(str(size))
         dialog.get_by_text("确定", exact=True).click()
@@ -579,7 +607,7 @@ class EMRPage(BasePage):
     @submenu("实例")
     def add_node(self, name: str, password: str = "Admin1234@sugon"):
         self.ensure_detail_tab(name, "节点管理")
-        self._first_node_group_action("扩容")
+        self._node_group_action("COMMON", "扩容")
         dialog = self.page.locator("div.el-dialog:visible").last
         if dialog.locator("input[type='password']").count() >= 2:
             dialog.locator("input[type='password']").nth(0).fill(password)
@@ -589,7 +617,7 @@ class EMRPage(BasePage):
     @submenu("实例")
     def delete_node(self, name: str):
         self.ensure_detail_tab(name, "节点管理")
-        self._first_node_group_action("缩容")
+        self._node_group_action("COMMON", "缩容")
         dialog = self.page.locator("div.el-dialog:visible").last
         dialog.locator("input[role='spinbutton']").first.fill("1")
         dialog.get_by_text("确定", exact=True).click()

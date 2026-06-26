@@ -19,9 +19,19 @@ class KingbasePage(PgSQLPage):
         if option_text:
             target = items.filter(has_text=re.compile(rf"^{re.escape(option_text)}$"))
             if target.count() > 0:
-                target.first.click()
+                option = target.first
+                option.wait_for(state="visible", timeout=3000)
+                try:
+                    option.click(timeout=3000)
+                except Exception:
+                    option.click(force=True, timeout=3000)
                 return
-        items.first.click()
+        option = items.first
+        option.wait_for(state="visible", timeout=3000)
+        try:
+            option.click(timeout=3000)
+        except Exception:
+            option.click(force=True, timeout=3000)
 
     def _open_instance_detail_tab(self, name: str, tab_name: str):
         self.goto_detail_page(name, tab_name=tab_name)
@@ -181,8 +191,8 @@ class KingbasePage(PgSQLPage):
     def add_backup_node(self, name: str):
         """为集群新增备节点。"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        sleep(5)
-        self.get_by_text("新建备节点", exact=True).first.click()
+        sleep(2)
+        self.get_by_text("新建备节点").first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")

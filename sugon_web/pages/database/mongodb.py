@@ -211,7 +211,9 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_text("新建备节点").first.click()
+        self.locator(".el-tab-pane:not([aria-hidden='true'])").locator("div.cloud-button-btn").filter(
+            has_text="新建备节点"
+        ).first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -221,7 +223,9 @@ class MongoDBPage(BasePage):
         :param name: 实例名称
         """
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        self.get_by_text("新建只读节点").first.click()
+        self.locator(".el-tab-pane:not([aria-hidden='true'])").locator("div.cloud-button-btn").filter(
+            has_text="新建只读节点"
+        ).first.click()
         self.get_by_label("新建只读节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
