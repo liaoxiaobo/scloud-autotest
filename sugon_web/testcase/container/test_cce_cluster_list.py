@@ -174,7 +174,7 @@ class TestCCEClusterCreate:
                     version="1.22.17",
                     container_runtime="docker",
                     proxy_mode="ipvs",
-                    desc=f"批量删除测试集群{i}",
+                    desc=f"测试集群{i}",
                     network_model="flannel",
                     volume_size=50,
                     flavor="4C8G",

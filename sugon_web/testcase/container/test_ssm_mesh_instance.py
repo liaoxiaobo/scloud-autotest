@@ -114,11 +114,11 @@ class TestSsmMeshInstanceManagement:
         name = mesh_instance["name"]
 
         with allure_step_log("步骤1: 按名称搜索"):
-            ssm_page.search(name)
+            ssm_page.mesh_search(name)
             ssm_page.assert_list_contain(name, column_name="名称")
 
         with allure_step_log("步骤2: 搜索不存在的关键字"):
-            ssm_page.search("mesh-non-existent-99999")
+            ssm_page.mesh_search("mesh-non-existent-99999")
             ssm_page.assert_list_not_contain(name, column_name="名称")
 
     @allure.title("网格实例-修改名称和规格")

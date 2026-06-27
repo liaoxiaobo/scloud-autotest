@@ -183,7 +183,8 @@ class TestCCEVolume:
                     name=pvc_name,
                     capacity=5,
                     storage_class=sc_name,
-                    access_mode="ReadWriteOnce"
+                    access_mode="ReadWriteOnce",
+                    cluster=cluster_name
                 )
                 cce_page.assert_popup_success()
                 cce_page.assert_status(pvc_name, "绑定", refresh=True)

@@ -134,6 +134,15 @@ class SsmPage(CceBaseMixin, BasePage):
         self.wait_for_page_ready()
         return text
 
+    @submenu("网格实例")
+    def mesh_search(self, keyword):
+        """在网格实例列表页按关键字搜索。
+
+        Args:
+            keyword: 搜索关键词。
+        """
+        self.search(keyword)
+
     def _refresh_mesh_list(self):
         """刷新网格实例列表。
 
