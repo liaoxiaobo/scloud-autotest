@@ -142,7 +142,7 @@ class SSHClientBase:
         return_stderr: bool = False,
         return_rc: bool = False,
         check_rc: bool = False,
-        timeout: int | None = None,
+        timeout: int | None = 900,
         get_pty: bool = False,
         wait_for_exit: bool = True,
     ) -> str | SSHResult | None:
