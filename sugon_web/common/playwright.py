@@ -1,3 +1,26 @@
+"""
+【职责】封装 Playwright 同步 API，提供带日志与自动等待的定位器、单步操作、页面就绪等待及新标签页切换能力。
+
+【层级】Driver 层；被 BasePage 继承，page object 通过 BasePage 间接使用。
+
+【接口】
+- locator(selector) -> CustomLocator：创建自定义包装定位器，支持链式调用。
+- click(selector)：点击元素并自动调用 wait_for_page_ready（注意：不等待操作完成）。
+- fill(selector, value)：向输入框填充文本，自动将数值转为字符串。
+- wait_for_page_ready()：等待 DOM、资源及 Element UI loading 遮罩消失。
+- wait_for_operation_complete(timeout=30)：等待 loading 图标/按钮 loading 状态消失。
+- switch_to_new_tab(wait_for_selector=None, timeout=30000) -> Page：切换到新打开的标签页。
+
+【示例】
+class MyPage(BasePage):
+    def create(self, name):
+        self.fill("input[name='name']", name)
+        self.click("创建")
+        self.wait_for_operation_complete(timeout=60)
+
+【前置依赖】Playwright 实例需传入已初始化并导航到目标页面的 Page 对象。
+"""
+
 import time
 
 from playwright.sync_api import Page, expect, BrowserContext, Locator

@@ -1,3 +1,30 @@
+"""
+【职责】提供表格数据读取、行定位、列提取、勾选、排序、分页扩展等能力，返回用户可见的表头与单元格内容。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- table_headers -> list[str]：获取主内容区第一个可见表格的表头列表。
+- table_rows -> list[Locator]：获取主内容区第一个可见表格的数据行列表。
+- get_row_by_name(name) -> Locator：按名称查找数据行（前缀/精确匹配，返回最后匹配行）。
+- get_rows_by_text(text) -> Locator：按文本包含匹配数据行（返回所有命中行）。
+- get_row_data(name) -> TableRowData：按名称（前缀/精确匹配）获取整行数据，返回表头:内容的字典。
+- get_row_data_by_locator(loc) -> TableRowData：按行定位器获取整行数据。
+- get_column_data(header_name, deduplicate=True, context="auto") -> ColumnData：按表头名获取该列所有数据。
+- select_rows_by_names(names)：按名称列表勾选表格行。
+- assert_row_contains(name, expected_data, timeout=300)：断言指定行包含期望文本。
+- set_table_header(names, enable=True)：设置表头列显示/隐藏。
+- sort_by_header(header_name, order="desc")：按表头排序。
+
+【示例】
+class TestMyFeature:
+    def test_list(self, my_page):
+        row_data = my_page.get_row_data("vm-01")
+        assert row_data.get("状态") == "运行中"
+        directions = my_page.get_column_data("方向")
+        assert len(directions) == 2
+"""
+
 import re
 import time
 from typing import TYPE_CHECKING

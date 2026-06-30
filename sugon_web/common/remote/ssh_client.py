@@ -1,3 +1,24 @@
+"""
+【职责】基于 paramiko 的 SSH 传输层基础客户端，负责建立连接、执行命令、文件上传下载及连接复用。
+
+【层级】Driver 层；被 SSH 类继承，业务代码通过 SSH 实例使用，不建议直接实例化。
+
+【接口】
+- connect(host, port=22, username="root", pwd="admin1234@sugon", pkey=None, use_jumphost=True)：连接远程主机，会自动复用已有连接。
+- run(cmd, return_stdout=True, return_stderr=False, return_rc=False, check_rc=False, timeout=None) -> str | SSHResult | None：执行远程命令。
+- get_file(remotepath, localpath)：SFTP 下载文件。
+- put_file(localpath, remotepath)：SFTP 上传文件。
+- close()：关闭所有 SSH 连接。
+
+【示例】
+from sugon_web.common.remote.ssh import SSH
+
+ssh = SSH()
+ssh.connect(host="172.22.1.190", username="root", pwd="admin1234@sugon")
+result = ssh.run("hostname", return_rc=True)
+assert result["rc"] == 0
+"""
+
 import time
 from typing import TypedDict
 

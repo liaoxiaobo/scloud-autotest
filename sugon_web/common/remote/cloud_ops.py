@@ -1,3 +1,28 @@
+"""
+【职责】提供云平台 API 调用、远程文件操作、磁盘挂载、网络连通性检测、系统服务状态查询、数据库节点信息查询及 SQL 执行等远端辅助能力。
+
+【层级】Fixture 层；被 SSH 类继承，通过 SSH fixture 调用。
+
+【接口】
+- find_mfip(fixed_ip, host=None) -> str：查询 fixed_ip 对应的 MFIP 地址。
+- ping(ip, connected=True, count=10, retries=5)：执行 ping 并断言 ICMP 连通性。
+- ping_in_thread(ip, connected=True, count=4, retries=3) -> Thread：在后台线程执行 ping，返回线程句柄。
+- telnet(host, port=22, timeout=300)：轮询检测目标主机端口的 TCP 连通性，超时抛异常。
+- mount_disk(disk_name, mount_point=None, format_disk=True, disk_type="ext4") -> str：在虚拟机中挂载磁盘。
+- create_file(filepath, size=10) -> str：在远端创建指定大小文件并返回 MD5。
+- file_exist(path) / file_not_exist(path)：断言文件存在或不存在。
+- get_service_status(service_name) -> str：查询 systemd 服务状态（running/stopped/failed）。
+- run_sql(database, sql_statement)：在远端执行 SQL 语句。
+- get_node_mfip(db_name, node_name, table_name="node") -> str：从数据库查询节点 MFIP。
+- get_instance_node_ips(db_name, instance_name) -> list：从数据库查询实例各节点的 (名称, MFIP) 列表。
+
+【示例】
+def test_disk(ssh_vm):
+    mount_point = ssh_vm.mount_disk("sdb", mount_point="/mnt/test", format_disk=True)
+    md5 = ssh_vm.create_file("/mnt/test/file", size=100)
+    ssh_vm.ping("10.0.0.5", connected=True)
+"""
+
 import json
 import re
 import shlex

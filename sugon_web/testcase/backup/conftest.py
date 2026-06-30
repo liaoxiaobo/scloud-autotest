@@ -2,13 +2,12 @@ from __future__ import annotations
 import time
 import pytest
 from typing import Any, Dict, Iterator, List, Tuple, TypedDict, Union
-from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.conftest import _create_logged_in_page
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.network import VpcPage
-from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
 from sugon_web.testcase.compute.vm_fixture.types import VmFixtureParams
 from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
 from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
@@ -234,11 +233,7 @@ def _prepare_single_vm_backup_metadata(
         ecs_page.assert_popup_success("执行成功")
         row_data = ecs_page.get_row_data(vm_data["name"])
         arch = row_data.get("架构")
-        meta = collect_vm_metadata(ecs_page, ssh_host, vm_data["name"])
-        mfip = MfipHelper.bind_mfip_with_admin_context(
-            browser, config, meta["port_id"],
-            project_id=meta.get("project_id", "admin-inner-project"),
-        )
+        mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm_data["name"])
         ssh_vm.connect(mfip)
         md5_dict = ecs_page.vm_pre_data(ssh_vm)
 
