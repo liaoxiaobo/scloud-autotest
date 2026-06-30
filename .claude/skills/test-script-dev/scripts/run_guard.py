@@ -48,7 +48,7 @@
     python .claude/skills/test-script-dev/scripts/run_guard.py --reset --reentry --task <任务标识> --cases <场景数>
     # 之后每次跑 pytest 都经本脚本（-- 之后原样就是平时的 pytest 命令与参数）：
     python .claude/skills/test-script-dev/scripts/run_guard.py --task <任务标识> -- \
-        pytest sugon_web/testcase/network/test_xxx.py -k test_xxx --log-file=logs/xxx.log --log-file-level=DEBUG
+        pytest sugon_web/testcase/network/test_xxx.py -k test_xxx --log-file=logs/network/test_xxx/test_xxx.log --log-file-level=DEBUG
 """
 
 import argparse
@@ -78,6 +78,7 @@ REENTRY_BUDGET = 10           # 回退重入（--reentry）发放的小额全局
 GLOBAL_WALL_HARD_SECS = 10 * 3600  # 全局活跃墙钟硬上限(秒)：自首次激活起累计【活跃】墙钟超过该时长 → 硬停（退出码 3 拒绝下一次 pytest），强制收尾标"遗留·转人工"。2026-06-21 由原 6h 软兜底改为 10h 硬停（软兜底无约束力、实测被无视跑满 7h+；硬停才有真正上限）
 WALL_IDLE_GAP_SECS = 1800          # 活跃墙钟的"空闲扣除"阈值(秒)：两次 run_guard 调用之间间隔 > 该值即视为中断/挂起、不计入活跃墙钟（既让单个高成本 pytest 70~100min 照常计入，又避免跨夜/中断恢复被瞬间秒杀）
 GUARD_TTL = 4 * 3600           # 守卫哨兵滑动过期(秒)：每次经 run_guard 跑 pytest 都续期；若超过该时长无 run_guard 活动则哨兵自动失效，避免陈旧哨兵长期卡住项目/开发者
+REACTIVATION_GUARD_SECS = 2 * 3600  # 【2026-06-26 新增·根因B】防"压缩后/手滑误重置续命"阈值(秒)：裸 --reset(非 --reentry)时，若本任务已累计 global_runs>0 且最近一次 pytest 在该时长内 → 判定为"运行中"，拒绝静默清零（保留计数）。超过该时长视为陈旧残留、允许全新清零；显式 --force 可强制清零。
 
 # 「已排除方向清单」结构化块标记（写在运行报告里，phase3 每轮追加；run_guard 每轮自动回显给模型，
 # 强制"已写必被读"——抗上下文压缩、抗回退重入失忆，杜绝重复试已排除的修复方向、原地打转烧额度）。
@@ -203,6 +204,15 @@ def _target_key(pytest_args):
             kexpr = a[3:]
         elif ".py" in a and not a.startswith("-"):
             target = a
+    if target:
+        # 【2026-06-26 修复·根因A】规范化目标路径，消除"相对路径 vs 绝对路径、盘符大小写、\\ vs /"
+        # 导致同一用例被拆成多个计数 key（实测：同一 test 被算成"相对key=10 + 绝对key=1"，使单用例上限失效）。
+        # 做法：统一分隔符并截取从 "sugon_web/" 起的相对部分（保留 ::node 与文件后部，只丢弃前缀盘符/路径差异）。
+        norm = target.replace("\\", "/")
+        idx = norm.lower().find("sugon_web/")
+        if idx >= 0:
+            norm = norm[idx:]
+        target = norm
     key = target or "<whole-suite>"
     if kexpr:
         key += f"  -k {kexpr}"
@@ -305,6 +315,8 @@ def main(argv):
     ap.add_argument("--cap-global", type=int, default=DEFAULT_CAP_GLOBAL,
                     help=f"全局次数上限下限（默认 {DEFAULT_CAP_GLOBAL}）；实际取 max(该值, 场景数×{GLOBAL_PER_CASE})")
     ap.add_argument("--reset", action="store_true", help="重置本任务守卫状态（阶段三开始时调一次）")
+    ap.add_argument("--force", action="store_true",
+                    help="与 --reset 同用：强制清零，跳过『活跃运行中』防续命守卫（仅当确需对本任务全新开始时使用）")
     ap.add_argument("--reentry", action="store_true",
                     help="回退重入语义（阶段四/五回退重入阶段三时与 --reset 同用）：不清零累计的全局次数，"
                          "只清空各用例的单用例/冻结计数让本次回退能继续修，并在原全局上限上 +REENTRY_BUDGET 小额预算；"
@@ -359,6 +371,27 @@ def main(argv):
             print(f"[run_guard] 单用例上限={args.cap_file} 次、连续相同失败冻结={FREEZE_LIMIT} 次；"
                   f"绕过审计窗口已刷新为本次回退起（旧日志不再计入本次单用例额度）；全局活跃墙钟自首次激活连续计、超 {GLOBAL_WALL_HARD_SECS // 3600}h 硬停（已扣除长空闲间隔，跨夜/中断恢复不会被秒杀）。")
         else:
+            # 【2026-06-26 修复·根因B】防"上下文压缩后/手滑误重置导致续命"守卫：
+            # 若本任务已有【活跃运行中】的守卫状态（已累计 global_runs>0 且最近一次 pytest 在
+            # REACTIVATION_GUARD_SECS 内），裸 --reset 极可能是阶段三长跑触发上下文压缩后、子智能体
+            # 把"开机 reset"又跑了一遍 → 若就此清零会重置次数/墙钟上限（"续命"，实测 9h 跑 60+ 次没被拦）。
+            # 故此处拒绝静默清零、保留累计计数。真·全新开始（首次进入无状态 / 陈旧残留超阈值 / 显式 --force）才清零；
+            # --reset --reentry 走上面分支、不受本守卫影响。
+            prev = _load(sp)
+            prev_global = prev.get("global_runs", 0)
+            prev_last_seen = prev.get("last_seen_at", 0)
+            age = (time.time() - prev_last_seen) if prev_last_seen else None
+            if (not args.force) and prev_global > 0 and age is not None and age < REACTIVATION_GUARD_SECS:
+                print(f"[run_guard] [!] 已忽略本次 --reset：检测到本任务守卫状态【正在运行中】"
+                      f"（已累计 global_runs={prev_global}，最近一次 pytest 在 {age/60:.0f} 分钟前）。")
+                print("[run_guard] 这通常是【阶段三长跑触发上下文压缩后、把开机 reset 又跑了一遍】——若就此清零会让"
+                      "单用例/全局次数与活跃墙钟上限被重置（'续命'）。为保护熔断有效，本次【保留累计计数、不清零】。")
+                print("[run_guard] → 若你是阶段三续跑（含压缩后续跑）：无需任何 reset，直接继续 "
+                      "`python .claude/skills/test-script-dev/scripts/run_guard.py --task <标识> -- pytest ...` 即可。")
+                print(f"[run_guard] → 若确需对本任务【全新开始】：先 `--release`，再 `--reset --force`"
+                      f"（或删除状态文件 {sp} 后再 --reset）。")
+                _refresh_sentinel()  # 保持运行态续期；不改动任何计数
+                return 0
             now = time.time()
             _save(sp, {"global_runs": 0, "files": {}, "started_at": now,
                        "first_activated_at": now, "cap_global": eff_global,

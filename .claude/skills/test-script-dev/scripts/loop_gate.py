@@ -24,6 +24,8 @@ loop_gate.py —— 阶段三/五 回退派发硬闸门（中方案·架构新�
     - 全局次数上限 max(60, 场景数×10)            见 phase3-execution 正文「三、3.5」
     - 状态冻结：连续 15 次相同失败                 见 phase3-execution 正文「三、3.3」
     - 阶段五回退同一根因修复次数上限 8           见 phase5-stability 正文回退约束
+    - 全局端到端总时长上限 GLOBAL_DEADLINE_HOURS（默认 12h，2026-06-29 新增·机械兜底）
+                                                 见 SKILL.md「全局端到端总时长闸」
   注：本脚本按运行报告计数区"上限"列的实际数值比对，故上述数字变化时改 run_guard 与计数区即可，
       无需改本脚本逻辑；口径为"1 次 pytest = 1 次"。（2026-06-17 团队决策：30/场景数×30/10/10 → 20/场景数×8/5/5；2026-06-18 阶段五同根因 5 → 8；2026-06-19 冻结 5→10、单用例 20→30、全局下限 20→40；2026-06-21 单用例 30→40、冻结 10→15、全局下限 40→60、每场景 8→10）
 
@@ -40,20 +42,24 @@ loop_gate.py —— 阶段三/五 回退派发硬闸门（中方案·架构新�
         按生效阈值写入（单用例 40、全局 max(60,场景数×10)、冻结 15、同根因 8），脚本只比对当前值 >= 上限。
 
 退出码：
-    0  允许再派发一轮（所有相关计数均未达上限）
+    0  允许再派发一轮（所有相关计数均未达上限、且未超全局总时长）
     1  已达上限，禁止再派发（编排层须按正文规则标记"遗留问题"并停止回退）；stdout 打印命中原因
+       —— 命中项含：全局/单用例次数上限、状态冻结、同根因修复上限、**全局端到端总时长上限**
     2  计数区缺失 / 无法解析 / 缺必需行（**不放行**：宁可暴露问题，也绝不在缺数据时假装通过）
 
 用法：
-    python loop_gate.py <运行报告 md 路径> [--case <用例名>] [--rootcause <根因标识>]
-        不带 --case/--rootcause：只校验全局轮次（global_fix_rounds）。
+    python loop_gate.py <运行报告 md 路径> [--case <用例名>] [--rootcause <根因标识>] [--deadline-hours <小时>]
+        不带 --case/--rootcause：只校验全局轮次（global_fix_rounds）与全局总时长。
         带 --case：额外校验该用例的 case_fix_rounds 与 freeze_same_rounds。
         带 --rootcause：额外校验阶段五回退的 heal_same_rootcause。
+        --deadline-hours：全局端到端总时长上限(小时)，默认 12；自运行报告头「运行开始时间」按真实墙钟计。
+        （全局总时长闸始终校验；若运行报告头解析不到「运行开始时间」则自动跳过该闸、不阻断。）
 """
 
 import argparse
 import re
 import sys
+from datetime import datetime
 
 # Windows 控制台默认 GBK，脚本含大量中文；不强制 UTF-8 会出现 `���` 乱码。
 # 统一把 stdout/stderr 切到 UTF-8，保证闸门命中原因可读。
@@ -65,6 +71,31 @@ for _stream in (sys.stdout, sys.stderr):
 
 BLOCK_START = "<!-- LOOP_COUNTER_BLOCK_START -->"
 BLOCK_END = "<!-- LOOP_COUNTER_BLOCK_END -->"
+
+# 全局端到端总时长上限(小时)：自运行报告头「运行开始时间」按真实墙钟计（含跨夜/空闲）。
+# 用于兜住 run_guard 10h 活跃墙钟"只覆盖阶段三、且对阶段五裸跑那几小时不可见"的盲区
+# （2026-06-29 新增·实测整套曾连续跑约 12h/跨度近 15h 仍未收尾）。超限即按退出码 1 禁止再派发。
+GLOBAL_DEADLINE_HOURS = 12
+
+
+def _check_global_deadline(text, deadline_hours):
+    """读运行报告头「运行开始时间」，按真实墙钟算端到端已耗时；>= deadline_hours 返回命中原因串，否则 None。
+
+    设计取舍：解析不到「运行开始时间」（旧报告/格式异常）时**跳过本闸、返回 None、不阻断**——
+    时长闸是兜底而非主闸，缺数据宁可不拦也不误杀（次数/冻结闸仍照常生效）。
+    """
+    m = re.search(r"运行开始时间[：:]\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})", text)
+    if not m:
+        return None
+    try:
+        start = datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    elapsed_h = (datetime.now() - start).total_seconds() / 3600.0
+    if elapsed_h >= deadline_hours:
+        return ("全局端到端总时长已达上限（≈%.1fh ≥ %gh，自运行开始时间 %s 起按真实墙钟计，"
+                "独立于 run_guard 阶段三活跃墙钟）" % (elapsed_h, deadline_hours, m.group(1) + " " + m.group(2)))
+    return None
 
 
 def _fail_parse(msg):
@@ -121,6 +152,9 @@ def main():
     ap.add_argument("report", help="本次运行报告 md 路径")
     ap.add_argument("--case", default=None, help="本轮要回退/重派的用例名（校验单用例轮次与状态冻结）")
     ap.add_argument("--rootcause", default=None, help="阶段五回退的同一根因标识（校验同根因修复次数）")
+    ap.add_argument("--deadline-hours", type=float, default=GLOBAL_DEADLINE_HOURS,
+                    help="全局端到端总时长上限(小时)，默认 %g；自运行报告头「运行开始时间」按真实墙钟计，"
+                         "兜住 run_guard 阶段三活跃墙钟对阶段五裸跑不可见的盲区" % GLOBAL_DEADLINE_HOURS)
     args = ap.parse_args()
 
     try:
@@ -153,6 +187,11 @@ def main():
             blocked.append("根因 %s 阶段五回退修复次数已达上限（%d/%d，phase5 正文回退约束）"
                            % (args.rootcause, cur, limit))
 
+    # 4) 全局端到端总时长闸（机械兜底·2026-06-29 新增）：始终校验，独立于次数/冻结闸
+    dl = _check_global_deadline(text, args.deadline_hours)
+    if dl:
+        blocked.append(dl)
+
     if blocked:
         print("[loop_gate] 禁止再派发（退出码 1）。命中以下停止条件：")
         for b in blocked:
@@ -160,7 +199,7 @@ def main():
         print("编排层须按正文规则标记『遗留问题』并停止该回退分支，不得再派发子智能体。")
         sys.exit(1)
 
-    print("[loop_gate] 允许再派发一轮（退出码 0）：所有相关计数均未达上限。")
+    print("[loop_gate] 允许再派发一轮（退出码 0）：所有相关计数均未达上限、且未超全局总时长。")
     sys.exit(0)
 
 

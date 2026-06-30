@@ -23,8 +23,8 @@ def capture_failure_screenshot(page, item, failure_stage):
     try:
         logger.info(f"开始生成失败截图")
         project_root = Path(__file__).resolve().parents[2]
-        screenshot_dir = project_root / "screenshots"
-        screenshot_dir.mkdir(exist_ok=True)
+        screenshot_dir = _resolve_failure_subdir(project_root / "screenshots", item)
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         screenshot_path = screenshot_dir / f"{item.name}_{timestamp}.png"
@@ -173,6 +173,34 @@ _DOM_SNAPSHOT_JS = r"""
 """
 
 
+def _resolve_failure_subdir(base_dir, item):
+    """推导失败产物（失败截图 / DOM 摘要）的落盘子目录：`<base_dir>/<模块>/<测试文件名>/`，与日志目录 `logs/<模块>/<测试名>/` 同构。
+
+    - `<模块>` = 测试文件位于 `sugon_web/testcase/` 之下的子目录（如 `network`、`compute`，支持多级如 `compute/sub`）；
+    - `<测试文件名>` = 测试 py 文件去掉 `.py`（如 `test_lbv2_create_instance_and_http_listener`）；
+    - 多模块并行开发时，各自的失败产物落到各自子目录，互不混杂；
+    - 任何解析失败都回退到 `base_dir` 根目录，保证绝不因路径解析异常而丢失产物。
+    """
+    module_path = ""
+    stem = ""
+    try:
+        raw = getattr(item, "path", None) or getattr(item, "fspath", None)
+        p = Path(str(raw)) if raw is not None else Path(str(getattr(item, "nodeid", "")).split("::")[0])
+        stem = p.stem  # 测试文件名去 .py
+        parts = p.parts
+        if "testcase" in parts:
+            i = parts.index("testcase")
+            module_path = "/".join(parts[i + 1:-1])  # testcase 与文件名之间的子目录（支持多级）
+    except Exception:
+        pass
+    out = base_dir
+    if module_path:
+        out = out / module_path
+    if stem:
+        out = out / stem
+    return out
+
+
 def capture_failure_dom_summary(page, item, failure_stage):
     """失败那一刻自动采集"真实渲染态的可定位元素摘要"，落盘为文本 + 附加到 Allure，供阶段三按真实 DOM 改定位。
 
@@ -250,8 +278,8 @@ def capture_failure_dom_summary(page, item, failure_stage):
 
     try:
         project_root = Path(__file__).resolve().parents[2]
-        out_dir = project_root / "dom_snapshots"
-        out_dir.mkdir(exist_ok=True)
+        out_dir = _resolve_failure_subdir(project_root / "dom_snapshots", item)
+        out_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_path = out_dir / f"{item.name}_{timestamp}_domsnap.md"
         out_path.write_text(content, encoding="utf-8")
