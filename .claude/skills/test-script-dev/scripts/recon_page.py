@@ -35,6 +35,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Windows 控制台默认 GBK，本脚本会打印大量含中文文案/特殊符号（如 ⚠️、→、\xa0 不间断空格、
+# 前端 class 名）的真实渲染态元素清单；不强制 UTF-8 输出会直接 `UnicodeEncodeError: 'gbk'
+# codec can't encode` 崩溃——实测曾导致阶段二侦察跑不起来、被迫凭源码猜定位、阶段三反复返工。
+# 与 run_guard.py / precheck.py / report_check.py / loop_gate.py 同款保护：统一把 stdout/stderr 切到 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 # 侦察的可见性判定超时（毫秒）。3000ms 兼顾慢环境渲染与脚本不长时间挂起；
 # 与项目登录流程中对弹窗可见性的等待量级一致。
 VISIBLE_TIMEOUT_MS = 3000

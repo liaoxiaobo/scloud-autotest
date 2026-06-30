@@ -7,11 +7,11 @@ from sugon_web.utils.data import random_data
 
 @allure.epic('容器服务')
 @allure.feature('容器镜像服务SCR')
-@allure.story('实例管理功能验证')
-class TestSCRInstanceManagement:
-    """SCR 实例管理测试类：搜索、修改名称、删除、批量删除。"""
+@allure.story('实例管理-列表页')
+class TestSCRInstanceList:
+    """SCR 实例列表页测试类：搜索、修改名称、删除、修改规格。"""
 
-    @allure.title("实例管理-列表页搜索和重置")
+    @allure.title("实例列表-搜索和重置")
     def test_scr_search_reset(self, scr_page, scr_instance):
         """验证实例列表页搜索和重置功能。"""
         instance_name = scr_instance["name"]
@@ -26,7 +26,7 @@ class TestSCRInstanceManagement:
             scr_page.btn_reset.click()
             assert scr_page._input_search.input_value() == "", "重置后搜索输入框未被清空"
 
-    @allure.title("实例管理-修改实例名称")
+    @allure.title("实例列表-修改实例名称")
     def test_scr_edit_name(self, scr_page, scr_instance):
         """修改 SCR 实例名称并验证列表更新。"""
         instance_name = scr_instance["name"]
@@ -44,7 +44,7 @@ class TestSCRInstanceManagement:
             scr_page.assert_popup_success()
             scr_page.assert_list_contain(instance_name, column_name="名称")
 
-    @allure.title("实例管理-删除 SCR 实例")
+    @allure.title("实例列表-删除实例")
     def test_scr_delete(self, scr_page, ssh_host):
         """创建临时 SCR 实例后删除，验证 UI 列表和后台虚机均清理。"""
         instance_name = f"scr-{random_data(length=4)}"
@@ -62,3 +62,24 @@ class TestSCRInstanceManagement:
 
         with allure_step_log("步骤4: 后台验证虚机已删除"):
             ssh_host.wait_vm_deleted(instance_name, timeout=600)
+
+    @allure.title("实例列表-修改规格")
+    def test_scr_flavor_change(self, scr_page, scr_instance, ssh_host):
+        """验证单机实例规格变更功能（只能升配）及后台一致性。"""
+        instance_name = scr_instance["name"]
+        target_flavor = "8C16G"
+
+        with allure_step_log("步骤1: 修改规格并等待状态收敛"):
+            scr_page.scr_flavor_change(instance_name, target_flavor)
+            scr_page.assert_popup_success()
+
+        with allure_step_log("步骤2: 等待状态收敛到运行中"):
+            scr_page.assert_status(instance_name, "运行中", timeout=600, refresh=True)
+
+        with allure_step_log("步骤3: 后台验证规格变更"):
+            node_name = f"{instance_name}-0"
+            ssh_host.assert_guest_fields(
+                node_name,
+                {"vcpu": "8", "memory_mb": "16384"},
+                f"{node_name}规格变更后端验证失败"
+            )

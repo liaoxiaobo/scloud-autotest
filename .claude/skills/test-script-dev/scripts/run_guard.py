@@ -351,7 +351,8 @@ def main(argv):
                        "started_at": time.time(), "first_activated_at": first_at,
                        "cap_global": new_cap,
                        "last_seen_at": prev.get("last_seen_at", 0),
-                       "idle_secs": prev.get("idle_secs", 0)})
+                       "idle_secs": prev.get("idle_secs", 0),
+                       "audit_base": prev_global})
             print(f"[run_guard] 已按【回退重入】重置：{sp}")
             print(f"[run_guard] 全局累计不清零（保留 {prev_global} 次）；从当前全局位置再给 {REENTRY_BUDGET} 次额度 → 新全局上限 {new_cap}（幂等：重复 reset 不叠加预算）；"
                   f"各用例单用例/冻结计数已清空，本次回退可继续修。")
@@ -361,7 +362,7 @@ def main(argv):
             now = time.time()
             _save(sp, {"global_runs": 0, "files": {}, "started_at": now,
                        "first_activated_at": now, "cap_global": eff_global,
-                       "last_seen_at": now, "idle_secs": 0})
+                       "last_seen_at": now, "idle_secs": 0, "audit_base": 0})
             print(f"[run_guard] 已重置守卫状态：{sp}")
             print(f"[run_guard] 次数上限：单用例(= 一个 CSV 需求/def test_ 方法)={args.cap_file} 次、"
                   f"全局={eff_global} 次（场景数={args.cases or '未提供'}，公式 max({args.cap_global}, 场景数×{GLOBAL_PER_CASE})）；"
@@ -389,17 +390,22 @@ def main(argv):
     f = _ensure_file_entry(state, key)
 
     # ---- 绕过审计：按日志目录真实 .log 数补算（裸跑绕过也逃不过上限）----
-    # 只数 reset 之后的日志，旧日志不再污染额度。
+    # 【全局/目录级对账，不再逐个 -k 目标各自和整目录比】——否则同一测试文件的多个 def test_
+    # 方法（多个 -k 目标）共用同一日志目录时，会把彼此产生的日志互相计入对方、把计数重复放大
+    # （实测：真实仅 34 次却被算成 60）。现在只比"目录真实日志数"与"本审计窗口内经 run_guard 已记的次数"，
+    # 差额（=真正的裸跑）只补算一次到全局。只数本审计窗口（本次 reset / 回退重入起）之后的日志。
     started_at = state.get("started_at", 0)
     log_dir = _log_dir_from_args(pytest_args)
     real = _count_real_logs(log_dir, started_at)
-    if real is not None and real > f["runs"]:
-        bypass = real - f["runs"]
-        print(f"[run_guard] [!] 绕过审计：日志目录（本次 reset 后）实际有 {real} 次 pytest 运行，"
-              f"本守卫该目标仅计 {f['runs']} 次——检测到约 {bypass} 次【未经 run_guard 的裸跑】。")
-        print("[run_guard] 已按实际运行数补算：裸跑绕过不会逃过上限。此后所有 pytest 必须经 run_guard 跑。")
-        f["runs"] = real
+    # 本窗口内经 run_guard 已记的次数：回退重入时 global_runs 跨段保留，audit_base 记录本窗口起点的全局值。
+    window_runs = state["global_runs"] - state.get("audit_base", 0)
+    if real is not None and real > window_runs:
+        bypass = real - window_runs
+        print(f"[run_guard] [!] 绕过审计：日志目录（本审计窗口内）实际有 {real} 次 pytest 运行，"
+              f"经 run_guard 仅计 {window_runs} 次——检测到约 {bypass} 次【未经 run_guard 的裸跑】。")
+        print("[run_guard] 已按实际运行数补算到全局：裸跑绕过不会逃过上限。此后所有 pytest 必须经 run_guard 跑。")
         state["global_runs"] = state["global_runs"] + bypass
+        f["runs"] = f["runs"] + bypass  # 补算到当前目标的单用例计数（best-effort：当前正在跑的就是该目标）
 
     # ---- 全局活跃墙钟（自首次激活 first_activated_at 起、扣除长空闲间隔后的累计活跃时长）----
     # 用 first_activated_at（跨回退保留）作基准；两次 run_guard 调用间隔 > WALL_IDLE_GAP_SECS 视为中断/挂起、从墙钟扣除，

@@ -46,6 +46,90 @@ class CceBaseMixin(BasePage):
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(200)
 
+    def _select_cluster_namespace(self, cluster_name, namespace="default"):
+        """在 CCE 列表页顶部选择目标集群和命名空间。
+
+        CCE 左侧菜单列表页（存储卷、命名空间、工作负载等）右上角普遍存在
+        “集群/命名空间”选择器，其 DOM 结构见前端工程
+        `sugoncloud-cce-web/src/page/cce/storage-volume-manage/index.vue` 中
+        `rightHandles` 计算属性：
+          <span>集群</span>
+          <el-select value={cluster_id} onChange={cluster_change}> ... </el-select>
+          <span>命名空间</span>
+          <el-select class="table-search-select" value={namespace}> ... </el-select>
+        若未选中目标集群/命名空间，后续新建弹窗可能因 cluster_id/namespace 错误
+        导致下拉框无数据或操作对象错误。
+
+        注意：切集群会触发异步 get_namespace()，期间命名空间可能被自动覆盖。
+        本方法在切集群后等待命名空间值稳定，再按需选择目标命名空间，并二次
+        校验结果是否收敛到目标值。
+
+        Args:
+            cluster_name: 目标集群名称（对应 el-option 的 label）
+            namespace: 目标命名空间，默认 "default"
+        """
+        import time
+
+        def _input_value(select):
+            try:
+                return select.locator(".el-input__inner").input_value()
+            except Exception:
+                return ""
+
+        def _wait_value_stable(select, timeout=10):
+            """等待下拉框 input_value 连续多次不变，用于等待异步加载完成。"""
+            prev_value = None
+            stable_count = 0
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                current_value = _input_value(select)
+                if current_value and current_value == prev_value:
+                    stable_count += 1
+                    if stable_count >= 3:
+                        return current_value
+                else:
+                    stable_count = 0
+                prev_value = current_value
+                self.page.wait_for_timeout(300)
+            raise TimeoutError(f"选择器值未在 {timeout}s 内稳定，最后值: {prev_value}")
+
+        def _wait_value_equal(select, expected, timeout=10):
+            """等待下拉框 input_value 等于期望值。"""
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if _input_value(select) == expected:
+                    return
+                self.page.wait_for_timeout(200)
+            raise TimeoutError(f"选择器值未收敛到 {expected}")
+
+        # 命名空间选择器有唯一 class，以其为锚点反向定位集群选择器
+        namespace_select = self.page.locator(".table-search-select")
+        namespace_select.wait_for(state="visible", timeout=10000)
+        cluster_select = namespace_select.locator(
+            "xpath=preceding-sibling::div[contains(@class,'el-select')][1]"
+        )
+
+        # 选择集群（若当前不是目标集群）
+        if _input_value(cluster_select) != cluster_name:
+            cluster_select.click()
+            self._select_option(cluster_name, exact=False)
+            # 切集群后会清空 namespace 并异步重新拉取命名空间列表，
+            # 必须等待其自动选择并稳定，否则后续手动选 namespace 可能被异步回调覆盖
+            namespace_select = self.page.locator(".table-search-select")
+            namespace_select.wait_for(state="visible", timeout=10000)
+            _wait_value_stable(namespace_select, timeout=10)
+            self.wait_for_page_ready()
+
+        # 选择命名空间（若当前不是目标命名空间）
+        # 再次重新定位，防止 DOM 在切集群后已重建
+        namespace_select = self.page.locator(".table-search-select")
+        namespace_select.wait_for(state="visible", timeout=10000)
+        if _input_value(namespace_select) != namespace:
+            namespace_select.click()
+            self._select_option(namespace, exact=False)
+            _wait_value_equal(namespace_select, namespace, timeout=10)
+            self.wait_for_page_ready()
+
     def _fill_cidr(self, label, cidr):
         """填写CIDR网段（分段输入框）。
 

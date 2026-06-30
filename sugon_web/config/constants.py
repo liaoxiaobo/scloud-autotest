@@ -36,6 +36,7 @@ SERVICE_PATH_MAP = {
     'E-MapReduce': '/emr',
     '云容器引擎': '/cce',
     '容器镜像服务SCR': '/scr',
+    '服务治理': '/ssm',
     '交换机组': '/ops/#/exchange-unit-list',
     '基础设施': '/ops',
     '统一身份认证IAM': '/iam/#/departmentManage',

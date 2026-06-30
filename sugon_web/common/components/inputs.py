@@ -57,5 +57,7 @@ class InputsMixin:
             self.get_by_role("textbox", name="搜索（网络名称）"),
             self.get_by_role("textbox", name="搜索（物理机）"),
             self.get_by_role("textbox", name="搜索（带外IP）"),
+            # 传输策略组/机密互联页面搜索框
+            self.get_by_placeholder("搜索"),
         ]
         return self._find_element(locators, "搜索框")

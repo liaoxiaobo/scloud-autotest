@@ -8,7 +8,7 @@ class AptAssertionMixin:
     属于 L3 Consistency 层断言。
     """
 
-    def assert_apt_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300):
+    def assert_apt_status(self, name: str, service_status: str = "运行", vm_status: str = "运行", timeout: int = 300) -> dict:
         """断言 APT 实例的服务状态与虚拟机状态。
 
         Args:
@@ -16,6 +16,9 @@ class AptAssertionMixin:
             service_status: 期望的服务状态，默认"运行"
             vm_status: 期望的虚拟机状态，默认"运行"
             timeout: 超时时间（秒），默认 300
+
+        Returns:
+            dict: 状态匹配时的行数据，避免调用方再次 get_row_data 时遇到表格刷新竞态。
         """
         start_time = time.time()
         last_data = {}
@@ -36,7 +39,7 @@ class AptAssertionMixin:
                 self.logger.info(f"APT 状态匹配: svc_match={svc_match}, vm_match={vm_match}")
                 if svc_match and vm_match:
                     self.logger.info(f"APT 实例 {name} 状态符合预期: 服务={svc}, 虚拟机={vmst}")
-                    return
+                    return row_data
             except Exception as e:
                 self.logger.warning(f"读取 APT 实例 {name} 状态失败 (第{iteration}次): {e}")
             time.sleep(5)

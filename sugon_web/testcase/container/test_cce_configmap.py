@@ -8,43 +8,16 @@ from sugon_web.utils.data import random_data
 # CSV 定义的测试数据
 CONFIGMAP_DATA_NAME = "ccetest123.2312-2.3-2w"
 CONFIGMAP_DATA_CONTENT = "cce_test123.2312-2.-w" * 40
-SECRET_DATA_NAME = "cce-test123-2312-2-w"
-SECRET_DATA_CONTENT = "cce_test123.2312-2.-w" * 40
 EDIT_CONTENT = "cce_test-CCE123!@##"
-
-# 密钥创建用例（5968）固定测试数据
-SECRET_CREATE_NAME = "test-est123"
-SECRET_LABELS = {
-    "test": "1024",
-    "cce_test-12312345FF678901234567890a.bcdefghijklnmopqrs890":
-        "cce_test-12312345678901234567890abcdefghijklnmopqrst1234567890",
-}
-SECRET_DATAS = {
-    "cce-test2": "cce_test-122333322",
-    "cce-.-test1": (
-        "cce_./test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-        "cce_test-123/12345678901234567890abcdefghijklnmopqrst1234567890"
-    ),
-}
 
 
 @allure.epic('容器服务')
 @allure.feature('云容器引擎')
-@allure.story('配置管理')
-class TestCCEConfigManagement:
-    """CCE配置管理-配置项与密钥的完整生命周期及数据操作测试类。"""
+@allure.story('配置管理-配置项')
+class TestCCEConfigmapList:
+    """CCE 配置项列表页测试类。"""
 
-    @allure.title("配置管理-新建配置项并删除")
+    @allure.title("配置项-创建和删除")
     def test_configmap_create_and_delete(self, cce_page, cce_cluster):
         """测试创建配置项、验证详情、单个删除并验证清理。"""
         config_name = f"cfg-{random_data(length=4)}"
@@ -77,7 +50,7 @@ class TestCCEConfigManagement:
         with allure_step_log("步骤5: 验证列表页不存在被删除的配置项"):
             cce_page.assert_list_not_contain(config_name, column_name="名称")
 
-    @allure.title("配置管理-批量删除配置项")
+    @allure.title("配置项-批量删除")
     def test_configmap_delete_batch(self, cce_page, cce_cluster):
         """测试批量删除配置项并验证删除后数据一致性。"""
         config_name_1 = f"cfg-del-{random_data(length=4)}"
@@ -98,7 +71,14 @@ class TestCCEConfigManagement:
             cce_page.assert_list_not_contain(config_name_1, column_name="名称")
             cce_page.assert_list_not_contain(config_name_2, column_name="名称")
 
-    @allure.title("配置管理-配置项详情添加和删除数据")
+
+@allure.epic('容器服务')
+@allure.feature('云容器引擎')
+@allure.story('配置管理-配置项-详情')
+class TestCCEConfigmapDetail:
+    """CCE 配置项详情页测试类。"""
+
+    @allure.title("配置项-详情添加和删除数据")
     def test_configmap_data_add_and_delete(self, cce_page, cce_cluster):
         """测试配置项详情页添加数据后删除，并验证列表一致性。"""
         config_name = f"cfg-{random_data(length=4)}"
@@ -128,7 +108,7 @@ class TestCCEConfigManagement:
             cce_page.configmap_delete(config_name)
             cce_page.assert_deleted(config_name)
 
-    @allure.title("配置管理-配置项详情编辑数据")
+    @allure.title("配置项-详情编辑数据")
     def test_configmap_data_edit(self, cce_page, cce_cluster):
         """测试配置项详情页编辑数据，并验证内容一致性。"""
         config_name = f"cfg-edit-{random_data(length=4)}"
@@ -156,7 +136,7 @@ class TestCCEConfigManagement:
             cce_page.configmap_delete(config_name)
             cce_page.assert_deleted(config_name)
 
-    @allure.title("配置管理-配置项详情批量删除数据")
+    @allure.title("配置项-详情批量删除数据")
     def test_configmap_data_batch_delete(self, cce_page, cce_cluster):
         """测试配置项详情页批量删除数据，并验证列表一致性。"""
         config_name = f"cfg-batch-{random_data(length=4)}"
@@ -188,80 +168,3 @@ class TestCCEConfigManagement:
             cce_page.goto_service(cce_page.service_name)
             cce_page.configmap_delete(config_name)
             cce_page.assert_deleted(config_name)
-
-    @allure.title("配置管理-密钥创建和删除")
-    def test_secret_create_and_delete(self, cce_page, cce_cluster):
-        """测试创建密钥并验证列表数据，然后删除并验证清理。"""
-        with allure_step_log("步骤1: 创建密钥"):
-            cce_page.secret_create(
-                name=SECRET_CREATE_NAME,
-                secret_type="Opaque",
-                labels=SECRET_LABELS,
-                datas=SECRET_DATAS,
-            )
-            cce_page.assert_popup_success()
-
-        with allure_step_log("步骤2: 验证列表页数据一致性"):
-            cce_page.secret_assert_list(SECRET_CREATE_NAME, secret_type="Opaque")
-
-        with allure_step_log("步骤3: 删除密钥"):
-            cce_page.secret_delete(SECRET_CREATE_NAME)
-
-        with allure_step_log("步骤4: 验证被删除的密钥不存在"):
-            cce_page.assert_list_not_contain(SECRET_CREATE_NAME, column_name="名称")
-
-    @allure.title("配置管理-密钥详情添加和删除数据")
-    def test_secret_data_add_and_delete(self, cce_page, cce_cluster):
-        """测试密钥详情页添加数据后删除，并验证列表一致性。"""
-        secret_name = f"sec-{random_data(length=4)}"
-
-        with allure_step_log("步骤1: 创建密钥"):
-            cce_page.secret_create(name=secret_name, datas={"placeholder": "init"})
-            cce_page.assert_popup_success()
-
-        with allure_step_log("步骤2: 进入密钥详情页"):
-            cce_page.secret_goto_detail(secret_name)
-
-        with allure_step_log("步骤3: 添加数据"):
-            cce_page.secret_data_add(SECRET_DATA_NAME, SECRET_DATA_CONTENT)
-            cce_page.assert_popup_success()
-            cce_page.secret_data_assert_list(SECRET_DATA_NAME)
-
-        with allure_step_log("步骤4: 删除数据"):
-            cce_page.secret_data_delete(SECRET_DATA_NAME)
-
-        with allure_step_log("步骤5: 验证被删除数据不存在"):
-            cce_page.secret_data_assert_not_list(SECRET_DATA_NAME)
-
-        with allure_step_log("步骤6: 清理密钥"):
-            cce_page.goto_service(cce_page.service_name)
-            cce_page.secret_delete(secret_name)
-            cce_page.assert_deleted(secret_name)
-
-    @allure.title("配置管理-密钥详情编辑数据")
-    def test_secret_data_edit(self, cce_page, cce_cluster):
-        """测试密钥详情页编辑数据，并验证内容一致性。"""
-        secret_name = f"sec-edit-{random_data(length=4)}"
-
-        with allure_step_log("步骤1: 创建带数据的密钥"):
-            cce_page.secret_create(
-                name=secret_name,
-                datas={SECRET_DATA_NAME: SECRET_DATA_CONTENT}
-            )
-            cce_page.assert_popup_success()
-
-        with allure_step_log("步骤2: 进入密钥详情页"):
-            cce_page.secret_goto_detail(secret_name)
-            cce_page.secret_data_assert_list(SECRET_DATA_NAME)
-
-        with allure_step_log("步骤3: 编辑数据"):
-            cce_page.secret_data_edit(SECRET_DATA_NAME, EDIT_CONTENT)
-            cce_page.assert_popup_success()
-
-        with allure_step_log("步骤4: 验证编辑后内容一致性"):
-            cce_page.secret_data_assert_list(SECRET_DATA_NAME)
-
-        with allure_step_log("步骤5: 清理密钥"):
-            cce_page.goto_service(cce_page.service_name)
-            cce_page.secret_delete(secret_name)
-            cce_page.assert_deleted(secret_name)
