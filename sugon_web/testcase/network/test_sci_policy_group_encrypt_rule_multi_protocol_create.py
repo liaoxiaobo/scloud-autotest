@@ -10,7 +10,7 @@ from sugon_web.utils.data import random_data
 class TestTransferStrategyEncryptRuleMultiProtocolCreate:
     """传输策略组不同协议加密规则新建功能验证。
 
-    4个场景共享同一传输策略组 group1 和密钥 sm4-ossl1，
+    4个场景共享同一传输策略组（随机命名，含 autotest 关键词）和随机密钥，
     通过 class-scoped fixture 共享资源，批次末统一清理。
     """
 
@@ -29,7 +29,7 @@ class TestTransferStrategyEncryptRuleMultiProtocolCreate:
         transfer_page = TransferStrategyPage(page)
         kms_page = KmsPage(page)
 
-        strategy_name = "group1"
+        strategy_name = f"sci-tsg-autotest-{random_data()}"
         key_name = f"sm4-ossl1-{random_data()}"
 
         try:

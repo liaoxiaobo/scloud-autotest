@@ -66,20 +66,20 @@ class TestTransferStrategyGroupCreateEdit:
     def test_transfer_strategy_group_edit(self, transfer_strategy_page):
         """测试传输策略组编辑功能。
 
-        前置条件：已预置策略组 policy1（名称为policy1，描述为autotest测试预置）
+        前置条件：已预置策略组（随机命名，含 autotest 关键词，描述为 autotest测试预置）
 
         步骤：
         1. 进入传输策略组模块
-        2. 点击policy1的编辑按钮
-        3. 确认初始值（名称=policy1，描述=autotest测试预置）
+        2. 点击预置策略组的编辑按钮
+        3. 确认初始值（名称=预置名，描述=autotest测试预置）
         4. 修改名称和描述
         5. 点击确定提交编辑
         6. 列表页校验编辑结果
         7. 进入详情页校验
 
-        清理：删除编辑后的策略组（恢复policy1）
+        清理：删除编辑后的策略组（恢复预置策略组）
         """
-        pre_set_name = "policy1"
+        pre_set_name = f"sci-policy-autotest-{random_data()}"
         pre_set_desc = "autotest测试预置"
         new_name = f"tsg-{random_data()}"
         new_desc = new_name
@@ -89,7 +89,7 @@ class TestTransferStrategyGroupCreateEdit:
             transfer_strategy_page.goto_submenu("机密互联")
             transfer_strategy_page.wait_for_page_ready()
 
-        with allure_step_log("步骤1.5: 确保预置策略组policy1存在"):
+        with allure_step_log(f"步骤1.5: 确保预置策略组 {pre_set_name} 存在"):
             # 第1条用例会删除自身数据，第2条需重新预置；
             # transfer_strategy_exists 内部会先进入列表页（与第1条用例同样的进入方式）再搜索判断
             if not transfer_strategy_page.transfer_strategy_exists(pre_set_name):
@@ -137,14 +137,14 @@ class TestTransferStrategyGroupCreateEdit:
             transfer_strategy_page.assert_tab_visible("加密规则")
 
         # 清理：删除编辑后的策略组，恢复预置的policy1
-        with allure_step_log("清理: 删除编辑后的策略组并恢复policy1"):
+        with allure_step_log(f"清理: 删除编辑后的策略组并恢复预置策略组 {pre_set_name}"):
             # 先返回列表页
             transfer_strategy_page.goto_service("虚拟私有云")
             transfer_strategy_page.goto_submenu("机密互联")
             transfer_strategy_page.wait_for_page_ready()
             transfer_strategy_page.transfer_strategy_delete(new_name)
             transfer_strategy_page.assert_deleted(new_name, timeout=30000)
-            # 恢复预置的policy1
+            # 恢复预置策略组
             transfer_strategy_page.transfer_strategy_create(
                 name=pre_set_name, description=pre_set_desc
             )

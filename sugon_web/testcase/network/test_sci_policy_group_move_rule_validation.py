@@ -1,5 +1,6 @@
 import allure
 import pytest
+import re
 
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
@@ -35,18 +36,19 @@ def _enter_encrypt_rule_tab(transfer_page, strategy_name):
 def _order_by_logical_id(transfer_page, cidr_to_id):
     """读取当前加密规则列表顺序，并映射为逻辑ID序列。
 
-    以每条规则唯一的远端CIDR为锚点读取列表行顺序，再映射回逻辑ID（1~4），
-    用于断言移动后的排序结果。
+    直接读取列表"ID"列（页面顺序ID）作为顺序锚点，再映射回逻辑ID（1~4），
+    用于断言移动后的排序结果。使用 ID 列可避免固定列与主表格在移动后不同步
+    导致 CIDR 列读取到的顺序与视觉顺序不一致。
 
     Args:
         transfer_page: 传输策略组页面对象。
-        cidr_to_id: 远端CIDR -> 逻辑ID 的映射字典。
+        cidr_to_id: 远端CIDR -> 逻辑ID 的映射字典（保留参数以兼容调用方）。
 
     Returns:
         list[int]: 按列表当前行顺序排列的逻辑ID序列。
     """
-    cidr_order = transfer_page.get_encrypt_rule_order(column="对端CIDR")
-    return [cidr_to_id[c] for c in cidr_order if c in cidr_to_id]
+    id_order = transfer_page.get_encrypt_rule_order(column="ID")
+    return [int(re.sub(r"\s+", "", i)) for i in id_order if i and re.sub(r"\s+", "", i).isdigit()]
 
 
 @allure.epic('网络服务')

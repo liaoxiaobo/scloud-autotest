@@ -18,7 +18,7 @@ class TestTransferStrategyEncryptRuleCreate:
         """测试传输策略组加密规则新建功能。
 
         前置条件（均由用例自建 self-provision，不依赖环境预置）：
-        1. 传输策略组 group1（先查、不存在则创建）
+        1. 传输策略组（随机命名，含 autotest 关键词）
         2. SM4 密钥（OPENSSL纯软，随机命名，用完即删）
 
         步骤：
@@ -38,7 +38,7 @@ class TestTransferStrategyEncryptRuleCreate:
         2. 删除传输策略组
         3. 删除密钥
         """
-        strategy_name = "group1"
+        strategy_name = f"sci-tsg-autotest-{random_data()}"
         key_name = f"sm4-ossl-{random_data()}"  # 自建 SM4 密钥（OPENSSL纯软），用完即删
         remote_cidr = random_data("cidr")  # 使用随机CIDR避免重复创建冲突
         protocol = "全部"
@@ -63,8 +63,8 @@ class TestTransferStrategyEncryptRuleCreate:
             transfer_strategy_page.goto_submenu("机密互联")
             transfer_strategy_page.wait_for_page_ready()
 
-        # 前置：确保策略组 group1 存在（若不存在则创建）
-        with allure_step_log("前置: 确保传输策略组 group1 存在"):
+        # 前置：确保策略组存在（若不存在则创建）
+        with allure_step_log(f"前置: 确保传输策略组 {strategy_name} 存在"):
             if not transfer_strategy_page.transfer_strategy_exists(strategy_name):
                 transfer_strategy_page.transfer_strategy_create(name=strategy_name)
                 transfer_strategy_page.assert_popup_success(timeout=10000)
