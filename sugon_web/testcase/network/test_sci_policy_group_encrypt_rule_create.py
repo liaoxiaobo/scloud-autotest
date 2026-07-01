@@ -14,12 +14,12 @@ class TestTransferStrategyEncryptRuleCreate:
     """
 
     @allure.title("传输策略组-加密规则新建可用性验证")
-    def test_transfer_strategy_encrypt_rule_create(self, transfer_strategy_page):
+    def test_transfer_strategy_encrypt_rule_create(self, transfer_strategy_page, kms_page):
         """测试传输策略组加密规则新建功能。
 
-        前置条件：
-        1. 已预置传输策略组 group1
-        2. 已预置密钥 sm4-ossl1
+        前置条件（均由用例自建 self-provision，不依赖环境预置）：
+        1. 传输策略组 group1（先查、不存在则创建）
+        2. SM4 密钥（OPENSSL纯软，随机命名，用完即删）
 
         步骤：
         1. 进入传输策略组模块（机密互联子菜单）
@@ -36,12 +36,26 @@ class TestTransferStrategyEncryptRuleCreate:
         清理：
         1. 删除加密规则
         2. 删除传输策略组
+        3. 删除密钥
         """
         strategy_name = "group1"
-        key_name = "network_sm4_openssl_autotest"  # 环境实际可用的密钥名称
+        key_name = f"sm4-ossl-{random_data()}"  # 自建 SM4 密钥（OPENSSL纯软），用完即删
         remote_cidr = random_data("cidr")  # 使用随机CIDR避免重复创建冲突
         protocol = "全部"
         ip_version = "IPv4"
+
+        # 前置：创建 SM4 密钥（OPENSSL纯软），供加密规则选择（kms_create 无 @submenu，需先导航）
+        with allure_step_log(f"前置: 创建密钥 {key_name}"):
+            kms_page.goto_service("可信密码模块")
+            kms_page.goto_submenu("密钥管理")
+            kms_page.wait_for_page_ready()
+            kms_page.kms_create(
+                name=key_name,
+                engine="OPENSSL纯软",
+                key_type="SM4 (用途：加解密，包括系统盘、数据盘、网卡等)",
+                desc="自动化测试-加密规则新建",
+            )
+            kms_page.assert_popup_success(timeout=10000)
 
         # 步骤1：进入传输策略组模块
         with allure_step_log("步骤1: 进入传输策略组模块"):
@@ -113,3 +127,13 @@ class TestTransferStrategyEncryptRuleCreate:
             transfer_strategy_page.wait_for_page_ready()
             transfer_strategy_page.transfer_strategy_delete(strategy_name)
             transfer_strategy_page.assert_deleted(strategy_name, timeout=30000)
+
+        # 清理3：删除自建密钥
+        with allure_step_log(f"清理3: 删除密钥 {key_name}"):
+            kms_page.goto_service("可信密码模块")
+            kms_page.goto_submenu("密钥管理")
+            kms_page.wait_for_page_ready()
+            kms_page.search(key_name)
+            kms_page.wait_for_page_ready()
+            kms_page.kms_delete(key_name)
+            kms_page.assert_deleted(key_name, timeout=30000)

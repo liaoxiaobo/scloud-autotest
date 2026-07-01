@@ -56,9 +56,6 @@ class TestTransferStrategyEncryptRuleMultiProtocolCreate:
             yield {"strategy_name": strategy_name, "key_name": key_name}
 
         finally:
-            # 关闭 setup 阶段创建的页面，避免页面泄露
-            page.close()
-
             # 清理阶段：先删规则，再删策略组，最后删密钥
             with allure_step_log("Class Teardown: 清理共享资源"):
                 # 重新创建页面用于清理
