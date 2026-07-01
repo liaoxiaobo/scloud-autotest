@@ -446,6 +446,14 @@ class TablesMixin:
             return False
 
         try:
+            current_text = size_trigger.input_value() or size_trigger.text_content() or ""
+            current_match = re.search(r"(\d+)", current_text)
+            if current_match and int(current_match.group(1)) >= int(target_size):
+                return True
+        except Exception:
+            pass
+
+        try:
             size_trigger.click()
             self.page.wait_for_timeout(500)
 
