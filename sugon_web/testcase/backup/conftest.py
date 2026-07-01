@@ -378,15 +378,16 @@ def _create_backup_tasks(
     Returns:
         任务元数据字典列表。
     """
-    task_list: TaskList = []
-    for vm in vm_list[:task_count]:
-        task_name = f"task{time.strftime('%M%S')}-{vm.get('name')}"
-        backup_page.goto_service("备份")
-        backup_page.create_backup_task(task_name=task_name, server_names=[vm.get("name")], policy=policy)
-        backup_page.assert_popup_success("执行成功")
-        backup_page.assert_status(task_name, "创建完成")
-        task_list.append(_build_backup_task_record(backup_page, vm, task_name))
-    return task_list
+    with allure_step_log("创建备份任务"):
+        task_list: TaskList = []
+        for vm in vm_list[:task_count]:
+            task_name = f"task{time.strftime('%M%S')}-{vm.get('name')}"
+            backup_page.goto_service("备份")
+            backup_page.create_backup_task(task_name=task_name, server_names=[vm.get("name")], policy=policy)
+            backup_page.assert_popup_success("执行成功")
+            backup_page.assert_status(task_name, "创建完成")
+            task_list.append(_build_backup_task_record(backup_page, vm, task_name))
+        return task_list
 
 
 def _cleanup_backup_task_entries(backup_page: BackUpPage, task_names: List[str]) -> None:
