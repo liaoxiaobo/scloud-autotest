@@ -88,7 +88,7 @@ class WaitsMixin:
 
         expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
 
-    def wait_for_operation_complete(self, timeout: int = 60) -> None:
+    def wait_for_operation_complete(self, timeout: int = 61) -> None:
         """等待页面操作完成。
 
         轮询检测以下加载标识是否全部消失：

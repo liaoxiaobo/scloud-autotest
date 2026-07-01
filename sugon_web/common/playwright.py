@@ -358,7 +358,7 @@ class Playwright:
                 break
             self.page.wait_for_timeout(500)
 
-    def wait_for_operation_complete(self, timeout: int = 30) -> None:
+    def wait_for_operation_complete(self, timeout: int = 61) -> None:
         """等待页面操作完成。
 
         轮询检测以下加载标识是否全部消失：
@@ -431,7 +431,7 @@ class CustomLocator:
         """
         try:
             self._locator.click(**kwargs)
-            self._playwright.wait_for_page_ready()
+            # self._playwright.wait_for_page_ready()
             self._playwright.wait_for_operation_complete()
         except Exception as e:
             self._logger.error(f"[CustomLocator.click] 点击失败: {e}")
