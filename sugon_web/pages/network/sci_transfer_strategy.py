@@ -317,7 +317,9 @@ class TransferStrategyMixin(BasePage):
             dict: 包含创建规则的关键字段信息。
         """
         # 点击新建按钮（cl-button 自定义组件，用 get_by_text）
-        self.get_by_text("新建", exact=True).click()
+        # GUI 模式下可能残留 el-tooltip 遮挡按钮；用 dispatch_event 触发点击，避免鼠标悬浮触发 tooltip
+        new_btn = self.get_by_text("新建", exact=True).first
+        new_btn.dispatch_event("click")
 
         # 定位弹窗
         dialog = self.page.locator(".el-dialog:visible").first
