@@ -11,7 +11,7 @@ from .peer_connect import PeerConnectMixin
 from .qos import QosMixin
 from .sg import SgMixin
 from .tm import TmMixin
-from .transfer_strategy import TransferStrategyMixin
+from .sci_transfer_strategy import TransferStrategyMixin
 from .slb import SlbMixin, SlbPage
 from .vpc import VpcMixin
 from .vpn import VpnMixin
