@@ -194,14 +194,15 @@ class TestBackupBasic:
             pytest.skip("迁移任务需要至少2个备份节点")
 
         task_name = backup_task.get("task_name")
-        cur_target = backup_task.get("cur_target")
 
         with allure_step_log("步骤1: 迁移任务"):
             backup_page.backup_migrate(task_name)
             backup_page.assert_popup_success("迁移备份任务成功")
 
         with allure_step_log("步骤2: 验证迁移后任务节点"):
+            cur_target = backup_page.backup_get_cur_target(task_name)
             assert cur_target in enabled_nodes  # 自动迁移会看当前备份任务的分布，迁移后节点不一定变更，确保在可用节点内即可
+            backup_task["cur_target"] = cur_target
 
     @allure.title("备份任务-手动迁移")
     def test_backup_manually_migrate(self, backup_task, backup_page):
