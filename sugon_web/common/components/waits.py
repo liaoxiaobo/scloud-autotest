@@ -80,13 +80,18 @@ class WaitsMixin:
         loading_icon = target_row.locator(".icon-dengdaizhong")
         try:
             loading_icon.wait_for(state="visible", timeout=loading_timeout_ms)
-            text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
-            expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
-            self.logger.info(f"{name}资源中间态 {text} 出现并消失")
-        except:
+        except TimeoutError:
             self.logger.info(f"{name}资源中间态完成，当前无任务状态")
+            return
 
-        expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
+        text = loading_icon.locator("xpath=./following-sibling::span").inner_text()
+        try:
+            expect(loading_icon).not_to_be_visible(timeout=complete_timeout_ms)
+        except AssertionError:
+            raise AssertionError(
+                f"{name}资源中间态 {text} 未在 {complete_timeout} 秒内完成"
+            ) from None
+        self.logger.info(f"{name}资源中间态 {text} 出现并消失")
 
     def wait_for_operation_complete(self, timeout: int = 61) -> None:
         """等待页面操作完成。
