@@ -3,7 +3,6 @@
 按照 fixture_spec.md 规范：helper 负责组装创建/删除的完整流程，
 封装多步 Page Object 调用，不包含 yield 和 fixture 依赖注入。
 """
-import time
 from typing import Any
 
 from sugon_web.utils.logger import logger
@@ -39,8 +38,8 @@ def create_wpt_instance(page, wpt_page, name: str, network: str = None,
             wpt_page.assert_wpt_status(actual_name, service_status="运行", vm_status="运行", timeout=1200)
             name = actual_name
             break
-        except (AssertionError, Exception) as e:
-            if attempt < 3:
+        except Exception as e:
+            if "创建失败" in str(e) and attempt < 3:
                 logger.warning(f"WPT 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue
             raise

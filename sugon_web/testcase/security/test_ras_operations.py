@@ -4,6 +4,7 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.testcase.security._security_helpers import _ping_fip
 
 
 @allure.epic('安全合规')
@@ -423,7 +424,7 @@ class TestRasOperations:
             logger.info(f"目标节点 {target_host_short} 已确认 uuid 前缀 {uuid_prefix} 的虚机到达")
 
     @allure.title("RAS-绑定公网IP验证")
-    def test_ras_11_bind_eip(self, ras_instance, ras_page):
+    def test_ras_11_bind_eip(self, ras_instance, ras_page, security_fip_pool):
         """场景11（440221）：对运行的RAS实例执行绑定公网IP操作，验证连通性。"""
         name = ras_instance["name"]
         page = ras_page.page
@@ -432,9 +433,12 @@ class TestRasOperations:
             ras_page.goto_list_page()
             assert "/ras" in ras_page.page.url
 
-        with allure_step_log("步骤2: 执行绑定公网IP操作"):
-            eip = ras_page.ras_bind_eip(name)
-            assert eip, "公网IP绑定失败"
+        with allure_step_log("步骤2: 从安全合规 FIP 池获取一个公网IP并绑定"):
+            eip = security_fip_pool.acquire()
+            bound_ip = ras_page.ras_bind_eip(name, eip_ip=eip)
+            assert bound_ip == eip, f"绑定返回的 IP 与指定 IP 不一致: {bound_ip} != {eip}"
+            ras_instance["eip"] = eip
+            logger.info(f"RAS 实例 {name} 已绑定公网IP: {eip}")
 
         with allure_step_log("步骤3: 验证网络列显示固定IP和公网IP"):
             ras_page.goto_list_page()
@@ -446,17 +450,10 @@ class TestRasOperations:
                 f"网络列未同时显示固定IP和公网IP: {network}"
 
         with allure_step_log("步骤4: Ping验证公网IP连通性"):
-            from sugon_web.testcase.security._ras_helpers import _ping_fip
-            ip_match = re.search(r"\d+\.\d+\.\d+\.\d+", eip)
-            if ip_match:
-                fip = ip_match.group(0)
-                ras_instance["eip"] = fip
-                if _ping_fip(fip):
-                    logger.info(f"公网IP {fip} ping 通")
-                else:
-                    logger.warning(f"公网IP {fip} ping 不通，环境网络限制，继续执行测试")
-            else:
-                logger.warning(f"未从EIP {eip} 中提取IP地址")
+            ping_result = _ping_fip(eip)
+            logger.info(f"RAS 实例 {name} 公网IP {eip} ping 结果: {ping_result}")
+            if not ping_result:
+                logger.warning(f"公网IP {eip} ping 不通，环境网络限制，继续执行测试")
 
         with allure_step_log("步骤5: 进入详情页验证跳转地址"):
             ras_page.ras_to_details(name)
@@ -472,7 +469,7 @@ class TestRasOperations:
                 logger.info("绑定公网IP后跳转地址验证通过")
 
     @allure.title("RAS-解绑公网IP验证")
-    def test_ras_12_unbind_eip(self, ras_instance, ras_page):
+    def test_ras_12_unbind_eip(self, ras_instance, ras_page, security_fip_pool):
         """场景12（440222）：对已绑定公网IP的RAS实例执行解绑公网IP操作。"""
         name = ras_instance["name"]
         page = ras_page.page
@@ -495,7 +492,6 @@ class TestRasOperations:
                 ips = re.findall(r"\d+\.\d+\.\d+\.\d+", str(network))
                 fip = ips[-1] if ips else ""
             assert fip, f"未获取到 RAS 实例 {name} 绑定的公网IP"
-            from sugon_web.testcase.security._ras_helpers import _ping_fip
             ping_before = _ping_fip(fip)
             logger.info(f"RAS 实例 {name} 解绑前公网IP {fip} ping 结果: {ping_before}")
             assert ping_before, f"解绑前公网IP {fip} 应可 ping 通"
@@ -529,6 +525,10 @@ class TestRasOperations:
                 if new_page != page:
                     new_page.close()
                 logger.info("解绑公网IP后跳转地址验证通过")
+
+        with allure_step_log("步骤7: 将公网IP归还到安全合规 FIP 池"):
+            security_fip_pool.release(fip)
+            logger.info(f"公网IP {fip} 已归还到 FIP 池")
 
     @allure.title("RAS-登录VNC验证")
     def test_ras_13_vnc_ssh(self, ras_instance, ras_page):

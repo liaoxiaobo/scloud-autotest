@@ -4,6 +4,7 @@ import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.testcase.security._security_helpers import _ping_fip
 
 
 def _retry_get_row_data(wpt_obj, name, max_retries=5):
@@ -485,7 +486,7 @@ class TestWptLifecycleOperations:
                               f"（WPT 实例可能不通过标准 libvirt 管理，属架构差异）")
 
     @allure.title("WPT-绑定公网IP验证")
-    def test_wpt_11_bind_eip(self, wpt_instance, wpt_page, ssh_host):
+    def test_wpt_11_bind_eip(self, wpt_instance, wpt_page, security_fip_pool):
         """场景11（440221）：对运行的 WPT 实例执行绑定公网IP操作。"""
         name = wpt_instance["name"]
         page = wpt_page.page
@@ -498,19 +499,22 @@ class TestWptLifecycleOperations:
             assert "运行" in svc, f"实例 {name} 状态异常，期望运行，实际: {svc}"
             assert "运行" in vmst, f"实例 {name} 状态异常，期望运行，实际: {vmst}"
 
-        with allure_step_log("步骤2: 执行绑定公网IP操作"):
-            wpt_page.wpt_bind_floating_ip(name, pool="public_net")
+        with allure_step_log("步骤2: 从安全合规 FIP 池获取一个公网IP并绑定"):
+            eip = security_fip_pool.acquire()
+            bound_ip = wpt_page.wpt_bind_floating_ip(name, eip_ip=eip, pool=security_fip_pool.pool_name)
+            if bound_ip:
+                assert bound_ip == eip, f"绑定返回的 IP 与指定 IP 不一致: {bound_ip} != {eip}"
             wpt_page.wait_for_operation_complete(timeout=60)
             wpt_page.goto_list_page()
             network_info = wpt_page.wpt_get_network_info(name)
             logger.info(f"WPT 实例 {name} 绑定公网IP后网络信息: {network_info}")
-            assert network_info.get("public_ip"), f"公网IP未绑定成功"
-            wpt_instance["eip"] = network_info["public_ip"]
+            public_ip = bound_ip or network_info.get("public_ip")
+            assert public_ip, f"公网IP未绑定成功"
+            assert public_ip == eip, f"列表页公网IP与指定 IP 不一致: {public_ip} != {eip}"
+            wpt_instance["eip"] = public_ip
 
         with allure_step_log("步骤3: Ping 验证公网IP连通性"):
-            public_ip = network_info["public_ip"]
-            ping_result = ssh_host.run(f"ping -c 3 -W 5 {public_ip}", return_rc=True)
-            assert ping_result["rc"] == 0, f"ping {public_ip} 失败: {ping_result.get('stderr', '')}"
+            assert _ping_fip(public_ip), f"公网IP {public_ip} 无法连通"
             logger.info(f"公网IP {public_ip} ping 通成功")
 
         with allure_step_log("步骤4: 验证详情页跳转地址"):
@@ -527,7 +531,7 @@ class TestWptLifecycleOperations:
                 logger.info("绑定公网IP后跳转地址验证通过")
 
     @allure.title("WPT-解绑公网IP验证")
-    def test_wpt_12_unbind_eip(self, wpt_instance, wpt_page, ssh_host):
+    def test_wpt_12_unbind_eip(self, wpt_instance, wpt_page, security_fip_pool):
         """场景12（440222）：对已绑定公网IP的 WPT 实例执行解绑公网IP操作。"""
         name = wpt_instance["name"]
         page = wpt_page.page
@@ -555,8 +559,7 @@ class TestWptLifecycleOperations:
             assert not network_info_after.get("public_ip"), f"公网IP未解绑成功"
 
         with allure_step_log("步骤4: 验证解绑后公网IP不可达"):
-            ping_result = ssh_host.run(f"ping -c 3 -W 5 {fip}", return_rc=True)
-            assert ping_result["rc"] != 0, f"解绑后 ping {fip} 仍可通，期望不可达"
+            assert not _ping_fip(fip), f"解绑后公网IP {fip} 仍可连通"
             logger.info(f"公网IP {fip} 解绑后 ping 不通验证成功")
 
         with allure_step_log("步骤5: 验证解绑后详情页跳转地址"):
@@ -571,6 +574,10 @@ class TestWptLifecycleOperations:
                 if new_page != page:
                     new_page.close()
                 logger.info("解绑公网IP后跳转地址验证通过")
+
+        with allure_step_log("步骤6: 将公网IP归还到安全合规 FIP 池"):
+            security_fip_pool.release(fip)
+            logger.info(f"公网IP {fip} 已归还到 FIP 池")
 
     @allure.title("WPT-登录VNC验证")
     def test_wpt_13_vnc_login(self, wpt_instance, wpt_page):

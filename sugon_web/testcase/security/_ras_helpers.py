@@ -3,35 +3,11 @@
 按照 fixture_spec.md 规范：helper 负责组装创建/删除的完整流程，
 封装多步 Page Object 调用，不包含 yield 和 fixture 依赖注入。
 """
-import re
-import subprocess
 import time
 from typing import Any
 
 from sugon_web.utils.logger import logger
 from sugon_web.utils.data import random_data
-
-
-def _ping_fip(fip: str, timeout: int = 5) -> bool:
-    """检查 FIP 连通性（支持 Windows/Linux）。
-
-    Args:
-        fip: 公网IP地址
-        timeout: 超时秒数
-
-    Returns:
-        bool: True 表示 ping 通
-    """
-    import platform
-    if platform.system() == "Windows":
-        cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), fip]
-    else:
-        cmd = ["ping", "-c", "1", "-W", str(timeout), fip]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
-        return result.returncode == 0
-    except Exception:
-        return False
 
 
 def create_ras_instance(page, ras_page, name: str, network: str = None,
@@ -58,7 +34,7 @@ def create_ras_instance(page, ras_page, name: str, network: str = None,
             ras_page.assert_ras_status(actual_name, service_status="运行", vm_status="运行", timeout=1200)
             name = actual_name
             break
-        except (AssertionError, Exception) as e:
+        except Exception as e:
             if "创建失败" in str(e) and attempt < 3:
                 logger.warning(f"RAS 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue

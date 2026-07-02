@@ -5,11 +5,17 @@ from playwright.sync_api import expect
 
 from sugon_web.common.base import BasePage
 from sugon_web.assertions.security import WafAssertionMixin
+from sugon_web.config.constants import (
+    SECURITY_CREATE_PATH_MAP,
+    SECURITY_DEFAULT_FIP_POOL,
+    SERVICE_PATH_MAP,
+)
+from sugon_web.pages.security._base import ElementUiMixin, SecurityEipMixin
 from sugon_web.pages.security.utils import get_security_volume_type
 from sugon_web.utils.logger import logger
 
 
-class WafPage(WafAssertionMixin, BasePage):
+class WafPage(WafAssertionMixin, SecurityEipMixin, ElementUiMixin, BasePage):
     """WEB应用防火墙WAF 页面对象。
 
     覆盖以下能力：
@@ -24,242 +30,18 @@ class WafPage(WafAssertionMixin, BasePage):
     """
 
     service_name = "WEB应用防火墙"
-
-    def get_detail_body_text(self) -> str:
-        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
-        return self.page.inner_text("body")
-
-    def goto_list_page(self):
-        """导航到 WEB应用防火墙WAF 列表页。"""
-        from sugon_web.config.config import Config
-        base_url = Config.get("base_url").rstrip("/")
-        target_url = f"{base_url}/das/#/waf"
-        self.page.goto(target_url)
-        self.wait_for_page_ready()
-        # 等待列表数据加载完成
-        for attempt in range(1, 16):
-            self.page.wait_for_timeout(2000)
-            if "/no-permission" in self.page.url:
-                logger.warning(f"WAF 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
-                self.page.goto(target_url)
-                self.wait_for_page_ready()
-                continue
-            loading_mask = self.page.locator(".el-loading-mask:visible, .el-loading-spinner:visible").first
-            if loading_mask.count() > 0:
-                logger.info(f"WAF 列表页数据加载中，继续等待 (第{attempt}次)...")
-                continue
-            has_rows = self.page.locator(".el-table__row").count() > 0
-            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
-            if has_rows:
-                logger.info(f"WAF 回到列表页（第{attempt}次检查）: {self.page.url}")
-                return
-            if has_empty:
-                logger.info(f"WAF 列表页表格为空（第{attempt}次检查）: {self.page.url}")
-                return
-            logger.info(f"WAF 列表页仍为空，等待数据加载中(第{attempt}次)...")
-        logger.info(f"WAF 回到列表页: {self.page.url}")
-
-    @property
-    def _input_name(self):
-        """WAF 创建表单：名称输入框"""
-        return self.locator(".el-form-item").filter(
-            has_text=re.compile(r"^名称")
-        ).get_by_role("textbox")
+    _service_label = "WAF"
 
     @property
     def _btn_submit(self):
-        """WAF 创建表单：提交按钮，兼容多种文案"""
-        locators = [
-            self.locator(".cloud-button-btn").filter(has_text="点击创建"),
-            self.locator(".cloud-button-btn").filter(has_text="创建"),
-            self.get_by_text("点击创建"),
-            self.get_by_text("创建"),
-            self.get_by_role("button", name="点击创建"),
-            self.get_by_role("button", name="创建"),
-            self.get_by_role("button", name="确定"),
-            self.locator("button").filter(has_text=re.compile(r"创建|提交|确定")),
-        ]
-        for loc in locators:
-            try:
-                expect(loc).to_be_visible(timeout=3000)
-                return loc
-            except Exception:
-                continue
-        raise Exception("未找到 WAF 创建表单的提交按钮")
+        """WAF 创建表单：提交按钮（点击创建）"""
+        return self._find_submit_button(
+            ["点击创建", "创建", "提交", "确定"]
+        )
 
     def _select_form_item(self, label: str, option: str):
-        """选择表单的下拉项。
-
-        Args:
-            label: 表单字段标签（如"版本"、"集群"、"安全底座"、"专有网络"、"云硬盘类型"）
-            option: 要选择的下拉项文本（支持模糊匹配）
-        """
-        form_item = None
-        for selector in [
-            self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}")),
-            self.locator(".el-form-item").filter(has_text=label),
-            self.locator(".el-form-item__label").filter(has_text=label).locator("xpath=../.."),
-        ]:
-            try:
-                if selector.count() > 0:
-                    form_item = selector.first
-                    break
-            except Exception:
-                continue
-
-        if form_item is None:
-            raise Exception(f"未找到表单字段: {label}")
-
-        dropdown_trigger = form_item.locator(".el-select, [class*='select']").first
-        if dropdown_trigger.count() == 0:
-            dropdown_trigger = form_item.get_by_placeholder(re.compile(r"请选择|选择")).first
-        dropdown_trigger.click()
-
-        dropdown_option_selector = ".el-select-dropdown:visible .el-select-dropdown__item, .el-select-dropdown:visible li, .el-dropdown-menu:visible li"
-        try:
-            self.page.wait_for_selector(dropdown_option_selector, timeout=10000)
-        except Exception:
-            pass
-        self.page.wait_for_timeout(2000)
-
-        all_visible = self.locator(dropdown_option_selector)
-        for attempt in range(10):
-            cnt = all_visible.count()
-            if cnt > 0:
-                logger.info(f"下拉框 '{label}' 选项已加载，共 {cnt} 项")
-                break
-            logger.warning(f"下拉框 '{label}' 选项未加载，第 {attempt + 1} 次重试等待...")
-            self.page.wait_for_timeout(1500)
-            all_visible = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li")
-        else:
-            logger.warning(f"下拉框 '{label}' 选项仍为空，尝试重新点击下拉框")
-            dropdown_trigger.click()
-            self.page.wait_for_timeout(2000)
-            all_visible = self.locator(dropdown_option_selector)
-
-        options = all_visible.filter(has_text=option)
-        if options.count() == 0:
-            options = all_visible.filter(has_text=re.compile(rf"^{re.escape(option)}$"))
-        if options.count() == 0:
-            options = all_visible.filter(has_text=re.compile(re.escape(option), re.IGNORECASE))
-        if options.count() == 0:
-            cnt = all_visible.count()
-            available = [all_visible.nth(i).inner_text() for i in range(min(cnt, 20))]
-            if cnt > 0:
-                logger.warning(
-                    f"下拉框 '{label}' 未找到选项 '{option}'，"
-                    f"回退选择第一个可用选项: '{available[0]}'"
-                )
-                all_visible.first.click()
-                logger.info(f"WAF 创建：选择 {label} = {available[0]}（回退）")
-                return
-            logger.error(f"下拉框 '{label}' 无可用选项")
-            raise Exception(f"未找到下拉选项: {label} = {option}，可用选项为空")
-        options.first.click()
-        logger.info(f"WAF 创建：选择 {label} = {option}")
-
-    def _select_flavor(self, cpu: str = "4核", memory: str = "8GiB"):
-        """选择规格表格中的指定行。
-
-        Args:
-            cpu: CPU 规格（如"4核"）
-            memory: 内存规格（如"8GiB"）
-        """
-        rows = self.locator(".el-table__row")
-        expect(rows.first).to_be_visible(timeout=10000)
-        self.page.wait_for_timeout(1500)
-
-        def _find_target():
-            all_rows = self.locator(".el-table__row")
-            row_count = all_rows.count()
-            logger.info(f"WAF 规格表格行数: {row_count}")
-            for i in range(row_count):
-                row = all_rows.nth(i)
-                row_text = row.inner_text()
-                if cpu in row_text and memory in row_text:
-                    return row, row_text
-            return None, None
-
-        target_row, row_text = _find_target()
-
-        if target_row is None:
-            logger.warning(f"WAF 规格表格中未直接找到 {cpu}/{memory}，尝试使用筛选器")
-            selects = self.locator(".flavor-tool-bar .el-select, .spec-filter .el-select")
-            if selects.count() >= 2:
-                selects.nth(0).click()
-                self.page.wait_for_timeout(300)
-                self.locator(".el-select-dropdown:visible li").filter(has_text=cpu).first.click()
-                self.page.wait_for_timeout(500)
-                selects.nth(1).click()
-                self.page.wait_for_timeout(300)
-                self.locator(".el-select-dropdown:visible li").filter(has_text=memory).first.click()
-                self.page.wait_for_timeout(800)
-
-            target_row, row_text = _find_target()
-            if target_row is None:
-                all_rows = self.locator(".el-table__row")
-                if all_rows.count() > 0:
-                    first_row = all_rows.first
-                    first_text = first_row.inner_text()
-                    logger.warning(f"WAF 筛选后仍找不到 {cpu}/{memory}，回退选择第一行: {first_text}")
-                    target_row = first_row
-
-        if target_row is None:
-            raise Exception(f"未找到规格行: CPU={cpu}, 内存={memory}")
-
-        radio = target_row.locator(".el-radio__original").first
-        radio.evaluate("el => el.click()")
-        logger.info(f"WAF 创建：选择规格 CPU={cpu}, 内存={memory} (行内容: {row_text or target_row.inner_text()})")
-
-    def _click_sugon_dialog_confirm(self, dialog=None):
-        """点击 sugon-dialog 中的确定按钮。
-
-        Args:
-            dialog: 弹窗定位器，None 时使用当前可见弹窗
-        """
-        container = dialog if dialog is not None else self.page
-        for btn_selector in [
-            container.locator(".sugon-dialog:visible, .el-dialog:visible").locator(".cloud-button-btn").filter(has_text="确定"),
-            container.locator(".sugon-dialog:visible, .el-dialog:visible").get_by_text("确定", exact=True),
-            self.dialog_confirm,
-        ]:
-            try:
-                if btn_selector.count() > 0 and btn_selector.first.is_visible():
-                    btn_selector.first.click()
-                    return
-            except Exception:
-                continue
-        raise Exception("未找到弹窗确认按钮")
-
-    def _dismiss_visible_dialogs(self):
-        """关闭页面上可见的 sugon-dialog 或 el-dialog 弹窗。"""
-        for selector in [".sugon-dialog:visible", ".el-dialog__wrapper:visible", ".el-dialog:visible"]:
-            try:
-                dialogs = self.page.locator(selector)
-                count = dialogs.count()
-                for i in range(count - 1, -1, -1):
-                    dialog = dialogs.nth(i)
-                    try:
-                        try:
-                            dialog.wait_for(timeout=1000)
-                        except Exception:
-                            pass
-                        if dialog.is_visible():
-                            for btn_text in ["关闭", "取消", "确定"]:
-                                btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                if btn.count() > 0:
-                                    try:
-                                        btn.wait_for(timeout=500)
-                                    except Exception:
-                                        pass
-                                    if btn.is_visible():
-                                        btn.click()
-                                        self.page.wait_for_timeout(300)
-                                        break
-                    except Exception:
-                        continue
-            except Exception:
-                continue
+        """选择表单下拉项；未找到指定项时回退到第一个可用项。"""
+        return super()._select_form_item(label, option, fallback_first=True)
 
     def waf_create(
         self,
@@ -291,14 +73,11 @@ class WafPage(WafAssertionMixin, BasePage):
         """
         from sugon_web.config.config import Config
         base_url = Config.get("base_url").rstrip("/")
-        create_url = f"{base_url}/das/#/create-waf"
+        create_url = f"{base_url}{SECURITY_CREATE_PATH_MAP[self.service_name]}"
         self.page.goto(create_url)
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
-        try:
-            self.page.locator(".el-loading-mask:visible").first.wait_for(state="hidden", timeout=10000)
-        except Exception:
-            pass
+        self._wait_loading_mask_hidden()
         logger.info("WAF 创建页面加载成功")
 
         try:
@@ -360,7 +139,7 @@ class WafPage(WafAssertionMixin, BasePage):
         logger.info(f"WAF 创建：已提交创建请求 {name}")
 
         try:
-            self.page.wait_for_url("**/das/#/waf", timeout=30000)
+            self.page.wait_for_url(f"**{SERVICE_PATH_MAP[self.service_name]}", timeout=30000)
             logger.info(f"WAF 创建：页面已跳转回列表页 {self.page.url}")
         except Exception:
             logger.warning("WAF 创建：页面未自动跳转，手动返回列表页")
@@ -420,7 +199,7 @@ class WafPage(WafAssertionMixin, BasePage):
                 else:
                     raise Exception(f"WAF 操作 {action} 的 fallback 定位也失败了")
         try:
-            self._click_sugon_dialog_confirm()
+            self._click_dialog_confirm()
         except Exception as e:
             if "未找到弹窗确认按钮" in str(e):
                 logger.debug(f"WAF 操作 {action} 未弹出确认对话框")
@@ -490,72 +269,54 @@ class WafPage(WafAssertionMixin, BasePage):
                 checkbox.click()
         except Exception:
             logger.debug("WAF 删除：无需勾选确认框")
-        self._click_sugon_dialog_confirm()
+        self._click_dialog_confirm()
         logger.info(f"WAF 实例 {name} 删除请求已提交")
 
-    def waf_unsubscribe(self, name: str):
-        """对 WAF 实例执行退订操作。
+    def waf_unsubscribe(self, name: str, timeout: int = 120):
+        """对 WAF 实例执行退订操作，并等待状态收敛到已退订/不可用。
 
         Args:
             name: 实例名称
+            timeout: 状态收敛等待超时（秒），默认 120
         """
+        self.goto_list_page()
         self._dismiss_visible_dialogs()
         self.click_action(name, "退订")
         self.page.wait_for_timeout(1000)
         try:
-            self._click_sugon_dialog_confirm()
+            self._click_dialog_confirm()
+            logger.info(f"WAF 实例 {name} 退订确认已点击")
         except Exception as e:
             if "未找到弹窗确认按钮" in str(e):
                 logger.debug("WAF 退订：未弹出确认对话框")
             else:
                 raise
-        logger.info(f"WAF 实例 {name} 退订请求已提交")
 
-    def _duration_dialog(self, name: str, action: str, duration: str):
-        """通用方法：处理授权/续费弹窗。
+        # 等待退订弹窗关闭
+        try:
+            self.page.locator(".sugon-dialog:visible, .el-dialog:visible").first.wait_for(
+                state="hidden", timeout=15000
+            )
+        except Exception:
+            self._dismiss_visible_dialogs()
 
-        弹窗使用 el-radio-button 组件展示购买时长选项。
-
-        Args:
-            name: 实例名称
-            action: 操作名称，"授权" 或 "续期"
-            duration: 购买时长，如 "3个月", "2个月"
-        """
-        self.goto_list_page()
-        self._dismiss_visible_dialogs()
-        self.click_action(name, action)
-        self.page.wait_for_timeout(1500)
-        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
-        if dialog.count() == 0:
+        # 轮询列表状态，直到服务状态变为 已退订/不可用
+        start_time = time.time()
+        last_status = ""
+        while time.time() - start_time < timeout:
             try:
-                dialog.wait_for(timeout=3000)
-            except Exception:
-                pass
-        if dialog.count() == 0 or not dialog.is_visible():
-            logger.warning(f"WAF {action}：未找到弹窗，可能已自动完成")
-            return
-
-        radio_btn = dialog.locator(".el-radio-button").filter(has_text=duration).first
-        if radio_btn.count() > 0:
-            try:
-                radio_btn.wait_for(timeout=2000)
-            except Exception:
-                pass
-            if radio_btn.is_visible():
-                radio_btn.click()
-                logger.info(f"WAF {action}：已选择 {duration} 购买时长")
-                self.page.wait_for_timeout(500)
-        else:
-            active_btn = dialog.locator(".el-radio-button.is-active").first
-            if active_btn.count() > 0:
-                active_text = active_btn.inner_text()
-                logger.info(f"WAF {action}：当前已选中 {active_text}（默认选中状态）")
-            else:
-                logger.warning(f"WAF {action}：未找到时长选项 {duration}，直接尝试确认")
-
-        self._click_sugon_dialog_confirm()
-        self.page.wait_for_timeout(2000)
-        logger.info(f"WAF 实例 {name} {action}操作已提交")
+                self.goto_list_page()
+                row_data = self.get_row_data(name)
+                last_status = row_data.get("服务状态", "")
+                if "已退订" in last_status or "不可用" in last_status:
+                    logger.info(f"WAF 实例 {name} 退订后状态收敛: {last_status}")
+                    return row_data
+            except Exception as e:
+                logger.debug(f"WAF 退订后读取状态失败: {e}")
+            time.sleep(5)
+        raise AssertionError(
+            f"WAF 实例 {name} 退订后状态未收敛到已退订/不可用，当前服务状态: {last_status}"
+        )
 
     def waf_authorize(self, name: str, duration: str):
         """对 WAF 实例执行授权操作。
@@ -602,7 +363,7 @@ class WafPage(WafAssertionMixin, BasePage):
         self.page.wait_for_timeout(500)
         logger.info(f"WAF 修改名称：已填写新名称 {new_name}")
 
-        self._click_sugon_dialog_confirm()
+        self._click_dialog_confirm()
         self.page.wait_for_timeout(2000)
         logger.info(f"WAF 实例 {name} 名称已修改为 {new_name}")
 
@@ -663,21 +424,6 @@ class WafPage(WafAssertionMixin, BasePage):
 
         self.wait_for_detail_page_ready()
         logger.info(f"WAF 实例 {name} 进入详情页，URL: {self.page.url}")
-
-    def wait_for_detail_page_ready(self, timeout: int = 60):
-        """等待 WAF 详情页加载完成。"""
-        self.page.wait_for_load_state("domcontentloaded", timeout=30000)
-        self.page.wait_for_load_state("load", timeout=30000)
-        spinners = self.page.locator(".el-loading-spinner")
-        try:
-            if spinners.count() > 0:
-                spinners.first.wait_for(state="hidden", timeout=timeout * 1000)
-        except Exception:
-            logger.warning(f"WAF 详情页 loading spinner 在 {timeout}s 后仍未消失，继续执行")
-            self.page.evaluate("""
-                document.querySelectorAll('.el-loading-mask').forEach(el => el.remove());
-                document.querySelectorAll('.el-loading-spinner').forEach(el => el.remove());
-            """)
 
     def _extract_jump_url(self) -> str | None:
         """从当前详情页提取跳转地址 URL。"""
@@ -906,17 +652,7 @@ class WafPage(WafAssertionMixin, BasePage):
         Returns:
             bool: True 表示可点击（蓝色链接），False 表示不可点击（黑色文本）
         """
-        self.goto_list_page()
-        row = self.get_row_by_name(name)
-        name_cell = row.get_by_text(name, exact=True).first
-        try:
-            color = name_cell.evaluate("el => window.getComputedStyle(el).color")
-            is_link = "64, 158, 255" in color
-            logger.info(f"WAF 实例 {name} 名称颜色: {color}, 可点击: {is_link}")
-            return is_link
-        except Exception as e:
-            logger.warning(f"检查 WAF 实例 {name} 名称可点击性失败: {e}")
-            return False
+        return self._is_row_name_clickable(name)
 
     def waf_spec_upgrade(self, name: str) -> dict:
         """执行规格升级：选择比当前规格更高的第一个可选规格并提交。
@@ -1019,30 +755,40 @@ class WafPage(WafAssertionMixin, BasePage):
 
         selected_spec = None
         for idx, row in enumerate(radio_rows):
-            radio = row.locator(".el-radio__original, .el-radio").first
+            radio = row.locator(".el-radio").first
             if radio.count() == 0:
                 continue
-            is_disabled = False
             radio_class = radio.get_attribute("class") or ""
             if "is-disabled" in radio_class:
-                is_disabled = True
+                continue
             row_text = row.inner_text()
-            logger.info(f"WAF 规格升级：第{idx+1}行 radio_class={radio_class}, disabled={is_disabled}, text={row_text[:80]}")
-            if not is_disabled:
-                vcpu_match = re.search(r"(\d+)核", row_text)
-                mem_match = re.search(r"(\d+)GiB", row_text)
-                spec_name_match = re.search(r"waf\.\S+|waf\S+|standard\.\S+", row_text)
-                selected_spec = {
-                    "vcpus": int(vcpu_match.group(1)) if vcpu_match else 0,
-                    "memory_mb": int(mem_match.group(1)) * 1024 if mem_match else 0,
-                    "name": spec_name_match.group(0) if spec_name_match else "",
-                }
-                radio.evaluate("el => el.click()")
-                logger.info(
-                    f"WAF 规格升级：选中规格 vcpu={selected_spec['vcpus']}核, "
-                    f"memory={selected_spec['memory_mb']}MB({selected_spec['name']})"
-                )
-                break
+            vcpu_match = re.search(r"(\d+)核", row_text)
+            mem_match = re.search(r"(\d+)GiB", row_text)
+            spec_name_match = re.search(r"waf\.\S+|waf\S+|standard\.\S+", row_text)
+            selected_spec = {
+                "vcpus": int(vcpu_match.group(1)) if vcpu_match else 0,
+                "memory_mb": int(mem_match.group(1)) * 1024 if mem_match else 0,
+                "name": spec_name_match.group(0) if spec_name_match else "",
+            }
+            # 优先操作原生 radio input，确保 Vue 能感知选中状态
+            radio_input = radio.locator("input.el-radio__original").first
+            if radio_input.count() > 0:
+                radio_input.set_checked(True, force=True)
+            else:
+                radio.click()
+            self.page.wait_for_timeout(500)
+            # 校验 radio 已真正选中
+            checked_class = radio.get_attribute("class") or ""
+            if "is-checked" not in checked_class:
+                row.click()
+                self.page.wait_for_timeout(300)
+                checked_class = radio.get_attribute("class") or ""
+            logger.info(
+                f"WAF 规格升级：选中规格 vcpu={selected_spec['vcpus']}核, "
+                f"memory={selected_spec['memory_mb']}MB({selected_spec['name']}), "
+                f"checked={'is-checked' in checked_class}"
+            )
+            break
 
         if selected_spec is None:
             raise Exception("未找到可选的更高规格")
@@ -1055,8 +801,43 @@ class WafPage(WafAssertionMixin, BasePage):
                 pass
         if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到规格升级弹窗的确定按钮")
+        # 确定按钮在 flavor_id 为空时会被禁用，确保已选中规格后再点击
+        confirm_class = confirm_btn.get_attribute("class") or ""
+        if "disabled" in confirm_class:
+            try:
+                expect(confirm_btn).not_to_have_class(re.compile(r"disabled"), timeout=5000)
+            except Exception:
+                confirm_class = confirm_btn.get_attribute("class") or ""
+                raise Exception(
+                    f"规格升级弹窗的确定按钮仍被禁用，可能是规格未真正选中，"
+                    f"当前按钮 class: {confirm_class}"
+                )
         confirm_btn.click()
         logger.info(f"WAF 实例 {name} 规格升级请求已提交")
+
+        # 等待弹窗关闭，含错误检测
+        try:
+            dialog.wait_for(state="hidden", timeout=180000)
+            logger.info("WAF 规格升级：弹窗已关闭")
+        except Exception:
+            error_text = ""
+            static_warning = "规格升级后，云硬盘大小可能与规格不匹配"
+            for err_sel in [".el-message--error", ".el-form-item__error"]:
+                err_elem = self.page.locator(err_sel).first
+                if err_elem.count() > 0 and err_elem.is_visible():
+                    text = err_elem.inner_text()[:200]
+                    if static_warning not in text:
+                        error_text = text
+                        break
+            if error_text:
+                logger.error(f"WAF 规格升级失败: {error_text}")
+            else:
+                logger.error("WAF 规格升级：弹窗未关闭（可能 API 超时或静默失败）")
+            self._dismiss_visible_dialogs()
+            raise Exception(
+                f"规格升级弹窗未关闭，升级可能失败"
+                + (f": {error_text}" if error_text else "")
+            )
         return selected_spec
 
     def waf_volume_expand(self, name: str, new_size: int) -> str | None:
@@ -1191,3 +972,259 @@ class WafPage(WafAssertionMixin, BasePage):
             return server_id
         logger.warning(f"WAF 实例 {name} 详情页 URL 未找到 server_id 参数: {url}")
         return None
+
+    def waf_bind_floating_ip(
+        self, name: str, eip_ip: str | None = None, pool: str | None = None
+    ) -> str | None:
+        """绑定公网IP到 WAF 实例。
+
+        Args:
+            name: 实例名称
+            eip_ip: 指定要绑定的公网IP；为 None 时选择第一个可用IP
+            pool: 公网IP资源池名称，默认读取配置 network
+
+        Returns:
+            str | None: 绑定的公网IP地址
+        """
+        from sugon_web.config.config import Config
+        if pool is None:
+            pool = Config.get("network") or SECURITY_DEFAULT_FIP_POOL
+
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "绑定公网IP")
+        self.page.wait_for_timeout(2000)
+
+        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到绑定公网IP弹窗")
+
+        pool_select = dialog.get_by_placeholder(re.compile(r"资源池|选择")).first
+        if pool_select.count() == 0:
+            pool_select = dialog.locator(".el-select").first
+        pool_select.click()
+        self.page.wait_for_timeout(500)
+        pool_option = self.locator(".el-select-dropdown:visible li").filter(has_text=pool).first
+        if pool_option.count() > 0:
+            pool_option.click()
+            self.page.wait_for_timeout(500)
+        else:
+            self.locator(".el-select-dropdown:visible li").first.click()
+            self.page.wait_for_timeout(500)
+
+        # 绑定公网IP弹窗中可用IP用表格展示（含el-radio），非下拉框
+        # 等待IP表格加载完成（loading消失）
+        self.page.wait_for_timeout(2000)
+        try:
+            loading = dialog.locator(".el-loading-mask:visible, .el-loading-spinner:visible")
+            if loading.count() > 0:
+                loading.first.wait_for(state="hidden", timeout=15000)
+        except Exception:
+            pass
+
+        # 从表格中选择指定或第一个可用IP的radio按钮（支持分页）
+        selected_ip = self._select_eip_in_paginated_dialog(dialog, eip_ip=eip_ip)
+        if not selected_ip:
+            raise Exception("WAF 绑定公网IP: 没有可用的公网 IP")
+        logger.info(f"WAF 实例 {name} 已选择公网IP {selected_ip}")
+
+        self._click_dialog_confirm(dialog)
+        self.page.wait_for_timeout(2000)
+        logger.info(f"WAF 实例 {name} 绑定公网IP请求已提交")
+        return selected_ip
+
+    def waf_unbind_floating_ip(self, name: str):
+        """解绑 WAF 实例的公网IP。
+
+        Args:
+            name: 实例名称
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "解绑公网IP")
+        self.page.wait_for_timeout(2000)
+
+        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到解绑公网IP弹窗")
+
+        self._click_dialog_confirm(dialog)
+        self.page.wait_for_timeout(2000)
+        logger.info(f"WAF 实例 {name} 解绑公网IP请求已提交")
+
+    def waf_live_migrate_auto(self, name: str):
+        """对 WAF 实例执行热迁移（系统分配）。
+
+        Args:
+            name: 实例名称
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "热迁移")
+        self.page.wait_for_timeout(2000)
+
+        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到热迁移弹窗")
+
+        auto_radio = dialog.get_by_text("系统分配", exact=False).first
+        if auto_radio.count() > 0:
+            auto_radio.click()
+            self.page.wait_for_timeout(500)
+
+        self._click_dialog_confirm(dialog)
+        self.page.wait_for_timeout(2000)
+        logger.info(f"WAF 实例 {name} 热迁移（系统分配）请求已提交")
+
+    def waf_live_migrate_manual(self, name: str, src_host: str = None):
+        """对 WAF 实例执行热迁移（手动指定），自动选择不同于源节点的目标节点。
+
+        Args:
+            name: 实例名称
+            src_host: 源物理机名称，用于排除当前所在节点
+        """
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "热迁移")
+        self.page.wait_for_timeout(2000)
+
+        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=3000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到热迁移弹窗")
+
+        manual_radio = dialog.get_by_text("手动指定", exact=False).first
+        if manual_radio.count() > 0:
+            manual_radio.click()
+            self.page.wait_for_timeout(500)
+
+        # 通过 "选择物理机" 链接打开物理机选择抽屉（physical-info 组件）
+        # 该链接仅在手动指定模式下可见，点击后弹出 el-drawer 展示物理机列表
+        select_host_trigger = dialog.locator("span").filter(has_text=re.compile(r"选择物理机")).first
+        if select_host_trigger.count() == 0:
+            select_host_trigger = self.page.locator("span").filter(has_text=re.compile(r"选择物理机")).first
+        if select_host_trigger.count() > 0:
+            select_host_trigger.click()
+        else:
+            raise Exception("未找到'选择物理机'链接")
+
+        # 等待抽屉打开并加载数据（post_hypervisors API）
+        self.page.wait_for_timeout(3000)
+
+        # 定位物理机选择抽屉（append-to-body，位于页面顶层）
+        drawer = self.page.locator('.el-drawer__wrapper:visible').filter(has_text=re.compile(r'选择物理机')).first
+        drawer.wait_for(state="visible", timeout=15000)
+
+        # 表格加载可能异步，再等待数据渲染
+        self.page.wait_for_timeout(2000)
+
+        # 选择第一个可用的物理机 radio 按钮（is-disabled 表示已被排除）
+        radio = drawer.locator('.el-radio:not(.is-disabled)').first
+        if radio.count() > 0:
+            radio.wait_for(state="visible", timeout=5000)
+            # 直接点击 el-radio label 触发 Vue 事件，避免点击内部 hidden input
+            radio.click()
+            self.page.wait_for_timeout(500)
+            logger.info(f"WAF 实例 {name} 已选择目标物理机")
+        else:
+            raise Exception("未找到可用的目标物理机")
+
+        # 点击抽屉中的 "确定" 按钮
+        drawer_confirm = drawer.get_by_text("确定", exact=True).first
+        if drawer_confirm.count() > 0:
+            drawer_confirm.click()
+            self.page.wait_for_timeout(1000)
+        else:
+            drawer.locator('button').filter(has_text="确定").first.click()
+            self.page.wait_for_timeout(1000)
+
+        logger.info(f"WAF 实例 {name} 已确认物理机选择，准备提交热迁移请求")
+
+        self._click_dialog_confirm(dialog)
+        self.page.wait_for_timeout(2000)
+        logger.info(f"WAF 实例 {name} 热迁移（手动指定）请求已提交")
+
+    def waf_vnc_login(self, name: str):
+        """对 WAF 实例执行 VNC 登录操作，返回新打开的 VNC 页面（如有）。
+
+        点击登录VNC后，浏览器可能打开新标签页。
+        本方法会在所有页面中查找非当前页并等待其加载完成。
+
+        Args:
+            name: 实例名称
+
+        Returns:
+            playwright.sync_api.Page or None: VNC 页面对象（未找到返回 None）
+        """
+        from playwright.sync_api import Page as PwPage
+
+        self.goto_list_page()
+        self._dismiss_visible_dialogs()
+
+        # 登录VNC 异步打开新标签页：在 expect_page 上下文内触发点击，
+        # 由 Playwright 事件等待捕获新标签页（与 _open_jump_url 同范式），
+        # 避免一次性查 context.pages 时新标签页尚未打开而漏捕获。
+        new_page = None
+        try:
+            with self.page.context.expect_page(timeout=60000) as new_page_info:
+                self.click_action(name, "登录VNC")
+                logger.info(f"WAF 实例 {name} 登录VNC请求已提交")
+            new_page = new_page_info.value
+        except Exception:
+            logger.debug("WAF 登录VNC：expect_page 未捕获，尝试从 pages 列表获取")
+            self.page.wait_for_timeout(5000)
+            for p in reversed(self.page.context.pages):
+                if p != self.page:
+                    new_page = p
+                    break
+
+        if new_page and isinstance(new_page, PwPage):
+            try:
+                new_page.wait_for_load_state("domcontentloaded", timeout=30000)
+            except Exception:
+                pass
+            logger.info(f"WAF 实例 {name} VNC 新页面 URL: {new_page.url}")
+        else:
+            logger.warning(f"WAF 实例 {name} VNC 新页面未自动打开")
+        return new_page
+
+    def waf_get_network_info(self, name: str) -> dict:
+        """获取 WAF 实例的网络信息（固定 IP 和公网 IP）。
+
+        Args:
+            name: 实例名称
+
+        Returns:
+            dict: {'fixed_ip': str, 'public_ip': str}
+        """
+        self.goto_list_page()
+        row_data = self.get_row_data(name)
+        network = row_data.get("网络", "")
+        result = {"fixed_ip": "", "public_ip": ""}
+        if network and isinstance(network, str):
+            fixed_match = re.search(r"固定[:：]\s*([\d.]+)", network)
+            public_match = re.search(r"公网[:：]\s*([\d.]+)", network)
+            if fixed_match:
+                result["fixed_ip"] = fixed_match.group(1)
+            if public_match:
+                result["public_ip"] = public_match.group(1)
+        return result
