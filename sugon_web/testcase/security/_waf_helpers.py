@@ -40,7 +40,7 @@ def create_waf_instance(page, waf_page, name: str, network: str = None,
             waf_page.assert_waf_status(actual_name, service_status="运行", vm_status="运行", timeout=1200)
             name = actual_name
             break
-        except (AssertionError, Exception) as e:
+        except Exception as e:
             if "创建失败" in str(e) and attempt < 3:
                 logger.warning(f"WAF 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue

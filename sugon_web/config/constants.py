@@ -39,11 +39,26 @@ SERVICE_PATH_MAP = {
     '服务治理': '/ssm',
     '交换机组': '/ops/#/exchange-unit-list',
     '基础设施': '/ops',
+    '资源管理': '/operations',
     '统一身份认证IAM': '/iam/#/departmentManage',
     '运维': '/cms',
     '可信密码模块': '/sdf',
     '攻击预警': '/das/#/apt',
     '云堡垒机高级版': '/das/#/usm',
     '日志审计': '/das/#/ver',
-    '数据库审计': '/das/#/vdb'
+    '数据库审计': '/das/#/vdb',
+    'WEB应用防火墙': '/das/#/waf',
+    '漏洞扫描': '/das/#/ras',
+    '网页防篡改WPT': '/das/#/wpt',
+}
+
+# 安全合规模块默认公网IP资源池（兜底，优先以配置 network 为准）
+SECURITY_DEFAULT_FIP_POOL = 'public_net(基础版)'
+# 资源池选择兜底关键词（按优先级匹配）
+SECURITY_FIP_POOL_KEYWORDS = ('public_net', '基础版', 'public')
+
+# 安全合规创建页路径（相对 base_url）
+SECURITY_CREATE_PATH_MAP = {
+    'WEB应用防火墙': '/das/#/create-waf',
+    '网页防篡改WPT': '/das/#/create-wpt',
 }

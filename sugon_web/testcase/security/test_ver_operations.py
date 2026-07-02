@@ -6,7 +6,7 @@ import pytest
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_if_nodes_less_than
-from sugon_web.testcase.security._security_helpers import wait_backend_volume_size
+from sugon_web.testcase.security._security_helpers import _ping_fip, wait_backend_volume_size
 
 
 @allure.epic('安全合规')
@@ -517,7 +517,7 @@ class TestVerOperations:
             logger.info(f"VER 实例 {name} 热迁移（手动指定）验证通过")
 
     @allure.title("VER-绑定公网IP验证")
-    def test_ver_12_bind_eip(self, ver_instance, ver_page, ssh_host):
+    def test_ver_12_bind_eip(self, ver_instance, ver_page, security_fip_pool):
         """场景12：对运行的 VER 实例执行绑定公网IP操作，验证连通性。"""
         name = ver_instance["name"]
         page = ver_page.page
@@ -526,15 +526,17 @@ class TestVerOperations:
             ver_page.goto_list_page()
             assert "/ver" in ver_page.page.url
 
-        with allure_step_log("步骤2: 执行绑定公网IP操作"):
-            eip = ver_page.ver_bind_eip(name, pool_keyword="public_net")
-            assert eip, f"VER 实例 {name} 绑定公网IP失败，未返回 IP 地址"
+        with allure_step_log("步骤2: 从安全合规 FIP 池获取一个公网IP并绑定"):
+            eip = security_fip_pool.acquire()
+            bound_ip = ver_page.ver_bind_eip(name, eip_ip=eip, pool_keyword=security_fip_pool.pool_name)
+            assert bound_ip == eip, f"绑定返回的 IP 与指定 IP 不一致: {bound_ip} != {eip}"
+            ver_instance["eip"] = eip
             logger.info(f"VER 实例 {name} 已绑定公网IP: {eip}")
 
         with allure_step_log("步骤3: SSH ping 验证公网IP连通性"):
-            result = ssh_host.run(f"ping -c 4 {eip}", return_rc=True)
-            logger.info(f"ping {eip} 结果: rc={result['rc']}, stdout={result['stdout'][:200]}")
-            assert result["rc"] == 0, f"无法 ping 通公网IP {eip}"
+            logger.info(f"开始探测公网IP {eip} 的连通性")
+            assert _ping_fip(eip), f"无法 ping 通公网IP {eip}"
+            logger.info(f"公网IP {eip} 可连通")
 
         with allure_step_log("步骤4: 进入详情页验证跳转地址"):
             ver_page.ver_to_details(name)
@@ -550,7 +552,7 @@ class TestVerOperations:
             ver_page.goto_list_page()
 
     @allure.title("VER-解绑公网IP验证")
-    def test_ver_13_unbind_eip(self, ver_instance, ver_page, ssh_host):
+    def test_ver_13_unbind_eip(self, ver_instance, ver_page, security_fip_pool):
         """场景13：对已绑定公网IP的 VER 实例执行解绑公网IP操作。"""
         name = ver_instance["name"]
         page = ver_page.page
@@ -560,10 +562,11 @@ class TestVerOperations:
             row_data = ver_page.get_row_data(name)
             network_before = row_data.get("网络", "")
             logger.info(f"VER 实例 {name} 当前网络信息: {network_before}")
-            ip_patterns = re.findall(r"\d+\.\d+\.\d+\.\d+", network_before)
-            bound_eip = ""
-            if len(ip_patterns) > 1:
-                bound_eip = ip_patterns[-1]
+            bound_eip = ver_instance.get("eip", "")
+            if not bound_eip:
+                ip_patterns = re.findall(r"\d+\.\d+\.\d+\.\d+", network_before)
+                if len(ip_patterns) > 1:
+                    bound_eip = ip_patterns[-1]
             logger.info(f"VER 实例 {name} 待解绑公网IP: {bound_eip}")
 
             ver_page.ver_to_details(name)
@@ -593,12 +596,16 @@ class TestVerOperations:
 
         with allure_step_log("步骤4: SSH ping 验证公网IP已解绑"):
             if bound_eip:
-                result = ssh_host.run(f"ping -c 4 {bound_eip}", return_rc=True)
-                logger.info(f"ping {bound_eip} 结果: rc={result['rc']}")
-                assert result["rc"] != 0, f"公网IP {bound_eip} 解绑后仍可 ping 通"
+                logger.info(f"开始探测公网IP {bound_eip} 是否已解绑")
+                assert not _ping_fip(bound_eip), f"公网IP {bound_eip} 解绑后仍可 ping 通"
                 logger.info(f"公网IP {bound_eip} 已解绑，ping 不可达")
             else:
                 logger.warning("未找到待解绑的公网IP，跳过 ping 验证")
+
+        with allure_step_log("步骤5: 将公网IP归还到安全合规 FIP 池"):
+            if bound_eip:
+                security_fip_pool.release(bound_eip)
+                logger.info(f"公网IP {bound_eip} 已归还到 FIP 池")
 
     @allure.title("VER-登录VNC控制台验证")
     def test_ver_14_vnc_login(self, ver_instance, ver_page):
