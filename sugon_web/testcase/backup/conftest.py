@@ -229,8 +229,7 @@ def _prepare_single_vm_backup_metadata(
         ecs_page.goto_service("弹性云服务器")
         ecs_page.goto_submenu("弹性云服务器")
         ecs_page.set_table_header("架构")
-        ecs_page.ecs_bind_pub_ip(vm_data["name"])
-        ecs_page.assert_popup_success("执行成功")
+
         row_data = ecs_page.get_row_data(vm_data["name"])
         arch = row_data.get("架构")
         mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm_data["name"])
