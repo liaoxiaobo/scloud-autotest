@@ -158,9 +158,11 @@ pipeline {
                                 string(credentialsId: 'deepseek-api-key', variable: 'DEEPSEEK_API_KEY')
                             ]) {
                                 sh '''
-                                    python3 sugon_web/tools/ai_report.py \
+                                    python3 sugon_web/tools/failure_analysis_cli.py \
                                         --results-dir allure-result \
+                                        --logs-dir logs \
                                         --output reports/ai-test-summary.md \
+                                        --json-output reports/failure-report.json \
                                         --provider deepseek \
                                         --max-failures 100
                                 '''

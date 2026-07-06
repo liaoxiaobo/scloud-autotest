@@ -391,10 +391,10 @@ curl -X POST -H "Content-Type: application/json" \
 **目标**：让 Jenkins 每次构建自动产出 AI 报告。
 
 **任务**：
-- [ ] 在 `Jenkinsfile` post 阶段调用 `sugon_web/tools/ai_report.py`
-- [ ] 将 `reports/ai-test-summary.md` 作为 Jenkins artifact 归档
-- [ ] 将 API Key 迁移到 Jenkins Credentials
-- [ ] 调整执行顺序：AI 分析在 Allure 报告生成和清理之前
+- [x] 在 `Jenkinsfile` post 阶段调用 `sugon_web/tools/ai_report.py`
+- [x] 将 `reports/ai-test-summary.md` 作为 Jenkins artifact 归档
+- [x] 将 API Key 迁移到 Jenkins Credentials
+- [x] 调整执行顺序：AI 分析在 Allure 报告生成和清理之前
 
 **验收标准**：
 - 每次构建失败时，Jenkins 页面可直接下载 `ai-test-summary.md`
@@ -405,11 +405,11 @@ curl -X POST -H "Content-Type: application/json" \
 **目标**：建立规则分类、相似聚合和结构化报告。
 
 **任务**：
-- [ ] 新建 `sugon_web/tools/failure_analysis/` 模块
-- [ ] 实现 `collector.py`、`classifier.py`、`aggregator.py`、`llm_client.py`、`reporter.py`
-- [ ] 新增 `failure_analysis_cli.py` 作为 Jenkins 调用入口
-- [ ] 优化 `sugon_web/tools/failure_analysis.md`，吸收 Skill 的证据等级、置信度规则和案例库上下文
-- [ ] 将 `case_library.md` 作为 prompt 上下文输入
+- [x] 新建 `sugon_web/tools/failure_analysis/` 模块
+- [x] 实现 `collector.py`、`classifier.py`、`aggregator.py`、`llm_client.py`、`reporter.py`
+- [x] 新增 `failure_analysis_cli.py` 作为 Jenkins 调用入口
+- [x] 优化 `sugon_web/tools/failure_analysis.md`，吸收 Skill 的证据等级、置信度规则和案例库上下文
+- [x] 将 `case_library.md` 作为 prompt 上下文输入
 
 **验收标准**：
 - 自动报告包含失败分类、置信度、关键证据、修复建议
