@@ -1,31 +1,31 @@
 import argparse
+import functools
 import json
 import os
-from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_RESULTS_DIR = ROOT_DIR / "allure-result"
 DEFAULT_LOGS_DIR = ROOT_DIR / "logs"
-DEFAULT_OUTPUT = ROOT_DIR / "reports" / "ai-test-summary.md"
-ROOT_CAUSE_PROMPT = ROOT_DIR / "sugon_web" / "case_specs" / "prompts" /  "test_failure_analysis_prompt.md"
+DEFAULT_REPORTS_DIR = ROOT_DIR / "ai-reports"
+ROOT_CAUSE_PROMPT = ROOT_DIR / "sugon_web" / "tools" / "test_failure_analysis_prompt.md"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DASHSCOPE_BASE_URL = "https://coding.dashscope.aliyuncs.com/v1"
 PROVIDER_CONFIG = {
     "deepseek": {
         "env": "DEEPSEEK_API_KEY",
         "base_url": DEEPSEEK_BASE_URL,
-        "default_model": "deepseek-chat",
-        "timeout": 60,
+        "default_model": "deepseek-v4-pro",
+        "timeout": 600,
     },
     "dashscope": {
         "env": "DASHSCOPE_API_KEY",
         "base_url": DASHSCOPE_BASE_URL,
         "default_model": "glm-5",
-        "timeout": 60,
+        "timeout": 600,
     },
 }
 
@@ -75,14 +75,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default=str(DEFAULT_OUTPUT),
-        help="Markdown 输出文件，默认: ./reports/ai-test-summary.md",
+        default="",
+        help="Markdown 输出文件；默认: ai-reports/ai-report-<timestamp>.md",
     )
     parser.add_argument(
         "--provider",
-        default="dashscope",
+        default="deepseek",
         choices=["deepseek", "dashscope"],
-        help="模型提供商，默认: dashscope",
+        help="模型提供商，默认: deepseek",
     )
     parser.add_argument(
         "--model",
@@ -92,8 +92,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-failures",
         type=int,
-        default=8,
-        help="送入模型分析的失败用例数量上限，默认: 8",
+        default=100,
+        help="送入模型分析的失败用例数量上限，默认: 100",
     )
     parser.add_argument(
         "--dry-run",
@@ -104,7 +104,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def collect_result_files(results_dir: Path) -> list[Path]:
-    return sorted(results_dir.glob("*-result.json"))
+    """递归收集 Allure 结果文件，支持按 run_id/env 隔离的子目录结构。"""
+    return sorted(results_dir.rglob("*-result.json"))
 
 
 def load_json(path: Path) -> dict:
@@ -112,14 +113,12 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def labels_to_map(labels: Iterable[dict]) -> dict[str, str]:
-    result = {}
-    for item in labels or []:
-        name = item.get("name")
-        value = item.get("value")
-        if name and value and name not in result:
-            result[name] = value
-    return result
+def labels_to_map(labels: list[dict]) -> dict[str, str]:
+    return {
+        item["name"]: item["value"]
+        for item in labels or []
+        if item.get("name") and item.get("value")
+    }
 
 
 def collect_attachments(node: dict) -> list[Attachment]:
@@ -179,17 +178,21 @@ def read_text_if_exists(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+@functools.lru_cache(maxsize=1)
+def _load_root_cause_prompt() -> str:
+    return read_text_if_exists(ROOT_CAUSE_PROMPT).strip()
+
+
 def snippet(text: str, max_chars: int = 1600) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "\n...[truncated]..."
 
 
-def find_case_log_excerpt(log_text: str, case_name: str, max_chars: int = 2000) -> str:
-    if not log_text:
+def find_case_log_excerpt(log_text: str, marker: str, max_chars: int = 2000) -> str:
+    if not log_text or not marker:
         return ""
 
-    marker = f"{case_name}"
     idx = log_text.find(marker)
     if idx == -1:
         return ""
@@ -207,26 +210,21 @@ def attachment_text(
 ) -> str:
     chunks = []
     for attachment in attachments[:max_items]:
+        if not attachment.type.startswith("text") and attachment.name not in {"失败信息", "步骤日志"}:
+            continue
         source_path = results_dir / attachment.source
-        if attachment.type.startswith("text") or attachment.name in {"失败信息", "步骤日志"}:
-            content = read_text_if_exists(source_path)
-            if content:
-                chunks.append(f"[{attachment.name}]\n{snippet(content, max_chars)}")
-        else:
-            if source_path.exists():
-                chunks.append(f"[{attachment.name}] 二进制附件: {source_path}")
+        content = read_text_if_exists(source_path)
+        if content:
+            chunks.append(f"[{attachment.name}]\n{snippet(content, max_chars)}")
     return "\n\n".join(chunks)
 
 
-def summarize_counts(cases: list[TestCaseResult]) -> Counter:
-    return Counter(case.status for case in cases)
-
-
-def build_local_summary(cases: list[TestCaseResult], results_dir: Path, log_path: Path | None) -> str:
-    counts = summarize_counts(cases)
+def build_local_summary(cases: list[TestCaseResult], log_path: Path | None) -> str:
+    """精简的本地执行摘要，仅含统计信息。失败详情由 AI 总结提供，避免重复。"""
     failed_cases = [case for case in cases if case.status in {"failed", "broken"}]
     skipped_cases = [case for case in cases if case.status == "skipped"]
     passed_cases = [case for case in cases if case.status == "passed"]
+    other_count = len(cases) - len(failed_cases) - len(skipped_cases) - len(passed_cases)
 
     lines = [
         "# 测试执行摘要",
@@ -235,37 +233,11 @@ def build_local_summary(cases: list[TestCaseResult], results_dir: Path, log_path
         f"- 通过: {len(passed_cases)}",
         f"- 失败: {len(failed_cases)}",
         f"- 跳过: {len(skipped_cases)}",
-        f"- 其他状态: {sum(v for k, v in counts.items() if k not in {'passed', 'failed', 'broken', 'skipped'})}",
+        f"- 其他状态: {other_count}",
     ]
 
     if log_path:
         lines.append(f"- 日志文件: {log_path}")
-
-    lines.extend(["", "## 失败用例", ""])
-    if not failed_cases:
-        lines.append("- 无失败用例")
-        return "\n".join(lines)
-
-    for case in failed_cases:
-        module_name = case.feature or case.suite or "未分类"
-        lines.extend(
-            [
-                f"### {case.name}",
-                f"- 模块: {module_name}",
-                f"- 场景: {case.story or '未标记'}",
-                f"- 状态: {case.status}",
-            ]
-        )
-        if case.status_message:
-            lines.append(f"- 报错摘要: {snippet(case.status_message, 220)}")
-        attach_preview = attachment_text(results_dir, case.attachments, max_items=2)
-        if attach_preview:
-            lines.append("- 附件摘要:")
-            lines.append("")
-            lines.append("```text")
-            lines.append(attach_preview)
-            lines.append("```")
-        lines.append("")
 
     return "\n".join(lines)
 
@@ -279,16 +251,13 @@ def build_failure_payload(
     failed_cases = [case for case in cases if case.status in {"failed", "broken"}][:max_failures]
     parts = []
     for index, case in enumerate(failed_cases, start=1):
-        parts.extend(
-            [
-                f"## 失败用例 {index}",
-                f"名称: {case.name}",
-                f"全名: {case.full_name or case.name}",
-                f"模块: {case.feature or case.suite or '未分类'}",
-                f"场景: {case.story or '未标记'}",
-                f"状态: {case.status}",
-            ]
-        )
+        parts.append(f"## 失败用例 {index}")
+        parts.append(f"名称: {case.name}")
+        parts.append(f"全名: {case.full_name or case.name}")
+        parts.append(f"模块: {case.feature or case.suite or '未分类'}")
+        parts.append(f"场景: {case.story or '未标记'}")
+        parts.append(f"状态: {case.status}")
+
         if case.status_message:
             parts.append(f"报错信息:\n{snippet(case.status_message, PAYLOAD_LIMITS['message_chars'])}")
         if case.status_trace:
@@ -303,7 +272,7 @@ def build_failure_payload(
         if attach_preview:
             parts.append(f"附件内容:\n{attach_preview}")
 
-        log_excerpt = find_case_log_excerpt(log_text, case.name)
+        log_excerpt = find_case_log_excerpt(log_text, case.full_name or case.name)
         if log_excerpt:
             parts.append(f"相关日志片段:\n{snippet(log_excerpt, PAYLOAD_LIMITS['log_chars'])}")
 
@@ -312,19 +281,32 @@ def build_failure_payload(
     return "\n".join(parts).strip()
 
 
+def build_execution_summary(cases: list[TestCaseResult], log_path: Path | None) -> str:
+    """精简的执行统计，仅含数字，用于 AI prompt，避免与 failure_payload 重复。"""
+    failed_cases = [case for case in cases if case.status in {"failed", "broken"}]
+    skipped_cases = [case for case in cases if case.status == "skipped"]
+    passed_cases = [case for case in cases if case.status == "passed"]
+    other_count = len(cases) - len(failed_cases) - len(skipped_cases) - len(passed_cases)
+
+    lines = [
+        f"- 总用例数: {len(cases)}",
+        f"- 通过: {len(passed_cases)}",
+        f"- 失败: {len(failed_cases)}",
+        f"- 跳过: {len(skipped_cases)}",
+        f"- 其他状态: {other_count}",
+    ]
+    if log_path:
+        lines.append(f"- 日志文件: {log_path}")
+    return "\n".join(lines)
+
+
 def build_chat_messages(execution_summary: str, failure_payload: str) -> list[dict]:
-    instructions = read_text_if_exists(ROOT_CAUSE_PROMPT).strip()
+    instructions = _load_root_cause_prompt()
     user_input = "\n\n".join(
         [
-            "请基于以下自动化测试执行结果，输出一份适合测试回归汇报的 Markdown 总结。",
-            "输出要求：",
-            "1. 先给出本次执行概览和风险判断。",
-            "2. 对每个失败用例分别做根因初判，严格沿用提示词中的分类约束。",
-            "3. 最后给出建议的处理优先级和下一步动作。",
-            "4. 内容保持专业、克制、可复核，避免空话。",
-            "5. 如果证据不足，请明确写出信息缺口。",
+            "请分析以下自动化测试失败结果。",
             "",
-            "### 执行概览",
+            "### 执行统计",
             execution_summary,
             "",
             "### 失败详情",
@@ -375,10 +357,6 @@ def call_model_summary(
     return (response.choices[0].message.content or "").strip()
 
 
-def ensure_output_parent(output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-
 def main() -> int:
     args = parse_args()
     results_dir = Path(args.results_dir)
@@ -394,7 +372,8 @@ def main() -> int:
     log_path = resolve_latest_log(args.log_file)
     log_text = read_text_if_exists(log_path) if log_path else ""
 
-    local_summary = build_local_summary(cases, results_dir, log_path)
+    local_summary = build_local_summary(cases, log_path)
+    execution_summary = build_execution_summary(cases, log_path)
     failure_payload = build_failure_payload(
         cases,
         results_dir,
@@ -408,13 +387,18 @@ def main() -> int:
         ai_summary = call_model_summary(
             provider=args.provider,
             model=args.model,
-            execution_summary=local_summary,
+            execution_summary=execution_summary,
             failure_payload=failure_payload,
         )
         content = "\n\n".join([local_summary, "# AI 总结", "", ai_summary]).strip()
 
-    output_path = Path(args.output)
-    ensure_output_parent(output_path)
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_path = DEFAULT_REPORTS_DIR / f"ai-report-{timestamp}.md"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content + "\n", encoding="utf-8")
 
     print(f"已生成AI总结分析: {output_path}")
