@@ -86,14 +86,42 @@ def collect_attachments(node: dict) -> list[Attachment]:
     return items
 
 
+def _result_identity(data: dict, file_path: Path) -> tuple[str, int]:
+    """生成 Allure result.json 的去重标识。
+
+    优先使用 historyId（Allure 用其区分同一用例的不同参数/重试），
+    缺失时回退到 fullName 或文件名。
+
+    返回 (key, start_time_ms)，用于在重复结果中保留最新的一份。
+    """
+    key = data.get("historyId") or data.get("fullName") or data.get("name", file_path.stem)
+    start = data.get("start") or 0
+    if not start:
+        # 没有 start 时间时，使用文件修改时间作为兜底排序依据
+        start = int(file_path.stat().st_mtime * 1000)
+    return key, start
+
+
 def parse_allure_results(results_dir: Path) -> list[TestCaseResult]:
-    """解析 Allure 结果目录下的所有测试用例。"""
-    cases = []
+    """解析 Allure 结果目录下的所有测试用例，并按 historyId 去重。
+
+    Jenkins 多环境执行时会先把各 env-* 子目录的结果合并到 allure-result 根目录，
+    同时保留原 env-* 子目录；递归收集时会出现重复 result.json，导致用例数翻倍。
+    按 historyId 去重后，统计结果与 Allure 报告页面保持一致。
+    """
+    latest_by_key: dict[str, tuple[int, TestCaseResult]] = {}
+
     for file_path in collect_result_files(results_dir):
         data = load_json(file_path)
+        key, start = _result_identity(data, file_path)
+
+        if key in latest_by_key and start <= latest_by_key[key][0]:
+            continue
+
         labels = labels_to_map(data.get("labels", []))
         status_details = data.get("statusDetails", {}) or {}
-        cases.append(
+        latest_by_key[key] = (
+            start,
             TestCaseResult(
                 name=data.get("name", file_path.stem),
                 full_name=data.get("fullName", ""),
@@ -105,9 +133,10 @@ def parse_allure_results(results_dir: Path) -> list[TestCaseResult]:
                 status_message=status_details.get("message", ""),
                 status_trace=status_details.get("trace", ""),
                 attachments=collect_attachments(data),
-            )
+            ),
         )
-    return cases
+
+    return [case for _, case in latest_by_key.values()]
 
 
 def read_text_if_exists(path: Path, max_chars: int | None = None) -> str:

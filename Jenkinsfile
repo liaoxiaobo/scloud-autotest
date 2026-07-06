@@ -140,6 +140,8 @@ pipeline {
                             [ -n "$(ls -A "$d")" ] || continue
                             cp -rn "$d"/* allure-result/ || true
                         done
+                        # 合并后删除原 env-* 子目录，避免 AI/Allure 重复统计
+                        rm -rf allure-result/env-* || true
                     '''
 
                     // 保留allure历史数据
