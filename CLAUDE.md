@@ -121,7 +121,7 @@ pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headles
 
 - `requirements_csv/` — 原始测试需求 CSV 文件。**不是测试代码。**
 - `case_specs/` — Markdown 用例规格和提示词模板。**不是测试代码。**
-- `tools/ai_report.py` — 测试后 AI 总结生成。需要环境变量 `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`。
+- `tools/failure_analysis_cli.py` — 测试后 AI 失败分析入口。需要环境变量 `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`。
 
 # CLAUDE.md
 

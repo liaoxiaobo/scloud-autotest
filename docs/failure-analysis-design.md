@@ -7,7 +7,7 @@
 | 目标 | 在 SugonCloud Playwright 自动化测试项目中，建立可落地的失败结果分析能力，并集成到现有 Jenkins CI/CD 流水线 |
 | 适用范围 | `D:\playwright-sugon` 项目，覆盖 Web UI 自动化测试的失败根因分析、报告生成与通知 |
 | 当前分支 | `feature/role-based-testing` |
-| 关键文件 | `Jenkinsfile`、`sugon_web/tools/ai_report.py`、`sugon_web/tools/failure_analysis.md`、`sugon_web/tools/llm_api_demo.py`、`sugon_web/conftest.py`、`.claude/skills/test-failure-analysis/SKILL.md` |
+| 关键文件 | `Jenkinsfile`、`sugon_web/tools/failure_analysis_cli.py`、`sugon_web/tools/failure_analysis.md`、`sugon_web/tools/llm_api_demo.py`、`sugon_web/conftest.py`、`.claude/skills/test-failure-analysis/SKILL.md` |
 
 ---
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | 失败现场捕获 | 测试失败时自动截图，并附加到 Allure；fixture 关闭前预截图；支持 Playwright tracing | `sugon_web/conftest.py::pytest_runtest_makereport` |
 | 测试产物 | Allure `*-result.json`、pytest 日志（按 `run_id` 隔离）、PNG 截图 | `allure-result/{run_id}/`、`logs/{run_id}/`、`screenshots/` |
-| AI 总结脚本 | 已存在 `ai_report.py`，可读取 Allure 结果并调用 DeepSeek/DashScope 生成 Markdown 总结；提示词路径指向 `sugon_web/tools/failure_analysis.md` | `sugon_web/tools/ai_report.py` |
+| AI 分析 CLI | `failure_analysis_cli.py` 已接入 Jenkins，可读取 Allure 结果并调用 DeepSeek/DashScope 生成结构化失败分析报告；提示词路径指向 `sugon_web/tools/failure_analysis.md` | `sugon_web/tools/failure_analysis_cli.py` |
 | 提示词模板 | 已有 `failure_analysis.md`，包含角色定位、三分类、输出格式与约束 | `sugon_web/tools/` |
 | LLM API 示例 | 新增 `llm_api_demo.py`，演示 DeepSeek API 调用 | `sugon_web/tools/llm_api_demo.py` |
 | 失败分析 Skill | 已有 `/test-failure-analysis` Skill，提供结构化根因分析流程和案例库 | `.claude/skills/test-failure-analysis/` |
@@ -32,11 +32,10 @@
 
 ### 2.3 当前缺口
 
-1. `sugon_web/tools/ai_report.py` 尚未接入 Jenkins，AI 总结需要手动触发。
-2. 飞书通知只有结果概览，缺少失败根因摘要。
-3. 失败分析缺少**规则分类**和**相似聚合**，LLM 调用存在重复和浪费。
-4. 没有失败知识库的持续沉淀机制。
-5. `sugon_web/tools/failure_analysis.md` 与 `/test-failure-analysis` Skill 的能力未完全打通（尤其是证据等级、置信度规则、历史案例库）。
+1. 飞书通知只有结果概览，缺少失败根因摘要。
+2. 失败分析缺少**规则分类**和**相似聚合**，LLM 调用存在重复和浪费。
+3. 没有失败知识库的持续沉淀机制。
+4. `sugon_web/tools/failure_analysis.md` 与 `/test-failure-analysis` Skill 的能力未完全打通（尤其是证据等级、置信度规则、历史案例库）。
 
 ---
 
@@ -102,11 +101,11 @@ Jenkins 归档 / Allure 展示 / 飞书通知
 
 ### 5.1 模块划分
 
-推荐新增 `sugon_web/tools/failure_analysis/` 模块，**不改动现有 `sugon_web/tools/ai_report.py` 主流程**，保持向后兼容。
+推荐新增 `sugon_web/tools/failure_analysis/` 模块，并通过 `failure_analysis_cli.py` 作为 Jenkins/本地统一调用入口。
 
 ```text
 tools/
-├── ai_report.py                           # 已有，保持兼容
+├── failure_analysis_cli.py                # Jenkins/本地统一调用入口
 ├── failure_analysis.md                    # 自动化根因分析提示词（已从 case_specs/prompts/ 迁移至此）
 ├── llm_api_demo.py                        # LLM API 调用示例
 ├── failure_analysis/                      # 新增
@@ -200,7 +199,7 @@ def aggregate(failures: list[FailureContext]) -> list[FailureGroup]:
 - Token 用量统计
 - 失败重试
 
-可复用现有 `sugon_web/tools/ai_report.py` 中的 provider 配置，或迁移到 `llm_client.py`。
+统一封装 DeepSeek / DashScope 调用，provider/model 等配置由 `llm_client.py` 集中管理。
 `llm_api_demo.py` 可作为接入新模型或调试时的参考示例。
 
 ### 5.6 报告生成（reporter.py）
@@ -340,9 +339,9 @@ curl -X POST -H "Content-Type: application/json" \
 
 | 维度 | `sugon_web/tools/failure_analysis.md` | `/test-failure-analysis` Skill |
 |---|---|---|
-| 使用方式 | 被 `ai_report.py` 读取为 system prompt | Claude Code 交互式 Skill |
+| 使用方式 | 被 `failure_analysis_cli.py` 读取为 system prompt | Claude Code 交互式 Skill |
 | 运行时机 | CI/CD 自动化，批量生成 | 人工触发，单点深度分析 |
-| 输入材料 | 受限于 `ai_report.py` 预收集内容 | 主动读取 result.json、附件、代码、trace、案例库 |
+| 输入材料 | 受限于 `failure_analysis_cli.py` 预收集内容 | 主动读取 result.json、附件、代码、trace、案例库 |
 | 分析深度 | 浅-中等 | 深，有完整 checklist |
 | 可自动化 | 高 | 低 |
 | 最适合场景 | 每次构建后的批量总结 | 疑难失败的根因定位 |
@@ -352,7 +351,7 @@ curl -X POST -H "Content-Type: application/json" \
 两者不是替代关系，而是**互补**：
 
 ```text
-自动化层：ai_report.py + 优化后的 prompt  →  批量生成失败概览
+自动化层：failure_analysis_cli.py + 优化后的 prompt  →  批量生成失败概览
          ↓
 人工层：/test-failure-analysis Skill       →  对关键失败做深度根因分析
          ↓
@@ -378,7 +377,7 @@ curl -X POST -H "Content-Type: application/json" \
 1. 新失败出现
 2. 工程师用 /test-failure-analysis 做深度分析
 3. 高置信度结论按模板追加到 case_library.md
-4. ai_report.py 下次运行时读取 case_library.md 作为 prompt 上下文
+4. `failure_analysis_cli.py` 下次运行时读取 `case_library.md` 作为 prompt 上下文
 5. 同类失败自动化分析准确率提升，减少 LLM 调用
 ```
 
@@ -391,7 +390,7 @@ curl -X POST -H "Content-Type: application/json" \
 **目标**：让 Jenkins 每次构建自动产出 AI 报告。
 
 **任务**：
-- [x] 在 `Jenkinsfile` post 阶段调用 `sugon_web/tools/ai_report.py`
+- [x] 在 `Jenkinsfile` post 阶段调用 `sugon_web/tools/failure_analysis_cli.py`
 - [x] 将 `reports/ai-test-summary.md` 作为 Jenkins artifact 归档
 - [x] 将 API Key 迁移到 Jenkins Credentials
 - [x] 调整执行顺序：AI 分析在 Allure 报告生成和清理之前
@@ -461,7 +460,7 @@ curl -X POST -H "Content-Type: application/json" \
 | 文件 | 作用 |
 |---|---|
 | `Jenkinsfile` | CI/CD 流水线主配置 |
-| `sugon_web/tools/ai_report.py` | 现有 AI 总结脚本 |
+| `sugon_web/tools/failure_analysis_cli.py` | Jenkins/本地统一 AI 分析入口 |
 | `sugon_web/tools/failure_analysis.md` | 自动化根因分析提示词模板 |
 | `sugon_web/tools/llm_api_demo.py` | LLM API 调用示例 |
 | `sugon_web/tools/failure_analysis/`（新增） | 失败分析引擎 |
