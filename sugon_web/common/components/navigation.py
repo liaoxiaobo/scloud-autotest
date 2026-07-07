@@ -1,3 +1,28 @@
+"""
+【职责】提供服务页面直达与子菜单切换能力，并通过 @submenu 装饰器确保 page object 方法在正确子菜单下执行。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- goto_service(service)：通过 SERVICE_PATH_MAP 直达指定服务页面。
+- goto_submenu(submenu)：点击左侧子菜单切换。
+- @submenu(name) 装饰器：自动进入 service_name 对应服务的指定子菜单后执行方法体。
+
+【示例】
+from sugon_web.common.base import BasePage, submenu
+
+class VpcPage(BasePage):
+    service_name = "虚拟私有云"
+
+    @submenu("NAT网关")
+    def nat_create(self, name):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.dialog_confirm.click()
+
+【前置依赖】page 需已登录；@submenu 依赖 page object 的 service_name 类属性。
+"""
+
 import re
 from functools import wraps
 from typing import Callable

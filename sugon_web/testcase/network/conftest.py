@@ -10,7 +10,7 @@ from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_re
 from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
 from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
 from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
-from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, VpnPage, CfwPage
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, TransferStrategyPage, VpnPage, CfwPage
 from sugon_web.utils.logger import logger, allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
@@ -89,6 +89,19 @@ def tm_page(page):
         TmPage: 流量镜像页面对象实例。
     """
     return TmPage(page)
+
+
+@pytest.fixture(scope="function")
+def transfer_strategy_page(page):
+    """初始化传输策略组页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        TransferStrategyPage: 传输策略组页面对象实例。
+    """
+    return TransferStrategyPage(page)
 
 
 @pytest.fixture(scope="function")

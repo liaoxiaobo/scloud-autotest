@@ -1,3 +1,24 @@
+"""
+【职责】封装对话框的确定、取消、关闭按钮，提供关闭残留弹窗及从抽屉中选择资源的通用能力。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- dialog_confirm -> Locator：对话框“确定”按钮。
+- dialog_cancel -> Locator：对话框“取消”按钮。
+- dialog_close -> Locator：对话框右上角关闭按钮。
+- close_dialog_if_exists()：若存在对话框则点击关闭，静默处理不存在的情况。
+- _select_from_named_drawer(drawer_title, item_name, reset_first=False, open_drawer=True)：在抽屉中搜索并选择指定资源。
+
+【示例】
+class MyPage(BasePage):
+    def delete_resource(self, name):
+        self.click_action(name, "删除")
+        self.dialog_confirm.click()
+
+【前置依赖】调用 dialog_confirm 等属性前，需确保目标对话框已弹出。
+"""
+
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator

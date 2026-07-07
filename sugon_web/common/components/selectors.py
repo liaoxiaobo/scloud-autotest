@@ -1,3 +1,24 @@
+"""
+【职责】封装项目下拉框、网络选择、数据盘类型等常见选择器，处理 Element UI 下拉框展开与选项点击。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- project_dropdown() -> Locator：项目下拉框。
+- project_autotest() -> Locator：项目下拉框中的“Autotest”选项。
+- disk_type_dropdown() -> Locator：数据盘类型下拉框。
+- select_network(placeholder_name, option_name)：选择网络和子网。
+- select_disk_type_like_doris(disk_type, label_texts=None)：选择数据盘类型，支持按标签定位并回退到页面最后一个下拉框。
+- select_labeled_dropdown(label_texts, dropdown_index=0) -> Locator：按字段标签定位下拉框。
+
+【示例】
+class EcsPage(BasePage):
+    def config_network(self):
+        self.project_dropdown().click()
+        self.project_autotest().click()
+        self.select_network("请选择网络", "Autotest")
+"""
+
 import re
 from time import sleep
 

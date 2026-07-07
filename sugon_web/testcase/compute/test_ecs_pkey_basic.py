@@ -8,8 +8,6 @@ from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 
 
-@allure.epic("计算服务")
-@allure.feature("弹性云服务器 ECS")
 @allure.story("密钥对-新建/删除/ECS登录验证")
 class TestPkeyBasic:
     """密钥对基础功能验证：新建、删除、ECS登录验证。

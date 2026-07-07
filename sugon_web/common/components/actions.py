@@ -1,3 +1,22 @@
+"""
+【职责】提供搜索、资源行操作（编辑/删除/更多）、详情页跳转等通用交互，处理悬浮提示清理与下拉菜单点击。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- search(keyword)：填充搜索框并点击搜索，等待结果加载。
+- click_action(resource_name, option_text)：点击资源行的操作选项，兼容平铺按钮和下拉菜单。
+- goto_detail_page(instance_name, row_name=None, tab_name="详情") -> Locator | None：进入实例详情页，可选切换页签并等待目标行出现。
+- _dismiss_hover_tips()：清理页面残留的悬浮提示（私有，被多处操作前调用）。
+
+【示例】
+class TestMyFeature:
+    def test_delete(self, my_page):
+        my_page.search("vm-01")
+        my_page.click_action("vm-01", "删除")
+        my_page.dialog_confirm.click()
+"""
+
 import re
 import time
 from typing import TYPE_CHECKING
@@ -259,7 +278,9 @@ class ActionsMixin:
 
             dropdown_selectors = [
                 ('[id^="dropdown-menu-"]', 'id'),
-                ('[class^="cloud-table-dropdown"]', 'class')
+                ('[class^="cloud-table-dropdown"]', 'class'),
+                ('[class*="cl-table-dropdown"]', 'cl-table-dropdown'),
+                ('[class*="cl-dropdown-menu"]', 'cl-dropdown-menu'),
             ]
 
             for selector, selector_type in dropdown_selectors:

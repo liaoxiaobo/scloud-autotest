@@ -16,12 +16,49 @@ class EcsDetailMixin(BasePage):
         Args:
             name: 云服务器名称
         """
-        # 点击指定云服务器的详情链接
-        self.get_by_role("cell", name=name).locator("a").click()
+        # 先尝试通过搜索+点击名称链接进入详情页
+        try:
+            self.search(name)
+            self.wait_for_page_ready()
+        except Exception:
+            pass  # 搜索失败不影响后续尝试
 
-        # 等待详情页面加载完成
+        # 使用 get_row_by_name 查找行（支持复合名称如 "name ID:uuid"）
+        try:
+            row = self.get_row_by_name(name)
+            # 在行内查找可点击的名称链接
+            link = row.locator("a").first
+            if link.count() > 0 and link.is_visible():
+                link.click()
+                logger.info(f"成功进入云服务器{name}详情页")
+                return
+        except Exception:
+            pass
 
-        logger.info(f"成功进入云服务器{name}详情页")
+        # 兜底1：名称/ID 列常渲染在 el-table 固定左列（.el-table__fixed）的独立 DOM 子树，
+        # 主体 tbody 行内取不到该 <a> 链接。el-table 固定列会复制 DOM 导致一份隐藏一份可见，
+        # 故遍历所有匹配 <a> 并选第一个可见的点击。
+        try:
+            anchors = self.page.locator("a").filter(has_text=re.compile(rf"^\s*{re.escape(name)}\s*$")).all()
+            for anchor in anchors:
+                if anchor.is_visible():
+                    anchor.click()
+                    logger.info(f"成功进入云服务器{name}详情页（遍历可见a标签）")
+                    return
+        except Exception:
+            pass
+
+        # 兜底2：尝试通过 get_by_text 匹配（非精确匹配）
+        try:
+            name_link = self.page.locator("#cloud-container-content").get_by_text(name, exact=False).first
+            if name_link.count() > 0 and name_link.is_visible():
+                name_link.click()
+                logger.info(f"成功进入云服务器{name}详情页")
+                return
+        except Exception:
+            pass
+
+        raise AssertionError(f"无法进入云服务器 {name} 详情页：未找到可点击的名称链接")
 
 
     @submenu("弹性云服务器")
@@ -217,7 +254,9 @@ class EcsDetailMixin(BasePage):
                     if qos_name and qos_name != "不限制":
                         dialog.get_by_placeholder("QoS").click()
                         self.page.wait_for_timeout(800)
-                        self.page.locator(".el-select-dropdown__item").filter(has_text=qos_name).first.click()
+                        self.locator("div.el-select-dropdown:visible li").filter(
+                            has_text=re.compile(rf"^{re.escape(qos_name)}$")
+                        ).click()
                     else:
                         dialog.get_by_placeholder("QoS").click()
                         self.page.wait_for_timeout(800)
@@ -238,7 +277,9 @@ class EcsDetailMixin(BasePage):
         if qos_name and qos_name != "不限制":
             dialog.get_by_placeholder("QoS").click()
             self.page.wait_for_timeout(800)
-            self.page.locator(".el-select-dropdown__item").filter(has_text=qos_name).first.click()
+            self.locator("div.el-select-dropdown:visible li").filter(
+                has_text=re.compile(rf"^{re.escape(qos_name)}$")
+            ).click()
         else:
             dialog.get_by_placeholder("QoS").click()
             self.page.wait_for_timeout(800)
@@ -247,13 +288,303 @@ class EcsDetailMixin(BasePage):
         dialog.get_by_text("确定", exact=True).click()
         logger.info(f"云服务器 {vm_name} 网卡QoS设置完成: {qos_name or '不限制'}")
 
-    def ecs_back_to_list(self):
-        """返回云服务器列表页
+    @submenu("弹性云服务器")
+    def ecs_nic_set_transfer_strategy(self, vm_name, strategy_name=None):
+        """在ECS详情页网卡列表中为第一张网卡设置/解绑传输策略组（机密互联）。
+
+        Args:
+            vm_name: 云服务器名称。
+            strategy_name: 传输策略组名称。传入None或"不加密"表示解绑（选择"不加密"）。
+                           传入具体策略组名称表示绑定该策略组。
         """
-        logger.info(f"返回云服务器列表页面")
-        # 点击指定云服务器的详情链接
-        self.locator(".el-icon-back").click()
-        # 等待详情页面加载完成
+        self.ecs_to_details(vm_name)
+        self.wait_for_page_ready()
+
+        # 切换到"网卡列表"页签
+        tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(r"^\s*网卡列表\s*$")).first
+        self.page.mouse.move(0, 0)
+        self.page.wait_for_timeout(500)
+        tab.click()
+        self.wait_for_page_ready()
+
+        # 等待网卡列表表格加载 - 在#pane-netCard范围内找可见表格
+        self.page.wait_for_timeout(2000)
+        netcard_panel = self.page.locator("#pane-netCard").first
+        expect(netcard_panel).to_be_visible(timeout=15000)
+
+        # 获取网卡列表表格中的可见行（排除隐藏表格的行）
+        # 先尝试在#pane-netCard范围内找表格体
+        table_body = netcard_panel.locator(".el-table__body-wrapper .el-table__body").first
+        expect(table_body).to_be_visible(timeout=15000)
+
+        first_row = table_body.locator("tr").first
+        expect(first_row).to_be_visible(timeout=15000)
+
+        # 获取操作列（最后一列）
+        op_cell = first_row.locator("td").last
+        op_cell.scroll_into_view_if_needed()
+
+        # 先尝试点击"修改网卡"按钮（可能直接打开包含传输策略组设置的对话框）
+        # 优先点击网卡面板内可见的"修改网卡"，避免点到隐藏列的按钮
+        modify_btn = None
+        for cand in netcard_panel.get_by_text("修改网卡", exact=True).all():
+            try:
+                if cand.is_visible():
+                    modify_btn = cand
+                    break
+            except Exception:
+                continue
+        if modify_btn is None:
+            modify_btn = op_cell.locator("text=修改网卡").first
+
+        if modify_btn is not None and modify_btn.count() > 0 and modify_btn.is_visible():
+            modify_btn.scroll_into_view_if_needed()
+            modify_btn.click()
+            self.logger.info(f"已点击 {vm_name} 网卡列表的'修改网卡'按钮")
+            # 等待对话框渲染完成
+            self.page.wait_for_timeout(2000)
+
+            # 检查是否打开了包含"传输策略组"的对话框
+            dialog = self.page.locator(".el-dialog:visible").first
+            if dialog.count() > 0 and dialog.is_visible():
+                # 检查对话框中是否有"传输策略组"字段（兼容短暂 loading）
+                ts_field = dialog.locator("div.el-form-item").filter(
+                    has_text=re.compile(r"传输策略组")
+                )
+                try:
+                    ts_field.wait_for(state="visible", timeout=5000)
+                except Exception:
+                    pass
+                if ts_field.count() > 0 and ts_field.is_visible():
+                    self.logger.info("修改网卡对话框包含传输策略组设置")
+                    # 直接进入传输策略组选择逻辑
+                    select = ts_field.locator(".el-select").first
+                    expect(select).to_be_visible(timeout=5000)
+                    select.click()
+                    self.page.wait_for_timeout(500)
+
+                    # 在下拉选项中选择
+                    if strategy_name and strategy_name != "不加密":
+                        self.locator("div.el-select-dropdown:visible li").filter(
+                            has_text=re.compile(rf"^{re.escape(strategy_name)}$")
+                        ).click()
+                    else:
+                        self.locator("div.el-select-dropdown:visible li").filter(
+                            has_text=re.compile(r"^不加密$")
+                        ).click()
+
+                    # 点击确定
+                    dialog.get_by_text("确定", exact=True).click()
+                    logger.info(f"云服务器 {vm_name} 传输策略组设置完成: {strategy_name or '不加密(解绑)'}")
+                    return
+                else:
+                    # 对话框不包含传输策略组，关闭它并尝试其他方式
+                    self.logger.info("修改网卡对话框不包含传输策略组，尝试其他方式")
+                    dialog.get_by_text("取消", exact=True).click()
+                    self.page.wait_for_timeout(500)
+
+        # 如果修改网卡不包含传输策略组，尝试点击"更多"下拉按钮
+        # 直接在#pane-netCard范围内找"更多"按钮（有 cloud-table-dropdown-item-cl-btn 类的是表格行内的）
+        dropdown_btn = netcard_panel.locator(".cloud-table-dropdown-item-cl-btn").filter(
+            has_text=re.compile(r"^更多$")
+        ).first
+        if dropdown_btn.count() == 0 or not dropdown_btn.is_visible():
+            # 备选：在#pane-netCard范围内直接找文本为"更多"的元素（排除页面级别的"更多操作"）
+            all_more = netcard_panel.locator("text=更多").all()
+            for btn in all_more:
+                try:
+                    if btn.is_visible():
+                        text = btn.inner_text().strip()
+                        if text == "更多":
+                            dropdown_btn = btn
+                            break
+                except Exception:
+                    pass
+
+        if dropdown_btn is None or (hasattr(dropdown_btn, 'count') and dropdown_btn.count() == 0) or not dropdown_btn.is_visible():
+            raise AssertionError(f"未找到 {vm_name} 网卡列表的'更多'按钮")
+
+        dropdown_btn.scroll_into_view_if_needed()
+        dropdown_btn.click()
+        self.logger.info(f"已点击 {vm_name} 网卡列表的'更多'按钮")
+
+        # 等待下拉菜单渲染到 body（el-dropdown-menu / el-popover / el-popper 均兼容）
+        self.page.wait_for_timeout(2000)
+        for menu_sel in [".el-dropdown-menu:visible", ".el-popover:visible", ".el-popper:visible"]:
+            try:
+                menu = self.page.locator(menu_sel).first
+                if menu.count() > 0 and menu.is_visible():
+                    self.logger.info(f"检测到下拉菜单: {menu_sel}")
+                    break
+            except Exception:
+                continue
+        else:
+            menu = None
+
+        # 点击"设置机密互联"或"设置可信传输"
+        # 根据页面侦察结论卡，文案可能为"设置机密互联"或"设置可信传输"
+        # 部分环境下拉菜单项 is_visible() 为 false，但 count > 0，优先直接点击可见菜单容器内的项
+        strategy_btn = None
+        menu_item_text = None
+        for text in ["设置机密互联", "设置可信传输"]:
+            # 1) 在已检测到的下拉菜单容器内查找
+            if menu is not None and menu.count() > 0:
+                try:
+                    item = menu.locator(".el-dropdown-menu__item, .el-popover__item, .cloud-table-dropdown-item").filter(
+                        has_text=re.compile(rf"^{re.escape(text)}$")
+                    ).first
+                    if item.count() > 0:
+                        strategy_btn = item
+                        menu_item_text = text
+                        self.logger.info(f"在下拉菜单容器内找到: {text}")
+                        break
+                except Exception:
+                    pass
+
+            # 2) 全局 get_by_text（仍做可见性兜底）
+            if strategy_btn is None:
+                candidates = self.page.get_by_text(text, exact=True).all()
+                for cand in candidates:
+                    try:
+                        if cand.is_visible():
+                            strategy_btn = cand
+                            menu_item_text = text
+                            self.logger.info(f"找到下拉菜单项: {text}")
+                            break
+                    except Exception:
+                        pass
+                if strategy_btn:
+                    break
+
+            # 3) CSS 类兜底
+            if strategy_btn is None:
+                try:
+                    css_candidates = self.page.locator(".cloud-table-dropdown-item").filter(
+                        has_text=re.compile(rf"^{re.escape(text)}$")
+                    ).all()
+                    for cand in css_candidates:
+                        try:
+                            if cand.is_visible():
+                                strategy_btn = cand
+                                menu_item_text = text
+                                self.logger.info(f"通过 CSS 类找到下拉菜单项: {text}")
+                                break
+                        except Exception:
+                            pass
+                    if strategy_btn:
+                        break
+                except Exception:
+                    pass
+
+        if strategy_btn is None:
+            raise AssertionError(f"未找到 {vm_name} 的'设置机密互联'按钮")
+
+        # 部分下拉菜单项可见性检测不稳定，count>0 即可点击；force 作为最后兜底
+        try:
+            strategy_btn.click(timeout=5000)
+        except Exception:
+            self.logger.warning(f"{menu_item_text} 常规点击失败，尝试 force 点击")
+            strategy_btn.click(force=True)
+
+        # 等待弹窗出现
+        dialog = self.page.locator(".el-dialog:visible").first
+        expect(dialog).to_be_visible(timeout=10000)
+
+        # 选择传输策略组
+        select = dialog.locator("div.el-form-item").filter(
+            has_text=re.compile(r"传输策略组")
+        ).locator(".el-select")
+        expect(select).to_be_visible(timeout=5000)
+        select.click()
+
+        self.page.wait_for_timeout(500)
+
+        # 在下拉选项中选择
+        if strategy_name and strategy_name != "不加密":
+            # 选择指定的传输策略组
+            self.locator("div.el-select-dropdown:visible li").filter(
+                has_text=re.compile(rf"^{re.escape(strategy_name)}$")
+            ).click()
+        else:
+            # 选择"不加密"表示解绑
+            self.locator("div.el-select-dropdown:visible li").filter(
+                has_text=re.compile(r"^不加密$")
+            ).click()
+
+        # 点击确定
+        dialog.get_by_text("确定", exact=True).click()
+        logger.info(f"云服务器 {vm_name} 传输策略组设置完成: {strategy_name or '不加密(解绑)'}")
+
+    def ecs_nic_get_transfer_strategy(self, vm_name):
+        """在ECS详情页网卡列表中获取第一张网卡的传输策略组名称。
+
+        Args:
+            vm_name: 云服务器名称。
+
+        Returns:
+            str: 传输策略组名称，未绑定返回"--"。
+        """
+        self.ecs_to_details(vm_name)
+        self.wait_for_page_ready()
+
+        # 切换到"网卡列表"页签
+        tab = self.page.locator(".el-tabs__item").filter(has_text=re.compile(r"^\s*网卡列表\s*$")).first
+        self.page.mouse.move(0, 0)
+        self.page.wait_for_timeout(500)
+        tab.click()
+        self.wait_for_page_ready()
+
+        # 等待网卡列表表格加载 - 在#pane-netCard范围内找可见表格
+        self.page.wait_for_timeout(2000)
+        netcard_panel = self.page.locator("#pane-netCard").first
+        expect(netcard_panel).to_be_visible(timeout=15000)
+
+        # 获取网卡列表表格中的可见行（Element UI 可能渲染多个 table body，需遍历查找）
+        table_bodies = netcard_panel.locator(".el-table__body-wrapper .el-table__body").all()
+        if not table_bodies:
+            raise AssertionError("未找到网卡列表表格体")
+
+        # 遍历所有 table body，查找包含传输策略组数据的行
+        for table_body in table_bodies:
+            try:
+                if not table_body.is_visible():
+                    continue
+                rows = table_body.locator("tr").all()
+                for row in rows:
+                    try:
+                        if not row.is_visible():
+                            continue
+                        cells = row.locator("td").all()
+                        if len(cells) > 11:
+                            strategy_cell = cells[11]
+                            strategy_text = strategy_cell.inner_text().strip()
+                            self.logger.info(f"网卡表格行传输策略组值: '{strategy_text}'")
+                            if strategy_text and strategy_text != "--":
+                                return strategy_text
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return ""
+
+    def ecs_nic_assert_transfer_strategy(self, vm_name, expected_strategy):
+        """断言ECS详情页网卡列表中第一张网卡的传输策略组名称。
+
+        Args:
+            vm_name: 云服务器名称。
+            expected_strategy: 期望的传输策略组名称，空字符串表示未绑定。
+        """
+        actual = self.ecs_nic_get_transfer_strategy(vm_name)
+        if expected_strategy:
+            assert actual == expected_strategy, (
+                f"[FieldAssertion] 网卡传输策略组 | 期望: {expected_strategy} | 实际: {actual}"
+            )
+        else:
+            assert actual == "" or actual == "--", (
+                f"[FieldAssertion] 网卡传输策略组 | 期望: 未绑定 | 实际: {actual}"
+            )
+        logger.info(f"断言通过: {vm_name} 网卡传输策略组为 '{actual}'")
 
 
     @submenu("弹性云服务器")

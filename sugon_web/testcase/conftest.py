@@ -374,6 +374,34 @@ def test_context(request):
     return request.node.test_context
 
 
+@pytest.fixture(scope="function")
+def cleanup(page: Any) -> Iterator[list[Callable[[], Any]]]:
+    """延迟清理注册表：登记零参清理闭包，测试结束按 LIFO 兜底执行。
+
+    适用于测试体内动态创建的「派生资源」（克隆体、镜像、快照、亲和组等）——
+    这些资源是被测操作的产物，无法由资源 fixture 预先创建。创建后立即
+    ``cleanup.append(lambda: ...)`` 登记删除动作，可确保后续步骤断言失败时
+    仍能在 teardown 中兜底清理，避免资源泄漏。
+
+    依赖 ``page`` 以保证本 fixture 在浏览器页面关闭前完成 teardown；
+    清理动作内部异常仅记录告警，不会掩盖用例本身的结果。
+
+    用法::
+
+        def test_xxx(self, ecs_page, vm, cleanup):
+            clone = random_data()
+            ecs_page.ecs_clone(vm["name"], clone, ...)
+            cleanup.append(lambda: delete_ecs(ecs_page, clone))
+    """
+    actions: list[Callable[[], Any]] = []
+    yield actions
+    for action in reversed(actions):
+        try:
+            action()
+        except Exception as e:
+            logger.warning(f"兜底清理失败: {e}")
+
+
 def _allocate_eips(
     vpc_page: VpcPage,
     count: int = 1,

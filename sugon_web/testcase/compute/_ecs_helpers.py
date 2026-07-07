@@ -1,5 +1,6 @@
 from typing import Any
 
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.utils.logger import logger
 from sugon_web.utils.data import random_data
 
@@ -63,3 +64,48 @@ def collect_vm_metadata(
     """
     row_data = ecs_page.get_row_data(vm_name)
     return dict(_build_vm_metadata(row_data, vm_name, ssh_host=ssh_host))
+
+
+def bind_vm_mfip(
+    ecs_page: Any,
+    ssh_host: Any,
+    browser: Any,
+    config: Any,
+    vm_name: str,
+) -> str:
+    """收集虚机元数据并在 admin 上下文中绑定 MFIP，返回分配的 MFIP 地址。
+
+    封装 ``collect_vm_metadata`` + ``MfipHelper.bind_mfip_with_admin_context``
+    的固定组合，避免在用例中重复书写。绑定后不负责 ``ssh_vm.connect``，
+    由调用方按需自行连接。
+
+    Args:
+        ecs_page: ECS 页面对象，需已能定位到 ``vm_name`` 所在行。
+        ssh_host: 已连接的 SSH 后端客户端，用于查询 port_id/project_id。
+        browser: Playwright Browser 实例，用于创建 admin context。
+        config: 测试配置对象。
+        vm_name: 虚机名称。
+
+    Returns:
+        系统分配的 MFIP 地址。
+    """
+    meta = collect_vm_metadata(ecs_page, ssh_host, vm_name)
+    return MfipHelper.bind_mfip_with_admin_context(
+        browser, config, meta["port_id"],
+        project_id=meta.get("project_id", "admin-inner-project"),
+    )
+
+
+def delete_ecs(ecs_page: Any, name: str) -> None:
+    """尽力删除指定云服务器（移入回收站后彻底删除），供 cleanup 兜底清理使用。
+
+    不做删除断言，失败由调用方（``cleanup`` fixture）捕获记录，避免
+    teardown 阶段因清理报错掩盖用例本身的结果。
+
+    Args:
+        ecs_page: ECS 页面对象。
+        name: 待删除的云服务器名称。
+    """
+    ecs_page.goto_service("弹性云服务器")
+    ecs_page.ecs_remove(name)
+    ecs_page.ecs_delete(name)

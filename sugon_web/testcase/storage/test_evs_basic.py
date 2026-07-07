@@ -177,10 +177,11 @@ class TestEVSBasic:
         with allure_step_log("步骤2: 重置云硬盘状态"):
             evs_page.evs_reset_status(volume["name"])
             evs_page.assert_popup_success("重置状态成功")
+            evs_page.assert_status(volume["name"], status="错误", refresh=True, exit_on_failure=False)
 
         with allure_step_log("步骤3: 恢复云硬盘状态"):
             ssh_host.set_volume_state(volume["name"], "available")
-            evs_page.assert_status(volume["name"], status="可用", refresh=True)
+            evs_page.assert_status(volume["name"], status="可用", refresh=True, exit_on_failure=False)
 
     @allure.title("云硬盘-查看快照")
     def test_volume_view_snapshots(self, evs_page, volume, evss):

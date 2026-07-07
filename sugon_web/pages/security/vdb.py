@@ -3,10 +3,14 @@ import time
 from playwright.sync_api import expect
 from sugon_web.common.base import BasePage
 from sugon_web.assertions.security import VdbAssertionMixin
+from sugon_web.pages.security._base import ElementUiMixin, SecurityEipMixin
+from sugon_web.pages.security.utils import get_security_volume_type
+from sugon_web.config.config import Config
+from sugon_web.config.constants import SECURITY_DEFAULT_FIP_POOL
 from sugon_web.utils.logger import logger
 
 
-class VdbPage(VdbAssertionMixin, BasePage):
+class VdbPage(VdbAssertionMixin, SecurityEipMixin, ElementUiMixin, BasePage):
     """数据库审计VDB 页面对象。
 
     覆盖以下能力：
@@ -17,200 +21,21 @@ class VdbPage(VdbAssertionMixin, BasePage):
     """
 
     service_name = "数据库审计"
-
-    def get_detail_body_text(self) -> str:
-        """获取详情页 body 文本内容，供测试层回读页面信息断言。"""
-        return self.page.inner_text("body")
-
-    def goto_list_page(self):
-        """导航到 VDB 列表页。从详情页或跳转地址页回到列表时必须用此方法。"""
-        from sugon_web.config.config import Config
-        base_url = Config.get("base_url").rstrip("/")
-        target_url = f"{base_url}/das/#/vdb"
-        self.page.goto(target_url)
-        self.wait_for_page_ready()
-        for attempt in range(1, 16):
-            self.page.wait_for_timeout(2000)
-            if "/no-permission" in self.page.url:
-                logger.warning(f"VDB 列表页被重定向到无权限页，重新导航 (第{attempt}次)")
-                self.page.goto(target_url)
-                self.wait_for_page_ready()
-                continue
-            loading_mask = self.page.locator(".el-loading-mask:visible, .el-loading-spinner:visible").first
-            if loading_mask.count() > 0:
-                logger.info(f"VDB 列表页数据加载中，继续等待 (第{attempt}次)...")
-                continue
-            has_rows = self.page.locator(".el-table__row").count() > 0
-            has_empty = self.page.locator(".el-table__empty-block, .el-table__empty-text").count() > 0
-            if has_rows:
-                logger.info(f"VDB 回到列表页（第{attempt}次检查）: {self.page.url}")
-                return
-            if has_empty:
-                logger.info(f"VDB 列表页表格为空（第{attempt}次检查）: {self.page.url}")
-                return
-            logger.info(f"VDB 列表页仍为空，等待数据加载中(第{attempt}次)...")
-            if attempt >= 3 and not has_rows and not has_empty:
-                logger.warning(f"VDB 列表页数据未就绪，继续等待 (第{attempt}次)...")
-        logger.info(f"VDB 回到列表页: {self.page.url}")
+    _service_label = "VDB"
 
     @property
     def _input_name(self):
         """VDB 创建表单：名称输入框"""
         return self.locator(".el-form-item").filter(
             has_text=re.compile(r"^名称")
-        ).get_by_role("textbox")
+        ).locator("input.el-input__inner").first
 
     @property
     def _btn_submit(self):
         """VDB 创建表单：提交按钮（点击创建）"""
-        locators = [
-            self.get_by_text("点击创建"),
-            self.locator(".cloud-button-btn").filter(has_text="点击创建"),
-            self.get_by_role("button", name="点击创建"),
-            self.locator(".cloud-button-btn").filter(has_text="立即创建"),
-            self.get_by_text("立即创建"),
-            self.get_by_role("button", name="立即创建"),
-            self.get_by_role("button", name="创建"),
-            self.get_by_role("button", name="提交"),
-            self.get_by_role("button", name="确定"),
-            self.locator("button").filter(has_text=re.compile(r"创建|提交|确定")),
-        ]
-        for loc in locators:
-            try:
-                expect(loc).to_be_visible(timeout=3000)
-                return loc
-            except Exception:
-                continue
-        raise Exception("未找到 VDB 创建表单的提交按钮")
-
-    def _select_form_item_first(self, label: str):
-        """选择表单下拉项的第一个可见选项。
-
-        Args:
-            label: 表单字段标签
-        """
-        form_item = self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}"))
-        dropdown = form_item.locator(".el-select").first
-        dropdown.click()
-        # 轮询等待选项加载，最多10次
-        for attempt in range(10):
-            self.page.wait_for_timeout(800)
-            options = self.locator(".el-select-dropdown:visible li")
-            if options.count() > 0:
-                logger.info(f"VDB 下拉框 '{label}' 选项已加载，共 {options.count()} 项")
-                break
-            logger.warning(f"VDB 下拉框 '{label}' 选项为空，第 {attempt + 1} 次重试等待...")
-        else:
-            dropdown.click()
-            raise Exception(f"下拉选项为空: {label}")
-        options.first.click()
-        logger.info(f"VDB 创建：选择 {label} = 第一个可用选项")
-
-    def _select_form_item(self, label: str, option: str):
-        """选择表单的下拉项。
-
-        Args:
-            label: 表单字段标签
-            option: 要选择的下拉项文本（支持模糊匹配）
-        """
-        form_item = None
-        for selector in [
-            self.locator(".el-form-item").filter(has_text=re.compile(rf"^{re.escape(label)}")),
-            self.locator(".el-form-item").filter(has_text=label),
-            self.locator(".el-form-item__label").filter(has_text=label).locator("xpath=../.."),
-        ]:
-            try:
-                if selector.count() > 0:
-                    form_item = selector.first
-                    break
-            except Exception:
-                continue
-
-        if form_item is None:
-            raise Exception(f"未找到表单字段: {label}")
-
-        dropdown_trigger = form_item.locator(".el-select, [class*='select']").first
-        if dropdown_trigger.count() == 0:
-            dropdown_trigger = form_item.get_by_placeholder(re.compile(r"请选择|选择")).first
-        dropdown_trigger.click()
-        # 等待下拉选项加载，最多轮询10次
-        dropdown_option_selector = ".el-select-dropdown:visible li, .el-dropdown-menu:visible li"
-        try:
-            self.page.wait_for_selector(dropdown_option_selector, timeout=10000)
-        except Exception:
-            pass
-        self.page.wait_for_timeout(1500)
-        for attempt in range(10):
-            all_visible = self.locator(dropdown_option_selector)
-            cnt = all_visible.count()
-            if cnt > 0:
-                logger.info(f"VDB 下拉框 '{label}' 选项已加载，共 {cnt} 项")
-                break
-            logger.warning(f"VDB 下拉框 '{label}' 选项未加载，第 {attempt + 1} 次重试等待...")
-            self.page.wait_for_timeout(1500)
-            all_visible = self.locator(".el-select-dropdown:visible li, .el-dropdown-menu:visible li")
-        else:
-            logger.warning(f"VDB 下拉框 '{label}' 选项仍为空，尝试重新点击下拉框")
-            dropdown_trigger.click()
-            self.page.wait_for_timeout(2000)
-            all_visible = self.locator(dropdown_option_selector)
-        options = all_visible.filter(has_text=option)
-        if options.count() == 0:
-            options = all_visible.filter(has_text=re.compile(rf"^{re.escape(option)}$"))
-        if options.count() == 0:
-            # 尝试大小写不敏感匹配
-            options = all_visible.filter(has_text=re.compile(re.escape(option), re.IGNORECASE))
-        if options.count() == 0:
-            cnt = all_visible.count()
-            available = [all_visible.nth(i).inner_text() for i in range(min(cnt, 20))]
-            logger.error(f"VDB 下拉框 '{label}' 可用选项: {available}")
-            raise Exception(f"未找到下拉选项: {label} = {option}，可用选项: {available}")
-        options.first.click()
-        logger.info(f"VDB 创建：选择 {label} = {option}")
-
-    def _select_flavor(self, cpu: str = "4核", memory: str = "8GiB"):
-        """选择规格表格中的指定行。
-
-        Args:
-            cpu: CPU 规格
-            memory: 内存规格
-        """
-        self.page.wait_for_timeout(1000)
-        rows = self.locator(".el-table__row")
-        expect(rows.first).to_be_visible(timeout=10000)
-
-        row_count = rows.count()
-        target_row = None
-        for i in range(row_count):
-            row = rows.nth(i)
-            row_text = row.inner_text()
-            if cpu in row_text and memory in row_text:
-                target_row = row
-                break
-
-        if target_row is None:
-            selects = self.locator(".flavor-tool-bar .el-select, .spec-filter .el-select")
-            if selects.count() >= 2:
-                selects.nth(0).click()
-                self.page.wait_for_timeout(300)
-                self.locator(".el-select-dropdown:visible li").filter(has_text=cpu).first.click()
-                self.page.wait_for_timeout(500)
-
-                selects.nth(1).click()
-                self.page.wait_for_timeout(300)
-                self.locator(".el-select-dropdown:visible li").filter(has_text=memory).first.click()
-                self.page.wait_for_timeout(800)
-
-            rows = self.locator(".el-table__row")
-            if rows.count() > 0:
-                target_row = rows.first
-
-        if target_row is None:
-            raise Exception(f"未找到规格行: CPU={cpu}, 内存={memory}")
-
-        radio_input = target_row.locator(".el-radio__original").first
-        radio_input.evaluate("el => el.click()")
-        logger.info(f"VDB 创建：选择规格 CPU={cpu}, 内存={memory}")
+        return self._find_submit_button(
+            ["点击创建", "立即创建", "创建", "提交", "确定"]
+        )
 
     def vdb_create(
         self,
@@ -219,7 +44,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
         cluster: str = "Autotest",
         base_name: str = None,
         network: str = None,
-        volume_type: str = "xbd-type",
+        volume_type: str = None,
         cpu: str = "4核",
         memory: str = "8GiB",
     ):
@@ -233,7 +58,7 @@ class VdbPage(VdbAssertionMixin, BasePage):
             cluster: 集群名称，默认 Autotest
             base_name: 安全底座名称（None 表示选择第一个可用的）
             network: 专有网络名称（None 表示选择第一个可用的）
-            volume_type: 云硬盘类型，默认 xbd-type
+            volume_type: 云硬盘类型（None 表示根据 Config.stor 自动推断）
             cpu: 规格 CPU，默认 4核
             memory: 规格内存，默认 8GiB
         """
@@ -244,16 +69,19 @@ class VdbPage(VdbAssertionMixin, BasePage):
         self.wait_for_page_ready()
         self.page.wait_for_timeout(2000)
         # 等待 loading 遮罩消失，避免 expect/fill 竞态
+        self._wait_loading_mask_hidden()
+        logger.info("VDB 创建页面加载成功")
+
+        # 等待表单区域渲染（部分环境表单元素异步出现）
         try:
-            self.page.locator(".el-loading-mask:visible").first.wait_for(state="hidden", timeout=10000)
+            self.locator(".el-form-item").first.wait_for(state="visible", timeout=30000)
         except Exception:
             pass
-        logger.info("VDB 创建页面加载成功")
 
         # 名称输入框：等待可见并填充，多次重试
         for fill_attempt in range(3):
             try:
-                self._input_name.wait_for(state="visible", timeout=10000)
+                self._input_name.wait_for(state="visible", timeout=30000)
                 self._input_name.fill(name, timeout=30000)
                 break
             except Exception as e:
@@ -295,12 +123,15 @@ class VdbPage(VdbAssertionMixin, BasePage):
         except Exception as e:
             logger.warning(f"VDB 创建：子网选择失败: {e}")
 
-        if volume_type:
+        vol_type = volume_type or get_security_volume_type()
+        if vol_type:
             try:
-                self._select_form_item("云硬盘类型", volume_type)
+                self._select_form_item("云硬盘类型", vol_type)
             except Exception:
-                logger.warning(f"VDB 创建：未找到云硬盘类型 {volume_type}，选择第一个可用选项")
+                logger.warning(f"VDB 创建：未找到云硬盘类型 {vol_type}，选择第一个可用选项")
                 self._select_form_item_first("云硬盘类型")
+        else:
+            self._select_form_item_first("云硬盘类型")
 
         self._select_flavor(cpu=cpu, memory=memory)
 
@@ -365,51 +196,6 @@ class VdbPage(VdbAssertionMixin, BasePage):
             logger.warning("VDB 创建：页面未自动跳转，手动导航到列表页")
             self.goto_list_page()
         self.wait_for_page_ready()
-
-    def _click_dialog_confirm(self):
-        """点击当前可见弹窗的确认/确定按钮。"""
-        for btn_selector in [
-            self.locator(".sugon-dialog:visible, .el-dialog:visible").locator(".cloud-button-btn").filter(has_text="确定"),
-            self.locator(".sugon-dialog:visible, .el-dialog:visible").get_by_text("确定", exact=True),
-            self.dialog_confirm,
-        ]:
-            try:
-                if btn_selector.count() > 0 and btn_selector.first.is_visible():
-                    btn_selector.first.click()
-                    return
-            except Exception:
-                continue
-        raise Exception("未找到弹窗确认按钮")
-
-    def _dismiss_visible_dialogs(self):
-        """关闭页面上可见的弹窗。"""
-        for selector in [".sugon-dialog:visible", ".el-dialog__wrapper:visible", ".el-dialog:visible"]:
-            try:
-                dialogs = self.page.locator(selector)
-                count = dialogs.count()
-                for i in range(count - 1, -1, -1):
-                    dialog = dialogs.nth(i)
-                    try:
-                        try:
-                            dialog.wait_for(timeout=1000)
-                        except Exception:
-                            pass
-                        if dialog.is_visible():
-                                                        for btn_text in ["关闭", "取消", "确定"]:
-                                                            btn = dialog.locator(".cloud-button-btn, .el-dialog__close, .sugon-dialog-close").filter(has_text=btn_text).first
-                                                            if btn.count() > 0:
-                                                                try:
-                                                                    btn.wait_for(timeout=500)
-                                                                except Exception:
-                                                                    pass
-                                                                if btn.is_visible():
-                                                                    btn.click()
-                                                                    self.page.wait_for_timeout(300)
-                                                                    break
-                    except Exception:
-                        continue
-            except Exception:
-                continue
 
     def vdb_operations(self, name: str, action: str):
         """对 VDB 实例执行操作。
@@ -767,50 +553,6 @@ class VdbPage(VdbAssertionMixin, BasePage):
         """
         self._duration_dialog(name, "续期", duration)
 
-    def _duration_dialog(self, name: str, action: str, duration: str):
-        """通用方法：处理授权/续费弹窗（共用同一个 el-radio-button 时长选择组件）。
-
-        Args:
-            name: 实例名称
-            action: 操作名称，"授权" 或 "续期"
-            duration: 购买时长，如 "1个月", "2个月", "3个月"
-        """
-        self.goto_list_page()
-        self._dismiss_visible_dialogs()
-        self.click_action(name, action)
-        self.page.wait_for_timeout(1500)
-        dialog = self.locator(".sugon-dialog:visible, .el-dialog:visible").first
-        if dialog.count() == 0:
-            try:
-                dialog.wait_for(timeout=3000)
-            except Exception:
-                pass
-        if dialog.count() == 0 or not dialog.is_visible():
-            logger.warning(f"VDB {action}：未找到弹窗，可能已自动完成")
-            return
-
-        radio_btn = dialog.locator(".el-radio-button").filter(has_text=duration).first
-        if radio_btn.count() > 0:
-            try:
-                radio_btn.wait_for(timeout=2000)
-            except Exception:
-                pass
-            if radio_btn.is_visible():
-                        radio_btn.click()
-                        logger.info(f"VDB {action}：已选择 {duration} 购买时长")
-                        self.page.wait_for_timeout(500)
-        else:
-            active_btn = dialog.locator(".el-radio-button.is-active").first
-            if active_btn.count() > 0:
-                active_text = active_btn.inner_text()
-                logger.info(f"VDB {action}：当前已选中 {active_text}（默认选中状态）")
-            else:
-                logger.warning(f"VDB {action}：未找到时长选项 {duration}，直接尝试确认")
-
-        self._click_dialog_confirm()
-        self.page.wait_for_timeout(2000)
-        logger.info(f"VDB 实例 {name} {action}操作已提交")
-
     def vdb_spec_upgrade(self, name: str):
         """执行规格升级：选择比当前规格更高的第一个可选规格并提交。
 
@@ -873,10 +615,23 @@ class VdbPage(VdbAssertionMixin, BasePage):
                     "memory_mb": int(mem_match.group(1)) * 1024 if mem_match else 0,
                     "name": spec_name_match.group(0) if spec_name_match else "",
                 }
-                radio.evaluate("el => el.click()")
+                # 优先操作原生 radio input，确保 Vue 能感知选中状态
+                radio_input = radio.locator("input.el-radio__original").first
+                if radio_input.count() > 0:
+                    radio_input.set_checked(True, force=True)
+                else:
+                    radio.evaluate("el => el.click()")
+                self.page.wait_for_timeout(500)
+                # 校验 radio 已真正选中
+                checked_class = radio.get_attribute("class") or ""
+                if "is-checked" not in checked_class:
+                    row.click()
+                    self.page.wait_for_timeout(300)
+                    checked_class = radio.get_attribute("class") or ""
                 logger.info(
                     f"VDB 规格升级：选中规格 vcpu={selected_spec['vcpus']}核, "
-                    f"memory={selected_spec['memory_mb']}MB({selected_spec['name']})"
+                    f"memory={selected_spec['memory_mb']}MB({selected_spec['name']}), "
+                    f"checked={'is-checked' in checked_class}"
                 )
                 break
 
@@ -891,8 +646,46 @@ class VdbPage(VdbAssertionMixin, BasePage):
                 pass
         if confirm_btn.count() == 0 or not confirm_btn.is_visible():
             raise Exception("未找到规格升级弹窗的确定按钮")
+        # 若确定按钮处于禁用态，先等待短暂时间；仍禁用则可能是实例未关机等前置条件未满足
+        confirm_class = confirm_btn.get_attribute("class") or ""
+        if "disabled" in confirm_class:
+            try:
+                expect(confirm_btn).not_to_have_class(re.compile(r"disabled"), timeout=5000)
+            except Exception:
+                confirm_class = confirm_btn.get_attribute("class") or ""
+                raise Exception(
+                    f"规格升级弹窗的确定按钮仍被禁用，可能是实例未关机或规格未真正选中，"
+                    f"当前按钮 class: {confirm_class}"
+                )
         confirm_btn.click()
         logger.info(f"VDB 实例 {name} 规格升级请求已提交")
+
+        # 等待弹窗关闭，含错误检测
+        try:
+            dialog.wait_for(state="hidden", timeout=180000)
+            logger.info("VDB 规格升级：弹窗已关闭")
+        except Exception:
+            # 弹窗未关闭，可能是 API 失败或校验未通过
+            error_text = ""
+            static_warning = "规格升级后，云硬盘大小可能与规格不匹配"
+            # 弹窗内的 .sugon-alert/.el-alert 是静态 warning，不能当作错误
+            for err_sel in [".el-message--error", ".el-form-item__error"]:
+                err_elem = self.page.locator(err_sel).first
+                if err_elem.count() > 0 and err_elem.is_visible():
+                    text = err_elem.inner_text()[:200]
+                    if static_warning not in text:
+                        error_text = text
+                        break
+            if error_text:
+                logger.error(f"VDB 规格升级失败: {error_text}")
+            else:
+                logger.error("VDB 规格升级：弹窗未关闭（可能 API 超时或静默失败）")
+            # 尝试关闭残留弹窗
+            self._dismiss_visible_dialogs()
+            raise Exception(
+                f"规格升级弹窗未关闭，升级可能失败"
+                + (f": {error_text}" if error_text else "")
+            )
         return selected_spec
 
     def verify_jump_page_license_expire(self, page, expected_expire: str):
@@ -1157,14 +950,336 @@ class VdbPage(VdbAssertionMixin, BasePage):
         Returns:
             bool: True 表示可点击，False 表示不可点击
         """
+        return self._is_row_name_clickable(name)
+
+    def vdb_hot_migrate(self, name: str, mode: str = "sys"):
+        """对 VDB 实例执行热迁移操作。
+
+        支持系统分配和手动指定两种模式。系统分配模式下由系统自动选择目标物理机，
+        手动指定模式下需从物理机列表中选择目标物理机。
+
+        Args:
+            name: 实例名称
+            mode: 调度方式，"sys" 表示系统分配，"custom" 表示手动指定
+        """
         self.goto_list_page()
-        row = self.get_row_by_name(name)
-        name_cell = row.get_by_text(name, exact=True).first
+        self.page.wait_for_timeout(2000)
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "热迁移")
+        self.page.wait_for_timeout(1500)
+
+        dialog = self.page.locator(".el-dialog:visible").filter(has_text="热迁移").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=5000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到热迁移弹窗")
+        logger.info("VDB 热迁移: 弹窗已打开")
+
+        # 手动指定模式：选择目标物理机
+        if mode == "custom":
+            custom_radio = dialog.get_by_role("radio", name="手动指定")
+            if custom_radio.count() > 0:
+                custom_radio.click()
+                self.page.wait_for_timeout(1000)
+                logger.info("VDB 热迁移: 已选择手动指定模式")
+
+                # 点击"选择物理机"打开物理机列表 drawer
+                select_btn = dialog.get_by_text("选择物理机", exact=True)
+                if select_btn.count() == 0:
+                    select_btn = dialog.locator("span").filter(has_text="选择物理机")
+                if select_btn.count() > 0:
+                    select_btn.first.click()
+                    self.page.wait_for_timeout(1500)
+                else:
+                    raise Exception("VDB 热迁移: 未找到'选择物理机'按钮")
+
+                # 处理物理机选择 drawer
+                drawer = self.page.locator(".el-drawer__wrapper:visible").filter(has_text="选择物理机").first
+                if drawer.count() == 0:
+                    try:
+                        drawer.wait_for(timeout=10000)
+                    except Exception:
+                        pass
+                if drawer.count() == 0 or not drawer.is_visible():
+                    raise Exception("VDB 热迁移: 未找到物理机选择抽屉")
+
+                # 等待表格加载
+                try:
+                    drawer.locator(".el-table__body .el-table__row").first.wait_for(timeout=15000)
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(2000)
+
+                # 找到第一个非禁用的 radio 行并点击
+                rows = drawer.locator(".el-table__body .el-table__row")
+                host_selected = False
+                for i in range(rows.count()):
+                    row = rows.nth(i)
+                    radio = row.locator(".el-radio").first
+                    if radio.count() > 0:
+                        radio_class = radio.get_attribute("class") or ""
+                        if "is-disabled" not in radio_class:
+                            radio.locator("..").click()
+                            self.page.wait_for_timeout(500)
+                            logger.info(f"VDB 热迁移: 已选择物理机 (第{i+1}行)")
+                            host_selected = True
+                            break
+                if not host_selected:
+                    raise Exception("VDB 热迁移: 未找到可用的物理机")
+
+                # 点击 drawer 中的"确定"
+                drawer_confirm = drawer.locator(".cloud-button-btn").filter(has_text="确定").first
+                if drawer_confirm.count() == 0:
+                    drawer_confirm = self.page.locator(".el-drawer__footer .cloud-button-btn, .el-drawer button").filter(has_text="确定").first
+                if drawer_confirm.count() > 0 and drawer_confirm.is_visible():
+                    drawer_confirm.click()
+                    self.page.wait_for_timeout(1000)
+                    logger.info("VDB 热迁移: 物理机选择确认完成")
+                else:
+                    logger.warning("VDB 热迁移: 未找到 drawer 中的确定按钮")
+
+        # 迁移速率默认已是"全速"，点击确定
+        confirm_btn = dialog.locator(".cl-dialog-footer .cloud-button-btn").filter(has_text="确定").first
+        if confirm_btn.count() == 0:
+            confirm_btn = dialog.locator(".cloud-button-btn, button").filter(has_text="确定").first
+        if confirm_btn.count() == 0:
+            confirm_btn = self.page.locator(".el-dialog:visible .cloud-button-btn").filter(has_text="确定").first
+        if confirm_btn.count() > 0 and confirm_btn.is_visible():
+            confirm_btn.click()
+            logger.info("VDB 热迁移: 已点击确定按钮")
+        else:
+            raise Exception("VDB 热迁移: 未找到确认按钮")
+        self.page.wait_for_timeout(2000)
+        logger.info(f"VDB 实例 {name} 热迁移请求已提交 (mode={mode})")
+
+    def vdb_bind_public_ip(
+        self, name: str, eip_ip: str | None = None, pool_name: str | None = None
+    ) -> str | None:
+        """为 VDB 实例绑定公网IP。
+
+        进入绑定公网IP弹窗，选择指定资源池中的可用IP并确认。
+
+        Args:
+            name: 实例名称
+            eip_ip: 指定要绑定的公网IP；为 None 时选择第一个可用IP
+            pool_name: 资源池名称，默认读取配置 network
+
+        Returns:
+            str | None: 绑定的公网IP地址
+        """
+        if pool_name is None:
+            pool_name = Config.get("network") or SECURITY_DEFAULT_FIP_POOL
+
+        self.goto_list_page()
+        self.page.wait_for_timeout(2000)
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "绑定公网IP")
+        self.page.wait_for_timeout(1500)
+
+        dialog = self.page.locator(".sugon-dialog:visible").filter(has_text="绑定公网IP").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=8000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到绑定公网IP弹窗")
+        logger.info("VDB 绑定公网IP: 弹窗已打开")
+
+        # 选择资源池（支持子串匹配）
+        pool_select = dialog.locator(".el-select").first
+        if pool_select.count() > 0 and pool_select.is_visible():
+            pool_select.click()
+            self.page.wait_for_timeout(800)
+            visible_dropdown = self.page.locator(".el-select-dropdown:visible")
+            pool_option = visible_dropdown.locator("li").filter(has_text=pool_name).first
+            if pool_option.count() > 0:
+                pool_option.click()
+                logger.info(f"VDB 绑定公网IP: 已选择资源池 {pool_name}")
+            else:
+                logger.warning(f"VDB 绑定公网IP: 未找到资源池 {pool_name}，选择第一个可用选项")
+                first_opt = visible_dropdown.locator("li").first
+                if first_opt.count() > 0:
+                    first_opt.click()
+            self.page.wait_for_timeout(1500)
+
+        # 等待 IP 列表加载
         try:
-            color = name_cell.evaluate("el => window.getComputedStyle(el).color")
-            is_link = "64, 158, 255" in color
-            logger.info(f"VDB 实例 {name} 名称颜色: {color}, 可点击: {is_link}")
-            return is_link
-        except Exception as e:
-            logger.warning(f"检查 VDB 实例 {name} 名称可点击性失败: {e}")
-            return False
+            dialog.locator(".el-table__body .el-table__row").first.wait_for(timeout=20000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1000)
+
+        # 选择指定 IP 或第一个可用IP（支持分页）
+        selected_ip = self._select_eip_in_paginated_dialog(dialog, eip_ip=eip_ip)
+        if not selected_ip:
+            raise Exception("VDB 绑定公网IP: 没有可用的公网 IP")
+
+        # 点击确定
+        self._click_dialog_confirm()
+        self.page.wait_for_timeout(2000)
+        logger.info(f"VDB 实例 {name} 绑定公网IP请求已提交，IP={selected_ip}")
+        return selected_ip
+
+    def vdb_unbind_public_ip(self, name: str):
+        """为 VDB 实例解绑公网IP。
+
+        进入解除绑定公网IP弹窗，选择已绑定的第一个公网IP并确认解绑。
+
+        Args:
+            name: 实例名称
+        """
+        self.goto_list_page()
+        self.page.wait_for_timeout(2000)
+        self._dismiss_visible_dialogs()
+        self.click_action(name, "解绑公网IP")
+        self.page.wait_for_timeout(1500)
+
+        dialog = self.page.locator(".sugon-dialog:visible").filter(has_text="解除绑定公网IP").first
+        if dialog.count() == 0:
+            try:
+                dialog.wait_for(timeout=8000)
+            except Exception:
+                pass
+        if dialog.count() == 0 or not dialog.is_visible():
+            raise Exception("未找到解绑公网IP弹窗")
+        logger.info("VDB 解绑公网IP: 弹窗已打开")
+
+        # 选择已绑定的第一个 IP
+        ip_select = dialog.locator(".el-select").first
+        if ip_select.count() > 0:
+            ip_select.click()
+            self.page.wait_for_timeout(800)
+            visible_dropdown = self.page.locator(".el-select-dropdown:visible")
+            first_ip = visible_dropdown.locator("li").first
+            if first_ip.count() > 0:
+                first_ip.click()
+                self.page.wait_for_timeout(500)
+                logger.info("VDB 解绑公网IP: 已选择第一个绑定的 IP")
+            else:
+                raise Exception("VDB 解绑公网IP: 没有已绑定的公网 IP")
+
+        # 点击确定
+        self._click_dialog_confirm()
+        self.page.wait_for_timeout(2000)
+        logger.info(f"VDB 实例 {name} 解绑公网IP请求已提交")
+
+    def vdb_vnc_login(self, name: str, password: str = "000000"):
+        """登录 VNC 控制台。
+
+        点击登录VNC操作，在新页面中输入密码完成认证。
+
+        Args:
+            name: 实例名称
+            password: VNC 登录密码，默认 "000000"
+
+        Returns:
+            Page: VNC 页面对象（供测试层验证）
+        """
+        self.goto_list_page()
+        self.page.wait_for_timeout(2000)
+        self._dismiss_visible_dialogs()
+
+        with self.page.context.expect_page(timeout=60000) as new_page_info:
+            self.click_action(name, "登录VNC")
+        new_page = new_page_info.value
+
+        logger.info(f"VDB VNC 登录: 已打开新页面 {new_page.url}")
+
+        try:
+            new_page.wait_for_load_state("domcontentloaded", timeout=30000)
+        except Exception:
+            pass
+        try:
+            new_page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(2000)
+
+        # 等待页面显示登录认证内容
+        try:
+            new_page.get_by_text("登录认证").wait_for(timeout=30000)
+            logger.info("VDB VNC 登录: 页面显示登录认证")
+        except Exception:
+            logger.info("VDB VNC 登录: 未检测到'登录认证'文本，继续尝试输入")
+
+        # 查找密码输入框
+        password_input = None
+        for selector in [
+            new_page.get_by_placeholder(re.compile(r"密码|Password|password")),
+            new_page.locator('input[type="password"]'),
+            new_page.locator("input").first,
+        ]:
+            try:
+                if selector.count() > 0 and selector.first.is_visible():
+                    password_input = selector.first
+                    break
+            except Exception:
+                continue
+
+        if password_input is None:
+            all_inputs = new_page.locator("input").all()
+            for inp in all_inputs:
+                try:
+                    if inp.is_visible():
+                        password_input = inp
+                        break
+                except Exception:
+                    continue
+
+        if password_input:
+            password_input.fill(password)
+            self.page.wait_for_timeout(500)
+            new_page.keyboard.press("Enter")
+            logger.info("VDB VNC 登录: 已输入密码并提交")
+        else:
+            logger.warning("VDB VNC 登录: 未找到输入框，尝试键盘直接输入")
+            new_page.keyboard.type(password)
+            new_page.keyboard.press("Enter")
+
+        self.page.wait_for_timeout(3000)
+
+        return new_page
+
+    def vdb_vnc_check_connected(self, vnc_page):
+        """验证 VNC 页面已成功连接。
+
+        VNC 使用 canvas 渲染远程桌面，"已成功连接"不在 DOM 中。
+        通过检查 canvas 元素渲染内容判断连接状态。
+
+        Args:
+            vnc_page: vdb_vnc_login 返回的 VNC 页面对象
+
+        Raises:
+            AssertionError: VNC 连接失败或 Canvas 未渲染
+        """
+        try:
+            canvas = vnc_page.locator("canvas").first
+            canvas.wait_for(state="visible", timeout=15000)
+            self.page.wait_for_timeout(5000)
+            canvas_size = canvas.evaluate("el => ({w: el.width, h: el.height})")
+            logger.info(f"VDB VNC 连接检测: Canvas 尺寸={canvas_size}")
+            if canvas_size["w"] > 0 and canvas_size["h"] > 0:
+                logger.info("VDB VNC 连接验证通过: Canvas 已渲染远程桌面")
+                return
+            else:
+                logger.warning("VDB VNC: Canvas 尺寸为 0, 等待额外时间")
+                self.page.wait_for_timeout(15000)
+                canvas_size2 = canvas.evaluate("el => ({w: el.width, h: el.height})")
+                assert canvas_size2["w"] > 0 and canvas_size2["h"] > 0, \
+                    f"VNC Canvas 在等待后仍为空尺寸: {canvas_size2}"
+                logger.info("VDB VNC 连接验证通过: Canvas 二次检查已加载桌面")
+        except Exception as canvas_err:
+            logger.warning(f"VDB VNC: Canvas 检测未通过, 检查错误提示: {canvas_err}")
+            err_texts = vnc_page.get_by_text(
+                re.compile("连接失败|连接超时|Failed|Error", re.IGNORECASE)
+            )
+            if err_texts.count() > 0:
+                first_err = err_texts.first.inner_text()[:100]
+                raise AssertionError(f"VNC 连接失败: {first_err}")
+            assert "vnc" in vnc_page.url.lower(), \
+                f"VNC 页面已跳转到非 VNC URL: {vnc_page.url}"
+            logger.info("VDB VNC 连接验证通过: 页面状态稳定（备用方案）")

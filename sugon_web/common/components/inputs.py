@@ -1,3 +1,23 @@
+"""
+【职责】封装常见输入框定位器（名称、密码、搜索框），统一处理 Element UI 表单中的文本输入场景。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- input_name() -> Locator：实例名称输入框。
+- input_password() -> Locator：管理员密码输入框。
+- input_confirm_password() -> Locator：确认密码输入框。
+- _input_search -> Locator：搜索框（主要供 ActionsMixin.search 使用）。
+
+【示例】
+class RedisPage(BasePage):
+    def create_instance(self, name, password):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.input_password().fill(password)
+        self.dialog_confirm.click()
+"""
+
 import re
 
 from playwright.sync_api import Locator
@@ -37,5 +57,7 @@ class InputsMixin:
             self.get_by_role("textbox", name="搜索（网络名称）"),
             self.get_by_role("textbox", name="搜索（物理机）"),
             self.get_by_role("textbox", name="搜索（带外IP）"),
+            # 传输策略组/机密互联页面搜索框
+            self.get_by_placeholder("搜索"),
         ]
         return self._find_element(locators, "搜索框")

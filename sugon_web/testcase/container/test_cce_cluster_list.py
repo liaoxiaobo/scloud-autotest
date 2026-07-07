@@ -11,7 +11,7 @@ from sugon_web.utils.data import random_data, load_data
 @allure.story('集群管理-列表页')
 class TestCCEClusterCreate:
 
-    @allure.title("集群管理-创建CCE集群-{params[network_model]}网络-{params[version]}版本-{params[container_runtime]}运行时")
+    @allure.title("集群列表-创建CCE集群-{params[network_model]}网络-{params[version]}版本-{params[container_runtime]}运行时")
     @pytest.mark.parametrize("params", load_data("test_cce_create", data_file='test_cce.yaml'))
     def test_cce_create(self, cce_page, ssh_host, ssh_vm, params):
         """测试创建CCE集群并验证后端配置（参数化）"""
@@ -102,7 +102,7 @@ class TestCCEClusterCreate:
             ssh_host.wait_vm_deleted(cluster_name, timeout=600)
             ssh_host.wait_volume_deleted(cluster_name, timeout=600)
 
-    @allure.title("集群管理-列表页-搜索")
+    @allure.title("集群列表-搜索")
     def test_search_cluster(self, cce_page, cce_cluster):
         """验证集群列表页搜索功能正常"""
         cluster_name = cce_cluster["name"]
@@ -118,7 +118,7 @@ class TestCCEClusterCreate:
             cce_page.search(non_existent)
             cce_page.assert_list_not_contain(non_existent, column_name="集群名称")
 
-    @allure.title("集群管理-列表页-修改集群名称")
+    @allure.title("集群列表-修改集群名称")
     def test_edit_cluster_name(self, cce_page, cce_cluster):
         """修改集群名称并验证列表中更新成功"""
         cluster_name = cce_cluster["name"]
@@ -136,7 +136,7 @@ class TestCCEClusterCreate:
             cce_page.assert_popup_success()
             cce_page.assert_list_contain(cluster_name, column_name="集群名称")
 
-    @allure.title("集群管理-列表页-修改时间同步服务器")
+    @allure.title("集群列表-修改时间同步服务器")
     def test_edit_time_sync_server(self, cce_page, cce_cluster, ssh_vm):
         """修改集群时间同步服务器并验证后端配置生效"""
         cluster_name = cce_cluster["name"]
@@ -158,7 +158,7 @@ class TestCCEClusterCreate:
             else:
                 assert False, f"时间同步服务器配置未生效: {result.get('stdout', '')}"
 
-    @allure.title("集群管理-列表页-批量删除")
+    @allure.title("集群列表-批量删除")
     def test_batch_delete_cluster(self, cce_page, ssh_host):
         """创建两个临时集群后批量删除，验证列表中已不存在"""
         cluster_names = []
@@ -174,7 +174,7 @@ class TestCCEClusterCreate:
                     version="1.22.17",
                     container_runtime="docker",
                     proxy_mode="ipvs",
-                    desc=f"批量删除测试集群{i}",
+                    desc=f"测试集群{i}",
                     network_model="flannel",
                     volume_size=50,
                     flavor="4C8G",
