@@ -182,6 +182,16 @@ pipeline {
             // 归档 AI 报告等产物
             archiveArtifacts artifacts: 'reports/*.md', allowEmptyArchive: true
 
+            // 留存 allure-result 作为 AI 分析调试输入材料
+            script {
+                try {
+                    sh "tar -czf allure-result-build-${env.BUILD_NUMBER}.tar.gz allure-result || true"
+                    archiveArtifacts artifacts: 'allure-result-build-*.tar.gz', allowEmptyArchive: true
+                } catch (err) {
+                    echo "Archive allure-result failed: ${err}"
+                }
+            }
+
             // 清理临时文件
             sh "rm -rf allure-result/env-* || true"
             sh "rm -rf allure-result/* || true"
