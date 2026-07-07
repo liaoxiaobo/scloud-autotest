@@ -1,3 +1,4 @@
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
@@ -6,6 +7,7 @@ from sugon_web.utils.data import random_data
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-组织结构树')
 @allure.story('修改一级组织')
+@pytest.mark.requires_admin
 class TestIamOrgModify:
 
     @allure.title("IAM-组织管理-修改一级组织名称")

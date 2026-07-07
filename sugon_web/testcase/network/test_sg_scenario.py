@@ -1,8 +1,9 @@
 import allure
 import pytest
 import re
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.common.playwright import expect
-from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
@@ -174,7 +175,7 @@ class TestSGScenario:
     @allure.title("验证入方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_two_vms(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, browser, config):
+    def test_sg_two_vms(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -238,7 +239,11 @@ class TestSGScenario:
             with allure_step_log(f"步骤5: 生效性验证"):
                 ssh_host.ping(fip1, connected=False)
                 ecs_page.goto_submenu("弹性云服务器")
-                vm2_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm2_name)
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
         finally:
@@ -258,7 +263,7 @@ class TestSGScenario:
     @allure.title("创建入方向规则-远程安全组类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_inter_binding(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, browser, config):
+    def test_sg_inter_binding(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -319,7 +324,11 @@ class TestSGScenario:
 
             with allure_step_log("步骤6: 登录vm2虚机，对vm1虚机发起ping请求，预期结果：可以ping通"):
                 ecs_page.goto_submenu("弹性云服务器")
-                vm2_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm2_name)
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
 
@@ -409,7 +418,7 @@ class TestSGScenario:
     @allure.title("验证出方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_egress_rule_logic(self, sg, vpc_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding, browser, config, ssh_host):
+    def test_sg_egress_rule_logic(self, sg, vpc_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config, ssh_host):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -475,7 +484,11 @@ class TestSGScenario:
 
             with allure_step_log(f"步骤7: 登录vm2, ping vm1, 预期结果：可以ping通"):
                 ecs_page.goto_submenu("弹性云服务器")
-                vm2_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, vm2_name)
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
         finally:

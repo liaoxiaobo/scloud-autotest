@@ -2,9 +2,10 @@ import random
 import time
 import pytest
 import allure
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.config.config import Config
 from sugon_web.testcase.backup._backup_helpers import _execute_full_backup_and_collect_data
-from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data
 
@@ -194,15 +195,14 @@ class TestBackupBasic:
             pytest.skip("迁移任务需要至少2个备份节点")
 
         task_name = backup_task.get("task_name")
+        cur_target = backup_task.get("cur_target")
 
         with allure_step_log("步骤1: 迁移任务"):
             backup_page.backup_migrate(task_name)
             backup_page.assert_popup_success("迁移备份任务成功")
 
         with allure_step_log("步骤2: 验证迁移后任务节点"):
-            cur_target = backup_page.backup_get_cur_target(task_name)
             assert cur_target in enabled_nodes  # 自动迁移会看当前备份任务的分布，迁移后节点不一定变更，确保在可用节点内即可
-            backup_task["cur_target"] = cur_target
 
     @allure.title("备份任务-手动迁移")
     def test_backup_manually_migrate(self, backup_task, backup_page):
@@ -230,7 +230,7 @@ class TestResumeCreate:
 
     @allure.title("恢复任务-创建和恢复")
     @pytest.mark.parametrize("data", load_data('test_resume_create_scenario', 'test_backup.yaml'))
-    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data, browser, config, ssh_host):
+    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data, admin_browser_context, config, ssh_host):
         """测试创建恢复任务的各种场景"""
         allure.dynamic.title(f"恢复任务-创建和恢复（{data['用例名称']}）")
         backup_page.goto_service('备份')
@@ -279,7 +279,11 @@ class TestResumeCreate:
             assert row_data.get("架构") == backup_task.get("source_arch"), "架构与原始虚机不一致"
 
             # 获取新虚机的 IP 并建立 SSH 连接
-            new_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, re_vm)
+            re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
+            new_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, re_meta["port_id"],
+                project_id=re_meta.get("project_id", "admin-inner-project"),
+            )
             mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
             login_pwd = mgmt_config.get("登录密码", "admin1234@sugon")
             ssh_vm.connect(new_mfip, pwd=login_pwd)
@@ -320,7 +324,7 @@ class TestResumeCreate:
             backup_task,
             cleanup_resume_data,
             data,
-            browser,
+            admin_browser_context,
             config,
             ssh_host
     ):
@@ -421,7 +425,11 @@ class TestResumeCreate:
                 assert row_data.get("镜像名称") == f"{Config.get('stor')}-test", "镜像与原始虚机不一致"
                 assert row_data.get("架构") == original_arch, "架构与原始虚机不一致"
 
-                new_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, re_vm)
+                re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
+                new_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, re_meta["port_id"],
+                    project_id=re_meta.get("project_id", "admin-inner-project"),
+                )
                 mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
                 login_pwd = mgmt_config.get("登录密码", "sugon@20")
                 ssh_vm.connect(new_mfip, pwd=login_pwd)

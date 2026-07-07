@@ -4,7 +4,6 @@ import random
 import pytest
 import allure
 from sugon_web.pages.network import VpcPage
-from sugon_web.pages.ops import OpsPage
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
@@ -123,7 +122,7 @@ class TestTMSessionEditValidation:
     """镜像会话-修改-云内实例验证（用例407253）"""
 
     @allure.title("镜像会话-修改-云内实例验证")
-    def test_tm_session_edit_validation(self, tm_page, ecs_page, vpc, vm, ssh_vm):
+    def test_tm_session_edit_validation(self, tm_page, ecs_page, ops_page, vpc, vm, ssh_vm):
         """验证流量镜像镜像会话的修改功能及生效性。
 
         前置资源：
@@ -154,7 +153,6 @@ class TestTMSessionEditValidation:
 
             with allure_step_log("前置: 创建VM3（发起ping）并绑定MFIP"):
                 vm3_info = _create_vm(ecs_page, vpc2_info["name"], vpc2_info["subnet_name"])
-                ops_page = OpsPage(tm_page.page)
                 vm3_mfip = _bind_mfip(ops_page, vm3_info["project"], vpc2_info["name"], vm3_info["ip"])
                 vm3_info["mfip"] = vm3_mfip
 
@@ -305,7 +303,6 @@ class TestTMSessionEditValidation:
             with allure_step_log("清理: 解绑MFIP（VM3）"):
                 try:
                     if vm3_info and vm3_info.get("ip"):
-                        ops_page = OpsPage(tm_page.page)
                         ops_page.goto_service("基础设施")
                         ops_page.goto_submenu("平台网络")
                         ops_page.mfip_delete(vm3_info["ip"])

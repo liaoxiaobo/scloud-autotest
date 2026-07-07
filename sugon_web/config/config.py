@@ -65,7 +65,7 @@ class Config:
         cls._local.config = merged
 
     @classmethod
-    def override(cls, browser=None, headless=None, stor=None, username=None, password=None):
+    def override(cls, browser=None, headless=None, stor=None, user_role=None):
         """通过代码动态覆盖部分配置（通常用于命令行参数注入）。"""
         cfg = cls._ensure_config()
 
@@ -86,13 +86,14 @@ class Config:
             cfg["stor"] = stor
             logger.info(f"配置命令行参数 stor={stor}")
 
-        if username is not None:
-            cfg["username"] = username
-            logger.info(f"配置命令行参数 username={username}")
-
-        if password is not None:
-            cfg["password"] = password
-            logger.info(f"配置命令行参数 password={password}")
+        if user_role is not None:
+            valid_roles = ["admin", "dept_admin", "user"]
+            if user_role not in valid_roles:
+                error_msg = f"无效的用户角色: {user_role}。支持的选项: {valid_roles}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            cfg["user_role"] = user_role
+            logger.info(f"配置命令行参数 user_role={user_role}")
 
     @classmethod
     def get(cls, key=None, default=None):

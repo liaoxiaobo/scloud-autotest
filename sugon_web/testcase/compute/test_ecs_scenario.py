@@ -1,6 +1,7 @@
 import pytest
 import allure
-from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip, delete_ecs
+from sugon_web.common.mfip_helper import MfipHelper
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
@@ -10,7 +11,7 @@ from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
 class TestECSScenario:
 
     @allure.title("验证已挂载云硬盘的虚机, 克隆后系统盘和数据盘与源虚机数据一致")
-    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, browser, config, ssh_host, cleanup):
+    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """测试克隆已挂载云硬盘的虚机"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -50,11 +51,13 @@ class TestECSScenario:
             ecs_page.assert_popup_success(f"{vm_name}实例克隆成功")
             ecs_page.assert_status(clone_name)
             clone_disk = ecs_page.get_row_data(clone_name).get("挂载云硬盘")
-            # 登记兜底清理：先删克隆虚机，再回收其数据盘（盘挂在虚机上，顺序不能反）
-            cleanup.append(lambda: (delete_ecs(ecs_page, clone_name), evs_page.evs_remove([clone_disk])))
 
             # 克隆后的虚机绑定mfip，验证md5值
-            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, clone_name)
+            clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
+            mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, clone_meta["port_id"],
+                project_id=clone_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip)
 
             # 克隆的虚机重新mount数据盘，验证md5值
@@ -71,9 +74,20 @@ class TestECSScenario:
             ecs_page.ecs_unmount_from_server(volume_name, vm_name)
             ecs_page.assert_popup_success(f"从虚拟机{vm_name}分离云硬盘")
 
+        with allure_step_log(f"步骤6: 清理测试数据{clone_name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_remove(clone_name)
+            ecs_page.ecs_delete(clone_name)
+            ecs_page.assert_deleted(clone_name)
+
+        with allure_step_log(f"步骤7: 清理测试数据{clone_disk}"):
+            evs_page.goto_service('云硬盘')
+            evs_page.evs_remove([clone_disk])
+            evs_page.assert_deleted(clone_name)
+
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, browser, config, ssh_host):
+    def test_ecs_snapshot_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -134,7 +148,11 @@ class TestECSScenario:
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
             # ecs_page.goto_service('弹性云服务器')
             ecs_page.goto_submenu('弹性云服务器')
-            new_vm_mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, new_vm)
+            new_meta = collect_vm_metadata(ecs_page, ssh_host, new_vm)
+            new_vm_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, new_meta["port_id"],
+                project_id=new_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(new_vm_mfip)
 
             # 快照新建的虚机重新mount数据盘，验证md5值
@@ -162,7 +180,7 @@ class TestECSScenario:
     @allure.title("验证虚机绑定亲和组批量迁移功能")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 3}, "bind_mfip": False}], indirect=True)
     @skip_if_nodes_less_than(2)
-    def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host, cleanup):
+    def test_ecs_bind_group_migration(self, ecs_page, vm, ssh_host):
         policy = "亲和"
         if isinstance(vm, list) and len(vm) > 1:
             names = [vm[i].get("name") for i in range(len(vm))]
@@ -177,7 +195,6 @@ class TestECSScenario:
         with allure_step_log(f"步骤1: 创建{policy}组: {group_name}"):
             ecs_page.goto_service("弹性云服务器")
             ecs_page.ecs_create_affinity_group(group_name, policy)
-            cleanup.append(lambda: ecs_page.ecs_delete_affinity_group(group_name))
 
         with allure_step_log(f"步骤2: 验证{policy}组创建结果"):
             # ecs_page.assert_popup_success("执行成功")
@@ -228,3 +245,7 @@ class TestECSScenario:
                 ecs_page.wait_for_source_complete(name)
                 nodes.append(ssh_host.guest_show(ecs_id).get("node"))
             assert len(set(nodes)) >= 1
+
+        with allure_step_log(f"步骤10: 删除{policy}组: {group_name}"):
+            ecs_page.ecs_delete_affinity_group(group_name)
+            ecs_page.assert_deleted(group_name, refresh= True)

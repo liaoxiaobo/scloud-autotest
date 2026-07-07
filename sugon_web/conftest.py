@@ -38,8 +38,7 @@ def pytest_addoption(parser):
     parser.addoption("--browser-type", action="store", help="指定浏览器类型 (chromium/firefox/webkit)")
     parser.addoption("--headless", action="store", help="是否无头模式 (true/false)")
     parser.addoption("--stor", action="store", help="指定存储类型")
-    parser.addoption("--username", action="store", help="登录用户名")
-    parser.addoption("--password", action="store", help="登录密码")
+    parser.addoption("--user-role", action="store", default=None, help="指定测试用户角色 (admin/dept_admin/user)，未指定时使用 base.yaml 中的 user_role")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
     parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
     parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
@@ -227,6 +226,21 @@ def pytest_collection_modifyitems(config, items):
         if stor:
             item.add_marker(allure.tag(f"stor:{stor}"))
 
+    # 非 admin 角色自动跳过尚未适配的 admin 专属用例
+    user_role = config.getoption("--user-role")
+    if user_role is None:
+        # pytest_collection_modifyitems 在 config fixture 之前运行，
+        # 需要手动加载 base.yaml 才能读取默认 user_role
+        Config.load(host=config.getoption("--host"))
+        user_role = Config.get("user_role", "admin")
+    if user_role != "admin":
+        skip_marker = pytest.mark.skip(
+            reason=f"当前用例仅支持 admin 执行，暂未适配测试用户角色 '{user_role}'"
+        )
+        for item in items:
+            if item.get_closest_marker("requires_admin"):
+                item.add_marker(skip_marker)
+
 
 @pytest.fixture(scope="session")
 def config(pytestconfig):
@@ -236,8 +250,7 @@ def config(pytestconfig):
     browser_type = pytestconfig.getoption("--browser-type")
     headless = pytestconfig.getoption("--headless")
     stor = pytestconfig.getoption("--stor")
-    username = pytestconfig.getoption("--username")
-    password = pytestconfig.getoption("--password")
+    user_role = pytestconfig.getoption("--user-role")
 
     # 加载配置
     Config.load(host=host)
@@ -247,9 +260,20 @@ def config(pytestconfig):
         browser=browser_type,
         headless=headless,
         stor=stor,
-        username=username,
-        password=password
+        user_role=user_role
     )
+
+    # 根据当前角色从 users 配置中读取登录凭据
+    resolved_role = Config.get("user_role", "admin")
+    users = Config.get("users", {})
+    role_cfg = users.get(resolved_role, {})
+    username = role_cfg.get("username", "")
+    password = role_cfg.get("password", "")
+    if not username or not password:
+        logger.warning(f"未找到角色 '{resolved_role}' 的登录凭据配置，请检查 base.yaml/env.yaml 中的 users 配置")
+    Config.set("username", username)
+    Config.set("password", password)
+
     logger.info(f"测试配置加载完成: {Config.get()}")
     return Config
 
@@ -326,6 +350,83 @@ def browser_context(browser, request):
     logger.info("浏览器上下文已关闭")
 
 
+def _get_admin_credentials(config):
+    """获取 admin 账号密码，优先使用 users.admin 配置。"""
+    admin_cfg = config.get("users", {}).get("admin", {})
+    username = admin_cfg.get("username")
+    password = admin_cfg.get("password")
+    if not username or not password:
+        logger.warning("未配置 users.admin 凭据，admin 相关操作将回退到当前角色凭据")
+        username = config.get("username")
+        password = config.get("password")
+    return username, password
+
+
+def _create_admin_logged_in_page(admin_browser_context, config):
+    """基于 admin browser context 创建并返回一个已登录的 admin page。"""
+    from sugon_web.common.auth import prepare_page_session
+
+    base_url = config.get("base_url")
+    username, password = _get_admin_credentials(config)
+
+    logger.info("创建 admin page...")
+    page = admin_browser_context.new_page()
+
+    try:
+        prepare_page_session(page, config, username=username, password=password)
+
+        # 安全网：若URL异常（如 no-permission），重新加载以恢复
+        if "no-permission" in page.url:
+            logger.info(f"admin page 在 no-permission，尝试重新加载恢复...")
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+
+        base_page_obj = BasePage(page)
+        base_page_obj.close_dialog_if_exists()
+
+        logger.info("admin page 创建并登录成功")
+        return page
+    except Exception:
+        page.close()
+        raise
+
+
+@pytest.fixture(scope="session")
+def admin_browser_context(browser, config):
+    """
+    Session 级 admin 浏览器上下文。
+
+    用于普通用户角色执行测试时，需要 admin 权限的辅助操作
+    （如 ops 页面、MFIP 绑定、环境准备等）。
+    上下文在 session 开始时完成 admin 登录并复用登录态，
+    避免每次需要 admin 操作时都重新登录。
+    """
+    logger.info("开始初始化 admin browser context")
+
+    context = browser.new_context(
+        ignore_https_errors=True,  # 忽略 SSL 错误
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
+    )
+
+    try:
+        warmup_page = _create_admin_logged_in_page(context, config)
+        logger.info("admin browser context 登录成功")
+        warmup_page.close()
+    except Exception as e:
+        context.close()
+        logger.error(f"admin browser context 初始化失败: {e}")
+        raise
+
+    logger.info("admin browser context 初始化成功")
+    yield context
+
+    logger.info("admin browser context 关闭中...")
+    context.close()
+    logger.info("admin browser context 已关闭")
+
+
 def _create_logged_in_page(browser_context, config):
     """基于给定的 context 创建并返回一个已登录页面。"""
     from sugon_web.common.auth import prepare_page_session
@@ -370,6 +471,21 @@ def _create_logged_in_page(browser_context, config):
 
     page.close = _close_with_screenshot
     return page
+
+
+@pytest.fixture(scope="function")
+def admin_page(admin_browser_context, config):
+    """
+    Function 级 admin page。
+
+    从 admin_browser_context 创建新 page，复用 admin 登录态。
+    每个测试方法获得独立的 admin page，避免页面状态互相污染。
+    """
+    page = _create_admin_logged_in_page(admin_browser_context, config)
+    try:
+        yield page
+    finally:
+        page.close()
 
 
 @pytest.fixture(scope="function")
