@@ -2734,7 +2734,17 @@ class OssPage(BasePage):
         每次均重新从桶列表点击桶名称，确保 ``sessionStorage.owner`` 被正确设置，
         否则 admin 用户在对象列表/标签等页面会被 ``is_disabled()`` 判定为无权限，
         导致操作按钮被禁用、左侧菜单被隐藏。
+
+        若当前已在目标桶详情页，直接返回，避免重复从列表页导航导致 Jenkins
+        桶数量多时列表搜索/分页不稳定。
         """
+        if f"/bucket-list-page-detail/{bucket_name}" in self.page.url:
+            # 仍在目标桶详情页，左侧菜单已渲染即可
+            if (
+                self.page.locator("text=桶详情").count() > 0
+                or self.page.locator(".bucket-detail-left-menu").count() > 0
+            ):
+                return
         self._ensure_bucket_list()
         self.page.wait_for_timeout(2000)
         link = self.page.get_by_text(bucket_name, exact=True).first
@@ -2759,15 +2769,27 @@ class OssPage(BasePage):
 
     def _search_in_bucket_list(self, name):
         """在桶列表页搜索指定桶名称。"""
-        search = self.page.locator('input[placeholder*="桶名称"], input[placeholder*="搜索"]').first
+        search = self.page.locator(
+            'input[placeholder*="桶名称"], input[placeholder*="搜索桶"], '
+            'input[placeholder*="按桶名称"], input[placeholder*="搜索"]'
+        ).first
         if search.count() == 0:
             return
-        search.click()
-        search.fill("")
-        self.page.wait_for_timeout(300)
-        search.fill(name)
-        self.page.keyboard.press("Enter")
-        self.page.wait_for_timeout(3000)
+        try:
+            search.wait_for(state="visible", timeout=10000)
+            search.click()
+            # 清空旧内容（Ctrl+A 后 Delete，兼容中文输入法）
+            search.fill("")
+            self.page.keyboard.press("Control+a")
+            self.page.keyboard.press("Delete")
+            self.page.wait_for_timeout(300)
+            search.fill(name)
+            self.page.keyboard.press("Enter")
+            # 等待列表加载完成
+            self._wait_for_bucket_list_loaded()
+        except Exception:
+            # 搜索失败不阻断，外层仍会尝试直接定位
+            pass
 
     def _close_task_drawer_if_exists(self):
         """关闭上传任务列表抽屉（如果存在），避免遮挡页面操作。"""
