@@ -1,3 +1,4 @@
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.testcase.iam._iam_helpers import modify_and_assert_quota, filter_quota_service_type
@@ -6,6 +7,7 @@ from sugon_web.testcase.iam._iam_helpers import modify_and_assert_quota, filter_
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-组织结构树')
 @allure.story('修改组织配额')
+@pytest.mark.requires_admin
 class TestIamOrgQuota:
 
     @allure.title("IAM-组织管理-一级组织修改计算配额")

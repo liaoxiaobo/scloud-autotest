@@ -10,6 +10,7 @@ from sugon_web.testcase.iam._iam_helpers import verify_login
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('修改用户')
+@pytest.mark.requires_admin
 class TestIamTenantUserModify:
     """运营-租户-用户管理列表页入口：修改用户（用例3435）"""
 
@@ -131,6 +132,7 @@ class TestIamTenantUserModify:
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('用户管理-基础操作')
+@pytest.mark.requires_admin
 class TestIamTenantUserBasicOps:
     """运营-租户-用户管理列表页入口：状态变更、重置密码、过期时间（用例3436/3437/3438）"""
 
@@ -213,6 +215,7 @@ class TestIamTenantUserBasicOps:
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('访问控制-IP')
+@pytest.mark.requires_admin
 class TestIamTenantAclIP:
     """运营-租户-用户管理列表页入口：访问控制-IP（用例3439-IP部分）"""
 
@@ -242,6 +245,7 @@ class TestIamTenantAclIP:
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('访问控制-日期')
+@pytest.mark.requires_admin
 class TestIamTenantAclDate:
     """运营-租户-用户管理列表页入口：访问控制-日期（用例3439-日期部分）"""
 
@@ -284,6 +288,7 @@ class TestIamTenantAclDate:
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('访问控制-时间')
+@pytest.mark.requires_admin
 class TestIamTenantAclTime:
     """运营-租户-用户管理列表页入口：访问控制-时间（用例3439-时间部分）"""
 
@@ -323,6 +328,7 @@ class TestIamTenantAclTime:
 @allure.epic('身份认证IAM')
 @allure.feature('用户管理')
 @allure.story('访问控制-组合')
+@pytest.mark.requires_admin
 class TestIamTenantAclCombined:
     """运营-租户-用户管理列表页入口：访问控制-组合（用例3439-组合部分）"""
 

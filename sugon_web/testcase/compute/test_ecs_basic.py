@@ -2,8 +2,9 @@ import re
 import time
 import pytest
 import allure
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.config.config import Config
-from sugon_web.testcase.compute._ecs_helpers import bind_vm_mfip, delete_ecs
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data, retry_check
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than, skip_arch
@@ -155,7 +156,7 @@ class TestECSBasic:
             ecs_page.ecs_edit(new_name, name)
 
     @allure.title("弹性云服务器-克隆")
-    def test_ecs_clone(self, ecs_page, vm, ssh_vm, browser, config, ssh_host, cleanup):
+    def test_ecs_clone(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
 
@@ -166,7 +167,6 @@ class TestECSBasic:
         with allure_step_log(f"步骤2: 克隆弹性云服务器{name}"):
             clone_name = random_data()
             ecs_page.ecs_clone(name, clone_name, 'Autotest', 'Autotest', {})
-            cleanup.append(lambda: delete_ecs(ecs_page, clone_name))  # 立即登记，后续步骤失败也兜底清理
 
         with allure_step_log(f"步骤3: 验证克隆结果{clone_name}"):
             ecs_page.assert_popup_success(f"{name}实例克隆成功")
@@ -176,10 +176,20 @@ class TestECSBasic:
             ecs_page.assert_image_name(clone_name, image_name)
 
             # 克隆后的虚机绑定mfip，验证md5值
-            mfip = bind_vm_mfip(ecs_page, ssh_host, browser, config, clone_name)
+            clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
+            mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, clone_meta["port_id"],
+                project_id=clone_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip)
             md5_new = ssh_vm.run(f"md5sum /home/{name}")
             assert md5 in md5_new, f"克隆后系统盘数据MD5不一致，原始数据:{md5},克隆后数据:{md5_new}"
+
+        with allure_step_log(f"步骤4: 清理测试数据{clone_name}"):
+            ecs_page.goto_service('弹性云服务器')
+            ecs_page.ecs_remove(clone_name)
+            ecs_page.ecs_delete(clone_name)
+            ecs_page.assert_deleted(clone_name)
 
     @allure.title("弹性云服务器-重建")
     def test_ecs_rebuild(self, ecs_page, vm, ssh_vm):
@@ -415,7 +425,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-创建镜像")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
-    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, browser, config, ssh_host, cleanup):
+    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
         image_name = random_data(length=10)
@@ -425,7 +435,6 @@ class TestECSBasic:
             ssh_vm.connect(vm['mfip'])
             md5 = ssh_vm.create_file(name)
             ecs_page.ecs_create_image(name, image_name)
-            cleanup.append(lambda: ecs_page.ecs_image_delete(image_name))
 
         with allure_step_log("步骤2: 验证创建结果"):
             ecs_page.assert_popup_success("创建实例镜像成功")
@@ -444,12 +453,26 @@ class TestECSBasic:
             ecs_page.assert_popup_success("创建实例命令下发成功")
             # ecs_page.wait_for_source_complete(image_vm)
             ecs_page.assert_status(image_vm)
-            cleanup.append(lambda: delete_ecs(ecs_page, image_vm))
 
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
-            mfip_new = bind_vm_mfip(ecs_page, ssh_host, browser, config, image_vm)
+            image_meta = collect_vm_metadata(ecs_page, ssh_host, image_vm)
+            mfip_new = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, image_meta["port_id"],
+                project_id=image_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip_new)
             assert md5 in ssh_vm.run(f"md5sum {name}"), f"新创建的云服务器的md5值{ssh_vm.run(f'md5sum {name}')}与源云服务器{md5}不一致"
+
+        with allure_step_log("步骤5: 清理测试数据"):
+            # 删除测试云服务器
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.ecs_remove(image_vm)
+            ecs_page.ecs_delete(name)
+            ecs_page.assert_deleted(image_vm)
+            # 删除测试镜像
+            ecs_page.goto_submenu("镜像服务")
+            ecs_page.ecs_image_delete(image_name)
+            ecs_page.assert_deleted(image_name, refresh=True)
 
     @allure.title("弹性云服务器-热迁移（手动指定节点）")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": True}], indirect=True)

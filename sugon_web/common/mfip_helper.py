@@ -18,7 +18,6 @@ helper.bind_mfip_for_vm(vm_data={"name": "vm-01", "port_id": "port-xxx"})
 """
 
 import json
-from typing import Any
 
 from playwright.sync_api import Page
 
@@ -160,55 +159,21 @@ class MfipHelper:
         return result
 
     @staticmethod
-    def _create_admin_page(browser, config) -> tuple[Any, Any]:
-        """创建独立的 admin 登录页面和 browser_context。
-
-        调用方需负责关闭返回的 context。
-
-        Args:
-            browser: Playwright Browser 实例。
-            config: 配置对象，需包含 ``base_url`` 及 admin 凭据。
-
-        Returns:
-            (page, context) 元组。
-        """
-        admin_username = config.get("admin_username", "admin")
-        admin_password = config.get(
-            "admin_password", config.get("password", "keystone_sugon")
-        )
-
-        context = browser.new_context(ignore_https_errors=True)
-        page = context.new_page()
-
-        try:
-            prepare_page_session(
-                page,
-                config,
-                username=admin_username,
-                password=admin_password,
-            )
-        except Exception as exc:
-            context.close()
-            raise RuntimeError(f"admin 登录失败: {exc}") from exc
-
-        return page, context
-
-    @staticmethod
     def bind_mfip_with_admin_context(
-        browser,
+        admin_browser_context,
         config,
         port_id: str,
         project_id: str = "admin-inner-project",
         mfip_address: str = "",
     ) -> str:
-        """创建 admin browser context 并通过 API 绑定 MFIP，返回分配的 MFIP 地址。
+        """使用 admin browser context 绑定 MFIP，返回分配的 MFIP 地址。
 
         调用方需先自行准备好 ``port_id`` 和 ``project_id``（例如通过 SSH
-        ``guest_show`` 查询）。本方法只负责：创建 admin 登录态 → 调绑定 API
-        → 返回 ``mfip_address``。
+        ``guest_show`` 查询）。本方法只负责：从 admin_browser_context 创建
+        admin page → 调绑定 API → 返回 ``mfip_address``。
 
         Args:
-            browser: Playwright Browser 实例，用于创建 admin context。
+            admin_browser_context: 已登录 admin 的 Playwright BrowserContext 实例。
             config: 配置对象，需提供 ``base_url`` 及 admin 凭据。
             port_id: 网卡端口 ID。
             project_id: 项目 ID，默认 admin-inner-project。
@@ -220,15 +185,25 @@ class MfipHelper:
         Raises:
             RuntimeError: API 调用失败或响应中未返回 ``mfip_address``。
         """
-        admin_page, admin_context = MfipHelper._create_admin_page(browser, config)
+        admin_cfg = config.get("users", {}).get("admin", {})
+        admin_username = admin_cfg.get("username") or config.get("username", "admin")
+        admin_password = admin_cfg.get("password") or config.get("password", "keystone_sugon")
+
+        admin_page = admin_browser_context.new_page()
         try:
+            prepare_page_session(
+                admin_page,
+                config,
+                username=admin_username,
+                password=admin_password,
+            )
             result = MfipHelper(admin_page).bind_mfip(
                 port_id=port_id,
                 mfip_address=mfip_address,
                 project_id=project_id,
             )
         finally:
-            admin_context.close()
+            admin_page.close()
 
         assigned_mfip = (
             result.get("content", {}).get("mfip_address")

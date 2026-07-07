@@ -132,10 +132,45 @@ def obs_page(page):
 
 
 @pytest.fixture(scope="function")
-def ops_page(page):
-    """初始化运维管理页对象"""
-    ops_page = OpsPage(page)
-    return ops_page
+def ops_page(request):
+    """初始化运维管理页对象。
+
+    admin 角色直接使用当前 page；非 admin 角色自动切换为 admin_page，
+    以支持普通用户执行测试时用 admin 权限操作基础设施服务。
+    """
+    user_role = Config.get("user_role", "admin")
+    if user_role == "admin":
+        page = request.getfixturevalue("page")
+    else:
+        page = request.getfixturevalue("admin_page")
+    return OpsPage(page)
+
+
+@pytest.fixture(scope="class")
+def ops_page_class(browser_context, admin_browser_context, config):
+    """Class 级运维管理页对象。
+
+    供 class-scoped fixture（如 backup 的 ``vm_backup``）使用。
+    admin 角色使用 ``browser_context`` 创建 page；非 admin 角色使用
+    ``admin_browser_context`` 创建 admin page，以支持非 admin 用户执行
+    依赖基础设施服务的资源准备。
+
+    与 ``ops_page`` 的区别：
+    - ``ops_page`` 为 function 级，每个测试方法独立 page。
+    - ``ops_page_class`` 为 class 级，同一测试类内共享 page。
+    """
+    from sugon_web.conftest import _create_admin_logged_in_page, _create_logged_in_page
+
+    user_role = Config.get("user_role", "admin")
+    if user_role == "admin":
+        page = _create_logged_in_page(browser_context, config)
+    else:
+        page = _create_admin_logged_in_page(admin_browser_context, config)
+
+    try:
+        yield OpsPage(page)
+    finally:
+        page.close()
 
 
 @pytest.fixture(scope="function")
@@ -147,6 +182,7 @@ def bms_page(page):
 @pytest.fixture(scope="class")
 def vm(
     browser_context: Any,
+    admin_browser_context: Any,
     config: Any,
     request: pytest.FixtureRequest,
     ssh_host: Any,
@@ -297,7 +333,7 @@ def vm(
                 )
 
                 if instance_config.get("bind_mfip", True):
-                    _bind_vm_fixture_mfips(page, config, current_metadata)
+                    _bind_vm_fixture_mfips(admin_browser_context, config, current_metadata)
 
                 metadata_list.extend(current_metadata)
         else:
@@ -319,7 +355,7 @@ def vm(
             )
 
             if bind_mfip:
-                _bind_vm_fixture_mfips(page, config, metadata_list)
+                _bind_vm_fixture_mfips(admin_browser_context, config, metadata_list)
 
         # 单实例返回字典，多实例返回列表
         yield metadata_list[0] if len(metadata_list) == 1 else metadata_list
@@ -379,7 +415,6 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        # vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []
