@@ -266,7 +266,7 @@ class EcsNetworkMixin(BasePage):
         if not dialog.is_visible():
             dialog = self.get_by_role("dialog").filter(has_text="设置安全组").last
 
-        self._expand_page_size("50")
+        self._expand_page_size("50", dialog)
 
         for sg in sg_names:
             # 找到对应行并勾选

@@ -403,46 +403,54 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
-    def _expand_page_size(self, target_size: str = "50") -> bool:
+    def _expand_page_size(self, target_size: str = "50", container: Locator | None = None) -> bool:
         """尝试将当前交互上下文中的分页条数扩大。
 
-        自动按优先级探测分页器位置：可见 dialog → 激活 tab → 主内容区 → 页面全局。
-        调用方无需关心自身处于弹窗、Tab 页还是主页面。
+        支持显式传入 container（如弹窗），未传入时按优先级自动探测：
+        含 sizes 的 dialog → 激活 tab → 主内容区 → 页面全局。
+        探测和点击均使用 wait_for 等待可见，避免弹窗动画或异步渲染导致误判。
 
         点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
         若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
 
         Args:
             target_size: 目标分页条数，默认 "50"
+            container: 可选，指定分页器所在容器 Locator（如弹窗）。
 
         Returns:
             bool: 是否成功调整分页条数
         """
-        # 按优先级构建候选触发器
-        candidate_triggers = [
-            self.get_by_role("dialog")
-                .filter(has=self.page.locator(".el-pagination"))
-                .locator(".el-pagination__sizes .el-input__inner")
-                .first,
-            self.locator(".el-tab-pane:not([aria-hidden='true']) .el-pagination__sizes .el-input__inner")
-                .first,
-            self.locator("#cloud-container-content .el-pagination__sizes .el-input__inner")
-                .first,
-            self.locator(".el-pagination__sizes .el-input__inner")
-                .first,
-        ]
-
-        size_trigger = None
-        for trigger in candidate_triggers:
-            try:
-                if trigger.count() > 0 and trigger.is_visible():
-                    size_trigger = trigger
+        # 确定搜索容器：显式传入 > dialog > 激活 tab > 主内容区
+        search_scope = None
+        if container is not None:
+            search_scope = container
+        else:
+            candidate_scopes = [
+                self.get_by_role("dialog").filter(has=self.page.locator(".el-pagination__sizes")),
+                self.locator(".el-tab-pane:not([aria-hidden='true'])"),
+                self.locator("#cloud-container-content"),
+                self.page.locator("body"),
+            ]
+            for scope in candidate_scopes:
+                try:
+                    if scope.count() == 0:
+                        continue
+                    scope.wait_for(state="visible", timeout=2000)
+                    search_scope = scope
                     break
-            except Exception:
-                continue
+                except Exception:
+                    continue
 
-        if size_trigger is None:
-            self.logger.debug("未找到可见的分页条数切换器")
+        if search_scope is None:
+            self.logger.debug("未找到可见的分页器容器")
+            return False
+
+        # 在确定容器内查找分页条数切换器
+        try:
+            size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
+            size_trigger.wait_for(state="visible", timeout=5000)
+        except Exception as e:
+            self.logger.debug(f"未找到可见的分页条数切换器: {e}")
             return False
 
         try:
@@ -454,30 +462,38 @@ class TablesMixin:
             pass
 
         try:
-            size_trigger.click()
+            size_trigger.click(timeout=5000)
             self.page.wait_for_timeout(500)
 
-            # 下拉选项限定在 el-select-dropdown 内，避免误点其他 select 组件
-            for size in [f"{target_size}条/页", "100条/页", "50条/页"]:
-                option = self.locator("div.el-select-dropdown:visible li").filter(has_text=size).last
-                if option.count() > 0 and option.is_visible():
-                    option.click()
-                    if hasattr(self, "wait_for_page_ready"):
-                        self.wait_for_page_ready()
-                    else:
-                        try:
-                            self.page.locator(".el-loading-mask").wait_for(state="hidden", timeout=5000)
-                        except Exception:
-                            self.page.wait_for_timeout(1000)
-                    self.logger.info(f"分页条数已调整为 {size}")
-                    return True
+            # Element UI select dropdown 可能 teleport 到 body，优先在传入容器内查找，
+            # 容器内找不到再回退到全局可见下拉。
+            for size_text in [f"{target_size}条/页", "100条/页", "50条/页"]:
+                option = None
+                try:
+                    option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                    option.wait_for(state="visible", timeout=2000)
+                except Exception:
+                    option = self.page.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                    option.wait_for(state="visible", timeout=2000)
+
+                option.click(timeout=5000)
+                if hasattr(self, "wait_for_page_ready"):
+                    self.wait_for_page_ready()
+                else:
+                    try:
+                        self.page.locator(".el-loading-mask").wait_for(state="hidden", timeout=5000)
+                    except Exception:
+                        self.page.wait_for_timeout(1000)
+                self.logger.info(f"分页条数已调整为 {size_text}")
+                return True
 
             # 点开了下拉但没找到选项，关闭下拉避免遮挡后续操作
             self.page.keyboard.press("Escape")
+            self.logger.warning(f"未找到目标分页选项 {target_size}，已关闭下拉")
             return False
 
         except Exception as e:
-            self.logger.debug(f"扩大分页条数失败: {e}")
+            self.logger.warning(f"扩大分页条数失败: {e}")
             return False
 
     def select_rows_by_names(self, names: list[str]) -> None:
