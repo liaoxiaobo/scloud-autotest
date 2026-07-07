@@ -2570,7 +2570,9 @@ class OssPage(BasePage):
     def oss_bucket_get_fragments(self, bucket_name):
         """获取桶碎片列表。
 
-        通过 UI 导航到碎片页面，提取表格中展示的碎片数据。
+        通过 UI 导航到碎片页面，并以 OSS 内部 API 作为权威数据源返回碎片数据。
+        此前直接解析 DOM 时会把"大小"列文本误判为 objectKey，导致数量翻倍；
+        API 列表与 UI 表格同源，且能稳定返回准确的 objectKey / uploadId / size / num。
 
         Args:
             bucket_name: 桶名称。
@@ -2579,57 +2581,7 @@ class OssPage(BasePage):
             list[dict]: 碎片列表，每项包含 objectKey、num（碎片数量）、size、uploadId 等。
         """
         self.oss_bucket_goto_fragment_tab(bucket_name)
-
-        # 轮询等待碎片列表加载
-        for attempt in range(10):
-            fragments = []
-
-            # 策略1：从 Vue 实例读取碎片列表数据
-            vue_fragments = self.page.evaluate("""
-                () => {
-                    const all = document.querySelectorAll('*');
-                    for (let i = 0; i < all.length; i++) {
-                        const el = all[i];
-                        if (el && el.__vue__ && el.__vue__.gridObj && el.__vue__.gridObj.data) {
-                            return el.__vue__.gridObj.data
-                                .map(item => ({
-                                    objectKey: item.objectKey,
-                                    num: item.num,
-                                    size: item.size,
-                                    uploadId: item.uploadId,
-                                    lastModified: item.lastModified,
-                                }));
-                        }
-                    }
-                    return [];
-                }
-            """)
-            if vue_fragments:
-                return vue_fragments
-
-            # 策略2：通过表格行提取碎片数据
-            rows = self.page.locator(".el-table__body-wrapper tr, .cl-table-body tr").all()
-            for row in rows:
-                try:
-                    cells = row.locator("td").all()
-                    if len(cells) >= 4:
-                        # 碎片表格列：复选框 | 对象名称 | 碎片数量 | 大小 | 上传ID | 最后修改时间 | 操作
-                        object_key = cells[1].inner_text().strip()
-                        if object_key and object_key not in ("对象名称", "--", "标准存储"):
-                            fragments.append({
-                                "objectKey": object_key,
-                                "num": cells[2].inner_text().strip(),
-                                "size": cells[3].inner_text().strip(),
-                            })
-                except Exception:
-                    continue
-
-            if fragments:
-                return fragments
-
-            self.page.wait_for_timeout(3000)
-
-        return []
+        return self.oss_bucket_list_fragments_via_api(bucket_name)
 
     def oss_bucket_delete_fragment(self, bucket_name, fragment_name):
         """删除单个碎片。
