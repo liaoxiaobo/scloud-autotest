@@ -3,8 +3,9 @@ from sugon_web.common.playwright import expect
 from sugon_web.pages.kms import KmsPage
 from sugon_web.pages.storage.obs import ObsPage
 from sugon_web.pages.storage.oss import OssPage
-from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
+from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.conftest import _create_logged_in_page
 
 
 @pytest.fixture()
@@ -243,6 +244,101 @@ def oss_bucket(oss_page, request):
                 raise
 
 
+@pytest.fixture(scope="class")
+def oss_bucket_with_policy(browser_context, config, request):
+    """在 class 范围内创建一个OSS桶并预置一条公共读写桶策略。
+
+    同一测试类内复用该桶和策略，场景1编辑后场景2可继续复用。
+    """
+    from sugon_web.testcase.storage._oss_helpers import (
+        create_oss_bucket,
+        delete_oss_bucket,
+    )
+
+    page = _create_logged_in_page(browser_context, config)
+    oss_page = OssPage(page)
+    bucket_name = f"oss-{random_data()}"
+    policy_name = random_data()
+
+    try:
+        with allure_step_log(f"预置: 创建OSS桶 {bucket_name} 并添加策略 {policy_name}"):
+            oss_page.goto_service("对象存储")
+            create_oss_bucket(oss_page, name=bucket_name)
+            oss_page.oss_bucket_policy_create(
+                bucket_name=bucket_name,
+                policy_name=policy_name,
+                template_name="公共读写",
+            )
+        yield {"bucket_name": bucket_name, "policy_name": policy_name}
+    finally:
+        with allure_step_log(f"清理: 删除预置OSS桶 {bucket_name}"):
+            try:
+                delete_oss_bucket(oss_page, bucket_name)
+            except Exception as e:
+                logger.warning(f"删除预置OSS桶 {bucket_name} 失败: {e}")
+            try:
+                page.close()
+            except Exception as e:
+                logger.warning(f"关闭预置页面失败: {e}")
+
+
+@pytest.fixture()
+def copy_source_cleanup(oss_page):
+    """复制桶源场景的复制桶及源桶对象清理 fixture。
+
+    仅负责登记并按 OSS-复制桶源用例要求的顺序清理"复制桶"与"源桶内对象"，
+    源桶本身由 `oss_bucket` fixture 的 teardown 删除。用法：测试内调用
+    `register_copy_bucket(copy_name)` 登记复制桶、`register_source_object(bucket, obj)`
+    登记源桶内待清理对象。
+
+    清理顺序（teardown，先于 oss_bucket 的源桶删除执行）：
+        1. 删除复制桶内对象（复制桶通常为空，无对象则跳过）
+        2. 删除复制桶
+        3. 删除源桶内已上传对象（如 test01），使源桶为空以便 oss_bucket 删除
+
+    Yields:
+        dict: 含 register_copy_bucket / register_source_object 两个登记函数。
+    """
+    from sugon_web.testcase.storage._oss_helpers import delete_oss_bucket
+
+    copy_buckets = []
+    source_objects = []
+
+    def register_copy_bucket(name):
+        copy_buckets.append(name)
+
+    def register_source_object(bucket_name, object_name):
+        source_objects.append((bucket_name, object_name))
+
+    yield {
+        "register_copy_bucket": register_copy_bucket,
+        "register_source_object": register_source_object,
+    }
+
+    # 清理阶段：先复制桶（内对象→桶），再源桶内对象
+    with allure_step_log("清理: 删除复制桶与源桶内对象"):
+        for copy_name in copy_buckets:
+            try:
+                objects = oss_page.oss_bucket_get_objects(copy_name)
+                for obj in objects:
+                    try:
+                        oss_page.oss_bucket_delete_object(copy_name, obj)
+                    except Exception as e:
+                        logger.warning(f"删除复制桶 {copy_name} 内对象 {obj} 失败: {e}")
+            except Exception as e:
+                logger.warning(f"读取复制桶 {copy_name} 对象列表失败: {e}")
+            try:
+                delete_oss_bucket(oss_page, copy_name)
+            except Exception as e:
+                logger.warning(f"删除复制桶 {copy_name} 失败: {e}")
+
+        for bucket_name, object_name in source_objects:
+            try:
+                oss_page.oss_bucket_delete_object(bucket_name, object_name)
+            except Exception as e:
+                logger.warning(f"删除源桶 {bucket_name} 内对象 {object_name} 失败: {e}")
+
+
 @pytest.fixture()
 def evss_policy(evs_page):
     """创建并返回一个快照策略，测试结束后自动清理。"""
@@ -319,3 +415,86 @@ def kms_key(kms_page, request):
     kms_page.goto_service("可信密码模块")
     kms_page.kms_delete(key_name)
     kms_page.assert_deleted(key_name)
+
+
+@pytest.fixture()
+def oss_object_acl_page(page):
+    """初始化对象 ACL 页面对象并导航到对象存储服务页。"""
+    from sugon_web.pages.storage.oss_object_acl import OssObjectAclPage
+
+    acl_page = OssObjectAclPage(page)
+    acl_page.goto_service("对象存储")
+    return acl_page
+
+
+@pytest.fixture(scope="class")
+def oss_object_acl_env(browser_context, config, request):
+    """在 class 范围内创建共享的 OSS 桶、对象及初始环境。
+
+    三个场景（新增/编辑/删除对象 ACL）共享同一源桶 bucket01 和同一对象 test01，
+    并在 teardown 中按 ACL -> 对象 -> 桶的顺序统一清理。
+
+    Yields:
+        dict: 包含 bucket_name、object_name、account_id、temp_file 等共享数据。
+    """
+    import os
+    import tempfile
+
+    from sugon_web.pages.storage.oss import OssPage
+    from sugon_web.pages.storage.oss_object_acl import OssObjectAclPage
+    from sugon_web.testcase.storage._oss_helpers import (
+        create_oss_bucket,
+        delete_oss_bucket,
+        delete_oss_object,
+        upload_oss_object,
+    )
+
+    import shutil
+
+    page = _create_logged_in_page(browser_context, config)
+    oss_page = OssPage(page)
+    acl_page = OssObjectAclPage(page)
+
+    bucket_name = f"oss-{random_data()}"
+    object_name = "test01"
+    account_id = "9e385563c24245439562482429342d2a"
+
+    temp_dir = tempfile.mkdtemp(prefix="oss_acl_")
+    temp_file = os.path.join(temp_dir, object_name)
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            f.write("object acl test content")
+
+        with allure_step_log(f"预置: 创建OSS桶 {bucket_name} 并上传对象 {object_name}"):
+            create_oss_bucket(oss_page, name=bucket_name)
+            upload_oss_object(oss_page, bucket_name, temp_file)
+
+        yield {
+            "bucket_name": bucket_name,
+            "object_name": object_name,
+            "account_id": account_id,
+            "temp_file": temp_file,
+            "page": page,
+        }
+    finally:
+        with allure_step_log("清理: 删除对象ACL、对象、桶"):
+            try:
+                acl_page.oss_object_acl_delete_all(bucket_name, object_name)
+            except Exception as e:
+                logger.warning(f"清理对象 ACL 失败（可能已不存在）: {e}")
+            try:
+                delete_oss_object(oss_page, bucket_name, object_name)
+            except Exception as e:
+                logger.warning(f"删除对象 {bucket_name}/{object_name} 失败: {e}")
+            try:
+                delete_oss_bucket(oss_page, bucket_name)
+            except Exception as e:
+                logger.warning(f"删除OSS桶 {bucket_name} 失败: {e}")
+            try:
+                page.close()
+            except Exception as e:
+                logger.warning(f"关闭预置页面失败: {e}")
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception as e:
+            logger.warning(f"删除临时目录 {temp_dir} 失败: {e}")
