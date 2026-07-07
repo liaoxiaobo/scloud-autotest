@@ -112,6 +112,32 @@ class OssPage(BasePage):
             self.page.wait_for_load_state("domcontentloaded")
             self.page.wait_for_timeout(3000)
         self.page.wait_for_timeout(3000)
+        self._ensure_session_owner()
+
+    def _ensure_session_owner(self):
+        """将 ``sessionStorage.owner`` 设置为当前登录用户 ID。
+
+        OSS 微前端多个页面（桶详情、对象列表、生命周期规则等）通过
+        ``is_disabled()`` 判断 admin 用户是否为桶所有者，若
+        ``sessionStorage.owner`` 为空或与当前用户 ID 不一致，会隐藏/禁用
+        ``上传对象``、``新建`` 等操作按钮。直接 URL 进入或某些 UI 回退场景
+        可能未经过桶列表页的 ``show_detail``，导致该值缺失，因此需要显式补齐。
+        """
+        try:
+            self.page.evaluate("""
+                () => {
+                    if (typeof GetUserInfo === 'function') {
+                        const userId = GetUserInfo('userId');
+                        if (userId) {
+                            sessionStorage.setItem('owner', userId);
+                            return userId;
+                        }
+                    }
+                    return null;
+                }
+            """)
+        except Exception:
+            pass
 
     def oss_bucket_enter_detail_via_ui(self, name):
         """通过桶列表页点击桶名称进入详情页（UI导航，避免直接URL触发权限拦截）。
@@ -183,6 +209,7 @@ class OssPage(BasePage):
         for _ in range(15):
             self.page.wait_for_timeout(1000)
             if f"/bucket-list-page-detail/{name}" in self.page.url:
+                self._ensure_session_owner()
                 return
             # 检查是否被重定向到 no-permission
             if "/no-permission" in self.page.url:
@@ -190,6 +217,13 @@ class OssPage(BasePage):
                     f"导航到桶 '{name}' 详情页被前端权限拦截，当前URL: {self.page.url}"
                 )
 
+        # URL 未变但 DOM 已渲染详情页也接受
+        if (
+            self.page.locator("text=桶详情").count() > 0
+            or self.page.locator(".bucket-detail-left-menu").count() > 0
+        ):
+            self._ensure_session_owner()
+            return
         raise AssertionError(
             f"导航到桶 '{name}' 详情页超时，当前URL: {self.page.url}"
         )
@@ -2748,6 +2782,7 @@ class OssPage(BasePage):
                 self.page.locator("text=桶详情").count() > 0
                 or self.page.locator(".bucket-detail-left-menu").count() > 0
             ):
+                self._ensure_session_owner()
                 return
         self._ensure_bucket_list()
         self.page.wait_for_timeout(2000)
@@ -2762,12 +2797,14 @@ class OssPage(BasePage):
         # 等待 URL 变化或页面渲染完成
         for _ in range(15):
             if f"/bucket-list-page-detail/{bucket_name}" in self.page.url:
+                self._ensure_session_owner()
                 return
             if "/no-permission" in self.page.url:
                 raise AssertionError(f"进入桶 {bucket_name} 详情页被权限拦截")
             self.page.wait_for_timeout(1000)
         # URL 未变但 DOM 已渲染详情页也接受
         if self.page.locator("text=桶详情").count() > 0 or self.page.locator(".bucket-detail-left-menu").count() > 0:
+            self._ensure_session_owner()
             return
         raise AssertionError(f"进入桶 {bucket_name} 详情页超时")
 
