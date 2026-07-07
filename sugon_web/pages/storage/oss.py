@@ -828,10 +828,14 @@ class OssPage(BasePage):
     def oss_bucket_enter_detail(self, name):
         """进入桶详情页。
 
+        通过桶列表页点击桶名称进入，确保 ``sessionStorage.owner`` 被正确设置，
+        否则 admin 用户在生命周期规则等页面会因 ``v-limit`` 权限控制看不到
+        ``新建`` 等操作按钮。
+
         Args:
             name: 桶名称。
         """
-        self._goto_bucket_detail(name)
+        self.oss_bucket_enter_detail_via_ui(name)
 
     def oss_bucket_detail_click_tag_tab(self, name=None):
         """导航到桶详情页的标签子页面。
@@ -3484,7 +3488,14 @@ class OssPage(BasePage):
         if days is not None and expiration_days is None:
             expiration_days = days
         self.oss_bucket_goto_lifecycle_page(bucket_name)
-        self.page.get_by_text("新建", exact=True).first.click()
+        # 限定在生命周期规则容器内点击“新建”，避免命中页面其它同名按钮
+        create_btn = (
+            self.page.locator(".lifeCycleRule-container")
+            .get_by_text("新建", exact=True)
+            .first
+        )
+        create_btn.wait_for(state="visible", timeout=15000)
+        create_btn.click()
         self.page.wait_for_timeout(2000)
         dialog = self.page.locator(".el-dialog:visible").first
         # 规则名称：弹窗内第一个普通文本输入框（避免命中状态 radio）
@@ -3640,7 +3651,14 @@ class OssPage(BasePage):
         """
         name = policy_name or name
         self.oss_bucket_goto_policy_page(bucket_name)
-        self.page.get_by_text("新建", exact=True).first.click()
+        # 限定在桶策略列表容器内点击“新建”
+        create_btn = (
+            self.page.locator(".bucket-strategy-list-container")
+            .get_by_text("新建", exact=True)
+            .first
+        )
+        create_btn.wait_for(state="visible", timeout=15000)
+        create_btn.click()
         self.page.wait_for_url(lambda url: "/permission/policy/create" in url, timeout=15000)
 
         # 选择模板：在包含模板名称的行内点击“使用模板创建”
