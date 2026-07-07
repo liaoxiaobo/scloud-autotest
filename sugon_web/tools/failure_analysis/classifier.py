@@ -62,19 +62,10 @@ ENVIRONMENT_KEYWORDS = (
     "系统升级中",
     "系统维护",
     "503",
-    "502",
-    "504",
-    "connection refused",
-    "could not connect",
-    "no such host",
-    "name or service not known",
-    "network is unreachable",
-    "temporary failure in name resolution",
-    "node offline",
-    "节点离线",
+    "没有可用节点",
+    "可分配IP数量不足",
     "资源不足",
-    "quota exceeded",
-    "insufficient",
+    "配额不足",
 )
 
 # 产品缺陷关键词：业务错误、状态不一致、后端返回错误等

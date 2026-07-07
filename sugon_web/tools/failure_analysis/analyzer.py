@@ -9,8 +9,14 @@ import re
 from pathlib import Path
 
 from sugon_web.tools.failure_analysis.aggregator import FailureGroup
+from sugon_web.tools.failure_analysis.classifier import FailureCategory
 from sugon_web.tools.failure_analysis.llm_client import call_llm
 from sugon_web.tools.failure_analysis.reporter import GroupAnalysis
+
+
+# 规则直通分类：这些分类命中时直接生成分析结果，不再调用 LLM。
+# 环境问题通常证据明确（如平台维护、503、SSH 不通等），适合规则直通。
+RULE_BASED_CATEGORIES = {FailureCategory.ENVIRONMENT}
 
 
 OUTPUT_SCHEMA = {
@@ -95,6 +101,28 @@ def build_analysis_prompt(
     return "\n".join(lines)
 
 
+def build_rule_based_analysis(group: FailureGroup) -> GroupAnalysis:
+    """对高置信度规则分类直接生成分析结果，跳过 LLM 调用。"""
+    category_label = group.category.label
+    signature = group.signature[:120]
+
+    return GroupAnalysis(
+        group=group,
+        root_cause=f"规则分类命中【{category_label}】：{signature}",
+        confidence="高",
+        evidence=[
+            f"错误信息匹配 {category_label} 关键词",
+            f"影响用例数 {group.count}",
+        ],
+        exclusions=[
+            "报错特征符合环境问题模式，非单条用例代码错误",
+            "非产品功能返回业务错误码或状态不一致",
+        ],
+        short_term_fix="检查测试环境可用性（平台状态、网络、资源、服务是否就绪）后重试",
+        long_term_fix="",
+    )
+
+
 def analyze_group(
     group: FailureGroup,
     system_prompt: str = "",
@@ -102,7 +130,10 @@ def analyze_group(
     provider: str = "deepseek",
     model: str = "",
 ) -> GroupAnalysis:
-    """对单个失败组进行 LLM 根因分析。
+    """对单个失败组进行根因分析。
+
+    若分类命中 RULE_BASED_CATEGORIES，直接返回规则分析结果，不调用 LLM。
+    否则调用 LLM 进行深度分析。
 
     Args:
         group: 相似失败聚合组。
@@ -114,6 +145,9 @@ def analyze_group(
     Returns:
         GroupAnalysis 对象。
     """
+    if group.category in RULE_BASED_CATEGORIES:
+        return build_rule_based_analysis(group)
+
     user_prompt = build_analysis_prompt(group, case_library)
     messages = [
         {"role": "system", "content": system_prompt or "你是自动化测试根因分析专家。"},
