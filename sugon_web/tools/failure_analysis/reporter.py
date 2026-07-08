@@ -76,29 +76,43 @@ def build_markdown_report(
         if g.count > 5:
             case_list += f" 等 {g.count} 个用例"
 
+        # 标题简短化，避免原始错误信息过长
+        short_signature = g.signature[:80]
+        title = f"[{g.category.label}] {short_signature}"
+
         lines.extend([
-            f"### {idx}. {g.signature}",
+            f"### {idx}. {title}",
+            f"- **原始错误**: {g.signature}",
             f"- **分类**: {g.category.label}",
-            f"- **影响用例数**: {g.count}",
-            f"- **用例列表**: {case_list}",
             f"- **置信度**: {analysis.confidence}",
+            f"- **影响范围**: {g.count} 个用例（{case_list}）",
             "",
-            "#### 结论",
+            "#### 根因",
             analysis.root_cause,
             "",
             "#### 关键证据",
         ])
-        for ev in analysis.evidence:
-            lines.append(f"- {ev}")
 
-        lines.extend(["", "#### 排除项"])
-        for ex in analysis.exclusions:
-            lines.append(f"- {ex}")
+        # 给证据加可信度标记，第一条最可信
+        for i, ev in enumerate(analysis.evidence):
+            if i == 0:
+                marker = "【直接证据】"
+            elif i == 1:
+                marker = "【间接证据】"
+            else:
+                marker = "【参考信息】"
+            lines.append(f"- {marker}{ev}")
 
-        lines.extend(["", "#### 修复建议"])
-        lines.append(f"- 短期：{analysis.short_term_fix}")
+        if analysis.exclusions:
+            lines.extend(["", "#### 排查补充"])
+            for ex in analysis.exclusions:
+                lines.append(f"- {ex}")
+
+        lines.extend(["", "#### 修复与验证"])
+        lines.append(f"- **建议修复**：{analysis.short_term_fix}")
+        lines.append("- **验证方法**：重新运行受影响用例，确认问题不再复现")
         if analysis.long_term_fix:
-            lines.append(f"- 长期：{analysis.long_term_fix}")
+            lines.append(f"- **长期建议**：{analysis.long_term_fix}")
         lines.append("")
 
     return "\n".join(lines)
