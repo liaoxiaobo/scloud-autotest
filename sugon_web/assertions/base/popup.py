@@ -32,10 +32,14 @@ class PopupAssertionMixin:
             # 兜底诊断：区分「出现了错误 toast」与「压根没等到 toast」
             any_popup = self.popup
             if any_popup.count() > 0:
+                popup_text = any_popup.first.inner_text().strip()
+                popup_class = any_popup.first.evaluate(
+                    "element => element.parentElement ? element.parentElement.className : ''"
+                )
                 raise AssertionError(
-                    f"[PopupAssertion] 弹窗 | 操作状态不匹配 | "
+                    f"[PopupAssertion] 弹窗 | 未捕获成功 toast | "
                     f"期望: 成功{f'(含 {text})' if text else ''} | "
-                    f"实际 toast: {any_popup.first.inner_text().strip()}"
+                    f"实际 toast: {popup_text} | class: {popup_class}"
                 )
             raise AssertionError(
                 f"[PopupAssertion] 弹窗 | 未捕获成功 toast | "
