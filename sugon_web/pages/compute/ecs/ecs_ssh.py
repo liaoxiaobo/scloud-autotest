@@ -58,18 +58,18 @@ class EcsSshMixin(BasePage):
             f"bs={self._CBR_TEST_BS} count={self._CBR_TEST_COUNT} 2>/dev/null && "
             f"sync",
             check_rc=True,
-            timeout=900,
+            timeout=600,
         )
         logger.info(f"{vol_name} 盘已生成 1GB 测试文件: {file_path}")
 
-        ssh_vm.run(
-            f"cd {curr_dir} && md5sum {self._CBR_TEST_FILE_NAME} > cbr_test_{vol_name}_md5.txt",
+        md5_val = ssh_vm.run(
+            f"cd {curr_dir} && md5sum {self._CBR_TEST_FILE_NAME} "
+            f"| tee cbr_test_{vol_name}_md5.txt "
+            f"| awk '{{print $1}}'",
             check_rc=True,
-        )
-        return ssh_vm.run(
-            f"cd {curr_dir} && md5sum {self._CBR_TEST_FILE_NAME} | awk '{{print $1}}'",
-            check_rc=True,
+            timeout=300,
         ).strip()
+        return md5_val
 
 
     def vm_pre_data(self, ssh_vm):
