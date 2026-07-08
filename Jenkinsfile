@@ -138,6 +138,8 @@ pipeline {
                             [ -n "$(ls -A "$d")" ] || continue
                             cp -rn "$d"/* allure-result/ || true
                         done
+                        # 合并后删除原 env-* 子目录，避免 AI/Allure 重复统计
+                        rm -rf allure-result/env-* || true
                     '''
 
                     // 保留allure历史数据
@@ -148,11 +150,45 @@ pipeline {
                     def allureDefaultHost = '172.22.1.190'
                     def allureDefaultStor = 'xstor'
                     sh "python3 sugon_web/tools/write_allure_environment.py --dispatch-json dispatch-jobs.json --output allure-result/environment.properties --default-host '${allureDefaultHost}' --default-stor '${allureDefaultStor}' --dispatch-source '${dispatchSource}'"
+
+                    // 生成 AI 失败分析报告（失败不影响 Allure 报告生成）
+                    script {
+                        try {
+                            withCredentials([
+                                string(credentialsId: 'deepseek-api-key', variable: 'DEEPSEEK_API_KEY')
+                            ]) {
+                                sh '''
+                                    python3 sugon_web/tools/failure_analysis_cli.py \
+                                        --results-dir allure-result \
+                                        --logs-dir logs \
+                                        --output reports/ai-test-summary.md \
+                                        --json-output reports/failure-report.json \
+                                        --provider deepseek \
+                                        --max-failures 100
+                                '''
+                            }
+                        } catch (err) {
+                            echo "AI report generation failed: ${err}"
+                        }
+                    }
                 }
             }
 
             // 生成 Allure 报告
             allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
+
+            // 归档 AI 报告等产物
+            archiveArtifacts artifacts: 'reports/*.md', allowEmptyArchive: true
+
+            // 留存 allure-result 作为 AI 分析调试输入材料
+            script {
+                try {
+                    sh "tar -czf allure-result-build-${env.BUILD_NUMBER}.tar.gz allure-result || true"
+                    archiveArtifacts artifacts: 'allure-result-build-*.tar.gz', allowEmptyArchive: true
+                } catch (err) {
+                    echo "Archive allure-result failed: ${err}"
+                }
+            }
 
             // 清理临时文件
             sh "rm -rf allure-result/env-* || true"
@@ -198,6 +234,16 @@ def sendNotification(String result) {
     } else if (params.HOSTS?.trim()) {
         dispatchSource = "HOSTS 参数: ${params.HOSTS}"
     }
+
+    // 读取 AI 报告摘要并做简单转义，避免破坏 JSON
+    def aiSummary = "未生成 AI 摘要"
+    if (fileExists('reports/ai-test-summary.md')) {
+        def rawSummary = readFile('reports/ai-test-summary.md')
+            .split('## 详细分析')[0]
+            .take(800)
+        aiSummary = rawSummary.replaceAll('\r?\n', '\\\\n').replace('"', '\\"')
+    }
+
     sh """
     curl -X POST -H "Content-Type: application/json" \\
         -d '{
@@ -209,7 +255,7 @@ def sendNotification(String result) {
                     "content": [
                         [{
                             "tag": "text",
-                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: 见 ENV_DISPATCH\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n"
+                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: 见 ENV_DISPATCH\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n\\nAI 摘要:\\n${aiSummary}\\n"
                         }, {
                             "tag": "a",
                             "text": "查看报告",
