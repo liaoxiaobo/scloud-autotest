@@ -74,13 +74,14 @@ class WaitsMixin:
             loading_timeout: 等待loading_selector出现的超时时间（秒），默认10秒
             complete_timeout: 等待loading_selector消失的超时时间（秒），默认180秒
         """
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         loading_timeout_ms = loading_timeout * 1000
         complete_timeout_ms = complete_timeout * 1000
         target_row = self.get_row_by_name(name)
         loading_icon = target_row.locator(".icon-dengdaizhong")
         try:
             loading_icon.wait_for(state="visible", timeout=loading_timeout_ms)
-        except TimeoutError:
+        except PlaywrightTimeoutError:
             self.logger.info(f"{name}资源中间态完成，当前无任务状态")
             return
 
@@ -92,6 +93,69 @@ class WaitsMixin:
                 f"{name}资源中间态 {text} 未在 {complete_timeout} 秒内完成"
             ) from None
         self.logger.info(f"{name}资源中间态 {text} 出现并消失")
+
+    def wait_for_batch_source_complete(
+        self,
+        names: list[str],
+        loading_timeout: int = 15,
+        complete_timeout: int = 180,
+    ) -> None:
+        """等待批量资源操作的中间态完成。
+
+        与 wait_for_source_complete 不同：批量操作是并行下发的，不能串行等待
+        每个资源的 loading 图标出现再消失，否则后面的资源可能已经被错过。
+
+        Args:
+            names: 资源名称列表
+            loading_timeout: 轮询等待每个资源 loading 图标出现的超时（秒）
+            complete_timeout: 等待所有 loading 图标消失的超时（秒）
+        """
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        start = time.time()
+        rows = {name: self.get_row_by_name(name) for name in names}
+        icons = {name: row.locator(".icon-dengdaizhong") for name, row in rows.items()}
+
+        # 阶段1：轮询，尽量让每台资源都进入过 loading 状态
+        pending = set(names)
+        phase1_deadline = time.time() + loading_timeout
+        while pending and time.time() < phase1_deadline:
+            for name in list(pending):
+                try:
+                    if icons[name].is_visible():
+                        pending.remove(name)
+                except PlaywrightTimeoutError:
+                    pass
+            if pending:
+                time.sleep(0.1)
+
+        if pending:
+            if len(pending) == len(names):
+                raise AssertionError(
+                    f"批量操作未触发任何资源的中间态 loading 图标: {names}，"
+                    "可能操作未下发或 loading 消失过快"
+                )
+            self.logger.warning(
+                f"以下资源未观察到中间态 loading 图标: {pending}，"
+                "可能操作已完成或该资源未进入中间态"
+            )
+
+        # 阶段2：等待所有仍在 loading 的图标消失
+        phase2_deadline = time.time() + complete_timeout
+        while time.time() < phase2_deadline:
+            try:
+                visible = [name for name in names if icons[name].is_visible()]
+            except PlaywrightTimeoutError:
+                visible = []
+            if not visible:
+                self.logger.info(f"批量资源中间态完成: {names}")
+                return
+            time.sleep(1)
+
+        raise AssertionError(
+            f"批量资源中间态未在 {complete_timeout} 秒内完成，"
+            f"仍在 loading: {visible}"
+        )
 
     def wait_for_operation_complete(self, timeout: int = 61) -> None:
         """等待页面操作完成。

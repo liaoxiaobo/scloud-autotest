@@ -713,10 +713,9 @@ class TestECSBasic:
             ecs_page.ecs_batch_operations(names, operation=operation)
 
         with allure_step_log(f"步骤2: 验证{operation}结果"):
+            ecs_page.wait_for_batch_source_complete(names, loading_timeout=15)
             for name, ecs_id in zip(names, ecs_ids):
-                ecs_page.wait_for_source_complete(name, loading_timeout=15)
                 ecs_page.assert_status(name, status=status)
-                stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
                 ssh_host.assert_guest_fields(ecs_id, {"vm_state": vm_state}, f"批量操作{operation}失败")
 
     @allure.title("弹性云服务器-批量迁移")
