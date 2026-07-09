@@ -57,16 +57,22 @@ def build_markdown_report(
         Markdown 字符串。
     """
     summary = execution_summary or _default_summary()
+    total = summary.get('total', 0)
+    passed = summary.get('passed', 0)
+    skipped = summary.get('skipped', 0)
+    effective_total = total - skipped
+    pass_rate = f"{passed / effective_total * 100:.1f}%" if effective_total > 0 else "N/A"
 
     lines = [
-        "# 测试失败 AI 分析报告",
+        "# AI分析报告",
         "",
         "## 执行概览",
         "",
-        f"- 总用例数: {summary.get('total', 0)}",
-        f"- 通过: {summary.get('passed', 0)}",
+        f"- 总用例数: {total}",
+        f"- 通过: {passed}",
         f"- 失败: {summary.get('failed', 0)}",
-        f"- 跳过: {summary.get('skipped', 0)}",
+        f"- 跳过: {skipped}",
+        f"- 通过率: {pass_rate}",
         "",
         "## 失败分类统计",
         "",
@@ -146,8 +152,17 @@ def build_json_report(
     Returns:
         可序列化的字典。
     """
+    summary = execution_summary or _default_summary()
+    total = summary.get('total', 0)
+    passed = summary.get('passed', 0)
+    skipped = summary.get('skipped', 0)
+    effective_total = total - skipped
+    summary = {
+        **summary,
+        "pass_rate": f"{passed / effective_total * 100:.1f}%" if effective_total > 0 else "N/A",
+    }
     return {
-        "summary": execution_summary or _default_summary(),
+        "summary": summary,
         "groups": [
             {
                 "category": a.group.category.value,

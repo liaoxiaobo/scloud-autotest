@@ -195,7 +195,7 @@ pipeline {
             sh "rm -rf allure-result/* || true"
 
             // 清理整个工作目录
-            // deleteDir()  // clean up our workspace
+            deleteDir()  // clean up our workspace
 
             // 仅清理本次构建产生的镜像，避免影响同节点其他任务
             script {
@@ -235,12 +235,13 @@ def sendNotification(String result) {
         dispatchSource = "HOSTS 参数: ${params.HOSTS}"
     }
 
-    // 读取 AI 报告摘要并做简单转义，避免破坏 JSON
+    // 读取 AI 报告执行概览并做简单转义，避免破坏 JSON
     def aiSummary = "未生成 AI 摘要"
     if (fileExists('reports/ai-test-summary.md')) {
         def rawSummary = readFile('reports/ai-test-summary.md')
-            .split('## 详细分析')[0]
-            .take(800)
+            .split('## 失败分类统计')[0]
+            .trim()
+            .take(400)
         aiSummary = rawSummary.replaceAll('\r?\n', '\\\\n').replace('"', '\\"')
     }
 
@@ -255,11 +256,18 @@ def sendNotification(String result) {
                     "content": [
                         [{
                             "tag": "text",
-                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: 见 ENV_DISPATCH\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n\\nAI 摘要:\\n${aiSummary}\\n"
+                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: 见 ENV_DISPATCH\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n\\n${aiSummary}\\n"
                         }, {
                             "tag": "a",
-                            "text": "查看报告",
-                            "href": "${env.BUILD_URL}"
+                            "text": "查看 AI 分析报告",
+                            "href": "${env.BUILD_URL}artifact/reports/ai-test-summary.md/*view*/"
+                        }, {
+                            "tag": "text",
+                            "text": "\\n"
+                        }, {
+                            "tag": "a",
+                            "text": "查看 Allure 报告",
+                            "href": "${env.BUILD_URL}allure/"
                         }]
                     ]
                 }

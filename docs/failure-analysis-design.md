@@ -32,7 +32,7 @@
 
 ### 2.3 当前缺口
 
-1. 飞书通知只有结果概览，缺少失败根因摘要。
+1. 飞书通知需要增强，附带测试执行概览和 AI 报告链接。
 2. 失败分析缺少**规则分类**和**相似聚合**，LLM 调用存在重复和浪费。
 3. 没有失败知识库的持续沉淀机制。
 4. `sugon_web/tools/failure_analysis.md` 与 `/test-failure-analysis` Skill 的能力未完全打通（尤其是证据等级、置信度规则、历史案例库）。
@@ -50,7 +50,7 @@
 | 目标编号 | 目标描述 | 成功标准 |
 |---|---|---|
 | G1 | 每次 Jenkins 构建自动产出 AI 失败分析报告 | Jenkins post 阶段自动生成 `reports/ai-test-summary.md` 并归档 |
-| G2 | 飞书通知附带失败根因摘要 | 通知中包含 Top 3 失败根因分类和修复建议 |
+| G2 | 飞书通知附带测试执行概览 | 通知中包含总用例数、通过数、失败数、跳过数，并提供 AI 报告链接 |
 | G3 | 失败被自动分类 | 每个失败至少被归类为：环境 / 用例 / 产品缺陷 |
 | G4 | 相似失败自动聚合 | 相同根因的失败合并为一条，减少重复分析 |
 | G5 | 关键失败支持人工深度分析 | 工程师可通过 `/test-failure-analysis` 对疑难失败做深度根因定位 |
@@ -242,7 +242,7 @@ Markdown 报告结构：
 3. 生成 AI 失败分析报告          ← 新增
 4. 生成 Allure 报告
 5. 归档 AI 报告 artifact          ← 新增
-6. 发送飞书通知（含 AI 摘要）     ← 增强
+6. 发送飞书通知（含执行概览和 AI 报告链接）     ← 增强
 7. 清理临时文件和镜像
 ```
 
@@ -302,14 +302,14 @@ withCredentials([
 
 ### 6.4 飞书通知增强
 
-在 `sendNotification` 中读取 AI 报告摘要：
+在 `sendNotification` 中读取 AI 报告的执行概览，拼接为简洁通知内容：
 
 ```groovy
 def aiSummary = ""
 if (fileExists('reports/ai-test-summary.md')) {
     aiSummary = readFile('reports/ai-test-summary.md')
-        .split('## 详细分析')[0]
-        .take(800)
+        .split('## 失败分类统计')[0]
+        .take(400)
 }
 
 sh """
@@ -321,8 +321,8 @@ curl -X POST -H "Content-Type: application/json" \
                 "zh_cn": {
                     "title": "${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     "content": [[
-                        {"tag": "text", "text": "测试结果: ${result}\\nAI 摘要:\\n${aiSummary}\\n"},
-                        {"tag": "a", "text": "查看报告", "href": "${env.BUILD_URL}"}
+                        {"tag": "text", "text": "测试结果: ${result}\\n${aiSummary}\\n"},
+                        {"tag": "a", "text": "查看 AI 分析报告", "href": "${env.BUILD_URL}artifact/reports/ai-test-summary.md"}
                     ]]
                 }
             }
@@ -330,6 +330,8 @@ curl -X POST -H "Content-Type: application/json" \
     }' https://open.feishu.cn/open-apis/bot/v2/hook/...
 """
 ```
+
+> 通知内容仅展示执行概览（总用例数 / 通过 / 失败 / 跳过），详细的根因分析和修复建议通过链接跳转到 AI 报告。
 
 ---
 
@@ -417,16 +419,16 @@ curl -X POST -H "Content-Type: application/json" \
 
 ### 阶段 3：通知与闭环（2-3 天）
 
-**目标**：飞书通知附带 AI 摘要，建立知识库闭环。
+**目标**：飞书通知附带测试执行概览，建立知识库闭环。
 
 **任务**：
-- [ ] 增强 `sendNotification`，读取并拼接 AI 摘要
+- [ ] 增强 `sendNotification`，附带 AI 报告执行概览和报告链接
 - [ ] 定义 `case_library.md` 追加模板
 - [ ] 制定“高置信度结论回写知识库”的流程规范
 - [ ] 可选：接入缺陷系统（Jira/Tapd/禅道）自动创建产品缺陷
 
 **验收标准**：
-- 飞书通知包含 Top 3 失败根因
+- 飞书通知包含执行概览（总用例数 / 通过数 / 失败数 / 跳过数）和 AI 报告链接
 - 测试团队能按规范将 Skill 分析结论沉淀到案例库
 
 ### 阶段 4：历史趋势与看板（可选，1-2 周）
