@@ -49,7 +49,7 @@
 
 | 目标编号 | 目标描述 | 成功标准 |
 |---|---|---|
-| G1 | 每次 Jenkins 构建自动产出 AI 失败分析报告 | Jenkins post 阶段自动生成 `reports/ai-test-summary.md` 并归档 |
+| G1 | 每次 Jenkins 构建自动产出 AI 分析报告 | Jenkins post 阶段自动生成 `reports/ai-test-summary.md` 并归档 |
 | G2 | 飞书通知附带测试执行概览 | 通知中包含总用例数、通过数、失败数、跳过数，并提供 AI 报告链接 |
 | G3 | 失败被自动分类 | 每个失败至少被归类为：环境 / 用例 / 产品缺陷 |
 | G4 | 相似失败自动聚合 | 相同根因的失败合并为一条，减少重复分析 |
@@ -215,17 +215,28 @@ def aggregate(failures: list[FailureContext]) -> list[FailureGroup]:
 Markdown 报告结构：
 
 ```markdown
-# 测试执行摘要
+# AI分析报告
 ## 执行概览
+- 总用例数：
+- 通过：
+- 失败：
+- 跳过：
+- 通过率：
 ## 失败分类统计
-## Top 失败根因
 ## 详细分析
-### 用例 1
-- 根因分类：
-- 置信度：
-- 关键证据：
-- 排除项：
-- 修复建议：
+### 1. 失败签名摘要
+- **原始错误**：
+- **分类**：
+- **置信度**：
+- **影响范围**：
+#### 根因
+#### 关键证据
+- 【直接证据】...
+- 【间接证据】...
+- 【缺失证据】...（仅低置信度时出现）
+#### 修复建议
+- 短期：...
+- 长期：...
 ```
 
 ---
@@ -239,11 +250,11 @@ Markdown 报告结构：
 ```text
 1. 合并各环境 allure-result
 2. 写入 environment.properties
-3. 生成 AI 失败分析报告          ← 新增
+3. 生成 AI 分析报告          ← 新增
 4. 生成 Allure 报告
-5. 归档 AI 报告 artifact          ← 新增
+5. 归档 AI 报告 artifact     ← 新增
 6. 发送飞书通知（含执行概览和 AI 报告链接）     ← 增强
-7. 清理临时文件和镜像
+7. 清理临时文件、镜像和工作区
 ```
 
 > **关键注意点**：当前 `Jenkinsfile` 在 `allure()` 调用后清理了 `allure-result` 目录，AI 分析必须在清理之前执行。
@@ -261,10 +272,11 @@ script {
                 sh '''
                     python3 sugon_web/tools/failure_analysis_cli.py \
                         --results-dir allure-result \
+                        --logs-dir logs \
                         --output reports/ai-test-summary.md \
                         --json-output reports/failure-report.json \
-                        --provider dashscope \
-                        --max-failures 8
+                        --provider deepseek \
+                        --max-failures 100
                 '''
             }
         }
@@ -277,7 +289,7 @@ script {
 allure includeProperties: false, jdk: '', report: 'allure-report', results: [[path: 'allure-result']]
 
 // 3. 归档产物
-archiveArtifacts artifacts: 'reports/*', allowEmptyArchive: true
+archiveArtifacts artifacts: 'reports/*.md', allowEmptyArchive: true
 
 // 4. 发送飞书通知
 script {
@@ -285,6 +297,9 @@ script {
         sendNotification(currentBuild.currentResult)
     }
 }
+
+// 5. 清理工作区，避免历史 artifact 污染下次构建
+deleteDir()
 ```
 
 ### 6.3 API Key 管理
@@ -322,7 +337,9 @@ curl -X POST -H "Content-Type: application/json" \
                     "title": "${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     "content": [[
                         {"tag": "text", "text": "测试结果: ${result}\\n${aiSummary}\\n"},
-                        {"tag": "a", "text": "查看 AI 分析报告", "href": "${env.BUILD_URL}artifact/reports/ai-test-summary.md"}
+                        {"tag": "a", "text": "查看 AI 分析报告", "href": "${env.BUILD_URL}artifact/reports/ai-test-summary.md/*view*/"},
+                        {"tag": "text", "text": "\\n"},
+                        {"tag": "a", "text": "查看 Allure 报告", "href": "${env.BUILD_URL}allure/"}
                     ]]
                 }
             }
@@ -331,7 +348,7 @@ curl -X POST -H "Content-Type: application/json" \
 """
 ```
 
-> 通知内容仅展示执行概览（总用例数 / 通过 / 失败 / 跳过），详细的根因分析和修复建议通过链接跳转到 AI 报告。
+> 通知内容仅展示执行概览（总用例数 / 通过 / 失败 / 跳过 / 通过率），详细的根因分析和修复建议通过链接跳转到 AI 报告。
 
 ---
 
@@ -371,7 +388,7 @@ curl -X POST -H "Content-Type: application/json" \
    - 中：缺少 trace 但可交叉验证
    - 低：仅 result.json + 代码推断
 4. **补充案例库上下文**：调用 LLM 前把 `case_library.md` 作为上下文输入。
-5. **保留输出格式**：结论、关键证据、排除项、修复建议。
+5. **保留输出格式**：根因、关键证据（含缺失证据）、修复建议。
 
 ### 7.4 知识库闭环
 
@@ -398,7 +415,7 @@ curl -X POST -H "Content-Type: application/json" \
 - [x] 调整执行顺序：AI 分析在 Allure 报告生成和清理之前
 
 **验收标准**：
-- 每次构建失败时，Jenkins 页面可直接下载 `ai-test-summary.md`
+- 每次构建产出 `ai-test-summary.md`，Jenkins 页面可通过 artifact 链接查看或下载
 - AI 分析失败不影响 Allure 报告生成
 
 ### 阶段 2：增强分析引擎（3-5 天）
