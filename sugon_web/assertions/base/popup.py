@@ -11,41 +11,41 @@ class PopupAssertionMixin:
     """
 
     def assert_popup_success(self, text=None, timeout=10):
-        """断言操作成功 toast 出现（兼容自动消失的瞬时 toast）。
+        """断言操作成功 toast 出现并消失。
 
-        成功类与文案在同一轮询循环内一次性校验，避免对寿命约 3s 的 toast
-        做多段串行往返（visible→inner_text→evaluate→contain_text）而中途踩空。
+        等待任意 toast 出现后，一次性读取文本并判断是否为 success，
+        避免 `inner_text()` 与 `evaluate()` 分两步执行时 toast 消失导致踩空。
 
         Args:
-            text: 期望 toast 包含的文案，为 None 时仅断言出现成功 toast。
+            text: 期望 toast 包含的文案，为 None 时仅断言弹窗出现。
             timeout: 最长等待秒数，默认 10。
         """
         timeout_ms = timeout * 1000
-        # 同时锁定「成功类 + 目标文案」
-        success_popup = self.locator(".el-message--success .el-message__content")
-        try:
-            if text:
-                expect(success_popup).to_contain_text(text, timeout=timeout_ms)
-            else:
-                expect(success_popup).to_be_visible(timeout=timeout_ms)
-        except AssertionError:
-            # 兜底诊断：区分「出现了错误 toast」与「压根没等到 toast」
-            any_popup = self.popup
-            if any_popup.count() > 0:
-                popup_text = any_popup.first.inner_text().strip()
-                popup_class = any_popup.first.evaluate(
-                    "element => element.parentElement ? element.parentElement.className : ''"
-                )
-                raise AssertionError(
-                    f"[PopupAssertion] 弹窗 | 未捕获成功 toast | "
-                    f"期望: 成功{f'(含 {text})' if text else ''} | "
-                    f"实际 toast: {popup_text} | class: {popup_class}"
-                )
+        popup = self.popup
+        expect(popup).to_be_visible(timeout=timeout_ms)
+
+        # 一次 evaluate 同时读取文本并判断 success（替代 inner_text + evaluate 两步）
+        popup_text, is_success = popup.first.evaluate("""element => {
+            const parent = element.parentElement;
+            return [
+                (element.innerText || '').trim(),
+                parent ? parent.classList.contains('el-message--success') : false
+            ];
+        }""")
+
+        if not is_success:
             raise AssertionError(
-                f"[PopupAssertion] 弹窗 | 未捕获成功 toast | "
-                f"期望: 成功{f'(含 {text})' if text else ''} | "
-                f"{timeout}s 内未出现 .el-message--success"
+                f"[PopupAssertion] 弹窗 | 操作状态不匹配 | "
+                f"期望: 成功 | 实际: 失败 | 弹窗文本: {popup_text}"
             )
+
+        if text and text not in popup_text:
+            raise AssertionError(
+                f"[PopupAssertion] 弹窗 | 文案不匹配 | "
+                f"期望包含: {text} | 实际: {popup_text}"
+            )
+
+        expect(popup).not_to_be_visible(timeout=timeout_ms)
         self.logger.info("断言通过: 成功弹窗出现" + (f", 文案包含 '{text}'" if text else ""))
 
     def assert_popup_error(self, text=None, timeout=5):
