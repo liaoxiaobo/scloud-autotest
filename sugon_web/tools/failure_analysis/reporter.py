@@ -31,6 +31,11 @@ _MISSING_EVIDENCE_PREFIX = "缺失证据："
 _MISSING_EVIDENCE_KEYWORDS = ("缺少", "缺失", "不足", "无法获取", "无法验证")
 
 
+def _normalize_text(text: str) -> str:
+    """将多行文本压缩为单行，去除多余空白。"""
+    return " ".join(text.split()) if text else ""
+
+
 def _is_missing_evidence(text: str) -> bool:
     """判断证据项是否在描述缺失材料。"""
     return text.startswith(_MISSING_EVIDENCE_PREFIX) or any(
@@ -86,8 +91,8 @@ def build_markdown_report(
         if g.count > 5:
             case_list += f" 等 {g.count} 个用例"
 
-        # 标题简短化，避免原始错误信息过长
-        title = g.signature[:80]
+        # 标题简短化，避免原始错误信息过长或含换行/HTML
+        title = _normalize_text(g.signature)[:80]
 
         lines.extend([
             f"### {idx}. {title}",
@@ -103,7 +108,11 @@ def build_markdown_report(
         ])
 
         # 给证据加可信度标记；置信度低时，缺失材料描述标记为【缺失证据】
+        seen_evidence = set()
         for i, ev in enumerate(analysis.evidence):
+            if ev in seen_evidence:
+                continue
+            seen_evidence.add(ev)
             clean_ev = ev
             if clean_ev.startswith(_MISSING_EVIDENCE_PREFIX):
                 clean_ev = clean_ev[len(_MISSING_EVIDENCE_PREFIX):]
@@ -146,11 +155,11 @@ def build_json_report(
                 "signature": a.group.signature,
                 "count": a.group.count,
                 "case_names": a.group.case_names,
-                "root_cause": a.root_cause,
+                "root_cause": _normalize_text(a.root_cause),
                 "confidence": a.confidence,
-                "evidence": a.evidence,
-                "short_term_fix": a.short_term_fix,
-                "long_term_fix": a.long_term_fix,
+                "evidence": [_normalize_text(ev) for ev in a.evidence],
+                "short_term_fix": _normalize_text(a.short_term_fix),
+                "long_term_fix": _normalize_text(a.long_term_fix),
             }
             for a in analyses
         ],

@@ -129,7 +129,7 @@ def main() -> int:
     print(f"收集 Allure 结果: {results_dir}")
     all_cases = parse_allure_results(results_dir)
     contexts = collect_failure_contexts(results_dir, logs_dir, traces_dir)
-    print(f"共收集到 {len(contexts)} 个失败/ broken 用例（总用例 {len(all_cases)}）")
+    print(f"共收集到 {len(contexts)} 个 failed / broken 用例（总用例 {len(all_cases)}）")
 
     print("规则分类...")
     classified = classify_failures(contexts)

@@ -11,7 +11,7 @@ from pathlib import Path
 from sugon_web.tools.failure_analysis.aggregator import FailureGroup
 from sugon_web.tools.failure_analysis.classifier import FailureCategory
 from sugon_web.tools.failure_analysis.llm_client import call_llm
-from sugon_web.tools.failure_analysis.reporter import GroupAnalysis
+from sugon_web.tools.failure_analysis.reporter import GroupAnalysis, _normalize_text
 
 
 # 规则直通分类：这些分类命中时直接生成分析结果，不再调用 LLM。
@@ -43,12 +43,25 @@ def _strip_markdown_code_block(text: str) -> str:
     return text.strip()
 
 
+def _extract_json_object(text: str) -> str:
+    """从文本中提取第一个完整的 JSON 对象。"""
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    return match.group(0) if match else ""
+
+
 def parse_analysis_response(content: str) -> dict:
     """从 LLM 响应中解析 JSON；失败时返回兜底结构。"""
     content = _strip_markdown_code_block(content)
     try:
         return json.loads(content)
     except json.JSONDecodeError:
+        # 尝试从文本中提取嵌套的 JSON 对象（应对 LLM 输出被截断或包裹说明文字的情况）
+        try:
+            obj = _extract_json_object(content)
+            if obj:
+                return json.loads(obj)
+        except json.JSONDecodeError:
+            pass
         return {
             "root_cause": content[:300],
             "confidence": "低",
@@ -102,7 +115,7 @@ def build_analysis_prompt(
 def build_rule_based_analysis(group: FailureGroup) -> GroupAnalysis:
     """对高置信度规则分类直接生成分析结果，跳过 LLM 调用。"""
     category_label = group.category.label
-    signature = group.signature[:120]
+    signature = _normalize_text(group.signature)[:120]
 
     return GroupAnalysis(
         group=group,
