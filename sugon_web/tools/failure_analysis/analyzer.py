@@ -23,7 +23,6 @@ OUTPUT_SCHEMA = {
     "root_cause": "1-2句话说明最可能根因",
     "confidence": "高/中/低",
     "evidence": ["证据1", "证据2"],
-    "exclusions": ["为什么不是另外两类"],
     "short_term_fix": "短期可执行的修复建议",
     "long_term_fix": "长期修复建议（可选）",
 }
@@ -54,7 +53,6 @@ def parse_analysis_response(content: str) -> dict:
             "root_cause": content[:300],
             "confidence": "低",
             "evidence": ["LLM 返回非 JSON，已按原文兜底解析"],
-            "exclusions": [],
             "short_term_fix": "请人工复核 LLM 输出",
             "long_term_fix": "",
         }
@@ -114,10 +112,6 @@ def build_rule_based_analysis(group: FailureGroup) -> GroupAnalysis:
             f"错误信息匹配 {category_label} 关键词",
             f"影响用例数 {group.count}",
         ],
-        exclusions=[
-            "报错特征符合环境问题模式，非单条用例代码错误",
-            "非产品功能返回业务错误码或状态不一致",
-        ],
         short_term_fix="检查测试环境可用性（平台状态、网络、资源、服务是否就绪）后重试",
         long_term_fix="",
     )
@@ -161,7 +155,6 @@ def analyze_group(
         root_cause=result.get("root_cause", "未生成根因"),
         confidence=result.get("confidence", "低"),
         evidence=result.get("evidence", []),
-        exclusions=result.get("exclusions", []),
         short_term_fix=result.get("short_term_fix", "请人工复核"),
         long_term_fix=result.get("long_term_fix", ""),
     )

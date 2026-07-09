@@ -19,13 +19,23 @@ class GroupAnalysis:
     root_cause: str
     confidence: str
     evidence: list[str] = field(default_factory=list)
-    exclusions: list[str] = field(default_factory=list)
     short_term_fix: str = ""
     long_term_fix: str = ""
 
 
 def _default_summary() -> dict:
     return {"total": 0, "passed": 0, "failed": 0, "skipped": 0, "other": 0}
+
+
+_MISSING_EVIDENCE_PREFIX = "缺失证据："
+_MISSING_EVIDENCE_KEYWORDS = ("缺少", "缺失", "不足", "无法获取", "无法验证")
+
+
+def _is_missing_evidence(text: str) -> bool:
+    """判断证据项是否在描述缺失材料。"""
+    return text.startswith(_MISSING_EVIDENCE_PREFIX) or any(
+        kw in text for kw in _MISSING_EVIDENCE_KEYWORDS
+    )
 
 
 def build_markdown_report(
@@ -77,8 +87,7 @@ def build_markdown_report(
             case_list += f" 等 {g.count} 个用例"
 
         # 标题简短化，避免原始错误信息过长
-        short_signature = g.signature[:80]
-        title = f"[{g.category.label}] {short_signature}"
+        title = g.signature[:80]
 
         lines.extend([
             f"### {idx}. {title}",
@@ -93,26 +102,23 @@ def build_markdown_report(
             "#### 关键证据",
         ])
 
-        # 给证据加可信度标记，第一条最可信
+        # 给证据加可信度标记；置信度低时，缺失材料描述标记为【缺失证据】
         for i, ev in enumerate(analysis.evidence):
-            if i == 0:
+            clean_ev = ev
+            if clean_ev.startswith(_MISSING_EVIDENCE_PREFIX):
+                clean_ev = clean_ev[len(_MISSING_EVIDENCE_PREFIX):]
+            if analysis.confidence == "低" and _is_missing_evidence(ev):
+                marker = "【缺失证据】"
+            elif i == 0:
                 marker = "【直接证据】"
-            elif i == 1:
-                marker = "【间接证据】"
             else:
-                marker = "【参考信息】"
-            lines.append(f"- {marker}{ev}")
+                marker = "【间接证据】"
+            lines.append(f"- {marker}{clean_ev}")
 
-        if analysis.exclusions:
-            lines.extend(["", "#### 排查补充"])
-            for ex in analysis.exclusions:
-                lines.append(f"- {ex}")
-
-        lines.extend(["", "#### 修复与验证"])
-        lines.append(f"- **建议修复**：{analysis.short_term_fix}")
-        lines.append("- **验证方法**：重新运行受影响用例，确认问题不再复现")
+        lines.extend(["", "#### 修复建议"])
+        lines.append(f"- 短期：{analysis.short_term_fix}")
         if analysis.long_term_fix:
-            lines.append(f"- **长期建议**：{analysis.long_term_fix}")
+            lines.append(f"- 长期：{analysis.long_term_fix}")
         lines.append("")
 
     return "\n".join(lines)
@@ -143,7 +149,6 @@ def build_json_report(
                 "root_cause": a.root_cause,
                 "confidence": a.confidence,
                 "evidence": a.evidence,
-                "exclusions": a.exclusions,
                 "short_term_fix": a.short_term_fix,
                 "long_term_fix": a.long_term_fix,
             }
