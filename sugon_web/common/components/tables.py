@@ -435,7 +435,7 @@ class TablesMixin:
                 try:
                     if scope.count() == 0:
                         continue
-                    scope.wait_for(state="visible", timeout=2000)
+                    scope.wait_for(state="visible", timeout=5000)
                     search_scope = scope
                     break
                 except Exception:
@@ -448,7 +448,7 @@ class TablesMixin:
         # 在确定容器内查找分页条数切换器
         try:
             size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
-            size_trigger.wait_for(state="visible", timeout=5000)
+            size_trigger.wait_for(state="visible", timeout=10000)
         except Exception as e:
             self.logger.debug(f"未找到可见的分页条数切换器: {e}")
             return False
@@ -462,7 +462,7 @@ class TablesMixin:
             pass
 
         try:
-            size_trigger.click(timeout=5000)
+            size_trigger.click(timeout=10000)
             self.page.wait_for_timeout(500)
 
             # Element UI select dropdown 可能 teleport 到 body，优先在传入容器内查找，
@@ -471,12 +471,12 @@ class TablesMixin:
                 option = None
                 try:
                     option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
-                    option.wait_for(state="visible", timeout=2000)
+                    option.wait_for(state="visible", timeout=5000)
                 except Exception:
                     option = self.page.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
-                    option.wait_for(state="visible", timeout=2000)
+                    option.wait_for(state="visible", timeout=5000)
 
-                option.click(timeout=5000)
+                option.click(timeout=10000)
                 if hasattr(self, "wait_for_page_ready"):
                     self.wait_for_page_ready()
                 else:
