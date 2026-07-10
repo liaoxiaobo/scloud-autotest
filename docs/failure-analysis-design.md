@@ -239,6 +239,27 @@ Markdown 报告结构：
 - 长期：...
 ```
 
+### 5.7 自动化 Prompt 与交互式 Skill 的分工
+
+自动化分析由 `failure_analysis_cli.py` 读取 `sugon_web/tools/failure_analysis.md` 作为 system prompt，批量生成失败概览；`/test-failure-analysis` Skill 则由工程师人工触发，对疑难失败做深度根因分析。两者不是替代关系，而是互补：
+
+| 维度 | 自动化 Prompt | `/test-failure-analysis` Skill |
+|---|---|---|
+| 使用方式 | 被 `failure_analysis_cli.py` 读取为 system prompt | Claude Code 交互式 Skill |
+| 运行时机 | CI/CD 自动化，批量生成 | 人工触发，单点深度分析 |
+| 输入材料 | 受限于 CLI 预收集内容 | 主动读取 result.json、附件、代码、trace、案例库 |
+| 分析深度 | 浅-中等 | 深，有完整 checklist |
+| 可自动化 | 高 | 低 |
+| 最适合场景 | 每次构建后的批量总结 | 疑难失败的根因定位 |
+
+Prompt 优化方向：
+
+1. **保留并强化三分类**：按 `环境问题 / 用例问题 / 产品缺陷` 分类，继续强化规则触发。
+2. **补充证据等级**：明确 `trace > 截图 > 日志 > 代码 > 推断`。
+3. **补充置信度规则**：高/中/低的判定条件。
+4. **补充案例库上下文**：调用 LLM 前把 `case_library.md` 作为上下文输入。
+5. **保留输出格式**：根因、关键证据（含缺失证据）、修复建议。
+
 ---
 
 ## 6. CI/CD 流水线集成
@@ -352,57 +373,7 @@ curl -X POST -H "Content-Type: application/json" \
 
 ---
 
-## 7. `/test-failure-analysis` Skill 与 Prompt 的分工融合
-
-### 7.1 两者差异
-
-| 维度 | `sugon_web/tools/failure_analysis.md` | `/test-failure-analysis` Skill |
-|---|---|---|
-| 使用方式 | 被 `failure_analysis_cli.py` 读取为 system prompt | Claude Code 交互式 Skill |
-| 运行时机 | CI/CD 自动化，批量生成 | 人工触发，单点深度分析 |
-| 输入材料 | 受限于 `failure_analysis_cli.py` 预收集内容 | 主动读取 result.json、附件、代码、trace、案例库 |
-| 分析深度 | 浅-中等 | 深，有完整 checklist |
-| 可自动化 | 高 | 低 |
-| 最适合场景 | 每次构建后的批量总结 | 疑难失败的根因定位 |
-
-### 7.2 融合策略
-
-两者不是替代关系，而是**互补**：
-
-```text
-自动化层：failure_analysis_cli.py + 优化后的 prompt  →  批量生成失败概览
-         ↓
-人工层：/test-failure-analysis Skill       →  对关键失败做深度根因分析
-         ↓
-知识库：case_library.md                    →  沉淀结论，反哺自动化层
-```
-
-### 7.3 Prompt 优化方向
-
-把 Skill 中的核心方法吸收进 `sugon_web/tools/failure_analysis.md`：
-
-1. **保留并强化三分类**：`failure_analysis.md` 已要求按 `环境问题 / 用例问题 / 产品缺陷` 分类，继续强化规则触发。
-2. **补充证据等级**：明确 `trace > 截图 > 日志 > 代码 > 推断`。
-3. **补充置信度规则**：
-   - 高：材料完整，关键证据无矛盾
-   - 中：缺少 trace 但可交叉验证
-   - 低：仅 result.json + 代码推断
-4. **补充案例库上下文**：调用 LLM 前把 `case_library.md` 作为上下文输入。
-5. **保留输出格式**：根因、关键证据（含缺失证据）、修复建议。
-
-### 7.4 知识库闭环
-
-```text
-1. 新失败出现
-2. 工程师用 /test-failure-analysis 做深度分析
-3. 高置信度结论按模板追加到 case_library.md
-4. `failure_analysis_cli.py` 下次运行时读取 `case_library.md` 作为 prompt 上下文
-5. 同类失败自动化分析准确率提升，减少 LLM 调用
-```
-
----
-
-## 8. 实施路线图
+## 7. 实施路线图
 
 ### 阶段 1：接入现有 AI 总结（1-2 天）
 
@@ -459,7 +430,7 @@ curl -X POST -H "Content-Type: application/json" \
 
 ---
 
-## 9. 风险与成本控制
+## 8. 风险与成本控制
 
 | 风险 | 影响 | 对策 |
 |---|---|---|
@@ -469,6 +440,86 @@ curl -X POST -H "Content-Type: application/json" \
 | 敏感信息泄露 | API Key 或日志泄露 | API Key 走 Jenkins Credentials；日志中脱敏处理 |
 | 报告与事实不符 | 误导排障 | 要求每个结论引用证据；不确定时明确标注低置信度 |
 | Skill 与自动化冲突 | 重复建设 | 明确分工：Skill 用于人工深度分析，Prompt + 脚本用于自动化 |
+
+---
+
+## 9. 落地实践与踩坑记录（动态更新）
+
+本节记录在方案落地过程中遇到的实际问题、设计取舍与解决方案。随着阶段推进持续更新，既是团队经验沉淀，也可作为 AI 分析时的补充上下文。
+
+### 9.1 Allure result.json 重复导致用例数翻倍
+
+**现象**：Jenkins 上生成的 AI 报告显示用例数是 Allure 报告的 2 倍。
+
+**原因**：Jenkinsfile 在 `post` 阶段合并各环境 `allure-result/env-*` 子目录到根目录时，使用 `cp -rn` 保留原子目录的同时把文件复制到根目录。`collector.py` 使用 `rglob("*-result.json")` 递归查找，同时扫到根目录和子目录下的同一份 `result.json`。
+
+**解决方案**：在 Jenkinsfile 合并逻辑后删除 `env-*` 子目录，让根目录只保留一份结果；保持 `collector.py` 职责单一，只做收集不做去重。
+
+**复盘要点**：
+- 多环境并行执行时，产物合并逻辑必须考虑去重。
+- `rglob` 递归收集时要意识到可能扫到重复文件。
+- 修复问题时应优先在"问题发生处"处理，避免把流程层问题下沉到数据层。
+
+### 9.2 LLM 输出格式不稳定
+
+**现象**：LLM 返回的内容有时被 markdown 代码块包裹，有时又是纯文本，导致 `json.loads` 失败。
+
+**原因**：不同模型、不同提示词下，LLM 输出格式不一致，即使 prompt 要求"严格按 JSON 输出"也无法 100% 保证。
+
+**解决方案**：在 `analyzer.py` 中增加输出清洗和兜底解析：
+
+- 先去除外层 markdown 代码块
+- 再尝试 `json.loads`
+- 失败时取前 300 字符作为根因，置信度强制标为"低"
+
+**复盘要点**：
+- 所有对接 LLM 的自动化工具，都必须做输出格式清洗和兜底。
+- 兜底解析要明确标注低置信度，避免误导。
+
+### 9.3 规则分类与 LLM 直通的边界
+
+**现象**：阶段 2 验收标准要求"规则分类命中时不再调用 LLM"，但最初实现中 `analyzer.py` 仍对所有分类调用 LLM。
+
+**原因**：分类和直通是两个独立步骤，初始实现遗漏了直通逻辑。
+
+**解决方案**：在 `analyzer.py` 中定义规则直通集合：
+
+```python
+RULE_BASED_CATEGORIES = {FailureCategory.ENVIRONMENT}
+```
+
+环境类问题（平台维护、503、SSH 不通等）证据明确，直接生成分析结果；用例问题和产品缺陷仍走 LLM 深度分析。
+
+**复盘要点**：
+- 规则分类的价值不仅是归类，还应体现在成本控制上。
+- 不是所有分类都适合直通：环境问题适合，用例/产品问题需要更多上下文判断。
+- 后续扩展直通分类时，改 `RULE_BASED_CATEGORIES` 即可。
+
+### 9.4 工作区清理与飞书通知顺序
+
+**现象**：飞书通知显示"未生成 AI 摘要"，但 Jenkins artifact 页面能看到 `ai-test-summary.md`。
+
+**原因**：`deleteDir()` 在 `sendNotification` 之前执行，工作区已被清空，`fileExists('reports/ai-test-summary.md')` 返回 false。
+
+**解决方案**：调整 Jenkinsfile 执行顺序，先发送飞书通知，再清理工作区。
+
+```text
+生成 AI 报告 → 归档 artifact → 发送飞书通知 → deleteDir() → 清理镜像
+```
+
+**复盘要点**：
+- `deleteDir()` 清理的是当前工作区，artifact 归档后文件仍存在于 Jenkins 插件存储中，但 `readFile` 读的是工作区路径。
+- 任何需要读取工作区文件的后处理步骤，都必须在 `deleteDir()` 之前执行。
+
+### 9.5 AI 报告链接的预览方式
+
+**现象**：直接链接到 `.md` artifact 可能触发下载，体验不佳。
+
+**决策**：使用 Jenkins 的 `/*view*/` 后缀链接，优先在浏览器中预览：
+
+```text
+${BUILD_URL}artifact/reports/ai-test-summary.md/*view*/
+```
 
 ---
 
@@ -487,18 +538,23 @@ curl -X POST -H "Content-Type: application/json" \
 | `.claude/skills/test-failure-analysis/SKILL.md` | 交互式失败分析 Skill |
 | `.claude/skills/test-failure-analysis/references/case_library.md` | 历史失败案例库 |
 
-### 10.2 失败分类定义
-
-| 分类 | 定义 | 示例 |
-|---|---|---|
-| 环境问题 | 测试环境不稳定、资源不足、服务未就绪、网络抖动、平台维护等外部因素 | “系统升级中”404、SSH 不通、节点离线 |
-| 用例问题 | 断言错误、等待超时不足、依赖顺序错误、清理不彻底、数据准备缺陷、locator 失效等 | 元素找不到、断言超时、资源泄漏 |
-| 产品缺陷 | 被测系统功能异常、接口返回错误、状态机不符合预期、UI 与后端不一致等 | 创建资源后状态始终为“创建中”、接口返回业务错误 |
-
-### 10.3 置信度定义
+### 10.2 置信度定义
 
 | 置信度 | 条件 |
 |---|---|
 | 高 | 材料清单完整（result.json + 截图/日志 + 代码），关键证据互相印证，推断占比 ≤ 20% |
 | 中 | 缺少 trace 或部分附件，但 result.json + 截图 + 代码 足够交叉验证，推断占比 ≤ 50% |
 | 低 | 仅 result.json + 代码推断，缺少截图或关键日志，或推断占比 > 50% |
+
+### 10.3 方案变更记录
+
+记录方案设计层面的关键决策与变化，便于追溯设计演进过程。
+
+| 日期 | 版本 | 变更内容 | 变更原因 |
+|---|---|---|---|
+| 2026-07-08 | v0.1 | 初始方案 | - |
+| 2026-07-09 | v0.2 | 阶段 3 目标调整：飞书通知从"附带 Top 3 失败根因摘要"改为"附带执行概览和 AI 报告链接" | 当前能力已足够，避免通知过长 |
+| 2026-07-09 | v0.3 | AI 分析报告标题改为"AI分析报告"；执行概览增加通过率（skipped 不计入分母） | 全部通过时标题更合理；明确通过率口径 |
+| 2026-07-09 | v0.4 | Jenkinsfile 调整执行顺序：`sendNotification` 必须在 `deleteDir()` 之前 | 否则飞书通知会显示"未生成 AI 摘要" |
+| 2026-07-09 | v0.5 | AI 报告链接使用 `/*view*/` 后缀；增加 Allure 报告链接；两个链接分行展示 | 提升通知中链接的可用性 |
+| 2026-07-10 | v0.6 | 落地踩坑记录从独立文件收敛到设计文档第 9 章 | 统一经验沉淀入口，便于 AI 上下文消费 |
