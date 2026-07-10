@@ -1,5 +1,5 @@
-import allure
 import pytest
+import allure
 
 from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
@@ -9,10 +9,7 @@ from sugon_web.utils.data import random_data
 @allure.feature('服务治理SSM')
 @allure.story('网格实例-列表页')
 class TestSsmMeshInstanceLifecycle:
-    """网格实例生命周期测试类：创建、批量删除。
-
-    每个用例独立创建/删除网格实例，确保一个 CCE 集群上同一时刻最多只有一个 mesh。
-    """
+    """SSM 网格实例生命周期测试类。"""
 
     @allure.title("网格实例-创建（不启用可观测）")
     def test_mesh_create_without_observability(self, ssm_page, cce_cluster, ssh_host, ssh_vm):
@@ -103,9 +100,9 @@ class TestSsmMeshInstanceLifecycle:
 @allure.feature('服务治理SSM')
 @allure.story('网格实例-列表页')
 class TestSsmMeshInstanceManagement:
-    """网格实例管理功能测试类：搜索、修改、检测。
+    """SSM 网格实例管理测试类。
 
-    复用 class 级 mesh_instance fixture 创建的单个网格实例。
+    复用 module 级 mesh_instance fixture 创建的单个网格实例。
     """
 
     @allure.title("网格实例-搜索")

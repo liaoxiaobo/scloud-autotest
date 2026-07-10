@@ -68,9 +68,9 @@ def _cleanup_cce_cluster(cce_page, ssh_host, name):
     ssh_host.wait_volume_deleted(name, timeout=600)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def cce_cluster(browser_context, config, ssh_host, request):
-    """创建CCE集群并等待就绪，测试类结束后自动清理（scope=class）。
+    """创建CCE集群并等待就绪，测试模块结束后自动清理（scope=module）。
 
     Args:
         browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
@@ -174,9 +174,9 @@ def cce_cluster(browser_context, config, ssh_host, request):
     page.close()
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def storage_class(cce_cluster):
-    """创建云硬盘存储类型并在测试类结束后自动清理。
+    """创建模块级共享 StorageClass，供同一模块内资源操作类用例复用。
 
     复用 cce_cluster fixture 创建的 page，避免额外打开新标签页。
 
@@ -325,14 +325,14 @@ def ssm_page(page):
     return SsmPage(page)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def mesh_instance(browser_context, config, cce_cluster, request):
-    """创建SSM网格实例并等待安装完成，测试类结束后删除。
+    """创建模块级共享 SSM 网格实例，供同一模块内资源操作类用例复用。
 
     Args:
         browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
         config: 配置对象。
-        cce_cluster: CCE集群fixture，提供集群名称等信息。
+        cce_cluster: 模块级 CCE 集群 fixture。
         request: pytest 请求对象。
 
     Yields:
@@ -349,7 +349,7 @@ def mesh_instance(browser_context, config, cce_cluster, request):
     cluster_name = cce_cluster["name"]
     name = f"mesh-{random_data(length=4)}"
 
-    with allure_step_log(f"前置操作：创建网格实例 {name}，使用集群 {cluster_name}"):
+    with allure_step_log(f"前置操作：创建共享网格实例 {name}，使用集群 {cluster_name}"):
         ssm_page.mesh_create(name=name, cluster=cluster_name)
         ssm_page.assert_popup_success()
         ssm_page.assert_status(name, status="安装完成", timeout=1800, refresh=True)
@@ -361,11 +361,11 @@ def mesh_instance(browser_context, config, cce_cluster, request):
         "ssm_page": ssm_page,
     }
 
-    with allure_step_log(f"后置清理：删除网格实例 {name}"):
+    with allure_step_log(f"后置清理：删除共享网格实例 {name}"):
         try:
             ssm_page.mesh_delete(name)
             ssm_page.assert_deleted(name, timeout=600)
         except Exception as e:
-            logger.warning(f"清理网格实例失败（可能已删除）: {e}")
+            logger.warning(f"清理共享网格实例失败（可能已删除）: {e}")
         finally:
             page.close()

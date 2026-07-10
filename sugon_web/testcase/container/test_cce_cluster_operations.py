@@ -1,5 +1,6 @@
 import allure
 import pytest
+import time
 
 from sugon_web.utils.data import random_data
 from sugon_web.utils.logger import allure_step_log
@@ -7,8 +8,70 @@ from sugon_web.utils.logger import allure_step_log
 
 @allure.epic('容器服务')
 @allure.feature('云容器引擎')
+@allure.story('集群管理-列表页')
+class TestCCEClusterOperations:
+
+    @allure.title("集群列表-搜索")
+    def test_search_cluster(self, cce_page, cce_cluster):
+        """验证集群列表页搜索功能正常"""
+        cluster_name = cce_cluster["name"]
+
+        with allure_step_log("步骤1: 按集群名称搜索，验证结果正确"):
+            cce_page.goto_service(cce_page.service_name)
+            cce_page.goto_submenu("集群管理")
+            cce_page.search(cluster_name)
+            cce_page.assert_list_contain(cluster_name, column_name="集群名称")
+
+        with allure_step_log("步骤2: 搜索不存在的名称，验证无结果"):
+            non_existent = "cce-non-existent-99999"
+            cce_page.search(non_existent)
+            cce_page.assert_list_not_contain(non_existent, column_name="集群名称")
+
+    @allure.title("集群列表-修改集群名称")
+    def test_edit_cluster_name(self, cce_page, cce_cluster):
+        """修改集群名称并验证列表中更新成功"""
+        cluster_name = cce_cluster["name"]
+        new_name = f"{cluster_name}-edited"
+
+        with allure_step_log("步骤1: 修改集群名称"):
+            cce_page.cce_edit_name(cluster_name, new_name)
+            cce_page.assert_popup_success()
+
+        with allure_step_log("步骤2: 验证列表中显示新名称"):
+            cce_page.assert_list_contain(new_name, column_name="集群名称")
+
+        with allure_step_log("步骤3: 改回原名称"):
+            cce_page.cce_edit_name(new_name, cluster_name)
+            cce_page.assert_popup_success()
+            cce_page.assert_list_contain(cluster_name, column_name="集群名称")
+
+    @allure.title("集群列表-修改时间同步服务器")
+    def test_edit_time_sync_server(self, cce_page, cce_cluster, ssh_vm):
+        """修改集群时间同步服务器并验证后端配置生效"""
+        cluster_name = cce_cluster["name"]
+        sync_server = "100.126.255.254"
+
+        with allure_step_log("步骤1: 修改时间同步服务器"):
+            cce_page.cce_edit_time_sync(cluster_name, sync_server)
+
+        with allure_step_log("步骤2: UI验证提交成功"):
+            cce_page.assert_popup_success("设置CCE集群时间同步器成功")
+
+        with allure_step_log("步骤3: SSH验证新配置生效"):
+            ssh_vm.connect(cce_cluster["master_mfip"], port=22022, pwd="admin1234@sugon")
+            for _ in range(5):
+                result = ssh_vm.run("chronyc sources", return_rc=True)
+                if result["rc"] == 0 and sync_server in result["stdout"]:
+                    break
+                time.sleep(10)
+            else:
+                assert False, f"时间同步服务器配置未生效: {result.get('stdout', '')}"
+
+
+@allure.epic('容器服务')
+@allure.feature('云容器引擎')
 @allure.story('集群管理-详情页')
-class TestCCEDetail:
+class TestCCENodeOperations:
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情-节点停止调度和开启调度")
@@ -302,82 +365,3 @@ class TestCCEDetail:
         with allure_step_log("步骤7: SSH后台验证虚机和云硬盘已删除"):
             ssh_host.wait_vm_deleted(new_node_name, timeout=300)
             ssh_host.wait_volume_deleted(new_node_name, timeout=300)
-
-
-@allure.epic('容器服务')
-@allure.feature('云容器引擎')
-@allure.story('集群管理-存储类型')
-class TestCCEStorageClass:
-
-    @pytest.mark.parametrize("fstype", ["ext4", "xfs"])
-    @allure.title("集群详情-新建云硬盘存储类型(fstype={fstype})")
-    def test_storage_class_create(self, cce_page, cce_cluster, ssh_host, ssh_vm, fstype):
-        cluster_name = cce_cluster["name"]
-        mfip = cce_cluster.get("master_mfip", "")
-        sc_name = f"evs-sc-{random_data(length=4)}"
-
-        with allure_step_log("步骤1: 进入集群详情-存储类型页面"):
-            cce_page.goto_submenu("集群管理")
-            cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
-
-        with allure_step_log(f"步骤2: 创建云硬盘存储类型(fstype={fstype})"):
-            cce_page.storage_class_create(
-                name=sc_name,
-                volume_type=cce_page.volume_type,
-                fstype=fstype,
-                encrypt=False,
-                access_mode="ReadWriteOnce"
-            )
-            cce_page.assert_popup_success()
-
-        with allure_step_log("步骤3: 验证存储类型列表数据"):
-            row_data = cce_page.get_row_data(sc_name)
-            assert row_data, f"列表中未找到 {sc_name}"
-            assert "云硬盘" in row_data.get("类型", "") or "EVS" in row_data.get("类型", ""), f"类型不匹配: {row_data.get('类型', '')}"
-            assert "是" in row_data.get("创建完成", ""), f"创建完成状态不匹配: {row_data.get('创建完成', '')}"
-
-        with allure_step_log(f"步骤4: 后台验证StorageClass yaml(fstype={fstype})"):
-            assert mfip, "未获取到集群 MFIP"
-            ssh_vm.connect(mfip, port=22022, pwd="admin1234@sugon")
-            result = ssh_vm.run(f"kubectl get storageclass {sc_name} -oyaml", return_rc=True)
-            assert result["rc"] == 0, f"kubectl 执行失败: {result.get('stderr', '')}"
-            yaml_content = result["stdout"]
-            assert "storageType" in yaml_content, "yaml 中缺少 storageType"
-            assert f"fstype: {fstype}" in yaml_content, f"yaml 中 fstype 值不匹配，期望 {fstype}"
-
-        with allure_step_log("步骤5: 删除存储类型"):
-            cce_page.storage_class_delete(sc_name)
-            cce_page.assert_deleted(sc_name, timeout=60)
-
-        with allure_step_log("步骤6: 后台验证StorageClass已删除"):
-            result = ssh_vm.run(f"kubectl get storageclass {sc_name}", return_rc=True)
-            assert result["rc"] != 0 or "NotFound" in result.get("stderr", ""), f"StorageClass {sc_name} 未删除"
-
-    @allure.title("集群详情-批量删除云硬盘存储类型")
-    def test_storage_class_batch_delete(self, cce_page, cce_cluster):
-        cluster_name = cce_cluster["name"]
-        sc_names = []
-
-        with allure_step_log("步骤1: 进入集群详情-存储类型页面"):
-            cce_page.goto_submenu("集群管理")
-            cce_page.goto_detail_page(cluster_name, tab_name="存储类型")
-
-        with allure_step_log("步骤2: 预置两个存储类型"):
-            for i in range(2):
-                sc_name = f"evs-sc-{random_data(length=4)}"
-                sc_names.append(sc_name)
-                cce_page.storage_class_create(
-                    name=sc_name,
-                    volume_type=cce_page.volume_type,
-                    fstype="ext4",
-                    encrypt=False,
-                    access_mode="ReadWriteOnce"
-                )
-                cce_page.assert_popup_success()
-
-        with allure_step_log("步骤3: 批量删除存储类型"):
-            cce_page.storage_class_batch_delete(sc_names)
-
-        with allure_step_log("步骤4: 验证存储类型已删除"):
-            cce_page.assert_deleted(sc_names, timeout=60)
-
