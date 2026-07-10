@@ -194,6 +194,13 @@ pipeline {
             sh "rm -rf allure-result/env-* || true"
             sh "rm -rf allure-result/* || true"
 
+            // 发送报告到飞书
+            script {
+                if (params.FEISHU_NOTIFY) {
+                    sendNotification(currentBuild.currentResult)
+                }
+            }
+
             // 清理整个工作目录
             deleteDir()  // clean up our workspace
 
@@ -201,13 +208,6 @@ pipeline {
             script {
                 if (env.IMAGE_TAG) {
                     sh "docker image rm playwright-sugon:${env.IMAGE_TAG} || true"
-                }
-            }
-
-            // 发送报告到飞书
-            script {
-                if (params.FEISHU_NOTIFY) {
-                    sendNotification(currentBuild.currentResult)
                 }
             }
         }
