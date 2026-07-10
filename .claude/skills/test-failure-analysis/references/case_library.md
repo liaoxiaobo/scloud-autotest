@@ -192,3 +192,61 @@ Ceph 存储后端创建 500GiB 共享空白云硬盘的实际耗时超过 `asser
 > 看到"批量操作后确认对话框未找到"，先问自己：勾选后表格是否被轮询刷新过？如果页面有定时轮询且 checkbox 状态会丢失→ 极大概率是 **表格勾选状态被异步刷新冲掉**，而不是 locator 本身错误。
 
 ---
+
+## 模式：Element UI 复选框内部 span 不可点击（嵌套 span 定位错误）
+
+### 案例：EVS-共享云硬盘数据一致性 `test_shared_volume_data_consistency` 复选框点击超时
+
+**时间**：2026-07-10
+**用例**：`test_shared_volume_data_consistency[volume0-vm0]`
+**根因分类**：用例问题
+
+#### 现象
+
+- `volume` fixture 调用 `evs_create(shared=True)` 创建共享云硬盘时失败
+- 报错：`Locator.click: Timeout 30000ms exceeded`
+- Call log 显示 locator 解析到 `<span class="el-checkbox__inner"></span>`，但持续报告 `element is not visible`
+- 失败截图显示"新建云硬盘"弹窗正常打开，"共享盘"复选框可见且未选中
+
+#### 根因
+
+原代码使用 `locator("label").filter(has_text="共享盘").locator("span").nth(1).click()`。Playwright 的 `locator("span")` 会查找 label 下**所有后代 span**，而 Element UI 的 `el-checkbox` 内部结构是：
+
+```html
+<label class="el-checkbox">
+  <span class="el-checkbox__input">           <!-- nth(0) -->
+    <span class="el-checkbox__inner"></span>  <!-- nth(1) ← 命中 -->
+    <input type="checkbox" class="el-checkbox__original" />
+  </span>
+  <span class="el-checkbox__label">共享盘</span>  <!-- nth(2) -->
+</label>
+```
+
+`nth(1)` 命中的是装饰性的 `.el-checkbox__inner`，该 span 在真实 DOM 中通常被 CSS 隐藏或尺寸为 0，Playwright 判定其不可见，导致点击超时。
+
+#### 关键证据链
+
+1. **Call log 明确显示命中 `el-checkbox__inner` 且 `element is not visible`** — 直接证明不是元素未找到，而是 locator 命中了错误的隐藏元素
+2. **截图显示复选框本身正常渲染且无遮挡** — 排除环境问题（弹窗未打开、页面异常等）
+3. **同文件 `_enable_virtio_scsi` 使用 label 点击成功** — 证明正确的交互方式应为点击 label 本身，而非内部 span
+4. **修复后同用例通过** — 确认根因是 locator 选择错误
+
+#### 修复方向
+
+- **推荐**：点击 label 本身，并先判断 checkbox 状态避免重复点击：
+  ```python
+  shared_label = self.page.locator("form label").filter(has_text="共享盘")
+  if not shared_label.get_by_role("checkbox").is_checked():
+      shared_label.click()
+  ```
+- **替代**：使用 role 定位真实 checkbox：
+  ```python
+  self.get_by_role("checkbox", name="共享盘").check()
+  ```
+- **同步审查**：检查项目中所有使用 `locator("span").nth(n).click()` 点击 checkbox 的地方，统一改为 label 点击或 role 定位
+
+#### 排查口诀
+
+> 看到"复选框点击超时且 call log 显示 `element is not visible`"，先问自己：locator 是不是点到了组件内部隐藏的装饰 span？对于 Element UI 的 checkbox/radio，**永远优先点击 label 或使用 `get_by_role("checkbox")`**，不要靠 `span.nth()` 猜层级。
+
+---
