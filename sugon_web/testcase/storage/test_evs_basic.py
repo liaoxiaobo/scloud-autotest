@@ -134,6 +134,7 @@ class TestEVSBasic:
 
     @skip_stor("local")
     @allure.title("云硬盘-转换为镜像")
+    @pytest.mark.requires_admin
     def test_volume_convert_to_image(self, ecs_page, evs_page, ssh_host):
 
         name = random_data()

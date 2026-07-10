@@ -96,8 +96,9 @@ class TestEcsBasic:
 **示例提问 A（你已确认结论，让 AI 只执行标记）：**
 
 ```
-test_iam_05_user_modify.py 的 TestIamUserModify 整个类业务上只有 admin 能操作，
-帮我在这个类上加 @pytest.mark.requires_admin 标签。
+ 帮我在如下的用例上加 @pytest.mark.requires_admin 标签
+  1、云硬盘-转换为镜像
+  2、集群详情-节点规格缩容
 ```
 
 **示例提问 B（拿不准时，先让 AI 给依据再决定）：**

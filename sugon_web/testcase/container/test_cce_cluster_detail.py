@@ -191,6 +191,7 @@ class TestCCEDetail:
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情-节点规格缩容")
+    @pytest.mark.requires_admin
     def test_node_flavor_shrink(self, cce_page, cce_cluster, node_type, ssh_host):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]

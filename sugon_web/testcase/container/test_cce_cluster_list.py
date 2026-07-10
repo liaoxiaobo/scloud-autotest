@@ -12,6 +12,7 @@ from sugon_web.utils.data import random_data, load_data
 class TestCCEClusterCreate:
 
     @allure.title("集群列表-创建CCE集群-{params[network_model]}网络-{params[version]}版本-{params[container_runtime]}运行时")
+    @pytest.mark.requires_admin
     @pytest.mark.parametrize("params", load_data("test_cce_create", data_file='test_cce.yaml'))
     def test_cce_create(self, cce_page, ssh_host, ssh_vm, params):
         """测试创建CCE集群并验证后端配置（参数化）"""
