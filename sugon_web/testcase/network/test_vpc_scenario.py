@@ -483,7 +483,7 @@ class TestVPCNetwork:
         }
     }], indirect=True)
     @allure.title("虚拟IP-绑定公网IP及云外连通性验证")
-    def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, vip, vm, ssh_vm, ssh_host):
+    def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, eip, vip, vm, ssh_vm, ssh_host):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""
 
         vm_name = vm['name']
@@ -496,18 +496,18 @@ class TestVPCNetwork:
             ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
 
         with allure_step_log("步骤2: 为该虚拟IP(VIP)绑定公网IP"):
-            eip = vpc_page.vip_bind_eip(vip)
+            bound_eip = vpc_page.vip_bind_eip(vip, eip_ip=eip)
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤3: 从后台节点发起对绑定的公网IP的Ping测试，验证公网连通性"):
-            ssh_host.ping(eip)
+            ssh_host.ping(bound_eip)
 
         with allure_step_log("步骤4: 解绑公网IP与虚拟IP的绑定关系"):
             vpc_page.vip_unbind_eip(vip)
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤5: 再次从后台节点Ping该公网IP，确认连通性已断开"):
-            ssh_host.ping(eip, connected=False)
+            ssh_host.ping(bound_eip, connected=False)
 
         with allure_step_log("步骤6: 解绑虚拟IP与云服务器实例的绑定关系"):
             vpc_page.vip_unbind_instance(vip, vm_name)
