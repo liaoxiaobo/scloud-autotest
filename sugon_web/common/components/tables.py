@@ -26,7 +26,6 @@ class TestMyFeature:
 """
 
 import re
-import time
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator, expect
@@ -408,7 +407,10 @@ class TablesMixin:
 
         支持显式传入 container（如弹窗），未传入时按优先级自动探测：
         含 sizes 的 dialog → 激活 tab → 主内容区 → 页面全局。
-        探测和点击均使用 wait_for 等待可见，避免弹窗动画或异步渲染导致误判。
+        探测和点击均使用 expect 智能等待，避免弹窗动画或异步渲染导致误判。
+
+        点击分页条数下拉前，先判断当前列表数据量：若数据量小于当前分页条数，
+        或当前分页条数已满足目标，则直接返回，避免不必要的点击。
 
         点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
         若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
@@ -435,10 +437,10 @@ class TablesMixin:
                 try:
                     if scope.count() == 0:
                         continue
-                    scope.wait_for(state="visible", timeout=5000)
+                    expect(scope).to_be_visible(timeout=5000)
                     search_scope = scope
                     break
-                except Exception:
+                except AssertionError:
                     continue
 
         if search_scope is None:
@@ -447,43 +449,68 @@ class TablesMixin:
 
         # 在确定容器内查找分页条数切换器
         try:
+            if search_scope.locator(".el-pagination__sizes .el-input__inner").count() == 0:
+                return False
             size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
-            size_trigger.wait_for(state="visible", timeout=10000)
-        except Exception as e:
+            expect(size_trigger).to_be_visible(timeout=10000)
+        except AssertionError as e:
             self.logger.debug(f"未找到可见的分页条数切换器: {e}")
             return False
 
         try:
             current_text = size_trigger.input_value() or size_trigger.text_content() or ""
             current_match = re.search(r"(\d+)", current_text)
-            if current_match and int(current_match.group(1)) >= int(target_size):
+            current_size = int(current_match.group(1)) if current_match else None
+            if current_size is not None and current_size >= int(target_size):
+                return True
+
+            # 当前列表数据量小于当前分页条数时，无需切换分页。
+            # 优先从分页器的总条数元素读取真实数据总量，取不到再回退到当前页可见行数。
+            rows_count = None
+            total_locator = search_scope.locator(".el-pagination__total")
+            try:
+                if total_locator.count() > 0:
+                    total_text = total_locator.first.text_content() or ""
+                    total_match = re.search(r"(\d+)", total_text)
+                    if total_match:
+                        rows_count = int(total_match.group(1))
+            except Exception:
+                rows_count = None
+
+            if rows_count is None:
+                table = search_scope.locator(".el-table:visible").first
+                if table.count() > 0:
+                    try:
+                        rows_count = table.locator(".el-table__body-wrapper tr").count()
+                    except Exception:
+                        rows_count = None
+
+            if current_size is not None and rows_count is not None and rows_count < current_size:
+                # self.logger.info(f"当前列表数据量({rows_count})小于分页条数({current_size})，无需切换分页")
                 return True
         except Exception:
             pass
 
         try:
+            expect(size_trigger).to_be_enabled(timeout=10000)
             size_trigger.click(timeout=10000)
-            self.page.wait_for_timeout(500)
 
             # Element UI select dropdown 可能 teleport 到 body，优先在传入容器内查找，
-            # 容器内找不到再回退到全局可见下拉。
+            # 容器内没有匹配项时立即回退到全局可见下拉，避免在容器内空等完整超时。
             for size_text in [f"{target_size}条/页", "100条/页", "50条/页"]:
-                option = None
-                try:
-                    option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
-                    option.wait_for(state="visible", timeout=5000)
-                except Exception:
-                    option = self.page.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
-                    option.wait_for(state="visible", timeout=5000)
+                scope_option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                page_option = self.page.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                option = scope_option if scope_option.count() > 0 else page_option
+                expect(option).to_be_visible(timeout=5000)
 
                 option.click(timeout=10000)
                 if hasattr(self, "wait_for_page_ready"):
                     self.wait_for_page_ready()
                 else:
                     try:
-                        self.page.locator(".el-loading-mask").wait_for(state="hidden", timeout=5000)
-                    except Exception:
-                        self.page.wait_for_timeout(1000)
+                        expect(self.page.locator(".el-loading-mask")).to_be_hidden(timeout=10000)
+                    except AssertionError:
+                        pass
                 self.logger.info(f"分页条数已调整为 {size_text}")
                 return True
 
