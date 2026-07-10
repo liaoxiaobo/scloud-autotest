@@ -118,18 +118,7 @@ class CceClusterMixin:
         # self.dialog_confirm.click()
         for name in names:
             self.get_by_role("row", name=re.compile(name)).locator("span").nth(1).click()
-
         self.get_by_text("批量删除").click()
-
-        # 处理定时轮询清空 checkbox 导致确认对话框未弹出的偶现情况
-        try:
-            self.get_by_role("dialog").wait_for(state="visible", timeout=5000)
-        except Exception:
-            self.logger.warning("批量删除确认对话框未出现，可能是轮询清空了勾选，尝试重新勾选")
-            self.select_rows_by_names(names)
-            self.btn_batch_delete.click()
-            self.get_by_role("dialog").wait_for(state="visible", timeout=10000)
-
         self.dialog_confirm.click()
 
     @submenu("集群管理")
