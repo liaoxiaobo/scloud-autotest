@@ -810,7 +810,7 @@ class TestVPCBasic:
             assert len(rows) == 1, f"搜索结果应只有1行，实际有 {len(rows)} 行: {rows}"
 
         with allure_step_log("步骤3: 重置搜索条件，验证规则列表恢复"):
-            vpc_page.btn_reset.click()
+            vpc_page.reset()
             rows = vpc_page.get_column_data("目的地址")
             assert len(rows) > 1, f"重置后应有多行，实际只有 {len(rows)} 行: {rows}"
 

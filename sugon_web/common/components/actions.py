@@ -129,6 +129,23 @@ class ActionsMixin:
             self.logger.error(f"搜索操作失败: keyword={keyword}")
             raise
 
+    def reset(self) -> None:
+        """重置搜索条件并等待页面就绪。
+
+        执行流程：点击重置按钮 -> wait_for_page_ready()
+
+        Raises:
+            Exception: 重置按钮定位失败时抛出
+        """
+        try:
+            self.logger.info("开始重置搜索条件")
+            self.btn_reset.click()
+            self.wait_for_page_ready()
+            self.logger.info("重置搜索条件完成")
+        except Exception as e:
+            self.logger.error(f"重置操作失败: {e}")
+            raise
+
     def _first_visible_locator(self, locators: list[Locator], element_name: str) -> Locator:
         """返回多个定位器中第一个可见元素。
 
