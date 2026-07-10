@@ -69,7 +69,7 @@ class TestCCEDetail:
             assert "请先绑定公网IP" in message.inner_text()
 
     @allure.title("集群详情-集群公网IP绑定和解绑")
-    def test_public_ip_bind_unbind(self, cce_page, cce_cluster):
+    def test_public_ip_bind_unbind(self, cce_page, cce_cluster, eip):
         cluster_name = cce_cluster["name"]
 
         with allure_step_log("步骤1: 进入集群详情页"):
@@ -77,7 +77,7 @@ class TestCCEDetail:
             cce_page.goto_detail_page(cluster_name, tab_name="详情")
 
         with allure_step_log("步骤2: 绑定公网IP"):
-            cce_page.cce_public_ip_bind()
+            cce_page.cce_public_ip_bind(eip_ip=eip)
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤3: 验证公网IP绑定成功"):
@@ -92,7 +92,7 @@ class TestCCEDetail:
 
     @pytest.mark.parametrize("node_type", ["master", "worker"])
     @allure.title("集群详情-节点公网IP绑定和解绑")
-    def test_node_public_ip_bind_unbind(self, cce_page, cce_cluster, ssh_host, node_type):
+    def test_node_public_ip_bind_unbind(self, cce_page, cce_cluster, ssh_host, eip, node_type):
         cluster_name = cce_cluster["name"]
         node_name = cce_cluster[f"{node_type}_node"]
 
@@ -101,7 +101,7 @@ class TestCCEDetail:
             cce_page.goto_detail_page(cluster_name, tab_name="详情")
 
         with allure_step_log("步骤2: 绑定节点公网IP"):
-            ip = cce_page.cce_node_public_ip_bind(node_name)
+            ip = cce_page.cce_node_public_ip_bind(node_name, eip_ip=eip)
             cce_page.assert_popup_success()
 
         with allure_step_log("步骤3: 验证公网IP绑定成功"):
