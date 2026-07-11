@@ -69,11 +69,29 @@ def _cleanup_cce_cluster(cce_page, ssh_host, name):
 
 
 @pytest.fixture(scope="module")
-def cce_cluster(browser_context, config, ssh_host, request):
+def browser_context_module(browser):
+    """模块级浏览器上下文，供 CCE 等长生命周期 fixture 使用。
+
+    与 class 级的 browser_context 隔离，避免 module scope fixture
+    因依赖 class scope fixture 而触发 ScopeMismatch。
+    """
+    context = browser.new_context(
+        ignore_https_errors=True,
+        permissions=["clipboard-read", "clipboard-write"],
+        timezone_id="Asia/Shanghai",
+    )
+    logger.info("模块级浏览器上下文创建成功")
+    yield context
+    context.close()
+    logger.info("模块级浏览器上下文已关闭")
+
+
+@pytest.fixture(scope="module")
+def cce_cluster(browser_context_module, config, ssh_host, request):
     """创建CCE集群并等待就绪，测试模块结束后自动清理（scope=module）。
 
     Args:
-        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        browser_context_module: 模块级 Playwright 浏览器上下文，由 pytest fixture 提供。
         ssh_host: SSH 主机连接对象，用于查询 MFIP。
         request: pytest 请求对象，用于获取参数化配置。
 
@@ -112,7 +130,7 @@ def cce_cluster(browser_context, config, ssh_host, request):
     reuse_name = ""
 
     params = getattr(request, "param", {}) or {}
-    page = _create_logged_in_page(browser_context, config)
+    page = _create_logged_in_page(browser_context_module, config)
     cce_page = CcePage(page)
 
     if reuse_name:
@@ -326,11 +344,11 @@ def ssm_page(page):
 
 
 @pytest.fixture(scope="module")
-def mesh_instance(browser_context, config, cce_cluster, request):
+def mesh_instance(browser_context_module, config, cce_cluster, request):
     """创建模块级共享 SSM 网格实例，供同一模块内资源操作类用例复用。
 
     Args:
-        browser_context: Playwright 浏览器上下文，由 pytest fixture 提供。
+        browser_context_module: 模块级 Playwright 浏览器上下文，由 pytest fixture 提供。
         config: 配置对象。
         cce_cluster: 模块级 CCE 集群 fixture。
         request: pytest 请求对象。
@@ -344,7 +362,7 @@ def mesh_instance(browser_context, config, cce_cluster, request):
     """
     from sugon_web.conftest import _create_logged_in_page
 
-    page = _create_logged_in_page(browser_context, config)
+    page = _create_logged_in_page(browser_context_module, config)
     ssm_page = SsmPage(page)
     cluster_name = cce_cluster["name"]
     name = f"mesh-{random_data(length=4)}"
