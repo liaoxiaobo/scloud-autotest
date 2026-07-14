@@ -75,9 +75,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        default="deepseek",
-        choices=["deepseek", "dashscope"],
-        help="模型提供商，默认: deepseek",
+        default="sugoncloud",
+        choices=["deepseek", "dashscope", "sugoncloud"],
+        help="模型提供商，默认: sugoncloud",
     )
     parser.add_argument(
         "--model",
