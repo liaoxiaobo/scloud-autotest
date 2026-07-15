@@ -154,7 +154,7 @@ pipeline {
                     script {
                         try {
                             withCredentials([
-                                string(credentialsId: 'deepseek-api-key', variable: 'DEEPSEEK_API_KEY')
+                                string(credentialsId: 'sugoncloud-api-key', variable: 'SUGON_API_KEY')
                             ]) {
                                 sh '''
                                     python3 sugon_web/tools/failure_analysis_cli.py \
@@ -162,7 +162,7 @@ pipeline {
                                         --logs-dir logs \
                                         --output reports/ai-test-summary.md \
                                         --json-output reports/failure-report.json \
-                                        --provider deepseek \
+                                        --provider sugoncloud \
                                         --max-failures 100
                                 '''
                             }

@@ -51,6 +51,15 @@ def _extract_json_object(text: str) -> str:
 
 def parse_analysis_response(content: str) -> dict:
     """从 LLM 响应中解析 JSON；失败时返回兜底结构。"""
+    if not content or not content.strip():
+        return {
+            "root_cause": "LLM 返回为空，需人工复核原始报错",
+            "confidence": "低",
+            "evidence": ["LLM 响应 content 为空"],
+            "short_term_fix": "检查模型服务可用性与 prompt 输入后重试",
+            "long_term_fix": "",
+        }
+
     content = _strip_markdown_code_block(content)
     try:
         return json.loads(content)
@@ -62,8 +71,9 @@ def parse_analysis_response(content: str) -> dict:
                 return json.loads(obj)
         except json.JSONDecodeError:
             pass
+        root_cause = content[:300] if content.strip() else "LLM 返回为空，需人工复核原始报错"
         return {
-            "root_cause": content[:300],
+            "root_cause": root_cause,
             "confidence": "低",
             "evidence": ["LLM 返回非 JSON，已按原文兜底解析"],
             "short_term_fix": "请人工复核 LLM 输出",

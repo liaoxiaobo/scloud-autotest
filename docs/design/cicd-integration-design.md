@@ -521,6 +521,49 @@ RULE_BASED_CATEGORIES = {FailureCategory.ENVIRONMENT}
 ${BUILD_URL}artifact/reports/ai-test-summary.md/*view*/
 ```
 
+### 9.6 LLM 返回空内容导致根因缺失
+
+**现象**：sugoncloud（Claude 兼容接口）返回的响应中 `content` 为空字符串，导致 `analyzer.py` 兜底解析后 `root_cause` 为空。AI 报告中对应失败组呈现如下残缺状态：
+
+```markdown
+### 2. AssertionError: 未找到名称为 '<IP>' 的数据行
+- **原始错误**: AssertionError: 未找到名称为 '<IP>' 的数据行
+- **分类**: 用例问题
+- **置信度**: 低
+- **影响范围**: 3 个用例（端口-创建和删除（手动分配-手动输入）, 端口-修改IP和MAC, 端口-批量删除）
+
+#### 根因
+
+
+#### 关键证据
+- 【直接证据】LLM 返回非 JSON，已按原文兜底解析
+
+#### 修复建议
+- 短期：请人工复核 LLM 输出
+```
+
+可以看到"根因"字段完全为空，工程师无法从报告中获得任何有效分析结论。
+
+**与 9.2 的区别**：9.2 是模型返回了非 JSON 文本（如 markdown 包裹、说明性文字），本次是模型**未返回任何有效内容**，属于更极端的输出失败。
+
+**原因排查**：
+- API 网关或代理层异常时可能返回空 body
+- 模型对超长 prompt 或特殊输入未生成有效回复
+- 当前 `_call_anthropic` 遍历 content blocks 取第一个 `text` 属性，若 blocks 为空或全部为非 text 类型，则返回空字符串
+
+**解决方案**：
+1. **Prompt 层**：在 `failure_analysis.md` 中增加 few-shot 输出示例，通过正向示例强化"只输出 JSON、不得为空"的约束。
+2. **代码层兜底**：在 `analyzer.py` 中，当 `content.strip()` 为空时，将 `root_cause` 设置为更明确的文案（如"LLM 返回为空，需人工复核原始报错"），并保留原始错误信息作为证据。
+
+**方案评估**：
+- few-shot 示例对 Claude 模型有效性较高，能显著降低非 JSON 输出的概率
+- 但无法完全解决 API 层或网关导致的空返回，因此代码层兜底必不可少
+- 示例长度需控制，避免显著增加单次调用 token 成本
+
+**复盘要点**：
+- 任何 LLM 兜底逻辑都必须考虑"返回为空"的边界情况，而不仅是"返回非 JSON"
+- 更换模型提供商后，需重新验证输出格式稳定性，不同模型的指令遵循能力存在差异
+
 ---
 
 ## 10. 附录
