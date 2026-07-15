@@ -31,7 +31,7 @@ stor: zbs
 data: Autotest
 
 # 默认测试用户角色 (admin/dept_admin/user)
-user_role: user
+user_role: admin
 
 # 各角色登录凭据（按角色固化配置）
 users:
