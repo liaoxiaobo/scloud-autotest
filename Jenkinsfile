@@ -4,7 +4,9 @@ pipeline {
 //         string(name: 'BRANCH', defaultValue: 'develop', description: '请输入正确Git分支名（如main、develop)', trim: true)
         choice(name: 'USER_ROLE', choices: ["admin", "dept_admin", "user"], description: '请选择测试用户角色')
         string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow。全局 marker 筛选，先筛选用例再分发。为空则执行所有用例')
-        text(name: 'ENV_DISPATCH', defaultValue: '', description: 'JSON 或 YAML 格式环境调度配置，优先级高于 env.yaml。支持默认执行环境条目（无 modules/services/mark）和具体 dispatch 任务列表。默认执行环境用于兜底未分配的模块/服务。每项包含 host、modules/services/mark、stor，可选 parallel_count、bms。YAML 示例：\n# 默认执行环境（兜底）\n- host: "172.22.1.190"\n  stor: ceph\n  parallel_count: 3\n# 具体模块/服务调度\n- host: "172.22.3.140"\n  modules: [compute]\n  stor: xbd\n  parallel_count: 4\n- host: "172.22.1.190"\n  services: [evs, vpc]\n  stor: xstor\n  parallel_count: 2\n- host: "172.22.3.141"\n  modules: [bms]\n  stor: xbd\n  parallel_count: 1\n  bms:\n    instance_name: bms-0601\n    bmc_ip: 172.22.2.250\n    preferred_node: master03.cloud.local\n    network_name: bms-test\n    password: admin1234')
+        text(name: 'ENV_DISPATCH', defaultValue: '''- host: "172.22.1.190"
+  stor: xstor
+  parallel_count: 3''', description: 'JSON 或 YAML 格式环境调度配置，优先级高于 env.yaml。支持默认执行环境条目（无 modules/services/mark）和具体 dispatch 任务列表。默认执行环境用于兜底未分配的模块/服务。每项包含 host、modules/services/mark、stor，可选 parallel_count、bms。YAML 示例：\n# 默认执行环境（兜底）\n- host: "172.22.1.190"\n  stor: ceph\n  parallel_count: 3\n# 具体模块/服务调度\n- host: "172.22.3.140"\n  modules: [compute]\n  stor: xbd\n  parallel_count: 4\n- host: "172.22.1.190"\n  services: [evs, vpc]\n  stor: xstor\n  parallel_count: 2\n- host: "172.22.3.141"\n  modules: [bms]\n  stor: xbd\n  parallel_count: 1\n  bms:\n    instance_name: bms-0601\n    bmc_ip: 172.22.2.250\n    preferred_node: master03.cloud.local\n    network_name: bms-test\n    password: admin1234')
         booleanParam(name: 'RUN_LAST_FAILED', defaultValue: false, description: '是否只运行上次失败的测试')
         booleanParam(name: 'FEISHU_NOTIFY', defaultValue: false, description: '是否推送飞书群消息')
     }
@@ -146,10 +148,7 @@ pipeline {
                     sh "cp -r allure-report/history allure-result/ || true"
 
                     // 生成汇总 environment.properties，让总览页展示所有参与环境
-                    def dispatchSource = params.ENV_DISPATCH?.trim() ? 'ENV_DISPATCH' : (params.HOSTS?.trim() ? 'HOSTS' : 'env.yaml')
-                    def allureDefaultHost = '172.22.1.190'
-                    def allureDefaultStor = 'xstor'
-                    sh "python3 sugon_web/tools/write_allure_environment.py --dispatch-json dispatch-jobs.json --output allure-result/environment.properties --default-host '${allureDefaultHost}' --default-stor '${allureDefaultStor}' --dispatch-source '${dispatchSource}'"
+                    sh "python3 sugon_web/tools/write_allure_environment.py --dispatch-json dispatch-jobs.json --output allure-result/environment.properties"
 
                     // 生成 AI 失败分析报告（失败不影响 Allure 报告生成）
                     script {
@@ -226,14 +225,24 @@ pipeline {
     }
 }
 
+// 从 ENV_DISPATCH 文本中解析所有 host 并去重（支持 YAML/JSON 中的 host: "x.x.x.x" / host: x.x.x.x / "host": "x.x.x.x" 等写法）
+def extractEnvHosts(String envDispatchText) {
+    if (!envDispatchText?.trim()) {
+        return []
+    }
+    def hosts = []
+    def matcher = envDispatchText =~ /\bhost["']?\s*:\s*["']?([0-9.]+)["']?/
+    while (matcher.find()) {
+        hosts << matcher.group(1)
+    }
+    return hosts.unique()
+}
+
 // 发送飞书通知函数
 def sendNotification(String result) {
-    def dispatchSource = 'env.yaml dispatch'
-    if (params.ENV_DISPATCH?.trim()) {
-        dispatchSource = 'ENV_DISPATCH 参数'
-    } else if (params.HOSTS?.trim()) {
-        dispatchSource = "HOSTS 参数: ${params.HOSTS}"
-    }
+    // 从 ENV_DISPATCH 中解析所有 host，去重后按 host:30000 格式列举
+    def hosts = extractEnvHosts(params.ENV_DISPATCH)
+    def envText = hosts ? hosts.collect { "${it}:30000" }.join('，') : '见 ENV_DISPATCH'
 
     // 读取 AI 报告执行概览并做简单转义，避免破坏 JSON
     def aiSummary = "未生成 AI 摘要"
@@ -256,7 +265,7 @@ def sendNotification(String result) {
                     "content": [
                         [{
                             "tag": "text",
-                            "text": "调度方式: ${dispatchSource}\\n全局筛选 MARK: ${params.MARK ?: '（空）'}\\n默认环境: 见 ENV_DISPATCH\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n\\n${aiSummary}\\n"
+                            "text": "测试模块: ${params.MARK ?: '（空）'}\\n测试环境：${envText}\\n测试结果: ${result}\\n开始时间: ${env.START_TIME}\\n结束时间: ${new Date().format("yyyy.MM.dd HH:mm:ss")}\\n\\n${aiSummary}\\n"
                         }, {
                             "tag": "a",
                             "text": "查看 AI 分析报告",
