@@ -402,18 +402,36 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
+    def _find_page_size_scope(self) -> Locator | None:
+        """自动探测含可见分页条数切换器的容器。
+
+        优先可见弹窗/抽屉（分页器大概率在其中），其次列表区（激活 tab / 主内容区）。
+        用 :visible 与 is_visible() 同步过滤，避免对隐藏候选逐个 expect 产生无效等待。
+        """
+        sizes_inner = self.page.locator(".el-pagination__sizes .el-input__inner")
+        candidates = [
+            ("dialog/drawer", self.page.locator(
+                ".el-dialog:visible, .el-dialog__wrapper:visible, "
+                ".one-dialog-box:visible, .el-drawer:visible"
+            )),
+            ("active-tab", self.locator(".el-tab-pane:not([aria-hidden='true'])")),
+            ("main-content", self.locator("#cloud-container-content")),
+        ]
+        for label, base in candidates:
+            for candidate in base.filter(has=sizes_inner).all():
+                if candidate.is_visible():
+                    self.logger.info(f"自动探测到分页容器: {label}")
+                    return candidate
+        return None
+
     def _expand_page_size(self, target_size: str = "50", container: Locator | None = None) -> bool:
         """尝试将当前交互上下文中的分页条数扩大。
 
-        支持显式传入 container（如弹窗），未传入时按优先级自动探测：
-        含 sizes 的 dialog → 激活 tab → 主内容区 → 页面全局。
-        探测和点击均使用 expect 智能等待，避免弹窗动画或异步渲染导致误判。
+        显式传入 container（如弹窗）时直接使用；未传入时自动探测可见分页容器
+        （优先可见弹窗/抽屉，其次列表区）。探测和点击均用 expect 智能等待。
 
-        点击分页条数下拉前，先判断当前列表数据量：若数据量小于当前分页条数，
-        或当前分页条数已满足目标，则直接返回，避免不必要的点击。
-
-        点击分页条数下拉后，优先选择 target_size，没有则依次尝试 100/50 条/页。
-        若点开了下拉但未找到匹配选项，会按 ESC 关闭下拉避免遮挡。
+        点击前先判断：当前条数已达标、或数据量不足一页时，直接返回避免无效点击。
+        点击后优先选 target_size，没有则依次尝试 100/50 条/页；未找到匹配项按 ESC 关闭下拉。
 
         Args:
             target_size: 目标分页条数，默认 "50"
@@ -422,39 +440,18 @@ class TablesMixin:
         Returns:
             bool: 是否成功调整分页条数
         """
-        # 确定搜索容器：显式传入 > dialog > 激活 tab > 主内容区
-        search_scope = None
-        if container is not None:
-            search_scope = container
-        else:
-            candidate_scopes = [
-                self.get_by_role("dialog").filter(has=self.page.locator(".el-pagination__sizes")),
-                self.locator(".el-tab-pane:not([aria-hidden='true'])"),
-                self.locator("#cloud-container-content"),
-                self.page.locator("body"),
-            ]
-            for scope in candidate_scopes:
-                try:
-                    if scope.count() == 0:
-                        continue
-                    expect(scope).to_be_visible(timeout=5000)
-                    search_scope = scope
-                    break
-                except AssertionError:
-                    continue
-
+        # 确定分页容器：显式传入优先，否则自动探测
+        search_scope = container if container is not None else self._find_page_size_scope()
         if search_scope is None:
             self.logger.debug("未找到可见的分页器容器")
             return False
 
-        # 在确定容器内查找分页条数切换器
+        # 在确定容器内定位分页条数切换器（容器内必有，给异步渲染留出等待）
+        size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
         try:
-            if search_scope.locator(".el-pagination__sizes .el-input__inner").count() == 0:
-                return False
-            size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
-            expect(size_trigger).to_be_visible(timeout=10000)
-        except AssertionError as e:
-            self.logger.debug(f"未找到可见的分页条数切换器: {e}")
+            expect(size_trigger).to_be_visible(timeout=5000)
+        except AssertionError:
+            self.logger.debug("未找到可见的分页条数切换器")
             return False
 
         try:
@@ -486,7 +483,6 @@ class TablesMixin:
                         rows_count = None
 
             if current_size is not None and rows_count is not None and rows_count < current_size:
-                # self.logger.info(f"当前列表数据量({rows_count})小于分页条数({current_size})，无需切换分页")
                 return True
         except Exception:
             pass
@@ -495,7 +491,7 @@ class TablesMixin:
             expect(size_trigger).to_be_enabled(timeout=10000)
             size_trigger.click(timeout=10000)
 
-            # Element UI select dropdown 可能 teleport 到 body，优先在传入容器内查找，
+            # Element UI select dropdown 可能 teleport 到 body，优先在容器内查找，
             # 容器内没有匹配项时立即回退到全局可见下拉，避免在容器内空等完整超时。
             for size_text in [f"{target_size}条/页", "100条/页", "50条/页"]:
                 scope_option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
