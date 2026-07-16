@@ -179,59 +179,27 @@ class TablesMixin:
         if t_body.count() == 0:
             t_body = self
 
+        # 策略1：按单元格文本精确匹配（最稳定，不受行序变化影响）
         try:
-            pattern = re.compile(rf"^{re.escape(name)}\s")
-            target_rows = t_body.locator("tr").filter(has_text=pattern)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到精确匹配 {name} 的数据行(空白字符)")
-                return target_rows.last
-
-            pattern2 = re.compile(rf"^{re.escape(name)}:\w+")
-            target_rows = t_body.locator("tr").filter(has_text=pattern2)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(冒号)")
-                return target_rows.last
-
-            pattern3 = re.compile(rf"^{re.escape(name)}/\w+")
-            target_rows = t_body.locator("tr").filter(has_text=pattern3)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(斜杠)")
-                return target_rows.last
-
+            exact_cells = t_body.locator("td").filter(
+                has_text=re.compile(rf"^\s*{re.escape(name)}\s*$")
+            )
+            if exact_cells.count() > 0:
+                self.logger.info(f"找到精确匹配 '{name}' 的数据行")
+                return exact_cells.locator("xpath=ancestor::tr[1]").last
         except Exception as e:
-            self.logger.debug(f"正则匹配失败: {e}")
+            self.logger.debug(f"精确匹配失败: {e}")
 
+        # 策略2：按单元格文本前缀匹配（兼容 "name ID:xxx"、"name/xxx" 等）
         try:
-            target_rows = t_body.locator("tr")
-            total = target_rows.count()
-            # 从后往前遍历，取最后一条匹配
-            for i in range(total - 1, -1, -1):
-                current_row = target_rows.nth(i)
-                try:
-                    cells = current_row.locator("td")
-                    for j in range(cells.count()):
-                        cell_text = cells.nth(j).text_content()
-                        if cell_text and cell_text.strip() == name:
-                            self.logger.info(f"通过遍历找到 '{name}' 的精确匹配行(第{i}行)")
-                            return current_row
-                except Exception as e:
-                    self.logger.debug(f"检查行 {i} 时出错: {e}")
-                    continue
-
-            for i in range(total - 1, -1, -1):
-                current_row = target_rows.nth(i)
-                try:
-                    cells = current_row.locator("td")
-                    for j in range(cells.count()):
-                        cell_text = cells.nth(j).text_content()
-                        if cell_text and cell_text.strip().startswith(name):
-                            self.logger.info(f"通过遍历找到 '{name}' 的前缀匹配行(单元格: {cell_text.strip()}, 第{i}行)")
-                            return current_row
-                except Exception as e:
-                    self.logger.debug(f"检查行 {i} 时出错: {e}")
-                    continue
+            prefix_cells = t_body.locator("td").filter(
+                has_text=re.compile(rf"^\s*{re.escape(name)}")
+            )
+            if prefix_cells.count() > 0:
+                self.logger.info(f"找到前缀匹配 '{name}' 的数据行")
+                return prefix_cells.locator("xpath=ancestor::tr[1]").last
         except Exception as e:
-            self.logger.info(f"遍历表格行失败: {e}")
+            self.logger.debug(f"前缀匹配失败: {e}")
 
         raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
@@ -420,7 +388,7 @@ class TablesMixin:
         for label, base in candidates:
             for candidate in base.filter(has=sizes_inner).all():
                 if candidate.is_visible():
-                    self.logger.info(f"自动探测到分页容器: {label}")
+                    # self.logger.info(f"自动探测到分页容器: {label}")
                     return candidate
         return None
 
