@@ -628,11 +628,14 @@ class VpcMixin(BasePage):
 
     @submenu("虚拟私有云")
     def port_create(self, vpc_name: str, subnet_name: str, ip_address: str = None,
-                    quick_select=True, mac_address: str = None, port_security: bool = False):
-        """在虚拟私有云中创建端口"""
+                    quick_select=True, mac_address: str = None, port_security: bool = False) -> str:
+        """在虚拟私有云中创建端口，返回新创建端口的固定IP"""
         self.logger.info(f"开始在 VPC '{vpc_name}' 中创建端口")
 
         self.goto_detail_page(vpc_name, tab_name="端口")
+
+        # 记录创建前的端口IP集合，通过差集精确定位新建端口
+        existing_ips = set(self.get_column_data('固定IP', context="active-tab"))
 
         self.get_by_label("端口", exact=True).get_by_text("新建", exact=True).click()
         self.get_by_placeholder("请选择子网").click()
@@ -659,6 +662,24 @@ class VpcMixin(BasePage):
                 self.get_by_role("switch").locator("span").click()
 
         self.get_by_label("新建端口").get_by_text("确定").click()
+
+        new_ip = self._wait_new_port_ip(existing_ips)
+        self.logger.info(f"端口创建完成，新端口IP: {new_ip}")
+        return new_ip
+
+    def _wait_new_port_ip(self, existing_ips: set, timeout: int = 30000) -> str:
+        """等待列表中出现新创建的端口并返回其固定IP（基于创建前后差集）"""
+        deadline = time.time() + timeout / 1000
+        while time.time() < deadline:
+            current_ips = set(self.get_column_data('固定IP', context="active-tab"))
+            new_ips = current_ips - existing_ips
+            if len(new_ips) == 1:
+                return new_ips.pop()
+            if len(new_ips) > 1:
+                # 多个新增IP时取列表最后一个（表格通常按创建时间追加）
+                return list(new_ips)[-1]
+            self.page.wait_for_timeout(500)
+        raise TimeoutError(f"未在 {timeout}ms 内检测到新创建的端口")
 
     def port_delete(self, names):
         """删除端口，支持单个和批量操作"""
