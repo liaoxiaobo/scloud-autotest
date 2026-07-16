@@ -532,22 +532,17 @@ class TestVPCBasic:
         subnet_name = vpc['subnet_name']
 
         with allure_step_log("步骤1: 创建端口（自动分配）"):
-            vpc_page.port_create(
+            port_ip = vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name
             )
             vpc_page.assert_popup_success("添加端口成功")
-
-        with allure_step_log("步骤2: 获取新建的端口IP"):
-            # 在当前处于的端口 Tab 页中获取 IP 列表
-            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[0]  # 通常新增的数据在最后一行
             logger.info(f"自动分配的端口IP: {port_ip}")
 
-        with allure_step_log("步骤3: 删除端口"):
+        with allure_step_log("步骤2: 删除端口"):
             vpc_page.port_delete(port_ip)
 
-        with allure_step_log("步骤4: 验证端口已删除"):
+        with allure_step_log("步骤3: 验证端口已删除"):
             vpc_page.assert_deleted(port_ip)
             logger.info(f"✓ 自动分配的端口 {port_ip} 删除成功")
 
@@ -597,24 +592,21 @@ class TestVPCBasic:
         logger.info(f"计划手动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤1: 创建端口（快速选择IP）"):
-            vpc_page.port_create(
+            created_ip = vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name,
                 ip_address=port_ip,
                 quick_select=True
             )
             vpc_page.assert_popup_success("添加端口成功")
+            logger.info(f"快速选择分配的端口IP: {created_ip}")
 
-        with allure_step_log("步骤2: 获取选中的端口IP"):
-            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[0]
-            logger.info(f"快速选择分配的端口IP: {port_ip}")
+        with allure_step_log("步骤2: 删除端口"):
+            vpc_page.port_delete(created_ip)
 
-        with allure_step_log("步骤3: 删除端口"):
-            vpc_page.port_delete(port_ip)
-
-        with allure_step_log("步骤4: 验证端口已删除"):
-            vpc_page.assert_deleted(port_ip)
+        with allure_step_log("步骤3: 验证端口已删除"):
+            vpc_page.assert_deleted(created_ip)
+            logger.info(f"✓ 快速选择分配的端口 {created_ip} 删除成功")
 
     @allure.title("端口-搜索和重置")
     @pytest.mark.parametrize("port", [{"count": 2}], indirect=True)
