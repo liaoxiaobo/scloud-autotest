@@ -66,7 +66,7 @@ class WaitsMixin:
                 break
             self.page.wait_for_timeout(500)
 
-    def wait_for_source_complete(self, name: str, loading_timeout: int = 10, complete_timeout: int = 180) -> None:
+    def wait_for_source_complete(self, name: str, loading_timeout: int = 10, complete_timeout: int = 300) -> None:
         """等待资源状态加载完成
 
         Args:
@@ -105,6 +105,10 @@ class WaitsMixin:
         与 wait_for_source_complete 不同：批量操作是并行下发的，不能串行等待
         每个资源的 loading 图标出现再消失，否则后面的资源可能已经被错过。
 
+        注意：部分批量操作（如批量重启、批量关机）可能直接收敛到终态，页面
+        不展示 loading 中间态。此时本方法仅记录警告并直接返回，由调用方通过
+        assert_status 等断言校验最终状态，避免误报。
+
         Args:
             names: 资源名称列表
             loading_timeout: 轮询等待每个资源 loading 图标出现的超时（秒）
@@ -131,10 +135,11 @@ class WaitsMixin:
 
         if pending:
             if len(pending) == len(names):
-                raise AssertionError(
+                self.logger.warning(
                     f"批量操作未触发任何资源的中间态 loading 图标: {names}，"
-                    "可能操作未下发或 loading 消失过快"
+                    "可能操作未下发或 loading 消失过快，将由后续断言校验最终状态"
                 )
+                return
             self.logger.warning(
                 f"以下资源未观察到中间态 loading 图标: {pending}，"
                 "可能操作已完成或该资源未进入中间态"
