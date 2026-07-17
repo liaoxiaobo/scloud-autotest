@@ -39,7 +39,7 @@ PROVIDER_CONFIG = {
     "sugoncloud": {
         "env": "SUGON_API_KEY",
         "base_url": "https://172.22.6.9:8765",
-        "default_model": "claude-opus-4-8",
+        "default_model": "k3",
         "timeout": 600,
         "protocol": "anthropic",
         "verify_ssl": False,
