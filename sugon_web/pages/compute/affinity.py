@@ -31,7 +31,7 @@ class AffinityGroupMixin(BasePage):
             names = [names]
         for name in names:
             self.ecs_bind_unbind_affinity_group(name, operation, group_name)
-            # self.assert_popup_success(f"{name}实例{operation}成功")
+            self.assert_popup_success(f"{name}实例{operation}成功")
 
     def ecs_bind_unbind_affinity_group(self, name, operation: str, group_name: str):
         self.click_action(name, operation)
