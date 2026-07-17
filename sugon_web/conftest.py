@@ -297,8 +297,12 @@ def browser(config):
             browser = getattr(p, browser_type).launch(
                 headless=headless,
                 slow_mo=slow_mo,
-                args=["--ignore-certificate-errors", "--ignore-certificate-errors-spki-list"],
-            )
+                args=["--ignore-certificate-errors",
+                      "--ignore-certificate-errors-spki-list",
+                      "--disable-gpu",
+                      "--disable-dev-shm-usage",
+                      "--no-sandbox",
+                      ])
             logger.info(f"浏览器 {browser_type} 启动成功")
 
             yield browser
