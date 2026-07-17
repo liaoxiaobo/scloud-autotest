@@ -79,7 +79,8 @@ class MfipHelper:
             RuntimeError: 请求失败或响应异常。
         """
         base_url = Config.get("base_url")
-        url = f"{base_url}/api/sugoncloud-ops-api/api/ops/vpc/SDN/mfip/add"
+        # url = f"{base_url}/api/sugoncloud-ops-api/api/ops/vpc/SDN/mfip/add"
+        url = f"{base_url}/api/v1/ops/instance-management-ips"
 
         token = self._get_auth_token()
 
@@ -152,6 +153,7 @@ class MfipHelper:
         assigned_mfip = (
             result.get("content", {}).get("mfip_address")
             or result.get("mfip_address")
+            or result.get("data", {}).get("ip_address")
         )
         if assigned_mfip:
             vm_data["mfip"] = assigned_mfip
@@ -208,6 +210,7 @@ class MfipHelper:
         assigned_mfip = (
             result.get("content", {}).get("mfip_address")
             or result.get("mfip_address")
+            or result.get("data", {}).get("ip_address")
         )
         if not assigned_mfip:
             raise RuntimeError(f"MFIP 绑定成功但响应中未返回 mfip_address: {result}")
