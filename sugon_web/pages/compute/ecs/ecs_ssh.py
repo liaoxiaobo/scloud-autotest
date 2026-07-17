@@ -53,9 +53,8 @@ class EcsSshMixin(BasePage):
         file_path = f"{curr_dir}/{self._CBR_TEST_FILE_NAME}"
 
         ssh_vm.run(
-            f"mkdir -p {curr_dir} && "
             f"dd if=/dev/urandom of={file_path} "
-            f"bs={self._CBR_TEST_BS} count={self._CBR_TEST_COUNT} 2>/dev/null && "
+            f"bs={self._CBR_TEST_BS} count={self._CBR_TEST_COUNT} && "
             f"sync",
             check_rc=True,
             timeout=600,
