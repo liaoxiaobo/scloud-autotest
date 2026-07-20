@@ -101,7 +101,6 @@ class TestVpnVpnConnectionModify:
         [{"count": 3, "pool": "public_net(基础版)"}],
         indirect=True,
     )
-    @pytest.mark.slow
     @allure.title("VPN通道-修改功能验证")
     def test_vpn_vpn_connection_modify(self, vpc, eip, vpn_page):
         """测试VPN通道修改功能。

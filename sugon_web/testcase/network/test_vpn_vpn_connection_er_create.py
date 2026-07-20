@@ -149,7 +149,6 @@ class TestVpnTunnelErCreate:
         [{"count": 3, "pool": "public_net(基础版)"}],
         indirect=True,
     )
-    @pytest.mark.slow
     @allure.title("VPN通道-连接ER-新建功能验证")
     def test_vpn_tunnel_er_create(self, vpc, eip, er_page, vpn_page):
         """测试VPN通道连接ER新建功能。

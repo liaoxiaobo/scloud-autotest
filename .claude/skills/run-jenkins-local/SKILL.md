@@ -170,7 +170,7 @@ fi
    - 如果输出中包含 `no tests collected`、`/ 0 selected`、`collected 0 items` 或 `Unknown mark` 等关键字，**立即停止执行**，报错：
      > ❌ `--mark='<MARK>'` 未匹配到任何用例。请检查标记是否拼写正确。
      > 可用的模块标记可通过扫描 `sugon_web/testcase/` 目录获取，例如：backup, compute, container, database, iam, middleware, network, security, storage。
-     > 通用标记：smoke, slow。
+     > 通用标记：smoke。
      > 请使用有效标记重新执行，例如 `--mark=compute` 或 `--mark="evs and smoke"`。
    - 如果组合表达式存在语法错误（如括号不匹配、运算符错误），pytest 收集阶段会报错，同样阻塞并展示错误信息。
 
@@ -209,7 +209,7 @@ $PYTEST_CMD \
 ```markdown
 🚀 即将执行以下命令（与 Jenkins 构建逻辑对齐）：
 
-./.venv/bin/pytest --headless=true --host=172.22.1.190 --stor=xstor --username=admin --password=keystone_sugon -n 1 --dist=loadscope sugon_web/testcase/ --alluredir ./allure-result -m 'iam and not slow'
+./.venv/bin/pytest --headless=true --host=172.22.1.190 --stor=xstor --username=admin --password=keystone_sugon -n 1 --dist=loadscope sugon_web/testcase/ --alluredir ./allure-result -m 'iam'
 
 参数来源：
 - host：来自 sugon_web/config/base.yaml

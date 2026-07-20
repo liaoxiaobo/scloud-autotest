@@ -3,7 +3,7 @@ pipeline {
     parameters {
 //         string(name: 'BRANCH', defaultValue: 'develop', description: '请输入正确Git分支名（如main、develop)', trim: true)
         choice(name: 'USER_ROLE', choices: ["admin", "dept_admin", "user"], description: '请选择测试用户角色')
-        string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke、not slow。全局 marker 筛选，先筛选用例再分发。为空则执行所有用例')
+        string(name: 'MARK', defaultValue: '', description: '标签筛选用例。模块级：container/compute/storage/network 等；服务级：cce/ecs/evs/obs/vpc 等；常用组合：storage and obs、compute and ecs、container and smoke。全局 marker 筛选，先筛选用例再分发。为空则执行所有用例')
         text(name: 'ENV_DISPATCH', defaultValue: '''- host: "172.22.1.190"
   stor: xstor
   parallel_count: 3''', description: 'JSON 或 YAML 格式环境调度配置，优先级高于 env.yaml。支持默认执行环境条目（无 modules/services/mark）和具体 dispatch 任务列表。默认执行环境用于兜底未分配的模块/服务。每项包含 host、modules/services/mark、stor，可选 parallel_count、bms。YAML 示例：\n# 默认执行环境（兜底）\n- host: "172.22.1.190"\n  stor: ceph\n  parallel_count: 3\n# 具体模块/服务调度\n- host: "172.22.3.140"\n  modules: [compute]\n  stor: xbd\n  parallel_count: 4\n- host: "172.22.1.190"\n  services: [evs, vpc]\n  stor: xstor\n  parallel_count: 2\n- host: "172.22.3.141"\n  modules: [bms]\n  stor: xbd\n  parallel_count: 1\n  bms:\n    instance_name: bms-0601\n    bmc_ip: 172.22.2.250\n    preferred_node: master03.cloud.local\n    network_name: bms-test\n    password: admin1234')

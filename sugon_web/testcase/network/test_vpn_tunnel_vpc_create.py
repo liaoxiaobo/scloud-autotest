@@ -100,7 +100,6 @@ class TestVpnTunnelVpcCreate:
         [{"count": 3, "pool": "public_net(基础版)"}],
         indirect=True,
     )
-    @pytest.mark.slow
     @allure.title("VPN通道-连接VPC-新建功能验证")
     def test_vpn_tunnel_vpc_create(self, vpc, eip, vpn_page):
         """测试VPN通道连接VPC新建功能。

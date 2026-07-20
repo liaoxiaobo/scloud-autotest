@@ -8,7 +8,6 @@ from sugon_web.testcase.storage._sfs_helpers import (
 )
 
 
-@pytest.mark.slow
 @allure.epic('存储服务')
 @allure.feature('文件存储 SFS')
 @allure.story('文件存储-实例详情-挂载点新建与删除功能验证')
