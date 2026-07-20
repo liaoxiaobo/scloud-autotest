@@ -17,6 +17,9 @@ pytest sugon_web/testcase/ --headless=true
 
 # CLI 覆盖配置
 pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headless=true --stor=xstor --username=admin --password=keystone_sugon
+
+# 冒烟模式
+pytest sugon_web/testcase/ --smoke
 ```
 
 ## 架构（严格 4 层分离）

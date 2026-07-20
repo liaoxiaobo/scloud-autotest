@@ -46,6 +46,12 @@ def pytest_addoption(parser):
     parser.addoption("--bms-preferred-node", action="store", help="指定BMS优先物理节点，覆盖配置文件 bms.preferred_node")
     parser.addoption("--bms-network-name", action="store", help="指定BMS网络名称，覆盖配置文件 bms.network_name")
     parser.addoption("--bms-password", action="store", help="指定BMS实例登录密码，覆盖配置文件 bms.password")
+    parser.addoption(
+        "--smoke",
+        action="store_true",
+        default=False,
+        help="冒烟模式：等同 -m smoke，任一用例失败立即停止（-x），简化输出（--tb=line）",
+    )
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -161,6 +167,14 @@ def pytest_configure(config):
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
+
+    if config.getoption("--smoke", default=False):
+        config.option.maxfail = 1
+        config.option.tb = "line"
+        if config.option.markexpr:
+            config.option.markexpr = f"({config.option.markexpr}) and smoke"
+        else:
+            config.option.markexpr = "smoke"
 
 
 def pytest_collection_modifyitems(config, items):
