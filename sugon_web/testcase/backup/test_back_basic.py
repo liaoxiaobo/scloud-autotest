@@ -230,7 +230,7 @@ class TestResumeCreate:
 
     @allure.title("恢复任务-创建和恢复")
     @pytest.mark.parametrize("data", load_data('test_resume_create_scenario', 'test_backup.yaml'))
-    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data, browser, config, ssh_host):
+    def test_resume_create_scenario(self, backup_page, backup_task, ecs_page, ssh_vm, cleanup_resume_data, data, admin_browser_context, config, ssh_host):
         """测试创建恢复任务的各种场景"""
         allure.dynamic.title(f"恢复任务-创建和恢复（{data['用例名称']}）")
         backup_page.goto_service('备份')
@@ -281,7 +281,7 @@ class TestResumeCreate:
             # 获取新虚机的 IP 并建立 SSH 连接
             re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
             new_mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, re_meta["port_id"],
+                admin_browser_context, config, re_meta["port_id"],
                 project_id=re_meta.get("project_id", "admin-inner-project"),
             )
             mgmt_config = data.get("恢复配置", {}).get("管理配置", {})
@@ -324,7 +324,7 @@ class TestResumeCreate:
             backup_task,
             cleanup_resume_data,
             data,
-            browser,
+            admin_browser_context,
             config,
             ssh_host
     ):
@@ -427,7 +427,7 @@ class TestResumeCreate:
 
                 re_meta = collect_vm_metadata(ecs_page, ssh_host, re_vm)
                 new_mfip = MfipHelper.bind_mfip_with_admin_context(
-                    browser, config, re_meta["port_id"],
+                    admin_browser_context, config, re_meta["port_id"],
                     project_id=re_meta.get("project_id", "admin-inner-project"),
                 )
                 mgmt_config = data.get("恢复配置", {}).get("管理配置", {})

@@ -1,3 +1,24 @@
+"""
+【职责】封装对话框的确定、取消、关闭按钮，提供关闭残留弹窗及从抽屉中选择资源的通用能力。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- dialog_confirm -> Locator：对话框“确定”按钮。
+- dialog_cancel -> Locator：对话框“取消”按钮。
+- dialog_close -> Locator：对话框右上角关闭按钮。
+- close_dialog_if_exists()：若存在对话框则点击关闭，静默处理不存在的情况。
+- _select_from_named_drawer(drawer_title, item_name, reset_first=False, open_drawer=True)：在抽屉中搜索并选择指定资源。
+
+【示例】
+class MyPage(BasePage):
+    def delete_resource(self, name):
+        self.click_action(name, "删除")
+        self.dialog_confirm.click()
+
+【前置依赖】调用 dialog_confirm 等属性前，需确保目标对话框已弹出。
+"""
+
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator
@@ -16,6 +37,9 @@ class DialogsMixin(BaseElementMixin):
     def dialog_confirm(self) -> Locator:
         """公共元素: 对话框确定按钮"""
         locators = [
+            # sugon-dialog 风格确认弹窗（如 SFS 删除确认）
+            self.locator(".sugon-dialog-box").get_by_text("确定", exact=True),
+            self.locator(".sugon-dialog-footer .cloud-button-btn").filter(has_text="确定").first,
             self.get_by_role("dialog").get_by_text("确定", exact=True),
             self.get_by_role("dialog").locator("span").filter(has_text="确定"),
             self.get_by_role("dialog").get_by_text("确定", exact=True).nth(1),
@@ -24,7 +48,7 @@ class DialogsMixin(BaseElementMixin):
             self.locator(".sure-footer > div > .cloud-button-btn").first,
             self.get_by_label("虚拟IP管理").get_by_text("确定", exact=True)
         ]
-        return self._find_element(locators, "对话框'确定'按钮")
+        return self._find_element(locators, "对话框'确定'按钮", timeout=5000)
 
     @property
     def dialog_cancel(self) -> Locator:
@@ -64,7 +88,7 @@ class DialogsMixin(BaseElementMixin):
             if not closed:
                 try:
                     dialogs = self.page.locator(
-                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                        ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible, .one-dialog-container:visible, .one-dialog-box:visible"
                     )
                     for i in range(min(dialogs.count(), 5)):
                         dialog = dialogs.nth(i)
@@ -93,7 +117,7 @@ class DialogsMixin(BaseElementMixin):
             # 检查是否还有可见对话框，没有则退出
             try:
                 remaining = self.page.locator(
-                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible"
+                    ".cv-dialog:visible, .el-dialog:visible, .el-message-box:visible, .sugon-dialog:visible, .one-dialog-container:visible, .one-dialog-box:visible"
                 )
                 if remaining.count() == 0:
                     break

@@ -159,6 +159,8 @@ class EipMixin(BasePage):
                 raise AssertionError(f"不支持的分配模式: {method}")
 
         dialog.get_by_text("确定", exact=True).click()
+        # 弹窗断言需在对话框关闭前完成（Element UI toast 默认只显示 3 秒）
+        self.assert_popup_success("执行成功")
         expect(dialog).not_to_be_visible(timeout=10000)
 
         if selected_ips:
@@ -294,19 +296,49 @@ class EipMixin(BasePage):
             else:
                 raise AssertionError("未找到'批量释放公网IP'按钮")
 
-        # 释放对话框可能使用"释放"而非"确定"作为确认按钮
-        confirm_locators = [
-            self.get_by_role("dialog").get_by_text("确定", exact=True),
-            self.get_by_role("dialog").get_by_text("释放", exact=True),
-            self.get_by_role("dialog").locator("span").filter(has_text="确定"),
-            self.get_by_role("dialog").locator("span").filter(has_text="释放"),
+        # 等待 EIP 释放确认弹窗出现，并在弹窗内点击可用确认按钮
+        dialog_selectors = [
+            ".sugon-dialog:visible",
+            ".el-dialog__wrapper:visible",
+            ".el-message-box:visible",
+            "[role='dialog']:visible",
         ]
-        for confirm_btn in confirm_locators:
+        release_dialog = None
+        for sel in dialog_selectors:
             try:
-                if confirm_btn.count() > 0 and confirm_btn.is_visible():
-                    confirm_btn.click()
+                candidates = self.locator(sel)
+                if candidates.count() > 0 and candidates.first.is_visible():
+                    release_dialog = candidates.first
                     break
             except Exception:
                 continue
-        else:
-            self.dialog_confirm.click()
+
+        if release_dialog is None:
+            raise AssertionError("EIP 释放确认弹窗未出现")
+
+        # 等待弹窗稳定，并点击可用确认按钮
+        clicked = False
+        confirm_texts = ["确定", "释放", "确认"]
+        for text in confirm_texts:
+            try:
+                btn = release_dialog.locator(
+                    "button, .el-button, .cloud-button-btn"
+                ).filter(has_text=text).first
+                expect(btn).to_be_visible(timeout=5000)
+                expect(btn).to_be_enabled(timeout=15000)
+                btn.click()
+                clicked = True
+                break
+            except Exception:
+                continue
+
+        if not clicked:
+            # 兜底：尝试 dialog_confirm（可能定位到其他弹窗）
+            try:
+                self.dialog_confirm.click()
+                clicked = True
+            except Exception:
+                pass
+
+        if not clicked:
+            raise AssertionError("EIP 释放确认弹窗中未找到可用确认按钮")

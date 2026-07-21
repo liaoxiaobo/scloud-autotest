@@ -78,7 +78,30 @@ class EcsNetworkMixin(BasePage):
             pub_net: 公网资源池
             eip_ip: 指定要绑定的公网IP地址，为None时随机选择可用IP
         """
-        self.click_action(name, "绑定公网IP")
+        # 新版 ECS 列表操作项藏在“更多”展开的大型下拉面板内，
+        # 文案位于 .cloud-button 内部 div，Playwright 判定该内部 div 不可见，
+        # 导致通用 click_action 无法命中。这里直接点对应行的“更多”并定位外层 .cloud-button。
+        row = self.get_row_by_name(name)
+        interactive_row = self._get_interactive_row(row)
+        more_btn = interactive_row.get_by_text("更多", exact=True)
+        more_btn.click()
+        self.page.wait_for_timeout(1000)
+
+        visible_menu = None
+        dropdown_menus = self.page.locator('[id^="dropdown-menu-"]')
+        for i in range(dropdown_menus.count()):
+            menu = dropdown_menus.nth(i)
+            if menu.is_visible():
+                visible_menu = menu
+                break
+        if not visible_menu:
+            raise AssertionError(f"未找到 {name} 的可见操作下拉菜单")
+
+        bind_btn = visible_menu.locator(".cloud-button").filter(has_text="绑定公网IP").first
+        if bind_btn.count() == 0 or not bind_btn.is_visible():
+            raise AssertionError(f"未在下拉菜单中找到 {name} 的绑定公网IP 按钮")
+        bind_btn.click()
+
         # 选择端口
         self.get_by_role("row").filter(has_text=subnet).get_by_role("radio").click()
         self.get_by_text("下一步", exact=True).click()
@@ -89,8 +112,13 @@ class EcsNetworkMixin(BasePage):
         self.page.wait_for_timeout(2000)
         # 选择公网ip
         if eip_ip:
-            # 在表格中查找指定IP地址的行，支持分页
-            for page_attempt in range(10):
+            # 在表格中查找指定IP地址的行，支持分页（含对话框外分页条）
+            for page_attempt in range(20):
+                # 等待表格加载完成（如有 loading 蒙层）
+                try:
+                    self.page.locator(".el-loading-mask").first.wait_for(state="hidden", timeout=3000)
+                except Exception:
+                    pass
                 rows = bind_dialog.get_by_role("row").all()
                 for row in rows:
                     cells = row.get_by_role("cell").all_text_contents()
@@ -99,36 +127,43 @@ class EcsNetworkMixin(BasePage):
                         self.dialog_confirm.click()
                         logger.info(f"操作完成: 云服务器{name}: 绑定公网IP: {eip_ip}")
                         return eip_ip
-                # 尝试多种方式翻页
+                # 尝试翻页：优先在对话框内查找，再回退到页面级分页
                 clicked = False
-                # 策略1: 标准 Element UI 分页下一页按钮
-                for selector in [
-                    ".el-pagination .btn-next:not([disabled])",
-                    ".el-pagination__next:not([disabled])",
-                    ".pagination .next:not([disabled])",
-                    ".btn-next:not(.is-disabled)",
-                    "button[class*='next']:not([disabled])",
-                ]:
-                    try:
-                        btns = bind_dialog.locator(selector).all()
-                        for btn in btns:
-                            if btn.is_visible() and btn.is_enabled():
-                                btn.click()
-                                self.page.wait_for_timeout(1500)
-                                clicked = True
+                pagination_scopes = [bind_dialog, self.page]
+                for scope in pagination_scopes:
+                    for selector in [
+                        ".el-pagination .btn-next:not([disabled])",
+                        ".el-pagination__next:not([disabled])",
+                        ".pagination .next:not([disabled])",
+                        ".btn-next:not(.is-disabled)",
+                        "button[class*='next']:not([disabled])",
+                    ]:
+                        try:
+                            btns = scope.locator(selector).all()
+                            for btn in btns:
+                                if btn.is_visible() and btn.is_enabled():
+                                    btn.click()
+                                    self.page.wait_for_timeout(1500)
+                                    clicked = True
+                                    break
+                            if clicked:
                                 break
-                        if clicked:
-                            break
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
+                    if clicked:
+                        break
                 # 策略2: 尝试点击页码数字（当前页+1）
                 if not clicked:
                     try:
                         current_page = bind_dialog.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
+                        if current_page.count() == 0:
+                            current_page = self.page.locator(".el-pagination .active, .el-pager .active, .pagination .active").first
                         if current_page.count() > 0:
                             current_text = current_page.text_content() or "1"
                             next_page_num = str(int(current_text) + 1)
                             next_page = bind_dialog.locator(".el-pager li, .pagination .page-item").filter(has_text=re.compile(rf"^{re.escape(next_page_num)}$")).first
+                            if next_page.count() == 0:
+                                next_page = self.page.locator(".el-pager li, .pagination .page-item").filter(has_text=re.compile(rf"^{re.escape(next_page_num)}$")).first
                             if next_page.count() > 0 and next_page.is_visible():
                                 next_page.click()
                                 self.page.wait_for_timeout(1500)
@@ -231,11 +266,13 @@ class EcsNetworkMixin(BasePage):
         if not dialog.is_visible():
             dialog = self.get_by_role("dialog").filter(has_text="设置安全组").last
 
-        self._expand_page_size("50")
+        self._expand_page_size("50", dialog)
 
         for sg in sg_names:
             # 找到对应行并勾选
-            row = dialog.get_by_role("row", name=re.compile(rf"{re.escape(sg)}")).first
+            # row = dialog.get_by_role("row", name=re.compile(rf"^{re.escape(sg)}$")).first
+            name_cell = dialog.locator(".el-table__cell").filter(has_text=re.compile(rf"^{re.escape(sg)}$")).first
+            row = name_cell.locator("xpath=ancestor::tr[1]")
             checkbox = row.locator(".el-checkbox")
 
             # 检查是否已勾选

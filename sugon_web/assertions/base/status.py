@@ -15,12 +15,18 @@ class StatusAssertionMixin:
     """
 
     def assert_status(
-        self, names, status="运行", timeout=300, refresh=False, refresh_interval=5
+        self,
+        names,
+        status="运行",
+        timeout=300,
+        refresh=False,
+        refresh_interval=5,
+        exit_on_failure=True,
     ):
         """断言资源状态达到预期值。
 
-        支持轮询等待，直到状态匹配或超时；遇到失败终态（任务失败、错误、创建失败、启动失败）
-        时立即退出，避免空等满超时时间。
+        支持轮询等待，直到状态匹配或超时；默认遇到失败终态（任务失败、错误、创建失败、
+        启动失败）时立即退出，避免空等满超时时间。
 
         Args:
             names: 资源名称或名称列表。
@@ -28,6 +34,9 @@ class StatusAssertionMixin:
             timeout: 最长等待秒数，默认 300。
             refresh: 是否自动刷新列表等待状态变化，默认 False。
             refresh_interval: 刷新间隔秒数，默认 5。
+            exit_on_failure: 遇到失败终态时是否立即退出，默认 True。
+                设为 False 时，失败终态被视为可恢复的中间态，不提前退出，继续轮询等待
+                期望状态出现或超时（适用于状态可能短暂经过"错误"再收敛的场景）。
         """
         if isinstance(names, str):
             names = [names]
@@ -41,10 +50,11 @@ class StatusAssertionMixin:
                     self.wait_for_page_ready()
                     target_row = self.get_row_by_name(name)
 
-                    # 同时监听期望状态与失败终态，任意一种文本出现即结束 expect 等待
-                    patterns = [re.escape(status)] + [
-                        re.escape(f) for f in _FAILURE_STATUSES
-                    ]
+                    # 监听期望状态；exit_on_failure=True 时同时监听失败终态，
+                    # 任意一种文本出现即结束 expect 等待
+                    patterns = [re.escape(status)]
+                    if exit_on_failure:
+                        patterns += [re.escape(f) for f in _FAILURE_STATUSES]
                     expect(target_row).to_contain_text(
                         re.compile("|".join(patterns)),
                         timeout=timeout_ms,
@@ -52,9 +62,12 @@ class StatusAssertionMixin:
                     )
 
                     actual_text = target_row.inner_text()
-                    detected_failure = next(
-                        (f for f in _FAILURE_STATUSES if f in actual_text), None
-                    )
+                    if exit_on_failure:
+                        detected_failure = next(
+                            (f for f in _FAILURE_STATUSES if f in actual_text), None
+                        )
+                    else:
+                        detected_failure = None
                     if detected_failure:
                         self.logger.error(
                             f"资源状态验证失败: {name} -> 检测到失败终态 '{detected_failure}'"
@@ -92,7 +105,7 @@ class StatusAssertionMixin:
                                 (f for f in _FAILURE_STATUSES if f in current_status),
                                 None,
                             )
-                            if detected_failure:
+                            if exit_on_failure and detected_failure:
                                 self.logger.error(
                                     f"资源状态验证失败: {name} -> 检测到失败终态 '{detected_failure}'"
                                 )

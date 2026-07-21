@@ -58,12 +58,15 @@ EcsStorageConfig = TypedDict(
     total=False,
 )
 
-# 单张网卡配置，描述要绑定的网络与子网。
+# 单张网卡配置，描述要绑定的网络与子网，支持 IPv4 手动分配和机密互联开关。
 EcsNetworkItemConfig = TypedDict(
     "EcsNetworkItemConfig",
     {
         "network": str,
         "subnet": str,
+        "ip_allocation": str,  # "自动分配" 或 "手动分配"
+        "ip_index": int,  # 手动分配时选择第几个可用 IP，从 0 开始
+        "enable_confidential_interconnect": bool,  # 是否开启加密网卡（机密互联）
     },
     total=False,
 )
@@ -212,7 +215,7 @@ class EcsCreateMixin(BasePage):
         self._advanced_info(request["advanced"])
 
         # 点击创建按钮
-        self.get_by_text("立即创建").click()
+        self.get_by_text("立即创建").click(timeout=120000)
         logger.info(f"云服务器创建请求已提交: {basic_info.get('name')}，数量: {basic_info.get('count')}")
         return basic_info
 
@@ -586,11 +589,19 @@ class EcsCreateMixin(BasePage):
 
             supported_sources = ["镜像", "快照", "ISO", "云硬盘"]
             if image_source in supported_sources and image_name:
-                self._select_from_named_drawer(
-                    drawer_title=f"选择{image_source}",
-                    item_name=image_name,
-                    reset_first=(image_source == "ISO"),
-                )
+                try:
+                    self._select_from_named_drawer(
+                        drawer_title=f"选择{image_source}",
+                        item_name=image_name,
+                        reset_first=(image_source == "ISO"),
+                    )
+                except AssertionError as e:
+                    error_msg = str(e)
+                    if "抽屉未关闭" in error_msg or "未找到" in error_msg:
+                        logger.warning(f"_select_from_named_drawer 失败，尝试备用选择方式: {error_msg}")
+                        self._select_image_from_drawer_fallback(image_source, image_name)
+                    else:
+                        raise
             elif image_source == "空启动":
                 pass
             else:
@@ -599,6 +610,70 @@ class EcsCreateMixin(BasePage):
         except Exception as e:
             logger.error(f"选择镜像失败: {str(e)}")
             raise e
+
+    def _select_image_from_drawer_fallback(self, image_source, image_name):
+        """备用方式：从抽屉中选择镜像（处理 cl-table + el-radio 组合）
+
+        针对 _select_from_named_drawer 在 cl-table 自定义渲染的 el-radio 上
+        force=True 点击无法触发 Vue input 事件的问题，使用非 force 点击。
+        """
+        drawer_title = f"选择{image_source}"
+        logger.info(f"使用备用方式选择镜像: {drawer_title}, {image_name}")
+
+        # 打开抽屉
+        self.get_by_text(drawer_title).first.click()
+        self.wait_for_page_ready()
+
+        drawer = self.locator(f"div[role='dialog'][aria-label='{drawer_title}']:visible")
+        expect(drawer).to_be_visible()
+
+        # 搜索镜像
+        search_input = drawer.locator(".cloud-table-header-right input[placeholder='搜索（名称）']")
+        if search_input.count() > 0:
+            search_input.fill(image_name)
+            drawer.locator(".cloud-table-header-right").get_by_text("搜索", exact=True).click()
+            self.wait_for_page_ready()
+
+        # 找到目标行
+        row = drawer.locator(
+            "xpath=.//div[contains(@class,'el-table__body-wrapper')]//tr[.//td[2]//*[normalize-space(text())="
+            f"'{image_name}'] or .//td[2][normalize-space(.)='{image_name}']]"
+        ).first
+        expect(row).to_be_visible(timeout=5000)
+
+        # 尝试多种选择方式（不使用 force=True，让 Vue 事件正常触发）
+        select_locators = [
+            row.locator(".el-radio__inner"),
+            row.locator("label[role='radio']"),
+            row.get_by_role("radio"),
+            row.locator("td").first,
+            row.locator("td").nth(1),
+            row,
+        ]
+
+        confirm_btn = drawer.get_by_text("确定", exact=True)
+        last_error = None
+
+        for select_locator in select_locators:
+            if select_locator.count() == 0:
+                continue
+            try:
+                # 不使用 force=True，确保 Vue 事件正常触发
+                select_locator.click()
+                self.page.wait_for_timeout(800)
+                confirm_btn.click()
+                try:
+                    expect(drawer).not_to_be_visible(timeout=10000)
+                    logger.info(f"备用方式选择镜像成功: {image_name}")
+                    return
+                except AssertionError:
+                    last_error = AssertionError(f"{drawer_title} 抽屉未关闭")
+            except Exception as exc:
+                last_error = exc
+
+        if last_error:
+            raise last_error
+        raise AssertionError(f"备用方式未找到 {drawer_title} 中的 {image_name} 可选节点")
 
 
     def _select_from_pool_image(self, image_name, os_version):
@@ -707,27 +782,19 @@ class EcsCreateMixin(BasePage):
             # loc.click()
             # loc.click(force=True)
             loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(2000)
 
             # 等待下拉列表出现并定位选项
-            dropdown_list = self.page.locator(".el-select-dropdown:visible .el-select-dropdown__item")
-            dropdown_list.first.wait_for(state="visible", timeout=3000)
-            # 查找并选择对应的云硬盘类型
+            # 限定到刚打开的那个下拉面板（最后一个可见面板），避免匹配到其他/残留下拉导致误判
             logger.info(f"查找数据盘类型: {vol_type}")
-            items_count = dropdown_list.count()
-            found = False
-            for i in range(items_count):
-                try:
-                    if vol_type in dropdown_list.nth(i).inner_text(timeout=2000):
-                        logger.info(f"找到并点击数据盘类型: {vol_type}")
-                        dropdown_list.nth(i).click()
-                        found = True
-                        break
-                except Exception as e:
-                    logger.warning(f"获取选项 {i} 文本失败: {e}")
-                    continue
-            if not found:
-                error_msg = f"未找到匹配的数据盘类型: {vol_type}"
-                raise AssertionError(error_msg)
+            dropdown = self.page.locator(".el-select-dropdown:visible").last
+            option = dropdown.locator(".el-select-dropdown__item", has_text=vol_type).first
+            try:
+                option.wait_for(state="visible", timeout=5000)
+            except Exception:
+                raise AssertionError(f"未找到匹配的数据盘类型: {vol_type}")
+            logger.info(f"找到并点击数据盘类型: {vol_type}")
+            option.click()
 
             # 设置数据盘大小 - 使用多种定位方式
             self.get_by_role("spinbutton").nth(idx*2).fill(vol_size)
@@ -742,20 +809,247 @@ class EcsCreateMixin(BasePage):
         Args:
             net_config: 网卡配置字典
                 - network: 网络名称
-                - subnet: 子网名称
+                - subnet: 子网名称（支持前缀匹配，如 "sci_vpc1(" 匹配 "sci_vpc1(176.176.20.0/24)"）
+                - ip_allocation: IPv4 分配方式，可选 "自动分配"（默认）或 "手动分配"
+                - ip_index: 手动分配时选择第几个可用 IP，从 0 开始，默认 0
+                - enable_confidential_interconnect: 是否开启加密网卡（机密互联），
+                  默认 False。注意：必须先选择手动分配才能开启此开关
         """
         network_name = net_config.get("network")
         subnet_name = net_config.get("subnet")
+        ip_allocation = net_config.get("ip_allocation", "自动分配")
+        ip_index = net_config.get("ip_index", 0)
+        enable_sci = net_config.get("enable_confidential_interconnect", False)
 
         # 选择网络
         self.get_by_role("textbox", name="请选择网络").click()
         self.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(network_name)}$")).click()
         logger.info(f"选择网络: {network_name}")
 
-        # 选择子网
+        # 选择子网 - 子网选项可能包含额外文本（如IP段），用部分匹配
         self.get_by_role("textbox", name="请选择子网").click()
-        self.get_by_role("listitem").filter(has_text=re.compile(rf"{re.escape(subnet_name)}")).locator("span").click()
+        # 等待下拉选项出现
+        self.page.wait_for_timeout(800)
+        # 使用更宽松的匹配：子网名称是选项的一部分
+        # 子网选项在 el-select-dropdown 中，可能不在 listitem role 下
+        dropdown = self.page.locator(".el-select-dropdown:visible").last
+        # 先检查下拉是否已打开
+        if dropdown.count() == 0:
+            self.logger.warning("子网下拉未打开，重试点击")
+            self.get_by_role("textbox", name="请选择子网").click()
+            self.page.wait_for_timeout(800)
+            dropdown = self.page.locator(".el-select-dropdown:visible").last
+
+        # 获取所有选项文本用于调试
+        all_items = dropdown.locator(".el-select-dropdown__item").all()
+        item_texts = []
+        for item in all_items:
+            try:
+                item_texts.append(item.inner_text().strip())
+            except Exception:
+                pass
+        self.logger.info(f"子网下拉选项: {item_texts}")
+
+        # 尝试匹配
+        option = dropdown.locator(".el-select-dropdown__item").filter(
+            has_text=re.compile(rf"{re.escape(subnet_name)}")
+        ).first
+
+        # 如果找不到匹配的选项，尝试第一个选项（兜底）
+        if option.count() == 0 and len(all_items) > 0:
+            self.logger.warning(f"未找到匹配 '{subnet_name}' 的子网选项，尝试第一个选项")
+            option = all_items[0]
+
+        option.click()
         logger.info(f"选择子网: {subnet_name}")
+
+        # 处理 IPv4 分配方式
+        if ip_allocation == "手动分配":
+            # 1. 先选择 "手动分配" 下拉选项
+            # 找到 IPv4 分配方式列的下拉框（placeholder="请选择方式"）
+            allocation_select = self.page.locator(".el-select").filter(
+                has=self.page.locator("input[placeholder='请选择方式']")
+            ).first
+            allocation_select.click()
+            self.page.wait_for_timeout(500)
+
+            # 选择 "手动分配" 选项（teleport 到 body 级）
+            alloc_dropdown = self.page.locator(".el-select-dropdown:visible").last
+            alloc_dropdown.locator(".el-select-dropdown__item").filter(
+                has_text=re.compile(r"^手动分配$")
+            ).first.click()
+            logger.info("选择 IPv4 分配方式: 手动分配")
+
+            # 等待手动分配弹窗出现
+            self.page.wait_for_timeout(800)
+
+            # 2. 在手动分配弹窗中选择 IP
+            # 使用包含特定 MAC 输入框 placeholder 的 .el-dialog 来精确定位弹窗
+            dialog = self.page.locator(".el-dialog").filter(
+                has=self.page.locator("input[placeholder='请按照6c:88:14:dd:25:59的格式输入']")
+            ).last
+            expect(dialog).to_be_visible(timeout=10000)
+
+            # 选择 IP 分配方式：保持默认"快速选择"（dialog 打开时默认已选中），无需切换
+            # 弹窗内 el-form-item 顺序固定：子网(0) → IP(1) → MAC(2)
+            # IP 的 form-item 内有 el-select（非 disabled），子网的 select 是 disabled
+            ip_select = dialog.locator(".el-form-item").nth(1).locator(".el-select").first
+            expect(ip_select).to_be_visible(timeout=8000)
+            ip_select.click()
+            # 等待下拉面板出现：用 :visible 找当前可见的 dropdown
+            ip_dropdown = self.page.locator(".el-select-dropdown:visible").last
+            ip_dropdown.locator(".el-select-dropdown__item").first.wait_for(state="visible", timeout=10000)
+            ip_options = ip_dropdown.locator(".el-select-dropdown__item").all()
+            if len(ip_options) == 0:
+                raise AssertionError("手动分配弹窗内未加载到任何可用 IP 选项")
+            selected_ip = ip_options[0].inner_text().strip()
+            ip_options[0].click()
+            logger.info(f"选择第 0 个可用 IP: {selected_ip}")
+
+            # 点击确定关闭弹窗（cl-button 渲染为 div，用 get_by_text 兼容 button/div）
+            confirm_btn = dialog.get_by_text("确定", exact=True).last
+            confirm_btn.click()
+
+            # 校验弹窗确实因 dialogOK 成功而关闭。
+            # 关键：绝不能用 close_dialog_if_exists 强关——若 IP/MAC 校验未过弹窗仍在，
+            # 强关会触发 handleNetworkDialogClose 把 allocationMode 重置回"自动分配('1')"，
+            # 使机密互联开关变灰、后续点击 30s 超时（这正是之前误判为"环境/DPDK"的根因）。
+            try:
+                expect(
+                    self.page.locator(
+                        "input[placeholder='请按照6c:88:14:dd:25:59的格式输入']"
+                    )
+                ).to_be_hidden(timeout=8000)
+            except Exception:
+                raise AssertionError(
+                    "手动分配弹窗点击确定后未关闭，通常是 IP/MAC 校验未通过；"
+                    "弹窗未正常关闭会导致 allocationMode 被重置、机密互联开关无法启用"
+                )
+            logger.info("手动分配弹窗已关闭（IP 选择已生效，分配方式保持手动分配）")
+            self.page.wait_for_timeout(1500)
+
+            # 3. 开启加密网卡（机密互联）开关
+            # 前端规则：开关在 allocationMode=='1'(自动) / 架构 aarch64 / DPDK 开启 时被 disabled。
+            # 走到这里 allocationMode 已是手动分配('2')，若开关仍 disabled 多半是 DPDK/架构限制，
+            # 此时显式报错给出明确原因，而不是盲点 30s 超时。
+            if enable_sci:
+                # 等待表格重新渲染完成
+                self.page.wait_for_selector(".el-table .el-switch", timeout=10000, state="visible")
+
+                sci_switch = self.page.locator(".el-table .el-switch").first
+                if sci_switch.count() == 0:
+                    sci_switch = self.page.locator(".el-switch").first
+                expect(sci_switch).to_be_visible(timeout=8000)
+
+                is_disabled = sci_switch.evaluate(
+                    "el => el.classList.contains('is-disabled')"
+                )
+                if is_disabled:
+                    raise AssertionError(
+                        "机密互联开关处于禁用状态：IPv4 已为手动分配，"
+                        "故禁用原因应为所选集群/主机 DPDK 已开启或架构为 aarch64，"
+                        "需改用 DPDK 关闭且非 aarch64 的集群"
+                    )
+
+                is_checked = sci_switch.evaluate(
+                    "el => el.classList.contains('is-checked')"
+                )
+                if not is_checked:
+                    # 绕过 .el-table__fixed-right 遮罩层：使用 dispatchEvent 模拟完整点击事件链。
+                    # 点击根节点 .el-switch 会被遮罩层拦截；dispatchEvent 可触发原生事件并冒泡到 Vue 监听器。
+                    sci_switch.evaluate(
+                        """el => {
+                            const clickEvent = new MouseEvent('click', {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window
+                            });
+                            el.dispatchEvent(clickEvent);
+                        }"""
+                    )
+                    # 等待 Vue 状态更新并验证开关确实已开启
+                    self.page.wait_for_timeout(1000)
+                    is_checked_after = sci_switch.evaluate(
+                        "el => el.classList.contains('is-checked')"
+                    )
+                    if not is_checked_after:
+                        raise AssertionError(
+                            "机密互联开关点击后未开启：dispatchEvent 未触发 Vue 状态更新，"
+                            "可能需要检查遮罩层或前端事件绑定"
+                        )
+                    logger.info("已开启加密网卡（机密互联）开关")
+                else:
+                    logger.info("加密网卡开关已处于开启状态")
+
+                # 4. 关键：重新打开并关闭手动分配弹窗，强制前端重新同步 network_msg。
+                # 背景：第一次 dialogOK 中 form_msg.expandNetwork = $clone(network_msg) 会断开
+                # network_msg 与 expandNetwork 的引用。随后开关点击只更新 expandNetwork，
+                # 导致提交时用的 network_msg 仍为 encrypted=false。重新打开弹窗点确定会再次
+                # 执行 network_msg = form_msg.expandNetwork，使 network_msg 同步到最新状态。
+                allocation_select.click()
+                self.page.wait_for_timeout(500)
+                alloc_dropdown = self.page.locator(".el-select-dropdown:visible").last
+                manual_option = alloc_dropdown.locator(".el-select-dropdown__item").filter(
+                    has_text=re.compile(r"^手动分配$")
+                ).first
+                manual_option.click()
+                self.page.wait_for_timeout(800)
+                dialog = self.page.locator(".el-dialog").filter(
+                    has=self.page.locator("input[placeholder='请按照6c:88:14:dd:25:59的格式输入']")
+                ).last
+                # 若点击已选中选项未打开弹窗，先切到自动分配再切回手动分配
+                if dialog.count() == 0 or not dialog.is_visible():
+                    logger.warning("二次点击手动分配未打开弹窗，尝试先切自动分配再切回手动分配")
+                    alloc_dropdown.locator(".el-select-dropdown__item").filter(
+                        has_text=re.compile(r"^自动分配$")
+                    ).first.click()
+                    self.page.wait_for_timeout(500)
+                    allocation_select.click()
+                    self.page.wait_for_timeout(500)
+                    alloc_dropdown = self.page.locator(".el-select-dropdown:visible").last
+                    alloc_dropdown.locator(".el-select-dropdown__item").filter(
+                        has_text=re.compile(r"^手动分配$")
+                    ).first.click()
+                    self.page.wait_for_timeout(800)
+                    dialog = self.page.locator(".el-dialog").filter(
+                        has=self.page.locator("input[placeholder='请按照6c:88:14:dd:25:59的格式输入']")
+                    ).last
+
+                expect(dialog).to_be_visible(timeout=10000)
+                # 二次弹窗打开后，必须重新选择 IP，否则表单校验不通过、弹窗无法关闭
+                # 弹窗内 el-form-item 顺序固定：子网(0) → IP(1) → MAC(2)
+                ip_select = dialog.locator(".el-form-item").nth(1).locator(".el-select").first
+                expect(ip_select).to_be_visible(timeout=8000)
+                ip_select.click()
+                ip_dropdown = self.page.locator(".el-select-dropdown:visible").last
+                ip_dropdown.locator(".el-select-dropdown__item").first.wait_for(state="visible", timeout=10000)
+                ip_options = ip_dropdown.locator(".el-select-dropdown__item").all()
+                if len(ip_options) == 0:
+                    raise AssertionError("二次弹窗内未加载到任何可用 IP 选项")
+                selected_ip = ip_options[0].inner_text().strip()
+                ip_options[0].click()
+                logger.info(f"二次弹窗重新选择第 0 个可用 IP: {selected_ip}")
+                self.page.wait_for_timeout(500)
+
+                confirm_btn = dialog.get_by_text("确定", exact=True).last
+                confirm_btn.click()
+                try:
+                    expect(
+                        self.page.locator(
+                            "input[placeholder='请按照6c:88:14:dd:25:59的格式输入']"
+                        )
+                    ).to_be_hidden(timeout=8000)
+                except Exception:
+                    raise AssertionError(
+                        "二次确认手动分配弹窗点击确定后未关闭，network_msg 可能未同步"
+                    )
+                logger.info("已重新同步手动分配状态，确保 network_msg 包含机密互联配置")
+                self.page.wait_for_timeout(800)
+        else:
+            logger.info("IPv4 分配方式保持默认: 自动分配")
+            # 自动分配模式下不能开启机密互联（前端会 disabled）
+            if enable_sci:
+                logger.warning("自动分配模式下无法开启机密互联，已忽略 enable_confidential_interconnect=True")
 
 
     def _select_security_group(self, security_group, deselect_default=True):
@@ -781,9 +1075,17 @@ class EcsCreateMixin(BasePage):
 
 
     def _set_login_key(self, login_key):
-        """设置密钥对"""
-        self.get_by_placeholder("请选择", exact=True).nth(4).click()
-        self.get_by_text(login_key, exact=True).click()
+        """设置密钥对。
+
+        按"密钥对"表单项标签锚定下拉框，避免依赖随表单条件渲染而漂移的 nth(4) 占位符位置。
+        用 label.el-form-item__label 含"密钥对"定位，排除"密钥对登录"等单选标签。
+        """
+        self.locator(".el-form-item").filter(
+            has=self.locator("label.el-form-item__label").filter(has_text="密钥对")
+        ).get_by_placeholder("请选择").click()
+        self.get_by_role("listitem").filter(
+            has_text=re.compile(rf"^{re.escape(login_key)}$")
+        ).click()
 
 
     def _set_vnc_pwd(self, vnc_pwd):

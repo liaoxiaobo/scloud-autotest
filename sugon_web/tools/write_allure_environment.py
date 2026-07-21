@@ -68,7 +68,7 @@ def _parse_run_env(allure_root, env_label):
     }
 
 
-def write_environment_properties(dispatch_json_path, output_path, default_host, default_stor, dispatch_source):
+def write_environment_properties(dispatch_json_path, output_path):
     """根据 dispatch-jobs.json 生成汇总 environment.properties。"""
     dispatch_path = Path(dispatch_json_path)
     if not dispatch_path.exists():
@@ -79,9 +79,6 @@ def write_environment_properties(dispatch_json_path, output_path, default_host, 
         jobs = json.load(f)
 
     lines = [
-        f"DISPATCH_SOURCE={dispatch_source}",
-        f"DEFAULT_HOST={default_host}",
-        f"DEFAULT_STOR={default_stor}",
         f"ENV_COUNT={len(jobs)}",
     ]
 
@@ -128,17 +125,11 @@ def main():
     )
     parser.add_argument("--dispatch-json", required=True, help="dispatch-jobs.json 路径")
     parser.add_argument("--output", default="allure-result/environment.properties", help="输出文件路径")
-    parser.add_argument("--default-host", default="", help="默认环境 host")
-    parser.add_argument("--default-stor", default="", help="默认环境 stor")
-    parser.add_argument("--dispatch-source", default="env.yaml", help="调度来源描述")
     args = parser.parse_args()
 
     write_environment_properties(
         args.dispatch_json,
         args.output,
-        args.default_host,
-        args.default_stor,
-        args.dispatch_source,
     )
 
 

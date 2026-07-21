@@ -17,6 +17,8 @@
 import re
 import time
 from pathlib import Path
+
+import allure
 import pytest
 from sugon_web.pages.login import LoginPage
 from sugon_web.pages.network import VpcPage
@@ -130,10 +132,45 @@ def obs_page(page):
 
 
 @pytest.fixture(scope="function")
-def ops_page(page):
-    """初始化运维管理页对象"""
-    ops_page = OpsPage(page)
-    return ops_page
+def ops_page(request):
+    """初始化运维管理页对象。
+
+    admin 角色直接使用当前 page；非 admin 角色自动切换为 admin_page，
+    以支持普通用户执行测试时用 admin 权限操作基础设施服务。
+    """
+    user_role = Config.get("user_role", "admin")
+    if user_role == "admin":
+        page = request.getfixturevalue("page")
+    else:
+        page = request.getfixturevalue("admin_page")
+    return OpsPage(page)
+
+
+@pytest.fixture(scope="class")
+def ops_page_class(browser_context, admin_browser_context, config):
+    """Class 级运维管理页对象。
+
+    供 class-scoped fixture（如 backup 的 ``vm_backup``）使用。
+    admin 角色使用 ``browser_context`` 创建 page；非 admin 角色使用
+    ``admin_browser_context`` 创建 admin page，以支持非 admin 用户执行
+    依赖基础设施服务的资源准备。
+
+    与 ``ops_page`` 的区别：
+    - ``ops_page`` 为 function 级，每个测试方法独立 page。
+    - ``ops_page_class`` 为 class 级，同一测试类内共享 page。
+    """
+    from sugon_web.conftest import _create_admin_logged_in_page, _create_logged_in_page
+
+    user_role = Config.get("user_role", "admin")
+    if user_role == "admin":
+        page = _create_logged_in_page(browser_context, config)
+    else:
+        page = _create_admin_logged_in_page(admin_browser_context, config)
+
+    try:
+        yield OpsPage(page)
+    finally:
+        page.close()
 
 
 @pytest.fixture(scope="function")
@@ -145,6 +182,7 @@ def bms_page(page):
 @pytest.fixture(scope="class")
 def vm(
     browser_context: Any,
+    admin_browser_context: Any,
     config: Any,
     request: pytest.FixtureRequest,
     ssh_host: Any,
@@ -295,7 +333,7 @@ def vm(
                 )
 
                 if instance_config.get("bind_mfip", True):
-                    _bind_vm_fixture_mfips(page, config, current_metadata)
+                    _bind_vm_fixture_mfips(admin_browser_context, config, current_metadata)
 
                 metadata_list.extend(current_metadata)
         else:
@@ -317,7 +355,7 @@ def vm(
             )
 
             if bind_mfip:
-                _bind_vm_fixture_mfips(page, config, metadata_list)
+                _bind_vm_fixture_mfips(admin_browser_context, config, metadata_list)
 
         # 单实例返回字典，多实例返回列表
         yield metadata_list[0] if len(metadata_list) == 1 else metadata_list
@@ -336,6 +374,34 @@ def test_context(request):
     return request.node.test_context
 
 
+@pytest.fixture(scope="function")
+def cleanup(page: Any) -> Iterator[list[Callable[[], Any]]]:
+    """延迟清理注册表：登记零参清理闭包，测试结束按 LIFO 兜底执行。
+
+    适用于测试体内动态创建的「派生资源」（克隆体、镜像、快照、亲和组等）——
+    这些资源是被测操作的产物，无法由资源 fixture 预先创建。创建后立即
+    ``cleanup.append(lambda: ...)`` 登记删除动作，可确保后续步骤断言失败时
+    仍能在 teardown 中兜底清理，避免资源泄漏。
+
+    依赖 ``page`` 以保证本 fixture 在浏览器页面关闭前完成 teardown；
+    清理动作内部异常仅记录告警，不会掩盖用例本身的结果。
+
+    用法::
+
+        def test_xxx(self, ecs_page, vm, cleanup):
+            clone = random_data()
+            ecs_page.ecs_clone(vm["name"], clone, ...)
+            cleanup.append(lambda: delete_ecs(ecs_page, clone))
+    """
+    actions: list[Callable[[], Any]] = []
+    yield actions
+    for action in reversed(actions):
+        try:
+            action()
+        except Exception as e:
+            logger.warning(f"兜底清理失败: {e}")
+
+
 def _allocate_eips(
     vpc_page: VpcPage,
     count: int = 1,
@@ -349,7 +415,6 @@ def _allocate_eips(
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     if created_ips is None:
         return []
@@ -676,3 +741,45 @@ def pytest_collection_modifyitems(config, items):
         file_mark = _resolve_file_mark(path.name)
         if file_mark:
             item.add_marker(file_mark)
+
+
+def _resolve_ecs_feature(module_name):
+    """根据 ECS 文件名解析 feature 名称。"""
+    if module_name.startswith("test_ecs_affinity"):
+        return "亲和组"
+    if module_name == "test_ecs_labels":
+        return "标签"
+    if module_name == "test_ecs_recycle":
+        return "回收站"
+    if module_name == "test_ecs_snapshot":
+        return "云服务器快照"
+    return "弹性云服务器 ECS"
+
+
+def pytest_runtest_setup(item):
+    """多环境调度时，仅对 ECS/EVS 用例动态注入 host/stor 到 epic/feature。
+
+    其他用例保持现有静态 @allure.epic/@allure.feature 不变。
+    """
+    host = item.config.getoption("--host")
+    stor = item.config.getoption("--stor")
+
+    module_name = item.path.stem
+    parent = item.path.parent.name
+
+    if parent == "compute" and module_name.startswith("test_ecs_"):
+        epic = "计算服务"
+        feature = _resolve_ecs_feature(module_name)
+    elif parent == "storage" and module_name.startswith("test_evs_"):
+        epic = "存储服务"
+        feature = "云硬盘"
+    else:
+        return
+
+    if host:
+        epic = f"{epic} / {host}"
+    if stor:
+        feature = f"{feature} / {stor}"
+
+    allure.dynamic.epic(epic)
+    allure.dynamic.feature(feature)

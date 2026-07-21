@@ -25,16 +25,27 @@ slow_mo: 0
 host: 172.22.3.150
 
 # 存储池类型 (ceph/usan/local/nfs/xstor等)
-stor: xstor
+stor: zbs
 
 # 默认测试数据
 data: Autotest
 
-# 登录用户名
-username: admin
+# 默认测试用户角色 (admin/dept_admin/user)
+user_role: admin
 
-# 登录密码
-password: keystone_sugon
+# 各角色登录凭据（按角色固化配置）
+users:
+  admin:
+    username: admin
+    password: keystone_sugon
+  dept_admin:
+    username: sugoncloud
+    password: Sugon@12345
+    project: "公共测试"
+  user:
+    username: autotest-user
+    password: Sugon@12345
+    project: "公共测试"
 
 # 镜像源地址
 image_source: http://172.22.5.66:9090

@@ -96,7 +96,6 @@ def bms_eip_pool(page, request):
     with allure_step_log(f"Setup: allocate {count} BMS EIPs"):
         vpc_page.goto_service("虚拟私有云")
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method)
-        vpc_page.assert_popup_success("执行成功")
         assert created_ips, "BMS EIP pool allocation returned no IPs"
         target_ip = max(created_ips, key=ipaddress.ip_address)
         logger.info(f"BMS allocated EIPs: {created_ips}, selected max IP: {target_ip}")
@@ -320,7 +319,7 @@ def bms_instance(bms_page, bms_env, ssh_host):
     def _create(
         name=None,
         image_name=None,
-        system_disk="sdi",
+        system_disk="MR9361-16iGiB",
         password=None,
         security_group="default",
         server_name="N/A 2U Rack Server",

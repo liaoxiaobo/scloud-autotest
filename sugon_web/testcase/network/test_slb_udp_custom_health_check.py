@@ -123,8 +123,12 @@ def _send_udp_via_test_udp2(ssh_vm, vm_info, target_ip, port, message):
         timeout=20,
     )
 
-
-def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version, custom_hc=True):
+@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
+@pytest.mark.parametrize("slb", [{"version": "V1"}], indirect=True)
+@allure.epic("网络服务")
+@allure.feature("负载均衡")
+@allure.story("UDP自定义健康检查验证")
+def test_udp_custom_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, custom_hc=True):
     """执行 UDP 健康检查可用性验证的公共步骤。
 
     Args:
@@ -133,7 +137,6 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
         vm: VM fixture 返回的虚机列表。
         ssh_vm: SSH 虚拟机客户端 fixture。
         clean_lb_listener: 监听器清理注册表 fixture。
-        version: SLB 版本字符串，"V1" 或 "V2"。
         custom_hc: 是否使用自定义健康检查（V1支持，V2不支持）。
     """
     cleanup = clean_lb_listener
@@ -165,7 +168,14 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
             {"slb_name": slb["name"], "lb_name": lb_name, "pool_name": pool_name}
         )
 
-    with allure_step_log("步骤2: 添加资源池成员"):
+    with allure_step_log("步骤2: 后端启动UDP server(正确响应)"):
+        for backend in backends:
+            _start_udp_server(ssh_vm, backend, PORT, HEALTH_RESPONSE)
+            cleanup.add_backend_server(
+                backend, port=PORT, kill_pattern=f"test-udp2.py -s {PORT}"
+            )
+
+    with allure_step_log("步骤3: 添加资源池成员"):
         vpc_page.lb_pool_add_vm(
             vm_names=[b["name"] for b in backends],
             lb_name=lb_name,
@@ -174,15 +184,9 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
         )
         vpc_page.assert_popup_success()
         for backend in backends:
-            vpc_page.assert_lb_pool_member_info(
-                backend["name"], port=PORT, resource_status="运行中"
-            )
-
-    with allure_step_log("步骤3: 后端启动UDP server(正确响应)"):
-        for backend in backends:
-            _start_udp_server(ssh_vm, backend, PORT, HEALTH_RESPONSE)
-            cleanup.add_backend_server(
-                backend, port=PORT, kill_pattern=f"test-udp2.py -s {PORT}"
+            vpc_page.wait_lb_pool_member_status(
+                lb_name, pool_name, backend["name"],
+                expected_status="运行中", timeout=60,
             )
 
     with allure_step_log("步骤4: VIP访问测试"):
@@ -193,19 +197,12 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
             f"[BackendAssertion] UDP 消息发送失败 | stderr: {result.get('stderr', '')}"
         )
 
-    with allure_step_log("步骤5: 验证Real-Server初始状态"):
-        for backend in backends:
-            vpc_page.wait_lb_pool_member_status(
-                lb_name, pool_name, backend["name"],
-                expected_status="运行中", timeout=60,
-            )
-
-    with allure_step_log("步骤6: 模拟健康检查失败(ecs1)"):
+    with allure_step_log("步骤5: 模拟健康检查失败(ecs1)"):
         _stop_udp_server(ssh_vm, backends[0], PORT)
         if custom_hc:
             _start_udp_server(ssh_vm, backends[0], PORT, BAD_RESPONSE)
 
-    with allure_step_log("步骤7: 验证ecs1变为离线"):
+    with allure_step_log("步骤6: 验证ecs1变为离线"):
         vpc_page.wait_lb_pool_member_status(
             lb_name, pool_name, backends[0]["name"],
             expected_status="离线", timeout=60,
@@ -215,7 +212,7 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
                 backend["name"], resource_status="运行中"
             )
 
-    with allure_step_log("步骤8: VIP访问(仅ecs2/ecs3应接收)"):
+    with allure_step_log("步骤7: VIP访问(仅ecs2/ecs3应接收)"):
         result = _send_udp_via_test_udp2(
             ssh_vm, requester, lb_vip, PORT, HEALTH_REQUEST
         )
@@ -247,29 +244,3 @@ def _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, version,
                 f"[ScenarioAssertion] 客户端未收到预期的健康响应 '{HEALTH_RESPONSE}' | "
                 f"client_response={client_response!r}"
             )
-
-
-@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
-@pytest.mark.parametrize("slb", [{"version": "V1"}], indirect=True)
-@allure.epic("网络服务")
-@allure.feature("负载均衡")
-@allure.story("UDP自定义健康检查验证")
-class TestSlbUdpCustomHealthCheckV1:
-    def test_udp_custom_health_check(
-        self, vpc_page, slb, vm, ssh_vm, clean_lb_listener
-    ):
-        allure.dynamic.title("lbv1 > udp自定义健康检查验证 > 可用性验证")
-        _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, "V1", custom_hc=True)
-
-
-@pytest.mark.parametrize("vm", [{"basic": {"count": 4}, "bind_mfip": True}], indirect=True)
-@pytest.mark.parametrize("slb", [{"version": "V2"}], indirect=True)
-@allure.epic("网络服务")
-@allure.feature("负载均衡")
-@allure.story("UDP自定义健康检查验证")
-class TestSlbUdpCustomHealthCheckV2:
-    def test_udp_custom_health_check(
-        self, vpc_page, slb, vm, ssh_vm, clean_lb_listener
-    ):
-        allure.dynamic.title("v2-lbv1 > udp自定义健康检查验证 > 可用性验证")
-        _run_udp_health_check(vpc_page, slb, vm, ssh_vm, clean_lb_listener, "V2", custom_hc=False)

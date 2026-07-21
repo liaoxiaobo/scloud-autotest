@@ -1,3 +1,4 @@
+import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.testcase.iam._iam_helpers import modify_and_assert_quota, filter_quota_service_type, assert_org_quota_usage
@@ -6,6 +7,7 @@ from sugon_web.testcase.iam._iam_helpers import modify_and_assert_quota, filter_
 @allure.epic('身份认证IAM')
 @allure.feature('组织管理-项目管理')
 @allure.story('项目全生命周期及配额管理')
+@pytest.mark.requires_admin
 class TestIamProjectManagement:
 
     @allure.title("IAM-项目管理-创建项目并验证详情")

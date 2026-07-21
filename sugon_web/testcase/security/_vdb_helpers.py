@@ -10,6 +10,57 @@ from sugon_web.utils.logger import logger
 from sugon_web.utils.data import random_data
 
 
+def _ensure_vdb_running(vdb_page, name: str, timeout: int = 1800) -> dict[str, Any]:
+    """等待 VDB 实例到达运行状态，期间可自动授权一次或清理创建失败实例。
+
+    该 helper 集中处理创建后的副作用行为，使 assert_vdb_status 保持纯断言。
+    """
+    start_time = time.time()
+    last_data = {}
+    authorized = False
+    while time.time() - start_time < timeout:
+        try:
+            vdb_page.goto_list_page()
+            row_data = vdb_page.get_row_data(name)
+            last_data = row_data
+            svc = str(row_data.get("服务状态", "")).strip()
+            vmst = str(row_data.get("虚拟机状态", "")).strip()
+            if "运行" in svc and "运行" in vmst:
+                logger.info(f"VDB 实例 {name} 已到达运行状态")
+                return row_data
+            if "创建中" in vmst and "不可用" in svc:
+                logger.warning(
+                    f"VDB 实例 {name} 创建失败（虚拟机=创建中, 服务=不可用），将自动清理并抛出异常"
+                )
+                try:
+                    vdb_page.vdb_delete(name)
+                    vdb_page.assert_deleted(name, timeout=120, refresh=True)
+                    logger.info(f"VDB 实例 {name} 已自动删除")
+                except Exception as del_err:
+                    logger.warning(f"VDB 实例 {name} 自动删除失败: {del_err}")
+                raise AssertionError(
+                    f"VDB 实例 {name} 创建失败（虚拟机状态=创建中, 服务状态=不可用），"
+                    f"已自动清理，请重新创建"
+                )
+            if not authorized and "授权失败" in svc and "创建中" not in vmst:
+                logger.info(f"VDB 实例 {name} 服务状态为'授权失败'，执行授权操作")
+                authorized = True
+                try:
+                    vdb_page.vdb_authorize(name, "1个月")
+                    continue
+                except Exception as e:
+                    logger.warning(f"VDB 实例 {name} 自动授权失败: {e}")
+        except AssertionError:
+            raise
+        except Exception as e:
+            logger.debug(f"读取 VDB 实例 {name} 状态失败: {e}")
+        time.sleep(5)
+    raise AssertionError(
+        f"[EnsureRunning] VDB '{name}' | 状态未收敛 | "
+        f"期望: 服务=运行, 虚拟机=运行 | 实际={last_data}"
+    )
+
+
 def create_vdb_instance(page, vdb_page, name: str, network: str = None,
                         subnet: str = None) -> dict[str, Any]:
     """创建 VDB 实例并完成跳转验证（最多3次重试）。
@@ -31,10 +82,10 @@ def create_vdb_instance(page, vdb_page, name: str, network: str = None,
                 actual_name = random_data().replace("autotest-", "autotest-vdb-")
             logger.info(f"第 {attempt} 次尝试创建 VDB 实例: {actual_name}")
             vdb_page.vdb_create(name=actual_name, network=network)
-            vdb_page.assert_vdb_status(actual_name, service_status="运行", vm_status="运行", timeout=1200)
+            _ensure_vdb_running(vdb_page, actual_name, timeout=1800)
             name = actual_name
             break
-        except (AssertionError, Exception) as e:
+        except Exception as e:
             if "创建失败" in str(e) and attempt < 3:
                 logger.warning(f"VDB 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue

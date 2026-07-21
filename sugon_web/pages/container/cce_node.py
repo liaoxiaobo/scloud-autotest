@@ -296,25 +296,29 @@ class CceNodeMixin:
         dialog.get_by_text("确定").click()
         self.wait_for_page_ready()
 
-    def cce_public_ip_bind(self, network="public_net(基础版)"):
+    def cce_public_ip_bind(self, network="public_net(基础版)", eip_ip=None):
         """为集群绑定公网IP。
 
         Args:
             network: 网络名称，默认"public_net(基础版)"
+            eip_ip: 指定要绑定的弹性公网IP地址。为None时选择第一个状态为"关闭"的IP。
 
         Returns:
             str: 实际绑定的公网IP地址
         """
         self.page.get_by_text("绑定公网IP").first.click()
-        self.get_by_label("绑定公网IP", exact=True).get_by_placeholder("请选择").click()
+        dialog = self.get_by_label("绑定公网IP", exact=True)
+        dialog.get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
 
-        # 选择第一个状态为"关闭"的IP
-        ip_row = self.page.locator("tr.el-table__row:has-text('关闭')").first
+        if eip_ip:
+            ip_row = dialog.locator("tr.el-table__row").filter(has_text=eip_ip).first
+        else:
+            ip_row = dialog.locator("tr.el-table__row:has-text('关闭')").first
         ip_address = ip_row.locator("td").nth(1).inner_text()
         ip_row.locator("label[role='radio']").click()
 
-        self.get_by_label("绑定公网IP", exact=True).get_by_text("确定").click()
+        dialog.get_by_text("确定").click()
         self.wait_for_page_ready()
         return ip_address
 
@@ -324,12 +328,13 @@ class CceNodeMixin:
         self.get_by_label("解除绑定公网IP", exact=True).get_by_text("确定", exact=True).click()
         self.wait_for_page_ready()
 
-    def cce_node_public_ip_bind(self, node_name, network="public_net(基础版)"):
+    def cce_node_public_ip_bind(self, node_name, network="public_net(基础版)", eip_ip=None):
         """为节点绑定公网IP。
 
         Args:
             node_name: 节点名称
             network: 网络名称，默认"public_net(基础版)"
+            eip_ip: 指定要绑定的弹性公网IP地址。为None时选择第一个状态为"关闭"的IP。
 
         Returns:
             str: 实际绑定的公网IP地址
@@ -340,8 +345,10 @@ class CceNodeMixin:
         dialog.get_by_placeholder("请选择").click()
         self.get_by_text(network).click()
 
-        # 选择第一个状态为"关闭"的IP
-        ip_row = dialog.locator("tr.el-table__row:has-text('关闭')").first
+        if eip_ip:
+            ip_row = dialog.locator("tr.el-table__row").filter(has_text=eip_ip).first
+        else:
+            ip_row = dialog.locator("tr.el-table__row:has-text('关闭')").first
         ip_address = ip_row.locator("td").nth(1).inner_text()
         ip_row.locator("label[role='radio']").click()
 

@@ -14,10 +14,12 @@
 """
 
 from collections import Counter
+import random
 import shlex
 import time
 
 from sugon_web.utils.logger import logger
+from sugon_web.common.remote.ssh import SSH
 from sugon_web.assertions.helpers import (
     assert_lb_algorithm,
     assert_udp_source_ip_sticky,
@@ -351,8 +353,8 @@ def collect_lb_responses(ssh_client, curl_cmd, count, interval_sec=0, check_rc=T
 
 
 def collect_lb_http_responses(
-    ssh_client, target_url, count=30, interval_sec=1, connect_timeout=10,
-    use_cookie=False
+    ssh_client, target_url, count=90, interval_sec=1, connect_timeout=10,
+    use_cookie=False, headers=None
 ):
     """连续 curl 指定 URL，并返回原始响应列表。
 
@@ -366,6 +368,8 @@ def collect_lb_http_responses(
         connect_timeout: curl 连接超时时间，单位为秒。
         use_cookie: 是否使用 cookie jar 保存/发送 cookie，用于 HTTP COOKIE
             会话保持验证。默认 False。
+        headers: 额外请求头列表，每条形如 "Host: example.com"；
+            用于覆盖 curl 默认 Host（例如端口影响域名精确匹配时）。
 
     Returns:
         list[str]: 按采样顺序保存的 HTTP 响应文本列表。
@@ -374,13 +378,18 @@ def collect_lb_http_responses(
         当测试需要验证调度分布时，优先使用本函数保留完整响应序列，
         再交给 `assert_lb_algorithm()` 做策略断言。
     """
+    headers = headers or []
+    header_args = " ".join(f"-H {shlex.quote(h)}" for h in headers)
     if use_cookie:
         curl_cmd = (
             f"curl -s -c /tmp/lb_test_cookie -b /tmp/lb_test_cookie "
-            f"--connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+            f"{header_args} --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
         )
     else:
-        curl_cmd = f"curl -s --connect-timeout {connect_timeout} {shlex.quote(target_url)}"
+        curl_cmd = (
+            f"curl -s {header_args} --connect-timeout {connect_timeout} "
+            f"{shlex.quote(target_url)}"
+        )
     return collect_lb_responses(
         ssh_client,
         curl_cmd,
@@ -550,6 +559,160 @@ def send_udp_message(ssh_client, target_ip, target_port, message, timeout=5):
     return ssh_client.run(cmd, check_rc=False, return_rc=True)
 
 
+def _send_udp_batch(ssh_client, target_ip, target_port, prefix, count=3):
+    """从指定客户端连续发送多条 UDP 消息，返回发送的消息列表。"""
+    base = random.randint(1000, 9999)
+    messages = [f"{prefix}-{base + idx}" for idx in range(count)]
+    for message in messages:
+        send_udp_message(ssh_client, target_ip, target_port, message)
+        time.sleep(0.3)
+    return messages
+
+
+def wait_for_udp_acl_converged(
+    ssh_client,
+    ssh_vm,
+    target_ip,
+    port,
+    backends,
+    should_be_rejected,
+    prefix,
+    count=3,
+    timeout_sec=60,
+    interval_sec=5,
+):
+    """轮询等待 UDP 访问控制规则收敛。
+
+    不断发送新的 UDP 探测报文并读取后端日志，直到命中结果满足
+    ``should_be_rejected`` 期望（True=全部未命中，False=至少一条命中）。
+
+    Args:
+        ssh_client: 已连接到 UDP 客户端的 SSH 客户端（ssh_vm 或 ssh_host）。
+        ssh_vm: 已连接到后端虚机的 SSH 客户端，用于读取 UDP server 日志。
+        target_ip: 目标 IP（LB VIP 或 EIP）。
+        port: UDP 端口。
+        backends: 后端虚机信息列表，用于 collect_udp_recipients。
+        should_be_rejected: True 表示期望报文被拒绝（全部未命中后端），
+            False 表示期望报文被转发（至少一条命中）。
+        prefix: 探测报文前缀，每次轮询会附加随机后缀避免日志污染。
+        count: 每轮发送报文数量。
+        timeout_sec: 最大等待时间（秒），默认 60。
+        interval_sec: 轮询间隔（秒），默认 5。
+
+    Raises:
+        AssertionError: 超时后仍未满足期望。
+    """
+    # 当发送端与日志读取端为同一 SSH 对象时，clear_udp_server_log 会切换
+    # 当前活动连接到后端 VM，导致后续 _send_udp_batch 也从后端发出，从而
+    # 使源 IP 错误。此时创建独立的日志读取客户端，避免污染发送端连接。
+    log_reader = ssh_vm
+    reader_owned = False
+    if ssh_client is ssh_vm:
+        log_reader = SSH()
+        log_reader.jumphost_client = ssh_vm.jumphost_client
+        reader_owned = True
+
+    try:
+        end_time = time.time() + timeout_sec
+        last_hit_map = {}
+        while time.time() < end_time:
+            for backend in backends:
+                clear_udp_server_log(log_reader, backend, port=port)
+            messages = _send_udp_batch(
+                ssh_client, target_ip, port, prefix=prefix, count=count
+            )
+            time.sleep(2)
+            last_hit_map = collect_udp_recipients(log_reader, backends, port=port, messages=messages)
+            received = {msg: b for msg, b in last_hit_map.items() if b is not None}
+            if should_be_rejected and not received:
+                logger.info("UDP ACL 规则已收敛（全部拒绝）: %s", last_hit_map)
+                return
+            if not should_be_rejected and received:
+                logger.info("UDP ACL 规则已收敛（允许通过）: %s", last_hit_map)
+                return
+            remaining = end_time - time.time()
+            if remaining > 0:
+                time.sleep(min(interval_sec, remaining))
+    finally:
+        if reader_owned:
+            log_reader.close()
+
+    expected = "全部拒绝" if should_be_rejected else "至少一条命中"
+    raise AssertionError(
+        f"UDP ACL 规则在 {timeout_sec} 秒内未收敛，期望: {expected}, "
+        f"最后命中分布: {last_hit_map}"
+    )
+
+
+def assert_udp_source_ip_sticky_with_retry(
+    ssh_client,
+    ssh_vm,
+    target_ip,
+    port,
+    backends,
+    prefix,
+    scene_name,
+    count=5,
+    max_retries=3,
+    retry_interval=5,
+):
+    """带重试的 UDP 源 IP 算法验证。
+
+    由于 V1 UDP 数据面偶发不转发首包或首批报文，发送后若全部未命中后端，
+    则清日志、重发新消息，直到命中或达到最大重试次数。
+
+    Args:
+        ssh_client: 已连接到 UDP 客户端的 SSH 客户端。
+        ssh_vm: 已连接到后端虚机的 SSH 客户端。
+        target_ip: 目标 IP（VIP 或 EIP）。
+        port: UDP 端口。
+        backends: 后端虚机信息列表。
+        prefix: 探测报文前缀，每次重试会追加 attempt 序号避免日志污染。
+        scene_name: 用于断言报错的场景名称。
+        count: 每次发送报文数量。
+        max_retries: 最大尝试次数（含首次）。
+        retry_interval: 重试间隔（秒）。
+
+    Returns:
+        tuple: (sticky_backend, hit_map)
+
+    Raises:
+        AssertionError: 所有尝试均未命中后端。
+    """
+    last_hit_map = {}
+    for attempt in range(max_retries):
+        for backend in backends:
+            clear_udp_server_log(ssh_vm, backend, port=port)
+        messages = _send_udp_batch(
+            ssh_client, target_ip, port,
+            prefix=f"{prefix}-{attempt}", count=count,
+        )
+        time.sleep(3)
+        last_hit_map = collect_udp_recipients(
+            ssh_vm, backends, port=port, messages=messages
+        )
+        try:
+            sticky_backend = assert_udp_source_ip_sticky(last_hit_map, scene_name)
+            if attempt > 0:
+                logger.info(
+                    "%s 第 %d 次重试后命中后端: %s", scene_name, attempt + 1, sticky_backend
+                )
+            return sticky_backend, last_hit_map
+        except AssertionError:
+            if attempt == max_retries - 1:
+                break
+            logger.warning(
+                "%s 第 %d 次未命中后端，%d 秒后重试，命中分布: %s",
+                scene_name, attempt + 1, retry_interval, last_hit_map,
+            )
+            time.sleep(retry_interval)
+
+    raise AssertionError(
+        f"{scene_name} 在 {max_retries} 次尝试后仍未命中后端，"
+        f"最后命中分布: {last_hit_map}"
+    )
+
+
 def collect_udp_recipients(ssh_vm, backends, port, messages):
     """采集 UDP 消息在各后端的接收命中分布。
 
@@ -620,16 +783,18 @@ def wait_for_curl_match(ssh_client, curl_cmd, match_text, timeout_sec=60, interv
 def get_ssh_host_source_ip(ssh_host, target_ip):
     """识别 ssh_host 访问目标 IP 时实际使用的源 IP 候选集。
 
+    优先通过系统路由表 ``ip route get`` 推导；当 ``ip`` 命令不可用时，
+    使用 UDP socket 进行路由模拟（不发送实际流量）获取本地源地址；
+    最后才回退到 ``hostname -I``，并过滤掉明显不会用于出网的地址。
+
     Args:
         ssh_host: 已连接到测试环境物理机的 SSH 客户端。
         target_ip: 目标 IP 地址（通常是负载均衡的公网 IP）。
 
     Returns:
-        list[str]: 源 IP 候选列表，优先返回 ``ip route get`` 推导值，
-            其后追加 ``hostname -I`` / ``ip -4 addr`` 中发现的额外 IP。
+        list[str]: 源 IP 候选列表，最可能的源地址排在最前面。
     """
-    import re as _re
-
+    # 1. 优先使用 ip route get 推导真实源地址
     route_result = ssh_host.run(
         f"ip route get {shlex.quote(target_ip)} | grep -oP 'src \\K\\S+'",
         check_rc=False,
@@ -640,12 +805,43 @@ def get_ssh_host_source_ip(ssh_host, target_ip):
         logger.info("ssh_host 访问 %s 的源 IP: %s", target_ip, route_src_ip)
         return [route_src_ip]
 
-    # 路由推导失败时，取 hostname -I 第一个公网IP作为兜底
+    # 2. ip 命令不可用时，用 UDP socket 模拟路由选择（不发送数据包）
+    for python_bin in ("python3", "python"):
+        socket_cmd = (
+            f"{python_bin} -c \"import socket; "
+            f"s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); "
+            f"s.connect(({repr(target_ip)}, 80)); "
+            f"print(s.getsockname()[0]); "
+            f"s.close()\""
+        )
+        socket_result = ssh_host.run(
+            socket_cmd,
+            check_rc=False,
+            return_rc=True,
+        )
+        socket_src_ip = (socket_result.get("stdout") or "").strip()
+        if socket_src_ip:
+            logger.info(
+                "ssh_host 访问 %s 的源 IP(socket): %s",
+                target_ip,
+                socket_src_ip,
+            )
+            return [socket_src_ip]
+
+    # 3. 兜底：从 hostname -I 中过滤掉 loopback/link-local/docker 默认网桥等
     fallback = ssh_host.run("hostname -I", check_rc=False, return_rc=True)
-    fallback_ip = (fallback.get("stdout") or "").strip().split()[0]
-    if fallback_ip:
-        logger.info("ssh_host 访问 %s 的源 IP(兜底): %s", target_ip, fallback_ip)
-        return [fallback_ip]
+    fallback_ips = (fallback.get("stdout") or "").strip().split()
+    excluded_prefixes = ("127.", "169.254.", "172.17.0.")
+    candidates = [
+        ip for ip in fallback_ips if not ip.startswith(excluded_prefixes)
+    ]
+    if candidates:
+        logger.info(
+            "ssh_host 访问 %s 的源 IP(兜底): %s",
+            target_ip,
+            ", ".join(candidates),
+        )
+        return candidates
 
     return []
 

@@ -4,9 +4,9 @@ import pytest
 from typing import Any, Dict, Iterator, List, Tuple, TypedDict, Union
 from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.conftest import _create_logged_in_page
+from sugon_web.config.config import Config
 from sugon_web.pages.backup import BackUpPage
 from sugon_web.pages.compute import EcsPage
-from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.network import VpcPage
 from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.testcase.compute.vm_fixture.types import VmFixtureParams
@@ -89,14 +89,14 @@ def _create_service_page(
     return page, page_object
 
 
-def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
+def _get_enabled_backup_nodes(ops_page) -> List[str]:
     """返回当前环境中已启用的备份节点列表。
 
     这是一个环境前置校验 helper。备份任务创建和迁移场景至少依赖一个可用备份
     节点；如果环境未满足条件，应尽早跳过，而不是在后续断言中报出不易定位的错。
 
     Args:
-        ecs_page: 已登录的 ECS 页面对象，用于跨服务导航和查询。
+        ops_page: 已登录的运维管理页面对象，用于访问基础设施服务的备份节点。
 
     Returns:
         已启用备份节点的 IP 列表。
@@ -105,11 +105,11 @@ def _get_enabled_backup_nodes(ecs_page: EcsPage) -> List[str]:
         pytest.skip: 当环境中不存在已启用备份节点时主动跳过。
     """
     with allure_step_log("检查环境备份节点"):
-        ecs_page.goto_service("基础设施")
-        ecs_page.goto_submenu("备份节点")
+        ops_page.goto_service("基础设施")
+        ops_page.goto_submenu("备份节点")
 
-        all_states = ecs_page.get_column_data("服务状态")
-        all_nodes = ecs_page.get_column_data("节点名称")
+        all_states = ops_page.get_column_data("服务状态")
+        all_nodes = ops_page.get_column_data("节点名称")
         nodes_by_ip = {ip: st for ip, st in zip(all_nodes, all_states) if ip and st}
         enabled_nodes = [ip for ip, status in nodes_by_ip.items() if status == "已启用"]
         if not enabled_nodes:
@@ -186,7 +186,7 @@ def _create_backup_vm_base_resources(
     create_request, count, network, subnet = _build_vm_create_request(request, vm_params, base_name)
     vm_names = _build_vm_fixture_names(create_request["basic"]["name"], count)
 
-    _allocate_eips(vpc_page, count=count)
+    # _allocate_eips(vpc_page, count=count)
     _create_vm_resources(
         ecs_page=ecs_page,
         create_request=create_request,
@@ -201,7 +201,7 @@ def _prepare_single_vm_backup_metadata(
     ssh_vm: Any,
     vm_data: VmInfo,
     backup_nodes: List[str],
-    browser: Any,
+    admin_browser_context: Any,
     config: Any,
     ssh_host: Any,
 ) -> VmInfo:
@@ -218,7 +218,7 @@ def _prepare_single_vm_backup_metadata(
         ssh_vm: SSH fixture，用于连接源虚机并生成校验数据。
         vm_data: 通用 VM helper 返回的一台虚机元数据。
         backup_nodes: 当前环境可用的备份节点列表。
-        browser: Playwright Browser 实例，用于创建 admin context 绑定 MFIP。
+        browser: Playwright Browser 实例，用于创建 admin context 绑定 MFIP。 -> admin_browser_context: 已登录 admin 的 Playwright BrowserContext，用于绑定 MFIP。
         config: 配置对象。
         ssh_host: SSH 后端客户端，用于查询 ``port_id``。
 
@@ -230,13 +230,12 @@ def _prepare_single_vm_backup_metadata(
         ecs_page.goto_service("弹性云服务器")
         ecs_page.goto_submenu("弹性云服务器")
         ecs_page.set_table_header("架构")
-        ecs_page.ecs_bind_pub_ip(vm_data["name"])
-        ecs_page.assert_popup_success("执行成功")
+
         row_data = ecs_page.get_row_data(vm_data["name"])
         arch = row_data.get("架构")
         meta = collect_vm_metadata(ecs_page, ssh_host, vm_data["name"])
         mfip = MfipHelper.bind_mfip_with_admin_context(
-            browser, config, meta["port_id"],
+            admin_browser_context, config, meta["port_id"],
             project_id=meta.get("project_id", "admin-inner-project"),
         )
         ssh_vm.connect(mfip)
@@ -252,7 +251,7 @@ def _enrich_vm_backup_metadata(
     ssh_vm: Any,
     base_vm_list: VmList,
     backup_nodes: List[str],
-    browser: Any,
+    admin_browser_context: Any,
     config: Any,
     ssh_host: Any,
 ) -> VmList:
@@ -263,7 +262,7 @@ def _enrich_vm_backup_metadata(
         ssh_vm: SSH fixture，用于准备源数据。
         base_vm_list: 通用 VM helper 返回的基础虚机元数据列表。
         backup_nodes: 当前环境可用的备份节点列表。
-        browser: Playwright Browser 实例。
+        browser: Playwright Browser 实例。 -> admin_browser_context: 已登录 admin 的 Playwright BrowserContext。
         config: 配置对象。
         ssh_host: SSH 后端客户端。
 
@@ -276,7 +275,7 @@ def _enrich_vm_backup_metadata(
             ssh_vm=ssh_vm,
             vm_data=vm_data,
             backup_nodes=backup_nodes,
-            browser=browser,
+            admin_browser_context=admin_browser_context,
             config=config,
             ssh_host=ssh_host,
         )
@@ -506,7 +505,8 @@ def backup_page(page: Any) -> BackUpPage:
 @pytest.fixture(scope="class")
 def vm_backup(
     browser_context: Any,
-    browser: Any,
+    admin_browser_context: Any,
+    ops_page_class: Any,
     config: Any,
     ssh_vm: Any,
     ssh_host: Any,
@@ -530,9 +530,11 @@ def vm_backup(
         def test_xxx(vm_backup):
             assert len(vm_backup) == 2
     """
+
     page = _create_logged_in_page(browser_context, config)
     ecs_page = EcsPage(page)
     vpc_page = VpcPage(page)
+
     params = _get_request_params(request)
     vm_names: List[str] = []
 
@@ -543,9 +545,9 @@ def vm_backup(
             request=request,
             params=params,
         )
-        enabled_nodes = _get_enabled_backup_nodes(OpsPage(page))
+        enabled_nodes = _get_enabled_backup_nodes(ops_page_class)
         vm_list = _enrich_vm_backup_metadata(
-            ecs_page, ssh_vm, base_vm_list, enabled_nodes, browser, config, ssh_host
+            ecs_page, ssh_vm, base_vm_list, enabled_nodes, admin_browser_context, config, ssh_host
         )
         logger.info(f"vm_list: {vm_list}")
 

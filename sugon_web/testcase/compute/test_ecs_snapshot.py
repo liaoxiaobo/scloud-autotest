@@ -5,8 +5,6 @@ from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data, load_data
 
 
-@allure.epic('计算服务')
-@allure.feature('云服务器快照')
 @allure.story('快照基本功能验证')
 class TestECSS:
 

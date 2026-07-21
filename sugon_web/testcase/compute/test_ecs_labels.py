@@ -6,8 +6,6 @@ from sugon_web.utils.logger import allure_step_log
 from sugon_web.utils.data import random_data
 
 
-@allure.epic('计算服务')
-@allure.feature('标签')
 @allure.story('标签功能验证')
 class TestECSLabels:
     @allure.title("验证创建 & 搜索 & 删除标签功能")

@@ -1,6 +1,8 @@
 import random
 import pytest
 import allure
+from sugon_web.common.mfip_helper import MfipHelper
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log, logger
 
 @allure.epic('网络服务')
@@ -48,7 +50,7 @@ class TestVPCNetwork:
             logger.info(f"✓ {vm2_name} ping {vm1_ip} 成功")
 
     @allure.title("Geneve网络-跨子网两台虚机互通验证")
-    def test_vpc_cross_subnet_ping(self, vm, ecs_page, ops_page, ssh_vm):
+    def test_vpc_cross_subnet_ping(self, vm, ecs_page, ssh_vm, ssh_host, admin_browser_context, config):
         """
         测试Geneve网络内跨子网的两台虚拟机通过内网IP互相ping通
 
@@ -86,16 +88,15 @@ class TestVPCNetwork:
             ecs_page.assert_popup_success("创建实例命令下发成功")
             ecs_page.assert_status([vm2_name])
 
-            # 获取第二台虚机的信息
-            vm2_data = ecs_page.get_row_data(vm2_name)
-            vm2_ip = vm2_data['IP地址'].split(':')[1].strip()
-            vm2_project = vm2_data['项目名称']
-
-            # 绑定Mfip
-            ops_page.mfip_create(vm2_project, vm1_network, vm2_ip)
-            ops_page.assert_popup_success()
-            ops_page.mfip_search(vm2_ip)
-            vm2_mfip = ops_page.get_row_data(vm2_ip).get("管理IP地址")
+            # 收集 vm2 元数据并通过 API 绑定 MFIP
+            vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+            vm2_ip = vm2_meta["ip"]
+            vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm2_meta["port_id"],
+                project_id=vm2_meta.get("project_id", "admin-inner-project"),
+            )
 
             logger.info(
                 f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, Mfip: {vm2_mfip}, 网络: {vm1_network}, 子网: {existing_subnet_name}")
@@ -131,7 +132,7 @@ class TestVPCNetwork:
         "gateway_mode": "分布式网关",
         "vlan_id": random.randint(610, 699)
     }], indirect=True)
-    def test_vlan_two_vms_ping(self, vpc, ecs_page, ops_page, ssh_vm):
+    def test_vlan_two_vms_ping(self, vpc, ecs_page, ssh_vm, ssh_host, admin_browser_context, config):
         """
         测试Vlan网络内两台虚拟机通过内网IP互相ping通
 
@@ -167,37 +168,27 @@ class TestVPCNetwork:
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
 
-            # 先获取两台虚机的内网IP和项目信息
-            vm1_data = ecs_page.get_row_data(vm1_name)
-            vm1_ip = vm1_data['IP地址'].split(':')[1].strip()
-            vm1_project = vm1_data['项目名称']
-
-            vm2_data = ecs_page.get_row_data(vm2_name)
-            vm2_ip = vm2_data['IP地址'].split(':')[1].strip()
-            vm2_project = vm2_data['项目名称']
-
-            logger.info(f"虚机1: {vm1_name}, 内网IP: {vm1_ip}, 项目: {vm1_project}")
-            logger.info(f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, 项目: {vm2_project}")
-
         # 步骤2: 一起为两台虚机绑定Mfip
         with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
-            # 绑定第一台虚机的Mfip
-            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip, exact=False)
-            ops_page.assert_popup_success()
+            vm1_meta = collect_vm_metadata(ecs_page, ssh_host, vm1_name)
+            vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+            vm1_ip = vm1_meta["ip"]
+            vm2_ip = vm2_meta["ip"]
+            vm1_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm1_meta["port_id"],
+                project_id=vm1_meta.get("project_id", "admin-inner-project"),
+            )
+            vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm2_meta["port_id"],
+                project_id=vm2_meta.get("project_id", "admin-inner-project"),
+            )
 
-            # 绑定第二台虚机的Mfip
-            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip, exact=False)
-            ops_page.assert_popup_success()
-
-            # 搜索并获取两台虚机的Mfip地址
-            ops_page.mfip_search(vm1_ip)
-            vm1_mfip = ops_page.get_row_data(vm1_ip).get("管理IP地址")
-
-            ops_page.mfip_search(vm2_ip)
-            vm2_mfip = ops_page.get_row_data(vm2_ip).get("管理IP地址")
-
-            logger.info(f"虚机1 Mfip: {vm1_mfip}")
-            logger.info(f"虚机2 Mfip: {vm2_mfip}")
+            logger.info(f"虚机1: {vm1_name}, 内网IP: {vm1_ip}, Mfip: {vm1_mfip}")
+            logger.info(f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, Mfip: {vm2_mfip}")
 
         # 步骤3: 第一台虚机ping第二台虚机（同子网）
         with allure_step_log("步骤3: 第一台虚机ping第二台虚机（同子网）"):
@@ -279,7 +270,7 @@ class TestVPCNetwork:
         "gateway_ip": "172.22.16.254",
         "mac": "60:f1:8a:5a:31:9b"
     }], indirect=True)
-    def test_vlan_two_vms_ping_centralized(self, vpc, ecs_page, ops_page, ssh_vm):
+    def test_vlan_two_vms_ping_centralized(self, vpc, ecs_page, ssh_vm, ssh_host, admin_browser_context, config):
         """
         测试集中式网关模式下Vlan网络内两台虚拟机通过内网IP互相ping通
 
@@ -317,34 +308,24 @@ class TestVPCNetwork:
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
 
-            # 先获取两台虚机的内网IP和项目信息
-            vm1_data = ecs_page.get_row_data(vm1_name)
-            vm1_ip = vm1_data['IP地址'].split(':')[1].strip()
-            vm1_project = vm1_data['项目名称']
-
-            vm2_data = ecs_page.get_row_data(vm2_name)
-            vm2_ip = vm2_data['IP地址'].split(':')[1].strip()
-            vm2_project = vm2_data['项目名称']
-
-            logger.info(f"虚机1: {vm1_name}, 内网IP: {vm1_ip}, 项目: {vm1_project}")
-            logger.info(f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, 项目: {vm2_project}")
-
         # 步骤2: 一起为两台虚机绑定Mfip
         with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
-            # 绑定第一台虚机的Mfip
-            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip)
-            ops_page.assert_popup_success()
-
-            # 绑定第二台虚机的Mfip
-            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip)
-            ops_page.assert_popup_success()
-
-            # 搜索并获取两台虚机的Mfip地址
-            ops_page.mfip_search(vm1_ip)
-            vm1_mfip = ops_page.get_row_data(vm1_ip).get("管理IP地址")
-
-            ops_page.mfip_search(vm2_ip)
-            vm2_mfip = ops_page.get_row_data(vm2_ip).get("管理IP地址")
+            vm1_meta = collect_vm_metadata(ecs_page, ssh_host, vm1_name)
+            vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+            vm1_ip = vm1_meta["ip"]
+            vm2_ip = vm2_meta["ip"]
+            vm1_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm1_meta["port_id"],
+                project_id=vm1_meta.get("project_id", "admin-inner-project"),
+            )
+            vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm2_meta["port_id"],
+                project_id=vm2_meta.get("project_id", "admin-inner-project"),
+            )
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -379,7 +360,7 @@ class TestVPCNetwork:
         "network_type": "Geneve",
         "enable_ipv6": True
     }], indirect=True)
-    def test_dual_stack_two_vms_ping(self, vpc, ecs_page, ops_page, ssh_vm):
+    def test_dual_stack_two_vms_ping(self, vpc, ecs_page, ssh_vm, ssh_host, admin_browser_context, config):
         """
         测试Flat网络内两台虚拟机通过内网IP互相ping通
         """
@@ -412,37 +393,26 @@ class TestVPCNetwork:
             # 等待两台虚机创建完成
             ecs_page.assert_status([vm1_name, vm2_name])
 
-            # 先获取两台虚机的内网IP和项目信息
-            vm1_data = ecs_page.get_row_data(vm1_name)
-            vm1_ip = vm1_data['IP地址'].split("固定: ")[-1].strip()
-            vm1_ipv6 = vm1_data['IP地址'].split("固定: ")[-2].strip()
-            vm1_project = vm1_data['项目名称']
-
-            vm2_data = ecs_page.get_row_data(vm2_name)
-            vm2_ip = vm2_data['IP地址'].split("固定: ")[-1].strip()
-            vm2_ipv6 = vm2_data['IP地址'].split("固定: ")[-2].strip()
-            vm2_project = vm2_data['项目名称']
-
-            logger.info(f"虚机1: {vm1_name}, 内网IP: {vm1_ip}, 项目: {vm1_project}")
-            logger.info(f"虚机2: {vm2_name}, 内网IP: {vm2_ip}, 项目: {vm2_project}")
-
         # 步骤2: 一起为两台虚机绑定Mfip
         with allure_step_log("步骤2: 为两台虚机绑定Mfip"):
-
-            # 绑定第一台虚机的Mfip
-            ops_page.mfip_create(vm1_project, vpc_name, vm1_ip, exact=False)
-            ops_page.assert_popup_success()
-
-            # 绑定第二台虚机的Mfip
-            ops_page.mfip_create(vm2_project, vpc_name, vm2_ip, exact=False)
-            ops_page.assert_popup_success()
-
-            # 搜索并获取两台虚机的Mfip地址
-            ops_page.mfip_search(vm1_ip)
-            vm1_mfip = ops_page.get_row_data(vm1_ip).get("管理IP地址")
-
-            ops_page.mfip_search(vm2_ip)
-            vm2_mfip = ops_page.get_row_data(vm2_ip).get("管理IP地址")
+            vm1_meta = collect_vm_metadata(ecs_page, ssh_host, vm1_name)
+            vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+            vm1_ip = vm1_meta["ip"]
+            vm1_ipv6 = vm1_meta.get("ipv6", "")
+            vm2_ip = vm2_meta["ip"]
+            vm2_ipv6 = vm2_meta.get("ipv6", "")
+            vm1_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm1_meta["port_id"],
+                project_id=vm1_meta.get("project_id", "admin-inner-project"),
+            )
+            vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context,
+                config,
+                vm2_meta["port_id"],
+                project_id=vm2_meta.get("project_id", "admin-inner-project"),
+            )
 
             logger.info(f"虚机1 Mfip: {vm1_mfip}")
             logger.info(f"虚机2 Mfip: {vm2_mfip}")
@@ -513,7 +483,7 @@ class TestVPCNetwork:
         }
     }], indirect=True)
     @allure.title("虚拟IP-绑定公网IP及云外连通性验证")
-    def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, vip, vm, ssh_vm, ssh_host):
+    def test_vip_bind_instance_and_fip(self, ecs_page, vpc_page, vpc, eip, vip, vm, ssh_vm, ssh_host):
         """将虚拟IP绑定至云服务器并在系统内配置网卡，同时为该VIP绑定公网IP，随后通过后台节点验证公网IP的数据面连通性"""
 
         vm_name = vm['name']
@@ -526,18 +496,18 @@ class TestVPCNetwork:
             ssh_vm.run(f"ip a a {vip}/24 dev eth0", check_rc=True)
 
         with allure_step_log("步骤2: 为该虚拟IP(VIP)绑定公网IP"):
-            eip = vpc_page.vip_bind_eip(vip)
+            bound_eip = vpc_page.vip_bind_eip(vip, eip_ip=eip)
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤3: 从后台节点发起对绑定的公网IP的Ping测试，验证公网连通性"):
-            ssh_host.ping(eip)
+            ssh_host.ping(bound_eip)
 
         with allure_step_log("步骤4: 解绑公网IP与虚拟IP的绑定关系"):
             vpc_page.vip_unbind_eip(vip)
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤5: 再次从后台节点Ping该公网IP，确认连通性已断开"):
-            ssh_host.ping(eip, connected=False)
+            ssh_host.ping(bound_eip, connected=False)
 
         with allure_step_log("步骤6: 解绑虚拟IP与云服务器实例的绑定关系"):
             vpc_page.vip_unbind_instance(vip, vm_name)

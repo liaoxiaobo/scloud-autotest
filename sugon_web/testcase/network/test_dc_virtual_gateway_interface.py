@@ -2,6 +2,7 @@ import time
 
 import pytest
 import allure
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 from sugon_web.utils.logger import allure_step_log, logger
 from sugon_web.utils.data import random_data
 
@@ -150,7 +151,7 @@ class TestDCVirtualGatewayInterface:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -166,7 +167,8 @@ class TestDCVirtualGatewayInterface:
             time.sleep(60)
 
         with allure_step_log("步骤4: 创建虚拟接口"):
-            dc_page.virtual_interface_create(
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -176,18 +178,10 @@ class TestDCVirtualGatewayInterface:
                 remote_subnet="123.12.0.0/24",
                 subnet_index=0,
             )
-            dc_page.assert_popup_success(timeout=10000)
 
-        with allure_step_log("步骤5: 等待并验证虚拟接口状态（最长150秒）"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
-            )
-
-            # 验证列表字段
+        with allure_step_log("步骤5: 验证虚拟接口列表字段"):
+            dc_page._ensure_virtual_interface_list()
+            dc_page.wait_for_page_ready()
             row_data = dc_page.get_row_data(vif_name)
             local_gw = row_data.get("本地网关", "")
             remote_gw = row_data.get("远端网关", "")

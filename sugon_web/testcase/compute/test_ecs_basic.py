@@ -10,8 +10,6 @@ from sugon_web.utils.data import random_data, load_data, retry_check
 from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than, skip_arch
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('基本功能验证')
 class TestECSBasic:
 
@@ -158,7 +156,7 @@ class TestECSBasic:
             ecs_page.ecs_edit(new_name, name)
 
     @allure.title("弹性云服务器-克隆")
-    def test_ecs_clone(self, ecs_page, vm, ssh_vm, browser, config, ssh_host):
+    def test_ecs_clone(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         name = vm.get("name")
         ecs_page.goto_service('弹性云服务器')
 
@@ -180,7 +178,7 @@ class TestECSBasic:
             # 克隆后的虚机绑定mfip，验证md5值
             clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
             mfip = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, clone_meta["port_id"],
+                admin_browser_context, config, clone_meta["port_id"],
                 project_id=clone_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(mfip)
@@ -220,9 +218,9 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤1: 云服务器{name}绑定公网IP"):
             pub_ip = ecs_page.ecs_bind_pub_ip(name)
+            ecs_page.assert_popup_success(f"执行成功")
 
         with (allure_step_log("步骤2: 验证绑定公网IP结果")):
-            ecs_page.assert_popup_success(f"执行成功")
             ecs_page.assert_ecs_info(name, "IP地址", pub_ip)
             ssh_vm.connect(vm['mfip'])
             ssh_vm.ping(pub_ip)
@@ -330,9 +328,9 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤1: 云服务器{name}修改主机名"):
             ecs_page.ecs_modify_hostname(name, hostname)
+            ecs_page.assert_popup_success(f"更新实例成功")
 
         with (allure_step_log("步骤2: 验证修改主机名结果")):
-            ecs_page.assert_popup_success(f"更新实例成功")
             # 重启虚机，等待主机名变更
             ecs_page.ecs_operations(name, "重启")
             ecs_page.assert_status(name)
@@ -356,18 +354,16 @@ class TestECSBasic:
 
         with allure_step_log(f"步骤1: 修改云服务器 {name} 的VNC显卡类型为 {vnc_type}"):
             ecs_page.ecs_modify_vnc_type(name, vnc_type)
-
-        with allure_step_log("步骤2: 验证修改结果"):
             ecs_page.assert_popup_success("修改VNC显卡类型成功")
 
-        with allure_step_log("步骤3: 验证VNC登录"):
+        with allure_step_log("步骤2: 验证VNC登录"):
             ecs_page.ecs_operations(name, "强制重启")
             ecs_page.assert_popup_success(f"{name}实例强制重启任务下发成功", timeout=60)
             ssh_vm.connect(vm['mfip'])
             ecs_page.assert_ecs_enable(name, ssh_vm)
             ecs_page.assert_ecs_details_info([name], info_items={"VNC显卡类型": vnc_type})
 
-        with allure_step_log("步骤4: 验证虚机xml"):
+        with allure_step_log("步骤3: 验证虚机xml"):
             cmd = f"ssh -o StrictHostKeyChecking=no {node} 'docker exec -i nova_libvirt virsh dumpxml {ecs_id} |grep {vnc_type.lower()}'"
             assert ssh_host.run(cmd)
 
@@ -427,7 +423,7 @@ class TestECSBasic:
 
     @allure.title("弹性云服务器-创建镜像")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "bind_mfip": True}], indirect=True)
-    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, browser, config, ssh_host):
+    def test_ecs_create_image(self, ecs_page, vm, ssh_vm, admin_browser_context, config, ssh_host):
         """测试从现有云服务器创建镜像"""
         name = vm.get("name")
         image_name = random_data(length=10)
@@ -459,7 +455,7 @@ class TestECSBasic:
         with allure_step_log(f"步骤4: 验证{image_vm} md5值是否一致"):
             image_meta = collect_vm_metadata(ecs_page, ssh_host, image_vm)
             mfip_new = MfipHelper.bind_mfip_with_admin_context(
-                browser, config, image_meta["port_id"],
+                admin_browser_context, config, image_meta["port_id"],
                 project_id=image_meta.get("project_id", "admin-inner-project"),
             )
             ssh_vm.connect(mfip_new)
@@ -715,10 +711,9 @@ class TestECSBasic:
             ecs_page.ecs_batch_operations(names, operation=operation)
 
         with allure_step_log(f"步骤2: 验证{operation}结果"):
+            ecs_page.wait_for_batch_source_complete(names, loading_timeout=15)
             for name, ecs_id in zip(names, ecs_ids):
-                ecs_page.wait_for_source_complete(name, loading_timeout=15)
                 ecs_page.assert_status(name, status=status)
-                stdout = ecs_page.stout_to_dict(ssh_host.run(f"gova show {ecs_id}"))
                 ssh_host.assert_guest_fields(ecs_id, {"vm_state": vm_state}, f"批量操作{operation}失败")
 
     @allure.title("弹性云服务器-批量迁移")

@@ -192,3 +192,98 @@ Ceph 存储后端创建 500GiB 共享空白云硬盘的实际耗时超过 `asser
 > 看到"批量操作后确认对话框未找到"，先问自己：勾选后表格是否被轮询刷新过？如果页面有定时轮询且 checkbox 状态会丢失→ 极大概率是 **表格勾选状态被异步刷新冲掉**，而不是 locator 本身错误。
 
 ---
+
+## 模式：Element UI 复选框内部 span 不可点击（嵌套 span 定位错误）
+
+### 案例：EVS-共享云硬盘数据一致性 `test_shared_volume_data_consistency` 复选框点击超时
+
+**时间**：2026-07-10
+**用例**：`test_shared_volume_data_consistency[volume0-vm0]`
+**根因分类**：用例问题
+
+#### 现象
+
+- `volume` fixture 调用 `evs_create(shared=True)` 创建共享云硬盘时失败
+- 报错：`Locator.click: Timeout 30000ms exceeded`
+- Call log 显示 locator 解析到 `<span class="el-checkbox__inner"></span>`，但持续报告 `element is not visible`
+- 失败截图显示"新建云硬盘"弹窗正常打开，"共享盘"复选框可见且未选中
+
+#### 根因
+
+原代码使用 `locator("label").filter(has_text="共享盘").locator("span").nth(1).click()`。Playwright 的 `locator("span")` 会查找 label 下**所有后代 span**，而 Element UI 的 `el-checkbox` 内部结构是：
+
+```html
+<label class="el-checkbox">
+  <span class="el-checkbox__input">           <!-- nth(0) -->
+    <span class="el-checkbox__inner"></span>  <!-- nth(1) ← 命中 -->
+    <input type="checkbox" class="el-checkbox__original" />
+  </span>
+  <span class="el-checkbox__label">共享盘</span>  <!-- nth(2) -->
+</label>
+```
+
+`nth(1)` 命中的是装饰性的 `.el-checkbox__inner`，该 span 在真实 DOM 中通常被 CSS 隐藏或尺寸为 0，Playwright 判定其不可见，导致点击超时。
+
+#### 关键证据链
+
+1. **Call log 明确显示命中 `el-checkbox__inner` 且 `element is not visible`** — 直接证明不是元素未找到，而是 locator 命中了错误的隐藏元素
+2. **截图显示复选框本身正常渲染且无遮挡** — 排除环境问题（弹窗未打开、页面异常等）
+3. **同文件 `_enable_virtio_scsi` 使用 label 点击成功** — 证明正确的交互方式应为点击 label 本身，而非内部 span
+4. **修复后同用例通过** — 确认根因是 locator 选择错误
+
+#### 修复方向
+
+- **推荐**：点击 label 本身，并先判断 checkbox 状态避免重复点击：
+  ```python
+  shared_label = self.page.locator("form label").filter(has_text="共享盘")
+  if not shared_label.get_by_role("checkbox").is_checked():
+      shared_label.click()
+  ```
+- **替代**：使用 role 定位真实 checkbox：
+  ```python
+  self.get_by_role("checkbox", name="共享盘").check()
+  ```
+- **同步审查**：检查项目中所有使用 `locator("span").nth(n).click()` 点击 checkbox 的地方，统一改为 label 点击或 role 定位
+
+#### 排查口诀
+
+> 看到"复选框点击超时且 call log 显示 `element is not visible`"，先问自己：locator 是不是点到了组件内部隐藏的装饰 span？对于 Element UI 的 checkbox/radio，**永远优先点击 label 或使用 `get_by_role("checkbox")`**，不要靠 `span.nth()` 猜层级。
+
+---
+
+## 模式：后端 API 请求/响应不一致（UI 成功但后端未按预期执行）
+
+### 案例：VPC-端口手动分配 `test_port_create_delete_manual_assign` 删除时找不到目标行
+
+**时间**：2026-07-15  
+**用例**：`test_port_create_delete_manual_assign`  
+**根因分类**：产品缺陷（后端）  
+**已提交 Bug**：[bug-view-430450](http://pm.mysugoncloud.com:82/bug-view-430450.html)
+
+#### 现象
+
+- 用例手动指定端口 IP（如 `10.51.112.119`）后创建端口
+- 页面弹窗提示"添加端口成功"
+- 后续按预期 IP 删除端口时，报错：`AssertionError: 未找到名称为 '10.51.112.119' 的数据行`
+- 失败截图显示端口列表中新增了一条记录，但固定 IP 是 `10.51.112.3`，并非用户指定的 `10.51.112.119`
+
+#### 根因
+
+前端按用户输入提交了 `POST /api/v1/vpc/ports`，请求 body 中明确包含 `"ip_address": "10.51.112.119"`。后端返回 `200 OK` 且 message 为"添加端口成功"，但响应中 `"fixed_ips"` 实际为 `"10.51.112.3"`。后端在手动指定 IP 场景下未按请求 IP 创建端口，也未返回 IP 不可用/已被占用的明确错误，而是静默分配了其他 IP。
+
+#### 关键证据链
+
+1. **Playwright trace.network 抓包直接证明请求/响应不一致** — 请求 `ip_address: 10.51.112.119`，响应 `fixed_ips: 10.51.112.3`，status 为 200，这是最高等级证据
+2. **失败截图与 DOM 摘要验证实际创建结果** — 列表中新增端口 ID 与响应 `data.id` 完全一致，固定 IP 为 `10.51.112.3`
+3. **trace 操作时间轴证明前端正确提交** — `fill("10.51.112.119")`、选中下拉项、点击确定均成功，排除前端未填值或选错选项
+4. **同用例无 trace 时误判为用例问题** — 缺少 network 证据时，只能推断为测试代码参数或断言问题；补充 trace 后根因翻转为产品缺陷
+
+#### 修复方向
+
+- **产品侧**：后端接口在收到显式 `ip_address` 时，要么按该 IP 创建端口，要么在 IP 不可用时返回明确错误（如 `400 Bad Request` + "IP 已被占用/不在可分配范围"），不应静默分配其他 IP 后返回成功
+- **测试侧**：创建类用例不要仅依赖"创建成功"弹窗，应断言实际创建的关键属性（如固定 IP）与预期一致
+- **流程侧**：当 UI 显示成功但后续状态不符合预期时，**优先通过 Playwright trace 的 network 抓包核对请求参数与实际返回数据**
+
+#### 排查口诀
+
+> 看到"UI 提示成功但后续找不到目标资源"，先问自己：前端真实提交的参数和后端实际返回的数据是否一致？用 Playwright trace 的 network 抓包核对一次，往往能快速区分"前端提交错误"和"后端处理错误"。

@@ -34,7 +34,7 @@ def create_ver_instance(page, ver_page, name: str, network: str = None,
             ver_page.assert_ver_status(actual_name, service_status="运行", vm_status="运行", timeout=1800)
             name = actual_name
             break
-        except (AssertionError, Exception) as e:
+        except Exception as e:
             if "创建失败" in str(e) and attempt < 3:
                 logger.warning(f"VER 实例创建失败，将重新创建 (第{attempt}次): {e}")
                 continue

@@ -1,3 +1,28 @@
+"""
+【职责】提供服务页面直达与子菜单切换能力，并通过 @submenu 装饰器确保 page object 方法在正确子菜单下执行。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- goto_service(service)：通过 SERVICE_PATH_MAP 直达指定服务页面。
+- goto_submenu(submenu)：点击左侧子菜单切换。
+- @submenu(name) 装饰器：自动进入 service_name 对应服务的指定子菜单后执行方法体。
+
+【示例】
+from sugon_web.common.base import BasePage, submenu
+
+class VpcPage(BasePage):
+    service_name = "虚拟私有云"
+
+    @submenu("NAT网关")
+    def nat_create(self, name):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.dialog_confirm.click()
+
+【前置依赖】page 需已登录；@submenu 依赖 page object 的 service_name 类属性。
+"""
+
 import re
 from functools import wraps
 from typing import Callable
@@ -93,22 +118,62 @@ class NavigationMixin:
     def goto_service(self, service: str, force: bool = False):
         """导航到指定服务，通过服务入口路径直达。
 
+        导航完成后会根据当前角色配置的 project 自动切换顶部项目上下文，
+        确保普通用户/部门管理员进入服务页面后处于正确项目下。
+
         Args:
             service: 服务名称，如 '云容器引擎'、'云硬盘'、'物理服务器' 等
 
         Raises:
             AssertionError: 未知服务或导航失败
         """
+        # 先关闭可能存在的弹窗，避免菜单点击被拦截
+        try:
+            self.close_dialog_if_exists()
+        except Exception:
+            pass
+
         if service not in SERVICE_PATH_MAP:
             self.logger.error(f"未知的服务: {service}，请检查服务名称或更新导航映射表")
             raise AssertionError(f"未知的服务: {service}")
 
         service_path = SERVICE_PATH_MAP.get(service)
         try:
-            return self._goto_service_by_path(service, service_path, force=force)
+            result = self._goto_service_by_path(service, service_path, force=force)
+            self._ensure_project_context()
+            return result
         except Exception as e:
             self.logger.error(f"导航到服务 {service} 失败: {e}")
             raise AssertionError(f"导航到服务 {service} 失败: {e}") from e
+
+    def _ensure_project_context(self) -> None:
+        """进入服务页面后，根据当前角色配置自动切换顶部项目。
+
+        仅当角色配置中包含 project 且页面存在项目选择器时执行；
+        失败时记录 warning 但不阻塞后续测试。
+        """
+        user_role = Config.get("user_role", "admin")
+        users = Config.get("users", {})
+        role_cfg = users.get(user_role, {})
+        project_name = role_cfg.get("project", "")
+
+        if not project_name:
+            self.logger.debug(f"角色 '{user_role}' 未配置 project，跳过项目上下文检查")
+            return
+
+        # 等待项目选择器出现，超时则视为页面无该元素
+        top_project_btn = self.page.locator(".project_btn")
+        try:
+            expect(top_project_btn.first).to_be_visible(timeout=3000)
+        except (TimeoutError, AssertionError):
+            self.logger.debug("当前页面无顶部项目选择器，跳过项目上下文切换")
+            return
+
+        try:
+            self.logger.info(f"服务页面自动切换项目: role={user_role}, project={project_name}")
+            self.select_top_project(project_name)
+        except Exception as e:
+            self.logger.warning(f"服务页面自动切换项目 '{project_name}' 失败（非关键步骤）: {e}")
 
     def goto_submenu(self, submenu: str) -> None:
         """切换当前服务页面的子菜单。
@@ -122,6 +187,12 @@ class NavigationMixin:
             submenu: 子菜单名称，如 "概览"、"云硬盘"、"回收站"、
                      "快照"、"弹性云服务器"、"虚拟私有云"
         """
+        # 先关闭可能存在的弹窗，避免菜单点击被拦截
+        try:
+            self.close_dialog_if_exists()
+        except Exception:
+            pass
+
         service_name = getattr(self, "service_name", None)
         service_path = SERVICE_PATH_MAP.get(service_name) if service_name else None
         if service_name and service_path and not self._is_current_service_path(service_path):
@@ -136,17 +207,31 @@ class NavigationMixin:
             self.page.wait_for_timeout(500)
 
         if not menu_found:
-            self.logger.info(f"左侧菜单不存在，跳过子菜单导航: {submenu}")
-            self.wait_for_page_ready()
-            # 等待前端路由完成跳转（URL 稳定），慢环境兼容
-            prev_url = ""
-            for _ in range(60):
-                current_url = self.page.url
-                if current_url == prev_url:
-                    break
-                prev_url = current_url
-                self.page.wait_for_timeout(1000)
-            return
+            # 如果当前在服务路径下但没有左侧菜单，说明在服务子页面（如 region-management-list）
+            # 重新导航到服务根页面以加载左侧菜单
+            if service_name and service_path and self._is_current_service_path(service_path):
+                base_url = Config.get("base_url").rstrip("/")
+                self.page.goto(f"{base_url}{service_path}")
+                self.wait_for_page_ready()
+                # 重新检查左侧菜单
+                for _ in range(30):
+                    if self.locator("#cloud-menu-left").count() > 0:
+                        menu_found = True
+                        break
+                    self.page.wait_for_timeout(500)
+
+            if not menu_found:
+                self.logger.info(f"左侧菜单不存在，跳过子菜单导航: {submenu}")
+                self.wait_for_page_ready()
+                # 等待前端路由完成跳转（URL 稳定），慢环境兼容
+                prev_url = ""
+                for _ in range(60):
+                    current_url = self.page.url
+                    if current_url == prev_url:
+                        break
+                    prev_url = current_url
+                    self.page.wait_for_timeout(1000)
+                return
 
         expect(self.locator("#cloud-menu-left")).to_be_visible(timeout=15000)
         menu_left = self.locator("#cloud-menu-left")
@@ -163,3 +248,67 @@ class NavigationMixin:
         self.page.wait_for_timeout(1000)
         self.wait_for_page_ready()
         self.logger.info(f"成功导航到子菜单: {submenu}")
+
+    def select_top_project(self, project_name: str, timeout: int = 10000) -> None:
+        """通过顶部导航栏搜索并切换项目。
+
+        适用于普通用户/部门管理员登录后，页面顶部存在项目选择器的场景。
+        打开项目选择弹窗 -> 按项目名称搜索 -> 选择目标项目 -> 点击确定。
+
+        Args:
+            project_name: 目标项目名称，如 "公共测试"。
+            timeout: 等待元素可见的超时时间（毫秒），默认 10 秒。
+
+        Raises:
+            AssertionError: 项目选择器未出现、搜索失败或目标项目不可选时抛出。
+        """
+        if not project_name:
+            raise AssertionError("project_name 不能为空")
+
+        project_btn = self.page.locator(".project_btn").first
+        expect(project_btn).to_be_visible(timeout=timeout)
+
+        # 若当前已选中目标项目，直接跳过，避免重复弹窗操作
+        current_text = project_btn.inner_text().strip()
+        if project_name in current_text and "请选择" not in current_text:
+            self.logger.info(f"顶部导航栏已处于项目 '{project_name}'，无需切换")
+            return
+
+        self.logger.info(f"顶部导航栏切换项目: {project_name}")
+
+        # 重试点击项目按钮，确保弹窗打开（兼容首页异步渲染/事件绑定延迟）
+        dialog = self.page.locator(".project_dialog").first
+        for attempt in range(3):
+            try:
+                project_btn.click(timeout=5000)
+                expect(dialog).to_be_visible(timeout=timeout)
+                break
+            except Exception as e:
+                self.logger.warning(f"打开项目选择弹窗失败（尝试 {attempt + 1}/3）: {e}")
+                if attempt == 2:
+                    raise AssertionError(f"无法打开顶部项目选择弹窗: {e}")
+                self.page.wait_for_timeout(1000)
+                # 重新定位按钮，避免 stale element
+                project_btn = self.page.locator(".project_btn").first
+
+        # 等待项目列表渲染完成
+        self.page.wait_for_timeout(1000)
+
+        # 选择目标项目（优先点击所在行的 radio，兼容行点击）
+        project_item = dialog.get_by_text(project_name, exact=False)
+        expect(project_item).to_be_visible(timeout=timeout)
+        try:
+            project_item.locator("xpath=..").locator(".el-radio").first.click(timeout=3000)
+        except Exception:
+            project_item.click()
+
+        # 点击确定
+        confirm_btn = dialog.locator(".cloud-button-btn.cl-btn-primary").first
+        expect(confirm_btn).to_be_visible(timeout=timeout)
+        confirm_btn.click()
+
+        self.wait_for_page_ready()
+
+        # 验证切换成功：顶部项目按钮应显示目标项目名称
+        expect(project_btn).to_contain_text(project_name, timeout=timeout)
+        self.logger.info(f"顶部导航栏项目切换成功: {project_name}")
