@@ -291,11 +291,7 @@ def test_example(eip):
 | `testcase/compute/conftest.py` | `pool`     | `node`: 物理机节点 `storage_type`: 存储类型          | 创建存储池并自动清理     |
 | `testcase/compute/conftest.py` | `labels`   | `count`: 创建数量 `prefix`: 名称前缀                | 创建标签并自动清理      |
 | `testcase/compute/conftest.py` | `affinity` | `count`: 创建数量 `prefix`: 名称前缀                | 创建亲和组标签        |
-| `testcase/storage/conftest.py` | `bucket`   | `count`: 创建数量 `name`: 自定义名称 `capacity`: 桶容量 | 创建对象存储桶并自动清理，优先复用 autotest-* 空桶 |
-| `testcase/storage/conftest.py` | `oss_bucket` | `count`: 创建数量 `name`: 自定义名称 `region`: 区域 `az_strategy`: 数据冗余存储策略 `storage_class`: 默认存储类别 `bucket_strategy`: 桶策略 `is_encryption`: 是否开启默认加密 `data_read`: 归档数据直读 `tags`: 标签列表 | 创建OSS对象存储桶并自动清理，支持多AZ/私有/加密/标签等完整参数 |
 | `testcase/storage/conftest.py` | `kms_key`  | 可通过indirect传入engine参数                       | 创建密钥并自动清理      |
-| `testcase/storage/conftest.py` | `sfs_instance` | `count`: 创建数量 `name`: 名称前缀 `protocol`: 文件协议（str 或 list） `cluster`: 集群 `network`: 专有网络 `subnet`: 子网 `volume_type`: 云硬盘类型 `volume_size`: 云硬盘大小 `cpu_cores`: CPU 核数 `ram_gb`: 内存 GiB | 创建文件存储 SFS 实例并自动清理；count=1 返回字典，count>1 返回列表，支持为每个实例指定不同协议 |
-| `testcase/storage/conftest.py` | `clean_sfs_instances` | 无（注册表模式） | SFS 实例注册表，测试用例动态登记实例名，fixture yield 后统一清理 |
 
 
 ---
