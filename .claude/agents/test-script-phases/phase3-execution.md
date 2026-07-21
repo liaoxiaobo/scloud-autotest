@@ -139,6 +139,7 @@ model: opus
 - Fixture 作用域:`session` → `browser` / `config` / `ssh_host`;`class` → `browser_context` / `ssh_vm`;`function` → `page`(每个测试新开标签页,自动登录)
 - 后端验证:`ssh_host.run("scli ...")` 直连环境;`ssh_vm` 经跳板机连虚机
 - 异步中间态高发场景:ECS/EVS 创建删除、快照还原、备份任务、SLB 状态收敛
+- pytest.ini 约束:默认排除 `-m 'not slow'`;新增 marker 必须同步更新 `pytest.ini` 的 markers 列表
 
 ---
 
