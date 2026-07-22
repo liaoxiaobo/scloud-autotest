@@ -46,11 +46,8 @@ module_peak:
       evs_volumes: {value: 6, unit: count, scale_with_workers: true}
       evs_extra_gib: {value: 1200, unit: GiB, scale_with_workers: true, note: "EVS 500GiB边界、扩容、共享盘、快照恢复预留"}
       snapshots: {value: 6, unit: count, scale_with_workers: true}
-      obs_buckets: {value: 4, unit: count, scale_with_workers: true}
-      obs_capacity_gib: {value: 40, unit: GiB, scale_with_workers: true, note: "默认桶10GiB，最多3桶并预留"}
-      oss_buckets: {value: 1, unit: count, scale_with_workers: true}
       kms_keys: {value: 2, unit: count, scale_with_workers: true}
-      local_test_data_gib: {value: 2, unit: GiB, scale_with_workers: false, note: "large_file.bin约1GiB，批量文件约75MiB"}
+      local_test_data_gib: {value: 2, unit: GiB, scale_with_workers: false, note: "批量文件约75MiB"}
   database:
     resources:
       mysql_instances: {value: 1, unit: count, scale_with_workers: true}
@@ -124,8 +121,6 @@ iam_quota_max:
     sfs_memory_gib: {value: 100, unit: GiB, service: "文件存储SFS"}
     sfs_vm_count: {value: 100, unit: count, service: "文件存储SFS"}
     sfs_volume_gib: {value: 1000, unit: GiB, service: "文件存储SFS"}
-    oss_bucket_gib: {value: 1000, unit: GiB, service: "对象存储OSS"}
-    obs_bucket_gib: {value: 1000, unit: GiB, service: "对象存储(专业版) OBS"}
   network:
     eip_count: {value: 100, unit: count, service: "弹性公网IP"}
     cfw_cpu_cores: {value: 100, unit: cores, service: "云防火墙CFW"}

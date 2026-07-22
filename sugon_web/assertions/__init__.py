@@ -22,7 +22,7 @@ from sugon_web.assertions.security import (
     UsmAssertionMixin,
     VerAssertionMixin,
 )
-from sugon_web.assertions.storage import ObsAssertionMixin
+
 
 __all__ = [
     "AptAssertionMixin",
@@ -33,7 +33,6 @@ __all__ = [
     "IpGroupAssertionMixin",
     "ListAssertionMixin",
     "MonitorAssertionMixin",
-    "ObsAssertionMixin",
     "PopupAssertionMixin",
     "SlbAssertionMixin",
     "StatusAssertionMixin",
