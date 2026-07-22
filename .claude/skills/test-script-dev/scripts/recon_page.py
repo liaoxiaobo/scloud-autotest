@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""recon_page.py — 运行时侦察对齐黑盒脚本（test-script-dev / test-self-heal 共用）。
+"""recon_page.py — 运行时侦察对齐黑盒脚本（test-script-dev 用）。
 
 用途：当静态前端工程代码无法确定唯一、稳定的定位时，实际登录被测环境、导航到目标
 服务页面，从**真实渲染态**枚举页面上的可定位元素（按钮/链接/输入框/标签页/表格列
@@ -27,7 +27,7 @@
     python recon_page.py --service "负载均衡" --submenu "监听器" --grep "创建"
     python recon_page.py --url-hash "#/vpc/slb" --headless
 输出：
-    控制台打印候选定位清单；整页截图存到 skill_runs/recon/ 下（与 test-self-heal 共用侦察产物目录）。
+    控制台打印候选定位清单；整页截图存到 skill_runs/recon/ 下。
 """
 import argparse
 import hashlib
