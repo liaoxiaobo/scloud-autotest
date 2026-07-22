@@ -40,18 +40,9 @@ def build_mark_expr(job):
     return expr
 
 
-def is_bms_only_job(job):
-    """BMS lifecycle cases must be dispatched as an isolated serial pytest job."""
-    modules = set(job.get("modules") or [])
-    services = set(job.get("services") or [])
-    return modules == {"bms"} and not services and not (job.get("mark") or "").strip()
-
-
 def combine_with_global_mark(global_mark, dispatch_expr):
     """把全局 MARK 和 dispatch 表达式组合起来。"""
     gm = (global_mark or "").strip()
-    if dispatch_expr == "bms":
-        return "bms"
     if not gm and not dispatch_expr:
         return ""
     if not gm:
@@ -90,7 +81,6 @@ def validate_jobs(data):
             "mark": job.get("mark") or "",
             "stor": job.get("stor") or "xstor",
             "parallel_count": str(job.get("parallel_count") or ""),
-            "bms": job.get("bms") or {},
         }
 
         # 无 modules/services/mark 的条目视为默认执行环境
@@ -142,7 +132,6 @@ def load_from_env_yaml(path, target_hosts=None):
                     "mark": dispatch.get("mark") or "",
                     "stor": stor,
                     "parallel_count": dispatch.get("parallel_count") or "",
-                    "bms": dispatch.get("bms") or {},
                 }
             )
 
@@ -154,19 +143,16 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor, defau
     # 合并相同 host+stor 的调度任务，避免 label 冲突并减少容器数
     merged = {}
     for job in dispatch_jobs:
-        job_kind = "bms" if is_bms_only_job(job) else "normal"
-        key = (job["host"], job["stor"], job_kind)
+        key = (job["host"], job["stor"])
         expr = build_mark_expr(job)
         if key not in merged:
             merged[key] = {
                 "host": job["host"],
                 "stor": job["stor"],
-                "kind": job_kind,
                 "expr": expr,
                 "modules": set(job.get("modules") or []),
                 "services": set(job.get("services") or []),
                 "parallel_count": job.get("parallel_count") or "",
-                "bms": job.get("bms") or {},
             }
         else:
             merged[key]["modules"].update(job.get("modules") or [])
@@ -176,15 +162,11 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor, defau
                 merged[key]["expr"] = f"({existing}) or ({expr})" if existing else expr
             if job.get("parallel_count"):
                 merged[key]["parallel_count"] = job["parallel_count"]
-            if job.get("bms"):
-                merged[key]["bms"].update(job["bms"])
 
     # 构建 runJobs
     run_jobs = []
     for job in merged.values():
         label = f"env-{job['host'].replace('.', '-')}-{job['stor']}"
-        if job.get("kind") == "bms":
-            label = f"{label}-bms"
         run_jobs.append(
             {
                 "host": job["host"],
@@ -194,7 +176,6 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor, defau
                 "modules": sorted(job["modules"]),
                 "services": sorted(job["services"]),
                 "parallel_count": job.get("parallel_count") or "",
-                "bms": job.get("bms") or {},
             }
         )
 
@@ -211,7 +192,6 @@ def build_run_jobs(dispatch_jobs, global_mark, default_host, default_stor, defau
             "modules": [],
             "services": [],
             "parallel_count": default_parallel_count,
-            "bms": {},
         }
     )
 
@@ -224,8 +204,8 @@ def write_text_output(run_jobs, path):
 
     格式：
     第一行为任务数量 N
-    接下来 N 行，每行 6 个字段，用制表符 \t 分隔：
-        host\tstor\tmarkExpr\tlabel\tparallel_count\tbms
+    接下来 N 行，每行 5 个字段，用制表符 \t 分隔：
+        host\tstor\tmarkExpr\tlabel\tparallel_count
 
     使用 \t 作为分隔符，因为 host 是 IP、stor 是标识、label 是 env-...，
     marker 表达式中通常不会包含制表符。
@@ -237,9 +217,8 @@ def write_text_output(run_jobs, path):
         mark_expr = job["markExpr"]
         label = job["label"]
         parallel_count = job.get("parallel_count") or ""
-        bms = json.dumps(job.get("bms") or {}, ensure_ascii=False)
         # 制表符和换行是 marker 表达式中不可能出现的字符，安全作为分隔符
-        lines.append(f"{host}\t{stor}\t{mark_expr}\t{label}\t{parallel_count}\t{bms}")
+        lines.append(f"{host}\t{stor}\t{mark_expr}\t{label}\t{parallel_count}")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

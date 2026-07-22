@@ -25,7 +25,7 @@ from sugon_web.pages.network import VpcPage
 from sugon_web.pages.ops import OpsPage
 from sugon_web.pages.storage import EvsPage
 
-from sugon_web.pages.compute import EcsPage, BmsPage
+from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.compute.ecs import (
     EcsCreateRequest,
     EcsBasicConfig,
@@ -165,11 +165,6 @@ def ops_page_class(browser_context, admin_browser_context, config):
     finally:
         page.close()
 
-
-@pytest.fixture(scope="function")
-def bms_page(page):
-    """初始化裸金属BMS页对象"""
-    return BmsPage(page)
 
 
 @pytest.fixture(scope="class")

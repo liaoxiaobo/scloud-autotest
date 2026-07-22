@@ -15,8 +15,6 @@ module_peak:
       snapshots: {value: 6, unit: count, scale_with_workers: true}
       images: {value: 10, unit: count, scale_with_workers: true, note: "IMS top10 和动态镜像导入"}
       mfip: {value: 3, unit: count, scale_with_workers: true}
-      bms_instances: {value: 1, unit: count, scale_with_workers: false, note: "BMS回归复用 base.yaml 中的 bms.instance_name"}
-      bms_bmc_ips: {value: 1, unit: count, scale_with_workers: false}
   network:
     resources:
       vpc: {value: 4, unit: count, scale_with_workers: true}
@@ -113,7 +111,6 @@ iam_quota_max:
     ecs_memory_gib: {value: 100, unit: GiB, service: "云服务器ECS"}
     ecs_system_disk_gib: {value: 1000, unit: GiB, service: "云服务器ECS"}
     secs_instances: {value: 100, unit: count, service: "机密云服务器SECS"}
-    bms_instances: {value: 100, unit: count, service: "裸金属BMS"}
   storage:
     evs_capacity_gib: {value: 1000, unit: GiB, service: "云硬盘EVS"}
     evs_snapshot_gib: {value: 1000, unit: GiB, service: "云硬盘EVS"}

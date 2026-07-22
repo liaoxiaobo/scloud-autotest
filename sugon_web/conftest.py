@@ -41,11 +41,6 @@ def pytest_addoption(parser):
     parser.addoption("--user-role", action="store", default=None, help="指定测试用户角色 (admin/dept_admin/user)，未指定时使用 base.yaml 中的 user_role")
     parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
     parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
-    parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
-    parser.addoption("--bms-bmc-ip", action="store", help="指定BMS带外IP，覆盖配置文件 bms.bmc_ip")
-    parser.addoption("--bms-preferred-node", action="store", help="指定BMS优先物理节点，覆盖配置文件 bms.preferred_node")
-    parser.addoption("--bms-network-name", action="store", help="指定BMS网络名称，覆盖配置文件 bms.network_name")
-    parser.addoption("--bms-password", action="store", help="指定BMS实例登录密码，覆盖配置文件 bms.password")
     parser.addoption(
         "--smoke",
         action="store_true",
@@ -178,59 +173,6 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
-    bms_file_order = {
-        "image_prepare": 0,
-        "network_prepare": 1,
-        "soft_create": 2,
-        "sanity": 3,
-        "bind_eip": 4,
-        "monitor": 5,
-        "rename": 6,
-        "security_group": 7,
-        "label": 8,
-        "remove_label": 9,
-        "shutdown": 10,
-        "start": 11,
-        "rebuild": 12,
-        "cleanup": 13,
-    }
-
-    def _bms_order_key(item):
-        filename = item.path.name
-        for name_part, order in sorted(bms_file_order.items(), key=lambda item: len(item[0]), reverse=True):
-            if name_part in filename:
-                return order, filename, item.nodeid
-        number_match = re.search(r"test_bms_(\d+)", filename)
-        if number_match:
-            return int(number_match.group(1)), filename, item.nodeid
-        return 999, filename, item.nodeid
-
-    bms_items = [
-        item
-        for item in items
-        if "/testcase/compute/test_bms" in str(item.path).replace("\\", "/")
-    ]
-    for item in bms_items:
-        item.add_marker("bms")
-        filename = item.path.name
-        if (
-            "image_prepare" in filename
-            or "network_prepare" in filename
-            or "soft_create" in filename
-            or "sanity" in filename
-        ):
-            item.add_marker("bms_prepare")
-        elif "rebuild" in filename or "cleanup" in filename:
-            item.add_marker("bms_destructive")
-        else:
-            item.add_marker("bms_regression")
-    if len(bms_items) > 1:
-        ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
-        for index, item in enumerate(items):
-            if item in bms_items:
-                items[index] = next(ordered_bms_items)
-
     # 为每个测试用例注入 host/stor 环境 tag，替代 inject_env_tags.py 的事后注入
     host = config.getoption("--host")
     stor = config.getoption("--stor")
@@ -571,9 +513,6 @@ def _attach_pre_captured_screenshots(item, stage):
 def pytest_runtest_setup(item):
     """在setup阶段开始时记录标记"""
     logger.info(f"=== SETUP START: {item.name} ===")
-    block_reason = getattr(item.config, "_bms_block_reason", None)
-    if block_reason and item.get_closest_marker("bms"):
-        pytest.skip(block_reason)
 
     # 多环境调度执行时，把 host/stor 注入为 Allure 参数，使同一用例在不同环境
     # 下拥有不同的 historyId，避免 Allure 报告把多环境结果聚合/覆盖为 retry。
@@ -605,17 +544,6 @@ def pytest_runtest_makereport(item, call):
     """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
-
-    if (
-        item.get_closest_marker("bms_prepare")
-        and rep.when in ("setup", "call")
-        and (rep.failed or rep.skipped)
-        and not getattr(item.config, "_bms_block_reason", None)
-    ):
-        outcome_text = "失败" if rep.failed else "跳过"
-        item.config._bms_block_reason = (
-            f"BMS前置用例 {item.name} {outcome_text}，跳过后续BMS用例"
-        )
 
     # 先处理 fixture 失败时预截图的数据（fixture 在 makereport 前已关闭 page）
     _attach_pre_captured_screenshots(item, rep.when)
