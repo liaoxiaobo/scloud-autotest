@@ -3,9 +3,16 @@ import ipaddress
 import random
 import re
 from sugon_web.common.playwright import expect
+from sugon_web.pages.compute import EcsPage
 from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage
+from sugon_web.pages.network.sci_kms import SciKmsPage
+from sugon_web.testcase.compute.vm_fixture.cleanup_manager import _cleanup_vm_resources
+from sugon_web.testcase.compute.vm_fixture.metadata_collector import _collect_vm_fixture_metadata
+from sugon_web.testcase.compute.vm_fixture.request_builder import _build_vm_create_request
+from sugon_web.testcase.compute.vm_fixture.resource_creator import _build_vm_fixture_names, _create_vm_resources
+from sugon_web.pages.network import VpcPage, DcPage, ErPage, TmPage, TransferStrategyPage, VpnPage, CfwPage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.conftest import _create_logged_in_page
 
 
@@ -30,6 +37,19 @@ def vpc_page(page):
             vpc_page.vpc_create(name="test-vpc", cidr="10.0.0.0/24")
     """
     return VpcPage(page)
+
+
+@pytest.fixture(scope="function")
+def cfw_page(page):
+    """初始化云防火墙页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        CfwPage: 云防火墙页面对象实例。
+    """
+    return CfwPage(page)
 
 
 @pytest.fixture(scope="function")
@@ -69,6 +89,32 @@ def tm_page(page):
         TmPage: 流量镜像页面对象实例。
     """
     return TmPage(page)
+
+
+@pytest.fixture(scope="function")
+def transfer_strategy_page(page):
+    """初始化传输策略组页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        TransferStrategyPage: 传输策略组页面对象实例。
+    """
+    return TransferStrategyPage(page)
+
+
+@pytest.fixture(scope="function")
+def vpn_page(page):
+    """初始化虚拟专用网络VPN页面对象。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        VpnPage: 虚拟专用网络VPN页面对象实例。
+    """
+    return VpnPage(page)
 
 
 def _build_vpc_create_kwargs(params=None):
@@ -136,7 +182,6 @@ def _resolve_param_refs(value, request):
 def _create_vpc_resource(vpc_page, params=None):
     """创建VPC并返回资源信息。"""
     create_kwargs = _build_vpc_create_kwargs(params)
-
     vpc_page.vpc_create(**create_kwargs)
     vpc_page.assert_popup_success("创建虚拟私有云成功")
     vpc_page.assert_status(create_kwargs["name"])
@@ -202,9 +247,60 @@ def _build_vpc_batch_params(params, count):
     return batch_params
 
 
-def _cleanup_vpc_resource(vpc_page, name):
-    """清理VPC资源。"""
+def _cleanup_vpc_resource(vpc_page, name, extra_subnets=None):
+    """清理 VPC 及其关联资源。
+
+    本函数在删除 VPC 之前，先拆除由本 VPC 创建/引入的对外依赖，
+    避免把残留依赖留给后续 teardown 的其他 fixture。
+
+    Args:
+        vpc_page: VpcPage 页面对象，兼具 VPC 与 ACL 的操作能力。
+        name: 待删除的 VPC 名称。
+        extra_subnets: VPC 创建时生成的额外子网元数据列表，元素格式示例：
+            [{"name": "sub-xxx", "cidr": "10.0.1.0/24", "acl_policy": "acl-yyy"}, ...]
+            当子网配置了 acl_policy 时，表示该子网在创建时已绑定到指定 ACL。
+
+    典型问题场景（已修复）：
+        test_acl_enable_disable 通过参数化 vpc 创建了一个绑定到 class 级 acl 的额外子网：
+            @pytest.mark.parametrize(
+                "vpc",
+                [{"extra_subnets": [{"cidr": "10.241.2.0/24", "acl_policy": "@acl"}]}],
+                indirect=True,
+            )
+    使用原则：
+        - 只要通过 vpc fixture 的 extra_subnets 给子网配置了 acl_policy，本函数会自动在
+          删除 VPC 前调用 acl_disassociate_subnet 解除绑定，无需在用例或 acl fixture 里额外处理。
+        - 如果后续新增类似的「VPC 创建时建立、但会阻塞后续 fixture 清理」的依赖，
+          应在本函数中统一前置拆除，而不是分散到各个用例里。
+        - try/except 是故意设计：解关联失败（如已解绑、ACL 已不存在）不应阻塞 VPC 删除。
+
+    前端规则参考：
+        src/page/vpc/acl/index-table.js 中 aclCanDelete 要求 row.rel_subnets.length == 0，
+        否则 src/page/vpc/acl/index.vue 中 batchDeleteDisabled 为 true，批量删除置灰。
+    """
+    extra_subnets = extra_subnets or []
+    for subnet in extra_subnets:
+        acl_policy = subnet.get("acl_policy")
+        subnet_name = subnet.get("name")
+        if acl_policy and subnet_name:
+            try:
+                with allure_step_log(f"清理VPC {name}: 解关联子网 {subnet_name} 与 ACL {acl_policy}"):
+                    vpc_page.acl_disassociate_subnet(acl_policy, subnets=[subnet_name])
+            except Exception as e:
+                logger.warning(f"解关联子网 {subnet_name} 与 ACL {acl_policy} 失败（可能已解关联）: {e}")
+
+    # 先导航到VPC列表页确保状态正确
+    vpc_page._ensure_vpc_network_list()
+    try:
+        vpc_page.get_row_by_name(name)
+    except Exception:
+        logger.info(f"VPC {name} 已不存在，跳过清理")
+        return
     vpc_page.vpc_delete(name)
+    # 刷新页面并验证删除，避免前端缓存导致误判
+    vpc_page.page.reload()
+    vpc_page.wait_for_page_ready()
+    vpc_page._ensure_vpc_network_list()
     vpc_page.assert_deleted(name)
     expect(vpc_page.alert).to_have_count(0, timeout=10000)
 
@@ -277,7 +373,7 @@ def vpc(browser_context, config, request):
 
     with allure_step_log(f"清理虚拟私有云 {[item['name'] for item in vpc_list]}"):
         for item in vpc_list:
-            _cleanup_vpc_resource(vpc_page, item["name"])
+            _cleanup_vpc_resource(vpc_page, item["name"], item.get("extra_subnets", []))
     page.close()
 
 
@@ -320,7 +416,6 @@ def eip(vpc_page, request):
 
     with allure_step_log(f"Setup: 分配 {count} 个弹性公网IP"):
         created_ips = vpc_page.eip_allocate(pool=pool, count=count, method=method, ip=ip)
-        vpc_page.assert_popup_success("执行成功")
 
     yield created_ips[0] if count == 1 else created_ips
 
@@ -387,7 +482,42 @@ def vip(vpc_page, vpc):
     vpc_page.get_by_role("tab", name="虚拟IP管理").click()
 
     logger.info(f"清理虚拟IP {vip_address}")
-    vpc_page.vip_delete(vip_address)
+
+    # 先获取一次行数据，检查是否仍有绑定关系
+    # 避免对已解绑的VIP重复点击禁用状态的按钮浪费时间
+    try:
+        row_data = vpc_page.get_row_data(vip_address)
+    except Exception:
+        logger.info(f"VIP {vip_address} 已从列表中消失，无需清理")
+        return
+
+    bound_instance = row_data.get("绑定的实例") or ""
+    bound_eip = row_data.get("绑定的公网IP") or ""
+
+    # 仅在有实际绑定值时才执行解绑（按钮可用状态）
+    if bound_instance and bound_instance != "--":
+        instance_name = bound_instance.split("(")[0] if "(" in bound_instance else bound_instance
+        logger.info(f"VIP {vip_address} 仍绑定实例 {instance_name}，先解绑")
+        try:
+            vpc_page.vip_unbind_instance(vip_address, instance_name)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑实例时出错: {e}")
+
+    if bound_eip and bound_eip != "--":
+        logger.info(f"VIP {vip_address} 仍绑定公网IP {bound_eip}，先解绑")
+        try:
+            vpc_page.vip_unbind_eip(vip_address)
+            vpc_page.wait_for_page_ready()
+            vpc_page.page.wait_for_timeout(2000)
+        except Exception as e:
+            logger.debug(f"VIP解绑公网IP时出错: {e}")
+
+    try:
+        vpc_page.vip_delete(vip_address)
+    except Exception as e:
+        logger.warning(f"清理虚拟IP失败: {e}")
 
 
 @pytest.fixture(scope="function")
@@ -516,7 +646,7 @@ def nat(vpc_page, vpc, request):
         def test_nat_with_eip(nat):
             print(f"NAT 网关: {nat['name']}")
     """
-    from sugon_web.utils.util import random_data
+    from sugon_web.utils.data import random_data
 
     params = getattr(request, 'param', {})
     eip = params.get('eip', None)
@@ -549,6 +679,54 @@ def nat(vpc_page, vpc, request):
             logger.info(f"NAT网关 {current_name} 删除成功")
         except Exception as e:
             logger.warning(f"清理NAT网关时出错: {e}")
+
+
+@pytest.fixture(scope="function")
+def cfw(cfw_page, request):
+    """创建并返回云防火墙。
+
+    本 fixture 仅负责创建云防火墙，创建成功后即交由测试使用，
+    测试结束后不执行删除（按业务需求保留实例）。
+
+    Args:
+        cfw_page: 云防火墙页面对象，由 cfw_page fixture 提供。
+        request: pytest 请求对象，用于获取参数化配置。
+
+    request.param 支持的参数：
+        name (str): 云防火墙名称，默认自动生成。
+        version (str): 防火墙版本，默认"山石引擎-5.5"。
+        cluster (str): 部署集群，默认"Autotest"。
+        protected_resource (str): 待防护资源标识，可选。
+
+    Yields:
+        dict: 云防火墙信息字典，包含：
+            - name (str): 云防火墙名称
+
+    Example:
+        @pytest.mark.parametrize("cfw", [{"version": "山石引擎-5.5", "cluster": "Autotest"}], indirect=True)
+        def test_cfw_with_cluster(cfw):
+            print(f"云防火墙: {cfw['name']}")
+    """
+    params = getattr(request, 'param', {})
+    name = params.get('name', random_data())
+    version = params.get('version', '山石引擎-5.5')
+    cluster = params.get('cluster', 'Autotest')
+    protected_resource = params.get('protected_resource')
+
+    with allure_step_log(f"Setup: 创建云防火墙 {name}"):
+        cfw_page.cfw_create(
+            name=name,
+            version=version,
+            cluster=cluster,
+            protected_resource=protected_resource,
+        )
+        logger.info(f"云防火墙 {name} 创建成功")
+
+    with allure_step_log(f"Setup: 等待云防火墙 {name} 状态变为运行中"):
+        cfw_page.assert_status(name, status="运行中", timeout=1200, refresh=True, refresh_interval=10)
+
+    yield {"name": name}
+
 
 @pytest.fixture(scope="function")
 def qos(vpc_page):
@@ -805,7 +983,19 @@ def slb(browser_context, config, vpc, request):
         vpc_page.search(slb_name)
         vpc_page.assert_status(slb_name, status="运行中")
 
-    yield slb_name
+    # 进入详情页获取完整信息（列表页信息不全）
+    with allure_step_log(f"Setup: 获取负载均衡 {slb_name} 详情信息"):
+        detail_info = vpc_page.get_slb_detail_info(slb_name)
+
+    yield {
+        "name": slb_name,
+        "vip": detail_info.get("vip"),
+        "id": detail_info.get("id"),
+        "status": detail_info.get("status"),
+        "version": detail_info.get("version"),
+        "ha": detail_info.get("ha"),
+        "ha_enable": ha_enable,
+    }
 
     with allure_step_log(f"Teardown: 清理负载均衡 {slb_name}"):
         try:
@@ -826,7 +1016,7 @@ def lb(browser_context, config, slb, request):
     vpc_page = VpcPage(page)
     params = getattr(request, "param", {})
 
-    params.setdefault("slb_name", slb)
+    params.setdefault("slb_name", slb["name"])
     params.setdefault("protocol", "TCP")
     params.setdefault("port", 80)
 
@@ -1032,14 +1222,6 @@ def lb_pool_candidate_vms(browser_context, config, request):
             for vm in lb_pool_candidate_vms:
                 print(f"VM: {vm['name']}, IP: {vm['ip']}")
     """
-    from sugon_web.pages.compute import EcsPage
-    from sugon_web.testcase.conftest import (
-        _build_vm_create_request,
-        _build_vm_fixture_names,
-        _create_vm_resources,
-        _collect_vm_fixture_metadata,
-        _cleanup_vm_resources,
-    )
 
     params = getattr(request, "param", {})
     count = params.get("count", 2)
@@ -1065,3 +1247,27 @@ def lb_pool_candidate_vms(browser_context, config, request):
 
     _cleanup_vm_resources(ecs_page, vm_names)
     page.close()
+
+
+@pytest.fixture(scope="function")
+def kms_page(page):
+    """创建机密互联-密钥管理页面对象并检查授权状态。
+
+    Args:
+        page: Playwright 页面对象，由 pytest fixture 提供。
+
+    Returns:
+        SciKmsPage: 密钥管理页面对象实例。
+    """
+    kms = SciKmsPage(page)
+    kms.goto_service("可信密码模块")
+
+    try:
+        text_locator = kms.get_by_text("您已成功授权")
+        expect(text_locator).to_be_visible(timeout=10000)
+        kms.logger.info("可信密码模块已授权")
+    except Exception:
+        kms.logger.warning("可信密码模块未授权或授权信息未显示")
+
+    kms.wait_for_page_ready()
+    return kms

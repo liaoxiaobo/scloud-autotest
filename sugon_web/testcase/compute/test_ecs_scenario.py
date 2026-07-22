@@ -1,16 +1,17 @@
 import pytest
 import allure
+from sugon_web.common.mfip_helper import MfipHelper
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, skip_stor, skip_if_nodes_less_than
+from sugon_web.utils.data import random_data
+from sugon_web.utils.decorators import skip_stor, skip_if_nodes_less_than
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('业务场景覆盖验证')
 class TestECSScenario:
 
     @allure.title("验证已挂载云硬盘的虚机, 克隆后系统盘和数据盘与源虚机数据一致")
-    def test_ecs_clone_vm(self, ecs_page, ops_page, evs_page, vm, volume, ssh_vm):
+    def test_ecs_clone_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """测试克隆已挂载云硬盘的虚机"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -52,8 +53,11 @@ class TestECSScenario:
             clone_disk = ecs_page.get_row_data(clone_name).get("挂载云硬盘")
 
             # 克隆后的虚机绑定mfip，验证md5值
-            clone_ip = ecs_page.get_row_data(clone_name).get("IP地址").split(':')[1]
-            mfip = ops_page.bind_mfip(clone_ip.strip())
+            clone_meta = collect_vm_metadata(ecs_page, ssh_host, clone_name)
+            mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, clone_meta["port_id"],
+                project_id=clone_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip)
 
             # 克隆的虚机重新mount数据盘，验证md5值
@@ -83,7 +87,7 @@ class TestECSScenario:
 
     @allure.title("验证快照创建的云服务器，恢复系统盘和数据盘成功")
     @skip_stor("usan", "local", 'nfs')
-    def test_ecs_snapshot_vm(self, ecs_page, ops_page, evs_page, vm, volume, ssh_vm):
+    def test_ecs_snapshot_vm(self, ecs_page, evs_page, vm, volume, ssh_vm, admin_browser_context, config, ssh_host):
         """快照创建的云服务器，恢复系统盘和数据盘成功"""
 
         ecs_page.goto_service('弹性云服务器')
@@ -134,18 +138,21 @@ class TestECSScenario:
             assert newvm_disk != "--"
 
             # 云硬盘页面验证 云硬盘状态=正在使用
-            ecs_page.goto_service("云硬盘")
-            ecs_page.goto_submenu("云硬盘")
-            ecs_page.assert_status(newvm_disk, status="正在使用", refresh=True)
+            evs_page.goto_service("云硬盘")
+            evs_page.goto_submenu("云硬盘")
+            evs_page.assert_status(newvm_disk, status="正在使用", refresh=True)
 
             # 验证挂载后页面展示的挂载信息
-            new_disk_name = ecs_page.get_row_data(newvm_disk).get("挂载信息").split("上的")[-1]
+            new_disk_name = evs_page.get_row_data(newvm_disk).get("挂载信息").split("上的")[-1]
 
         with allure_step_log(f"步骤5: 验证{new_vm}系统盘和数据盘数据"):
-            ecs_page.goto_service('弹性云服务器')
+            # ecs_page.goto_service('弹性云服务器')
             ecs_page.goto_submenu('弹性云服务器')
-            new_vm_ip = ecs_page.get_row_data(new_vm).get("IP地址").split(':')[1].strip()
-            new_vm_mfip = ops_page.bind_mfip(new_vm_ip)
+            new_meta = collect_vm_metadata(ecs_page, ssh_host, new_vm)
+            new_vm_mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, new_meta["port_id"],
+                project_id=new_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(new_vm_mfip)
 
             # 快照新建的虚机重新mount数据盘，验证md5值
@@ -156,7 +163,7 @@ class TestECSScenario:
             assert md5d in new_md5d, f"快照创建的虚机系统盘数据MD5不一致，原始数据:{md5d},克隆后数据:{new_md5d}"
 
         with allure_step_log(f"步骤6: 从服务器{vm_name}卸载云硬盘{volume_name}"):
-            ecs_page.goto_service('弹性云服务器')
+            # ecs_page.goto_service('弹性云服务器')
             ecs_page.ecs_unmount_from_server(volume_name, vm_name)
             ecs_page.assert_popup_success(f"从虚拟机{vm_name}分离云硬盘")
 

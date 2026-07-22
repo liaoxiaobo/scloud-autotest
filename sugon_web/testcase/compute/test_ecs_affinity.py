@@ -2,11 +2,9 @@ import allure
 import pytest
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
-@allure.epic('计算服务')
-@allure.feature('亲和组')
 @allure.story('亲和组功能验证')
 class TestEcsAffinityGroup:
     @allure.title("验证创建亲和组功能")

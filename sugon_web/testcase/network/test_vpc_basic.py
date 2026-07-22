@@ -4,7 +4,7 @@ import pytest
 import allure
 from sugon_web.common.playwright import expect
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 
 @allure.epic('网络服务')
@@ -25,8 +25,7 @@ class TestVPCBasic:
             # ✨ 先设置每页显示 100 条，确保能看到所有数据
             logger.info("设置每页显示 100 条数据")
             vpc_page.goto_submenu("虚拟私有云")
-            vpc_page.locator("#cloud-container-content").get_by_placeholder("请选择").click()
-            vpc_page.get_by_text("100条/页").click()
+            vpc_page._expand_page_size("100")
 
             # 获取"网络类型"列的所有数据
             network_types = vpc_page.get_column_data('网络类型')
@@ -473,16 +472,16 @@ class TestVPCBasic:
             assert vm['name'] not in data.get("绑定的实例", ""), f"断言失败: 期望绑定的实例不再包含 {vm['name']}"
 
     @allure.title("虚拟IP-绑定&解绑公网IP")
-    def test_vip_bind_eip(self, vpc_page, vip):
+    def test_vip_bind_eip(self, vpc_page, eip, vip):
 
         with allure_step_log("步骤1: 绑定公网IP"):
-            eip = vpc_page.vip_bind_eip(vip)
+            bound_eip = vpc_page.vip_bind_eip(vip, eip_ip=eip)
             vpc_page.assert_popup_success("执行成功")
 
         with allure_step_log("步骤2: 验证绑定的公网IP"):
             data = vpc_page.get_row_data(vip)
             # 断言绑定的公网ip会显示在列表里，且表头名称为“绑定的公网IP”
-            assert eip in data.get("绑定的公网IP", ""), f"断言失败: 列表项'绑定的公网IP'未找到对应IP {eip}，实际值为: {data.get('绑定的公网IP')}"
+            assert bound_eip in data.get("绑定的公网IP", ""), f"断言失败: 列表项'绑定的公网IP'未找到对应IP {bound_eip}，实际值为: {data.get('绑定的公网IP')}"
 
         with allure_step_log("步骤3: 解绑公网IP"):
             vpc_page.vip_unbind_eip(vip)
@@ -490,7 +489,7 @@ class TestVPCBasic:
 
         with allure_step_log("步骤4: 验证解绑后公网IP已移除"):
             data = vpc_page.get_row_data(vip)
-            assert eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {eip}"
+            assert bound_eip not in data.get("绑定的公网IP", ""), f"断言失败: 解绑后列表项'绑定的公网IP'仍包含IP {bound_eip}"
 
     @allure.title("虚拟IP-搜索和重置")
     @pytest.mark.parametrize("vm", [{"basic": {"count": 2}, "bind_mfip": False}], indirect=True)
@@ -533,22 +532,17 @@ class TestVPCBasic:
         subnet_name = vpc['subnet_name']
 
         with allure_step_log("步骤1: 创建端口（自动分配）"):
-            vpc_page.port_create(
+            port_ip = vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name
             )
             vpc_page.assert_popup_success("添加端口成功")
-
-        with allure_step_log("步骤2: 获取新建的端口IP"):
-            # 在当前处于的端口 Tab 页中获取 IP 列表
-            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[0]  # 通常新增的数据在最后一行
             logger.info(f"自动分配的端口IP: {port_ip}")
 
-        with allure_step_log("步骤3: 删除端口"):
+        with allure_step_log("步骤2: 删除端口"):
             vpc_page.port_delete(port_ip)
 
-        with allure_step_log("步骤4: 验证端口已删除"):
+        with allure_step_log("步骤3: 验证端口已删除"):
             vpc_page.assert_deleted(port_ip)
             logger.info(f"✓ 自动分配的端口 {port_ip} 删除成功")
 
@@ -598,24 +592,21 @@ class TestVPCBasic:
         logger.info(f"计划手动分配的端口IP: {port_ip}")
 
         with allure_step_log("步骤1: 创建端口（快速选择IP）"):
-            vpc_page.port_create(
+            created_ip = vpc_page.port_create(
                 vpc_name=vpc_name,
                 subnet_name=subnet_name,
                 ip_address=port_ip,
                 quick_select=True
             )
             vpc_page.assert_popup_success("添加端口成功")
+            logger.info(f"快速选择分配的端口IP: {created_ip}")
 
-        with allure_step_log("步骤2: 获取选中的端口IP"):
-            port_list = vpc_page.get_column_data('固定IP', context="active-tab")
-            port_ip = port_list[0]
-            logger.info(f"快速选择分配的端口IP: {port_ip}")
+        with allure_step_log("步骤2: 删除端口"):
+            vpc_page.port_delete(created_ip)
 
-        with allure_step_log("步骤3: 删除端口"):
-            vpc_page.port_delete(port_ip)
-
-        with allure_step_log("步骤4: 验证端口已删除"):
-            vpc_page.assert_deleted(port_ip)
+        with allure_step_log("步骤3: 验证端口已删除"):
+            vpc_page.assert_deleted(created_ip)
+            logger.info(f"✓ 快速选择分配的端口 {created_ip} 删除成功")
 
     @allure.title("端口-搜索和重置")
     @pytest.mark.parametrize("port", [{"count": 2}], indirect=True)
@@ -811,7 +802,7 @@ class TestVPCBasic:
             assert len(rows) == 1, f"搜索结果应只有1行，实际有 {len(rows)} 行: {rows}"
 
         with allure_step_log("步骤3: 重置搜索条件，验证规则列表恢复"):
-            vpc_page.btn_reset.click()
+            vpc_page.reset()
             rows = vpc_page.get_column_data("目的地址")
             assert len(rows) > 1, f"重置后应有多行，实际只有 {len(rows)} 行: {rows}"
 

@@ -2,7 +2,7 @@ from time import sleep
 import allure
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, random_string
+from sugon_web.utils.data import random_data, load_data, random_string
 
 
 @allure.epic('数据库服务')
@@ -368,7 +368,7 @@ class TestMySQLBasic:
         """测试用户的只读、读写权限授权及解除授权，并进行完整的后端生效性验证"""
         instance_name = mysql["name"]
         user_name = mysql["user_name"]
-        password = mysql["admin_password"]  # 从 fixture 获取用户的密码
+        password = mysql["user_password"]  # 从 fixture 获取普通用户的密码
         root_password = "admin1234@sugon"  # root 密码用于连接和准备环境
 
         # 1. 准备环境：创建两个用于测试的数据库

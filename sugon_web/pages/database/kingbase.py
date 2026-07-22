@@ -19,9 +19,19 @@ class KingbasePage(PgSQLPage):
         if option_text:
             target = items.filter(has_text=re.compile(rf"^{re.escape(option_text)}$"))
             if target.count() > 0:
-                target.first.click()
+                option = target.first
+                option.wait_for(state="visible", timeout=3000)
+                try:
+                    option.click(timeout=3000)
+                except Exception:
+                    option.click(force=True, timeout=3000)
                 return
-        items.first.click()
+        option = items.first
+        option.wait_for(state="visible", timeout=3000)
+        try:
+            option.click(timeout=3000)
+        except Exception:
+            option.click(force=True, timeout=3000)
 
     def _open_instance_detail_tab(self, name: str, tab_name: str):
         self.goto_detail_page(name, tab_name=tab_name)
@@ -181,8 +191,8 @@ class KingbasePage(PgSQLPage):
     def add_backup_node(self, name: str):
         """为集群新增备节点。"""
         self.locator("#cloud-container-content").get_by_text(name).first.click()
-        sleep(5)
-        self.get_by_text("新建备节点", exact=True).first.click()
+        sleep(2)
+        self.get_by_text("新建备节点").first.click()
         self.get_by_label("新建备节点").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -280,8 +290,7 @@ class KingbasePage(PgSQLPage):
         """删除单个白名单。"""
         self._open_instance_detail_tab(name, "白名单")
         active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])")
-        whitelist_tag = active_tab.locator(".cl-tag, .el-tag").filter(has_text=ip_address).first
-        whitelist_tag.locator(".el-icon-close").click()
+        active_tab.locator("span").filter(has_text=re.compile(rf"^{re.escape(ip_address)}$")).locator("i").first.click()
         self.get_by_label("移除").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
@@ -290,17 +299,19 @@ class KingbasePage(PgSQLPage):
         self._open_instance_detail_tab(name, "白名单")
         self.btn_batch_delete.click()
         dialog = self.get_by_label("删除白名单")
-        dialog.locator(".el-select").click()
+        dialog.get_by_placeholder("请选择要删除的白名单").click()
         for ip_address in ip_addresses:
-            self._select_visible_option(ip_address)
-        self.page.locator("body").click(position={"x": 10, "y": 10})
+            self.page.locator("li").filter(has_text=ip_address).click()
+        dialog.locator(".el-dialog__header").click()
+        self.page.locator("div.el-select-dropdown:visible").wait_for(state="hidden", timeout=5000)
         dialog.get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")
     def reset_whitelist(self, name: str):
         """重置白名单。"""
         self._open_instance_detail_tab(name, "白名单")
-        self.locator("div.cloud-button-btn").filter(has_text="重置白名单").click()
+        active_tab = self.locator(".el-tab-pane:not([aria-hidden='true'])")
+        active_tab.locator("div.cloud-button-btn").filter(has_text="重置白名单").first.click()
         self.get_by_label("重置白名单").get_by_text("确定", exact=True).click()
 
     @submenu("实例管理")

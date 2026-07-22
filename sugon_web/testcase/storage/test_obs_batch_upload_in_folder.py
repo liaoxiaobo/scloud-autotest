@@ -4,7 +4,7 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @allure.epic('存储服务')
@@ -36,6 +36,8 @@ class TestOBSBatchUploadInFolder:
             obs_page.goto_submenu("桶列表")
             obs_page.obs_bucket_enter_detail(bucket["name"])
             obs_page.obs_object_tab_click()
+            obs_page.wait_for_page_ready()
+            obs_page.page.wait_for_timeout(3000)
 
         with allure_step_log("步骤2: 新建文件夹"):
             obs_page.obs_folder_create(folder_name)
@@ -54,17 +56,23 @@ class TestOBSBatchUploadInFolder:
         with allure_step_log("步骤5: 验证上传结果"):
             # 大文件批量上传需要较长时间等待后台处理
             obs_page.page.wait_for_timeout(15000)
-            # 验证每个文件都出现在对象列表中
+            # 验证每个文件都出现在对象列表中（带重试，处理异步刷新）
             for file_name in file_names:
-                obs_page.assert_object_list_contain(file_name)
+                try:
+                    obs_page.assert_object_list_contain(file_name)
+                except AssertionError:
+                    # 异步刷新可能未完全完成，等待后重试一次
+                    obs_page.page.wait_for_timeout(5000)
+                    obs_page.assert_object_list_contain(file_name)
 
-        with allure_step_log("清理: 删除文件夹及内部对象"):
-            # 先返回桶的对象列表页
-            obs_page.obs_object_back_to_list(bucket["name"])
-            obs_page.page.wait_for_timeout(2000)
+        with allure_step_log("清理: 删除文件夹"):
+            # 通过导航重新进入桶对象列表（避免 obs_object_back_to_list 面包屑导航异常）
+            obs_page.goto_submenu("桶列表")
+            obs_page.obs_bucket_enter_detail(bucket["name"])
+            obs_page.obs_object_tab_click()
+            obs_page.wait_for_page_ready()
 
             # 删除文件夹
             obs_page.obs_folder_delete(folder_name)
-            obs_page.page.wait_for_timeout(3000)
             # 验证文件夹已删除
             obs_page.assert_deleted(folder_name)

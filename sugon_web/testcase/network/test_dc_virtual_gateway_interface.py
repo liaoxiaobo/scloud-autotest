@@ -2,8 +2,50 @@ import time
 
 import pytest
 import allure
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
+
+
+def _cleanup_residual_dc_resources(dc_page):
+    """按虚拟接口→虚拟网关→物理连接顺序清理残留资源。"""
+    try:
+        notifications = dc_page.page.locator(".el-notification__closeBtn")
+        for i in range(notifications.count()):
+            notifications.nth(i).click()
+            dc_page.page.wait_for_timeout(300)
+    except Exception:
+        pass
+
+    try:
+        dc_page._ensure_virtual_interface_list()
+        vif_names = dc_page.get_column_data("名称")
+        for name in vif_names:
+            if name and name.startswith("vif-"):
+                dc_page.virtual_interface_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟接口时跳过: {e}")
+
+    try:
+        dc_page._ensure_virtual_gateway_list()
+        vgw_names = dc_page.get_column_data("名称")
+        for name in vgw_names:
+            if name and name.startswith("vgw-"):
+                dc_page.virtual_gateway_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟网关时跳过: {e}")
+
+    try:
+        dc_page._ensure_physical_connection_list()
+        pc_names = dc_page.get_column_data("物理连接名称")
+        for name in pc_names:
+            if name and name.startswith("physical-"):
+                dc_page.dc_physical_connection_terminate(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理物理连接时跳过: {e}")
 
 
 @allure.epic('网络服务')
@@ -71,7 +113,10 @@ class TestDCVirtualGatewayInterface:
         contact_email = "ll@sugon.com"
         vlan_code = "205"
 
-        with allure_step_log("步骤0: 创建虚拟私有云"):
+        with allure_step_log("步骤0: 清理残留资源（虚拟接口→虚拟网关→物理连接）"):
+            _cleanup_residual_dc_resources(dc_page)
+
+        with allure_step_log("步骤0.5: 创建虚拟私有云"):
             vpc_page.vpc_create(
                 name=vpc_name,
                 subnet_name=subnet_name,
@@ -106,7 +151,7 @@ class TestDCVirtualGatewayInterface:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -122,7 +167,8 @@ class TestDCVirtualGatewayInterface:
             time.sleep(60)
 
         with allure_step_log("步骤4: 创建虚拟接口"):
-            dc_page.virtual_interface_create(
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -132,18 +178,10 @@ class TestDCVirtualGatewayInterface:
                 remote_subnet="123.12.0.0/24",
                 subnet_index=0,
             )
-            dc_page.assert_popup_success(timeout=10000)
 
-        with allure_step_log("步骤5: 等待并验证虚拟接口状态（最长150秒）"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
-            )
-
-            # 验证列表字段
+        with allure_step_log("步骤5: 验证虚拟接口列表字段"):
+            dc_page._ensure_virtual_interface_list()
+            dc_page.wait_for_page_ready()
             row_data = dc_page.get_row_data(vif_name)
             local_gw = row_data.get("本地网关", "")
             remote_gw = row_data.get("远端网关", "")

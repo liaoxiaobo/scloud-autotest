@@ -5,20 +5,21 @@
 ## 运行测试
 
 ```bash
-# 默认排除 slow 测试
 pytest sugon_web/testcase/
 
 # 指定模块 / 方法
 pytest -k "ecs" sugon_web/testcase/
 pytest sugon_web/testcase/compute/test_ecs_basic.py::TestECSBasic::test_ecs_operations
 
-# 并行 / 无头 / slow 测试
+# 并行 / 无头测试
 pytest -n 2 --dist=loadscope sugon_web/testcase/
 pytest sugon_web/testcase/ --headless=true
-pytest sugon_web/testcase/ -m "slow"
 
 # CLI 覆盖配置
 pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headless=true --stor=xstor --username=admin --password=keystone_sugon
+
+# 冒烟模式
+pytest sugon_web/testcase/ --smoke
 ```
 
 ## 架构（严格 4 层分离）
@@ -62,7 +63,7 @@ pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headles
 
 ## 服务导航
 
-页面使用 `goto_service("服务名")` 导航，通过 `SERVICE_PATH_MAP`（URL 快捷方式）或回退到 `SERVICE_MAP`（菜单导航）解析。**测试中禁止直接写 URL。**
+页面使用 `goto_service("服务名")` 导航，通过内部 URL 路径映射直达服务根页面。**测试中禁止直接写 URL。**
 
 在子菜单内操作的方法必须加 `@submenu("子菜单名")` 装饰器。
 
@@ -92,9 +93,9 @@ pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headles
 ## pytest.ini 约束
 
 - `testpaths = sugon_web/testcase` — 测试必须放在该路径下。
-- 默认 `-m 'not slow'` — **slow 测试被排除，除非显式加 `-m "slow"`**。
+
 - `--clean-alluredir` — 每轮运行清空 `allure-result/`。
-- 标记：`smoke`、`regression`、`slow`、`login`、`evs`、`ecs`。新增标记必须同步更新此列表。
+- 标记：模块级和服务级标记由 `pytest_configure` 自动扫描注册，无需手动添加。仅特殊标记（`smoke`、`bms_prepare`、`bms_regression`、`bms_destructive`、`requires_admin`）需在 `pytest.ini` 静态声明。
 
 ## SSH 后端验证
 
@@ -121,7 +122,7 @@ pytest sugon_web/testcase/ --host=172.22.1.190 --browser-type=chromium --headles
 
 - `requirements_csv/` — 原始测试需求 CSV 文件。**不是测试代码。**
 - `case_specs/` — Markdown 用例规格和提示词模板。**不是测试代码。**
-- `tools/ai_report.py` — 测试后 AI 总结生成。需要环境变量 `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`。
+- `tools/failure_analysis_cli.py` — 测试后 AI 失败分析入口。需要环境变量 `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`。
 
 # CLAUDE.md
 

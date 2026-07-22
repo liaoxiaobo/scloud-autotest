@@ -1,11 +1,10 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, skip_stor
+from sugon_web.utils.data import random_data, load_data
+from sugon_web.utils.decorators import skip_stor
 
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
 @allure.story('云硬盘-基本功能验证')
 class TestEVSBasic:
 
@@ -135,6 +134,7 @@ class TestEVSBasic:
 
     @skip_stor("local")
     @allure.title("云硬盘-转换为镜像")
+    @pytest.mark.requires_admin
     def test_volume_convert_to_image(self, ecs_page, evs_page, ssh_host):
 
         name = random_data()
@@ -153,8 +153,8 @@ class TestEVSBasic:
             evs_page.assert_status(name, status="可用", timeout=1200)
 
             # 切换到弹性云服务器服务的镜像服务页面
-            evs_page.goto_service("弹性云服务器")
-            evs_page.goto_submenu("镜像服务")
+            ecs_page.goto_service("弹性云服务器")
+            ecs_page.goto_submenu("镜像服务")
             ecs_page.assert_status(image_name, status="可用", timeout=1200)
 
         with allure_step_log("步骤3：清理测试数据"):
@@ -178,11 +178,11 @@ class TestEVSBasic:
         with allure_step_log("步骤2: 重置云硬盘状态"):
             evs_page.evs_reset_status(volume["name"])
             evs_page.assert_popup_success("重置状态成功")
-            evs_page.assert_status(volume["name"], status="错误")
+            evs_page.assert_status(volume["name"], status="错误", refresh=True, exit_on_failure=False)
 
         with allure_step_log("步骤3: 恢复云硬盘状态"):
             ssh_host.set_volume_state(volume["name"], "available")
-            evs_page.assert_status(volume["name"], status="可用", refresh=True)
+            evs_page.assert_status(volume["name"], status="可用", refresh=True, exit_on_failure=False)
 
     @allure.title("云硬盘-查看快照")
     def test_volume_view_snapshots(self, evs_page, volume, evss):

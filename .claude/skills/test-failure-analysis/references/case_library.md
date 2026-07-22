@@ -1,0 +1,289 @@
+# 测试失败分析案例库
+
+按失败模式分类沉淀的典型 case，用于辅助后续同类问题的快速定位。
+
+---
+
+## 模式：动态表格行定位漂移（Locator 漂移）
+
+### 案例：云硬盘-扩容 `test_volume_expand` 状态断言超时
+
+**时间**：2026-06-03
+**用例**：`test_volume_expand[params0]`（`new_size: 100`）
+**根因分类**：用例问题
+
+#### 现象
+
+- `volume` fixture 创建云硬盘后，`assert_status(name, status="可用")` 等待 300 秒超时
+- 报错显示实际状态为"正在使用"、25GiB、挂载到 `autotest-hj0pg`
+- 但失败截图显示目标云硬盘 `autotest-yfbox` 状态已经是"可用"
+
+#### 根因
+
+`get_row_by_name` 遍历表格匹配到目标行后，返回 `target_rows.nth(i)`。在 `assert_status` 的 Playwright expect 重试期间，表格因新云硬盘创建导致行序变化，`nth(i)` 指向了另一行（状态为"正在使用"的其他云硬盘），持续空等至超时。
+
+#### 关键证据链
+
+1. **截图与报错状态矛盾**：截图目标行是"可用"，但报错捕获的是"正在使用"→ 监控对象错误
+2. **Call log 行内容漂移**：expect 重试期间从"创建中 30GiB"变为"正在使用 25GiB"→ 目标行发生了变化
+3. **同用例第二参数化通过**：`new_size: 500` 通过 → 排除环境与产品问题
+
+#### 修复方向
+
+- `get_row_by_name` 应返回基于文本过滤的稳定 locator（如 `tr.filter(has_text=name).first`），而非 `nth(i)`
+- `assert_status` 可增加目标行名称校验，发现行漂移时提前报错而非空等超时
+
+#### 排查口诀
+
+> 看到"状态断言超时"，先问自己：截图里的目标资源状态真的不对吗？如果截图状态正常→ 极大概率是 **locator 漂移监控到了错误行**。
+
+---
+
+## 模式：Playwright fill 静默失效（表单填写未生效）
+
+### 案例：CCE-修改时间同步服务器 `test_edit_time_sync_server` 成功消息断言超时
+
+**时间**：2026-06-04
+**用例**：`test_edit_time_sync_server`
+**根因分类**：用例问题
+
+#### 现象
+
+- `cce_edit_time_sync` 方法执行后，`assert_popup_success("设置CCE集群时间同步器成功")` 等待 10 秒超时
+- 报错显示等待 `.el-message__content` 未找到
+- 失败截图显示"时间同步服务器"弹窗**仍然打开**，输入框为空（显示 placeholder），下方有红色校验错误"请输入有效的IP地址或域名"
+
+#### 根因
+
+Page Object 方法中先 `wait_for(state="visible")` 再 `fill()`，但 Element UI 表单组件在弹窗动画或 focus 未就绪时，`fill()` 可能未真正写入值（Playwright 不抛异常）。随后点击"确定"触发前端空值校验，弹窗未关闭，自然不会出现成功消息。
+
+#### 关键证据链
+
+1. **截图显示弹窗未关闭且输入框为空**：直接证明 `fill` 未生效，而非产品拒绝合法 IP
+2. **步骤1 passed，步骤2 超时**：`cce_edit_time_sync` 内部无异常，但预期副作用（弹窗关闭）未发生 → 属于"静默失效"
+3. **修复验证**：在 `fill()` 前增加 `click()` 确保 focus 后问题消失 → 确认根因是 focus 时机问题
+
+#### 修复方向
+
+- 对 Element UI 等组件化表单，**`fill()` 前显式 `click()` 确保 focus**，或在 `fill()` 后增加 `expect(input).to_have_value(value)` 断言兜底
+- 审查同类封装方法，统一添加"填值后校验"，避免静默失效导致后续断言超时
+
+#### 排查口诀
+
+> 看到"弹窗/表单操作后断言超时"，先问自己：截图里弹窗真的关了吗？如果弹窗还开着且字段为空→ 极大概率是 **fill 未真正写入值**，而不是提交后端失败。
+
+---
+
+## 模式：页面异步数据未等待（表格/列表懒加载）
+
+### 案例：CCE-节点规格缩容 `test_node_flavor_shrink[worker]` 进入详情页后找不到数据行
+
+**时间**：2026-06-08
+**用例**：`test_node_flavor_shrink[worker]`
+**根因分类**：用例问题
+
+#### 现象
+
+- `goto_detail_page` 导航到集群详情页后，`get_row_data` 立即执行（仅 24 毫秒）
+- 报错：`AssertionError: 未找到名称为 'cce-autotest-4gh-worker-1' 的数据行`
+- 截图显示详情页已加载（实例信息、网络信息可见），但**节点列表表格完全不可见**
+
+#### 根因
+
+`goto_detail_page` 内部只等待 `load`/`domcontentloaded`/`.el-loading-spinner` 消失，**不等待异步数据加载**。节点列表表格是通过 AJAX/懒加载渲染的，在 `wait_for_page_ready()` 返回时，`.el-table__body-wrapper` 尚未出现在 DOM 中。
+
+#### 关键证据链
+
+1. **截图显示详情页无节点列表表格** — 直接证明表格数据尚未渲染
+2. **步骤2仅持续 24 毫秒就失败** — 代码立即执行，无等待窗口
+3. **setup 阶段成功 vs call 阶段失败** — 同一方法在两个不同阶段结果不同，说明不是 locator 错误，而是时序问题
+4. **`goto_detail_page` 代码确认不等待异步数据** — `actions.py` 中只等待页面加载事件，无表格/数据就绪检查
+
+#### 修复方向
+
+- **推荐**：调用 `goto_detail_page` 时传入 `row_name` 参数，让方法内部轮询等待目标行出现：
+  ```python
+  cce_page.goto_detail_page(cluster_name, tab_name="详情", row_name=node_name, timeout=30)
+  ```
+- **替代**：在表格操作前显式等待 `.el-table__body-wrapper` 出现：
+  ```python
+  page.locator(".el-table__body-wrapper").wait_for(state="visible", timeout=30000)
+  ```
+- **不推荐**：修改通用的 `goto_detail_page` 方法强制等待表格 — 副作用大（19 处引用，场景各异，有的详情页无表格）
+
+#### 排查口诀
+
+> 看到"进入页面后找不到数据行/元素"，先问自己：页面真的加载完了吗？数据是同步渲染的还是异步加载的？检查截图中目标区域是否已出现，以及操作与查找之间的时间间隔是否过短（<100ms 即失败→ 极大概率是**异步加载未等待**）。
+
+---
+
+## 模式：后端状态收敛超时（存储资源创建耗时超限）
+
+### 案例：EVS-创建云硬盘 `test_volume_create[params2]` 状态断言超时
+
+**时间**：2026-06-11
+**用例**：`test_volume_create[params2]`（`empty: true, size: 500, shared: true`）
+**根因分类**：环境问题 / 产品性能边界
+
+#### 现象
+
+- `evs_create` 完成后弹窗提示"创建云硬盘成功"
+- `assert_status(name, status="可用")` 等待 300 秒超时
+- 断言报错显示期望"可用"，但表格行 inner_text 未包含目标状态
+- 失败截图显示目标云硬盘 `autotest-zho88`（500GiB，ceph-type）状态为"创建中"（带加载动画）
+
+#### 根因
+
+Ceph 存储后端创建 500GiB 共享空白云硬盘的实际耗时超过 `assert_status` 默认的 300 秒超时阈值。创建操作本身已成功提交（前端弹窗确认），但后端卷状态从"创建中"到"可用"的收敛过程未完成。同用例中 params0（100GiB 非共享）、params1（500GiB 非共享镜像盘）、params3（100GiB 共享）均通过，唯独 params2（500GiB 共享空白盘）失败，说明**大容量 + 共享 + 空白盘**的组合在 Ceph 上存在性能瓶颈。
+
+#### 关键证据链
+
+1. **截图明确显示"创建中"而非"错误"**：云硬盘未被创建失败，只是状态未达终态 → 排除产品功能缺陷
+2. **同用例其他参数化通过**：小容量/非共享组合均正常 → 排除通用环境问题
+3. **params1（500GiB 非共享镜像盘）通过**：说明 500GiB 本身不是瓶颈，瓶颈在**共享属性 + 空白盘**的组合
+4. **assert_status timeout=300 为默认值**：对于该特定组合可能过于严格
+
+#### 修复方向
+
+- **短期**：在 `test_volume_create` 中针对大容量共享卷增加 `assert_status` 的 timeout 参数（如 600 秒）
+- **中期**：在测试数据中标记慢操作（如 `slow_create: true`），配合 fixture 动态调整超时
+- **长期**：若 Ceph 上该场景稳定需要 >5min，需产品侧评估是否为预期行为，或在测试框架中统一配置存储类型相关的超时策略
+
+#### 排查口诀
+
+> 看到"状态断言超时且截图显示中间态"，先问自己：其他容量/组合是否正常？如果只有大容量/特定组合超时→ 极大概率是 **后端状态收敛慢于断言超时阈值**，而非用例代码错误或产品功能缺陷。
+
+---
+
+## 模式：定时轮询清空表格勾选状态（Checkbox 丢失）
+
+### 案例：CCE-批量删除集群 `test_batch_delete_cluster` 确认对话框定位失败
+
+**时间**：2026-06-22
+**用例**：`test_batch_delete_cluster`
+**根因分类**：用例问题
+
+#### 现象
+
+- `select_rows_by_names` 成功勾选两个目标集群，日志明确记录勾选成功。
+- 随后 `cce_batch_delete` 点击批量删除按钮，调用 `dialog_confirm.click()` 时失败。
+- 报错：`定位失败：对话框'确定'按钮未找到`。
+- 失败为偶现，不是每次必现。
+
+#### 根因
+
+集群管理页面存在定时轮询请求刷新表格数据。前端表格重绘后，用户已勾选的 checkbox 状态被清空。批量删除按钮点击时，由于没有选中行，页面未弹出预期的"确认删除"对话框（可能弹出提示框或无任何弹窗），导致后续 `dialog_confirm` 找不到"确定"按钮。
+
+#### 关键证据链
+
+1. **勾选操作已成功，但失败在下一步对话框定位** — 日志显示 `勾选资源 'cce-autotest-xxx'` 成功，说明问题不在勾选动作本身。
+2. **用户观察到定时轮询会清空已勾选的资源行** — 直接证明 checkbox 状态不持久。
+3. **批量删除按钮行为依赖选中行** — 无选中行时不会弹出确认删除对话框。
+4. **偶现特征与轮询触发时机随机性吻合** — 轮询可能在勾选和批量删除之间插入。
+
+#### 修复方向
+
+- **短期**：在批量删除方法中增加容错重试：首次点击后等待确认对话框出现，若未出现则重新勾选并再次触发批量删除。
+- **中期**：在 `tables.py` 中新增 `_ensure_rows_selected(names)` 辅助方法，在批量操作前确保勾选状态稳定。
+- **长期**：在表格 Mixin 层统一封装批量操作流程（勾选 → 等待状态稳定 → 点击批量操作 → 等待对话框 → 点击确认），所有批量删除/批量操作入口复用同一套逻辑。
+
+#### 排查口诀
+
+> 看到"批量操作后确认对话框未找到"，先问自己：勾选后表格是否被轮询刷新过？如果页面有定时轮询且 checkbox 状态会丢失→ 极大概率是 **表格勾选状态被异步刷新冲掉**，而不是 locator 本身错误。
+
+---
+
+## 模式：Element UI 复选框内部 span 不可点击（嵌套 span 定位错误）
+
+### 案例：EVS-共享云硬盘数据一致性 `test_shared_volume_data_consistency` 复选框点击超时
+
+**时间**：2026-07-10
+**用例**：`test_shared_volume_data_consistency[volume0-vm0]`
+**根因分类**：用例问题
+
+#### 现象
+
+- `volume` fixture 调用 `evs_create(shared=True)` 创建共享云硬盘时失败
+- 报错：`Locator.click: Timeout 30000ms exceeded`
+- Call log 显示 locator 解析到 `<span class="el-checkbox__inner"></span>`，但持续报告 `element is not visible`
+- 失败截图显示"新建云硬盘"弹窗正常打开，"共享盘"复选框可见且未选中
+
+#### 根因
+
+原代码使用 `locator("label").filter(has_text="共享盘").locator("span").nth(1).click()`。Playwright 的 `locator("span")` 会查找 label 下**所有后代 span**，而 Element UI 的 `el-checkbox` 内部结构是：
+
+```html
+<label class="el-checkbox">
+  <span class="el-checkbox__input">           <!-- nth(0) -->
+    <span class="el-checkbox__inner"></span>  <!-- nth(1) ← 命中 -->
+    <input type="checkbox" class="el-checkbox__original" />
+  </span>
+  <span class="el-checkbox__label">共享盘</span>  <!-- nth(2) -->
+</label>
+```
+
+`nth(1)` 命中的是装饰性的 `.el-checkbox__inner`，该 span 在真实 DOM 中通常被 CSS 隐藏或尺寸为 0，Playwright 判定其不可见，导致点击超时。
+
+#### 关键证据链
+
+1. **Call log 明确显示命中 `el-checkbox__inner` 且 `element is not visible`** — 直接证明不是元素未找到，而是 locator 命中了错误的隐藏元素
+2. **截图显示复选框本身正常渲染且无遮挡** — 排除环境问题（弹窗未打开、页面异常等）
+3. **同文件 `_enable_virtio_scsi` 使用 label 点击成功** — 证明正确的交互方式应为点击 label 本身，而非内部 span
+4. **修复后同用例通过** — 确认根因是 locator 选择错误
+
+#### 修复方向
+
+- **推荐**：点击 label 本身，并先判断 checkbox 状态避免重复点击：
+  ```python
+  shared_label = self.page.locator("form label").filter(has_text="共享盘")
+  if not shared_label.get_by_role("checkbox").is_checked():
+      shared_label.click()
+  ```
+- **替代**：使用 role 定位真实 checkbox：
+  ```python
+  self.get_by_role("checkbox", name="共享盘").check()
+  ```
+- **同步审查**：检查项目中所有使用 `locator("span").nth(n).click()` 点击 checkbox 的地方，统一改为 label 点击或 role 定位
+
+#### 排查口诀
+
+> 看到"复选框点击超时且 call log 显示 `element is not visible`"，先问自己：locator 是不是点到了组件内部隐藏的装饰 span？对于 Element UI 的 checkbox/radio，**永远优先点击 label 或使用 `get_by_role("checkbox")`**，不要靠 `span.nth()` 猜层级。
+
+---
+
+## 模式：后端 API 请求/响应不一致（UI 成功但后端未按预期执行）
+
+### 案例：VPC-端口手动分配 `test_port_create_delete_manual_assign` 删除时找不到目标行
+
+**时间**：2026-07-15  
+**用例**：`test_port_create_delete_manual_assign`  
+**根因分类**：产品缺陷（后端）  
+**已提交 Bug**：[bug-view-430450](http://pm.mysugoncloud.com:82/bug-view-430450.html)
+
+#### 现象
+
+- 用例手动指定端口 IP（如 `10.51.112.119`）后创建端口
+- 页面弹窗提示"添加端口成功"
+- 后续按预期 IP 删除端口时，报错：`AssertionError: 未找到名称为 '10.51.112.119' 的数据行`
+- 失败截图显示端口列表中新增了一条记录，但固定 IP 是 `10.51.112.3`，并非用户指定的 `10.51.112.119`
+
+#### 根因
+
+前端按用户输入提交了 `POST /api/v1/vpc/ports`，请求 body 中明确包含 `"ip_address": "10.51.112.119"`。后端返回 `200 OK` 且 message 为"添加端口成功"，但响应中 `"fixed_ips"` 实际为 `"10.51.112.3"`。后端在手动指定 IP 场景下未按请求 IP 创建端口，也未返回 IP 不可用/已被占用的明确错误，而是静默分配了其他 IP。
+
+#### 关键证据链
+
+1. **Playwright trace.network 抓包直接证明请求/响应不一致** — 请求 `ip_address: 10.51.112.119`，响应 `fixed_ips: 10.51.112.3`，status 为 200，这是最高等级证据
+2. **失败截图与 DOM 摘要验证实际创建结果** — 列表中新增端口 ID 与响应 `data.id` 完全一致，固定 IP 为 `10.51.112.3`
+3. **trace 操作时间轴证明前端正确提交** — `fill("10.51.112.119")`、选中下拉项、点击确定均成功，排除前端未填值或选错选项
+4. **同用例无 trace 时误判为用例问题** — 缺少 network 证据时，只能推断为测试代码参数或断言问题；补充 trace 后根因翻转为产品缺陷
+
+#### 修复方向
+
+- **产品侧**：后端接口在收到显式 `ip_address` 时，要么按该 IP 创建端口，要么在 IP 不可用时返回明确错误（如 `400 Bad Request` + "IP 已被占用/不在可分配范围"），不应静默分配其他 IP 后返回成功
+- **测试侧**：创建类用例不要仅依赖"创建成功"弹窗，应断言实际创建的关键属性（如固定 IP）与预期一致
+- **流程侧**：当 UI 显示成功但后续状态不符合预期时，**优先通过 Playwright trace 的 network 抓包核对请求参数与实际返回数据**
+
+#### 排查口诀
+
+> 看到"UI 提示成功但后续找不到目标资源"，先问自己：前端真实提交的参数和后端实际返回的数据是否一致？用 Playwright trace 的 network 抓包核对一次，往往能快速区分"前端提交错误"和"后端处理错误"。

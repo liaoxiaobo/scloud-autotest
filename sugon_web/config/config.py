@@ -1,39 +1,48 @@
 import os
 import re
+import threading
 import yaml
+from types import MappingProxyType
+
 from sugon_web.utils.logger import logger
 
 
 class Config:
-    # 通过类变量加载一次配置，供所有调用共享，避免重复加载
-    _config = {}
+    """三层合并配置管理（base.yaml + env.yaml + CLI），线程安全。
+
+    每个线程拥有独立的配置副本，通过 threading.local() 隔离，
+    避免多线程/并发场景下的配置串扰。
+
+    使用方式：
+        Config.load(host="172.22.1.190")          # 加载并合并配置
+        Config.override(browser="chromium")       # 动态覆盖
+        Config.set("_node_count", 3)              # 运行时写入
+        Config.get("host")                         # 读取单项
+        Config.get()                               # 读取全部（只读视图）
+    """
+
+    _local = threading.local()
 
     @classmethod
     def load(cls, host):
-        """
-        加载配置文件，根据host参数合并特定环境配置
+        """加载配置文件，根据 host 参数合并特定环境配置。
 
         Args:
-            host: 要加载的特定环境配置，如果为None则使用base.yaml中的host值
+            host: 要加载的特定环境配置，如果为 None 则使用 base.yaml 中的 host 值
         """
-        # 加载基础配置
-        with open(os.path.join(os.path.dirname(__file__), "base.yaml"), encoding='utf-8') as f:
+        with open(os.path.join(os.path.dirname(__file__), "base.yaml"), encoding="utf-8") as f:
             base_cfg = yaml.safe_load(f)
 
-        # 加载环境配置
-        with open(os.path.join(os.path.dirname(__file__), "env.yaml"), encoding='utf-8') as f:
+        with open(os.path.join(os.path.dirname(__file__), "env.yaml"), encoding="utf-8") as f:
             env_cfg = yaml.safe_load(f)
 
-        # 如果未提供host参数，则使用base.yaml中的host值
         if host is None:
             host = base_cfg.get("host")
             if host is None:
-                # 如果base.yaml中也没有host，则抛出错误
                 error_msg = "错误: base.yaml中未找到host配置，且命令行未提供--host参数"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-        # 查找匹配的环境配置
         matched_host_config = None
         if "env" in env_cfg:
             for host_config in env_cfg["env"]:
@@ -41,91 +50,84 @@ class Config:
                     matched_host_config = host_config
                     break
 
-        # 使用基础配置作为默认配置
-        cls._config = base_cfg.copy()  # 使用base的副本，避免修改原始配置
-
-        # 如果找到了匹配的环境配置，则合并
+        merged = base_cfg.copy()
         if matched_host_config:
-            # 合并基础配置和特定环境配置
-            cls._config.update(matched_host_config)
+            merged.update(matched_host_config)
             logger.info(f"读取环境 {host} 的特定配置")
         else:
-            # 修复：确保配置字典中的 host 与传入参数一致
-            cls._config["host"] = host
-            # 如果没有找到匹配的环境配置，只使用基础配置
+            merged["host"] = host
             logger.info(f"未找到环境 {host} 的特定配置")
 
-        # 修复：确保配置字典中的 host 与传入参数一致
-        cls._config["host"] = host
+        merged["host"] = host
+        merged["base_url"] = f"https://{host}:30000"
+        logger.info(f"生成 base_url: {merged['base_url']}")
 
-        # 生成 base_url
-        base_url = f"https://{host}:30000"
-        cls._config["base_url"] = base_url
-        logger.info(f"生成 base_url: {base_url}")
+        cls._local.config = merged
 
     @classmethod
-    def load_deploy_mode(cls, ssh_host=None):
-        """读取当前环境部署模式并写入配置缓存。"""
-        deploy_mode = None
-        env_file = "/opt/extra/init-base/env/env.yaml"
-        read_deploy_mode_cmd = f"cat {env_file} | grep deploy_mode"
+    def override(cls, browser=None, headless=None, stor=None, user_role=None):
+        """通过代码动态覆盖部分配置（通常用于命令行参数注入）。"""
+        cfg = cls._ensure_config()
 
-        try:
-            current_node = ssh_host.run("hostname", check_rc=True).strip()
-            if current_node == "master01":
-                output = ssh_host.run(read_deploy_mode_cmd, check_rc=True)
-            else:
-                output = ssh_host.run(f"ssh -o StrictHostKeyChecking=no master01 \"{read_deploy_mode_cmd}\"", check_rc=True)
-            match = re.search(r"^\s*deploy_mode\s*:\s*(\S+)", output, re.MULTILINE)
-            deploy_mode = match.group(1).strip() if match else None
-        except Exception as exc:
-            logger.warning(f"读取 deploy_mode 失败: {exc}")
-
-        cls._config["deploy_mode"] = deploy_mode
-        return deploy_mode
-
-    @classmethod
-    def override(cls, browser=None, headless=None, stor=None, username=None, password=None):
-        """
-        通过代码动态覆盖部分配置（通常用于命令行参数注入）
-        """
         if browser is not None:
-            # 校验浏览器类型是否有效
             valid_browsers = ["chromium", "firefox", "webkit"]
             if browser not in valid_browsers:
                 error_msg = f"无效的浏览器类型: {browser}。支持的选项: {valid_browsers}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            cls._config["browser"] = browser
+            cfg["browser"] = browser
             logger.info(f"配置命令行参数 browser={browser}")
+
         if headless is not None:
-            # 将字符串转为布尔值
-            hbool = True if headless.lower() == "true" else False
-            cls._config["headless"] = hbool
-            logger.info(f"配置命令行参数 headless={hbool}")
+            cfg["headless"] = headless.lower() == "true"
+            logger.info(f"配置命令行参数 headless={cfg['headless']}")
+
         if stor is not None:
-            cls._config["stor"] = stor
+            cfg["stor"] = stor
             logger.info(f"配置命令行参数 stor={stor}")
-        if username is not None:
-            cls._config["username"] = username
-            logger.info(f"配置命令行参数 username={username}")
-        if password is not None:
-            cls._config["password"] = password
-            logger.info(f"配置命令行参数 password={password}")
+
+        if user_role is not None:
+            valid_roles = ["admin", "dept_admin", "user"]
+            if user_role not in valid_roles:
+                error_msg = f"无效的用户角色: {user_role}。支持的选项: {valid_roles}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            cfg["user_role"] = user_role
+            logger.info(f"配置命令行参数 user_role={user_role}")
 
     @classmethod
     def get(cls, key=None, default=None):
-        """
-        获取配置值
+        """获取配置值。
 
         Args:
-            key: 配置项的键，如果为空则返回所有配置
-            default: 当key不存在时的默认值
+            key: 配置项的键，如果为 None 则返回所有配置（只读视图）
+            default: 当 key 不存在时的默认值
 
         Returns:
-            如果key为None，返回整个配置字典
+            如果 key 为 None，返回 MappingProxyType 只读视图；
             否则返回指定配置值或默认值
         """
+        cfg = getattr(cls._local, "config", {})
         if key is None:
-            return cls._config
-        return cls._config.get(key, default)
+            return MappingProxyType(cfg)
+        return cfg.get(key, default)
+
+    @classmethod
+    def set(cls, key, value):
+        """运行时写入配置项。
+
+        替代直接操作 Config._config 的野路子，确保线程安全。
+
+        Args:
+            key: 配置项键名
+            value: 配置项值
+        """
+        cfg = cls._ensure_config()
+        cfg[key] = value
+
+    @classmethod
+    def _ensure_config(cls):
+        """确保当前线程的配置字典已初始化。"""
+        if not hasattr(cls._local, "config"):
+            cls._local.config = {}
+        return cls._local.config

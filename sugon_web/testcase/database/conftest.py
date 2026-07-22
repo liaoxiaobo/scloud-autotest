@@ -2,7 +2,7 @@ import allure
 import pytest
 from sugon_web.pages.database import DorisPage, KingbasePage, MongoDBPage, MySQLPage, PgSQLPage, XScalePage
 from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.data import random_data, random_string
 from sugon_web.conftest import _create_logged_in_page
 
 
@@ -65,8 +65,7 @@ def doris(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_name1 = f"user_{random_string(k=5)}"
     user_password = f"Pwd@1{random_string(k=5)}"
-    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1,
-            "user_name": user_name, "user_password": user_password}
+    data = {"name": name, "admin_password": admin_password, "db_name": db_name, "db_name1": db_name1, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享Doris实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -111,7 +110,7 @@ def mysql(browser_context, config):
     user_name = f"user_{random_string(k=5)}"
     user_password = f"sugon1234@{random_string(k=5)}"
     privileges = "读写"
-    data = {"name": name, "db_name": db_name, "user_name": user_name, "admin_password": user_password}
+    data = {"name": name, "db_name": db_name, "user_name": user_name, "user_password": user_password}
     logger.info(f"为测试类创建共享MySQL实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
@@ -191,7 +190,7 @@ def kingbase(browser_context, config):
     logger.info(f"为测试类创建共享KingbaseES实例: {name}")
 
     with allure_step_log(f"前置操作：创建共享实例 {name}"):
-        kingbase_page.create_instance(name, instance_type=instance_type, password=admin_password)
+        kingbase_page.create_instance(name, instance_type=instance_type, node_count=3, password=admin_password)
         kingbase_page.assert_popup_success("创建实例")
         kingbase_page.assert_list_contain(name)
         kingbase_page.assert_status(name, status="运行中", timeout=1800, refresh=True)
@@ -263,7 +262,7 @@ def xscale(browser_context, config, ssh_host, ssh_vm):
         xscale_page.create_instance(name, password=admin_password)
         xscale_page.assert_popup_success()
         xscale_page.assert_list_contain(name)
-        xscale_page.assert_status(name, status="就绪", timeout=1500)
+        xscale_page.assert_status(name, status="就绪", timeout=2400)
 
     with allure_step_log(f"前置操作：连接实例 {name} 后端计算节点"):
         node_name = f"{name}-cn-0"

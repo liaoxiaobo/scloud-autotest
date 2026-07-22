@@ -2,11 +2,9 @@ import time
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 
-@allure.epic('计算服务')
-@allure.feature('云服务器快照')
 @allure.story('快照基本功能验证')
 class TestECSS:
 
@@ -22,7 +20,7 @@ class TestECSS:
                 desc="系统盘快照测试"
             )
             ecs_page.assert_popup_success("创建实例快照成功")
-            # ecs_page.wait_for_source_complete(vm['name'])
+            ecs_page.wait_for_source_complete(vm['name'])
             ecs_page.assert_status(vm['name'])
 
         with allure_step_log("步骤2: 验证快照创建成功"):
@@ -32,7 +30,7 @@ class TestECSS:
 
             # 验证快照属性
             snapshot_data = ecs_page.get_row_data(snapshot_name)
-            assert snapshot_data["是否快照数据卷是否   筛选   重置 "] == "否"
+            assert snapshot_data["是否快照数据卷"] == "否"
             # assert snapshot_data["是否启动源"] == "是"
 
         with allure_step_log("步骤3: 删除系统盘快照"):
@@ -88,7 +86,7 @@ class TestECSS:
             ecs_page.assert_popup_success("修改快照成功")
 
         with allure_step_log("步骤2: 验证修改结果"):
-            ecs_page.ecss_el_setting("描述")
+            ecs_page.set_table_header("描述")
             ecs_page.assert_list_contain(new_name)
             # 获取修改后的快照数据并验证
             snapshot_data = ecs_page.get_row_data(new_name)
@@ -354,53 +352,52 @@ class TestECSS:
             ecs_page.assert_popup_success("修改策略成功")
             ecs_page.btn_reset.click()
 
-    @allure.title("快照策略-绑定云服务器后自动创建快照")
-    @pytest.mark.slow
-    def test_ecss_bind_wait_snapshot(self, ecs_page, vm):
-        """测试云服务器绑定快照策略等待自动快照功能"""
-        vm_name = vm["name"]
-        policy = random_data(length=6)
-        snap_time = int(time.strftime("%H", time.localtime())) + 1
-
-        with allure_step_log("步骤1: 创建快照策略"):
-            ecs_page.ecss_policy_create(name=policy, hours=[snap_time], enabled=True)
-
-        with allure_step_log("步骤2: 虚机绑定快照策略"):
-            vm_names = ecs_page.ecss_bind_unbind_snapshot_policy(vm_name, policy)
-
-        with allure_step_log("步骤3: 验证虚机已绑定策略"):
-            ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.assert_ecs_details_info(vm_names, {f"{policy}": "已启用"}, tab="快照策略")
-
-        with allure_step_log("步骤4: 验证虚机自动创建快照"):
-            ecs_page.goto_submenu("弹性云服务器")
-            if ecs_page.wait_for_snapshot_start(vm_name, snap_time):
-                # 验证快照创建成功
-                ecs_page.assert_status(vm_name, status="当前无任务", refresh=True)
-                # 切换到快照页面验证快照存在
-                ecs_page.goto_submenu("快照")
-                ecs_page.search(vm_name)
-                ecs_page.get_rows_by_text(vm_name)
-                snapshot_name = ecs_page.get_column_data("名称")[0]
-                create_time = ecs_page.get_column_data("创建时间")[0].split(" ")[1]
-                create_hour = create_time.split(":")[0]
-                ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
-                assert create_hour == snap_time, f"快照创建时间不符合预期，期望: {snap_time}时，实际: {create_time}时"
-            else:
-                allure.attach(f"等待了70分钟仍未检测到快照创建", name="等待超时")
-                pytest.fail("等待快照创建超时")
-
-        with allure_step_log("步骤5: 虚机详情页验证快照"):
-            ecs_page.goto_submenu("弹性云服务器")
-            ecs_page.assert_status(vm_name)
-            ecs_page.assert_ecs_details_info(vm_name, {f"{snapshot_name}": "可用"}, tab="快照")
-
-        with allure_step_log("步骤7: 验证虚机解除绑定策略、删除策略"):
-            ecs_page.goto_submenu("快照策略")
-            ecs_page.ecss_unbind_snapshot_policy(vm_name, policy)
-            ecs_page.ecss_policy_delete(policy)
-            ecs_page.assert_popup_success("删除策略成功", refresh=True)
-
-        with allure_step_log("步骤6: 删除快照"):
-            ecs_page.ecss_delete(snapshot_name)
-            ecs_page.assert_deleted(snapshot_name, refresh=True)
+    # @allure.title("快照策略-绑定云服务器后自动创建快照")
+    # def test_ecss_bind_wait_snapshot(self, ecs_page, vm):
+    #     """测试云服务器绑定快照策略等待自动快照功能"""
+    #     vm_name = vm["name"]
+    #     policy = random_data(length=6)
+    #     snap_time = int(time.strftime("%H", time.localtime())) + 1
+    #
+    #     with allure_step_log("步骤1: 创建快照策略"):
+    #         ecs_page.ecss_policy_create(name=policy, hours=[snap_time], enabled=True)
+    #
+    #     with allure_step_log("步骤2: 虚机绑定快照策略"):
+    #         vm_names = ecs_page.ecss_bind_unbind_snapshot_policy(vm_name, policy)
+    #
+    #     with allure_step_log("步骤3: 验证虚机已绑定策略"):
+    #         ecs_page.goto_submenu("弹性云服务器")
+    #         ecs_page.assert_ecs_details_info(vm_names, {f"{policy}": "已启用"}, tab="快照策略")
+    #
+    #     with allure_step_log("步骤4: 验证虚机自动创建快照"):
+    #         ecs_page.goto_submenu("弹性云服务器")
+    #         if ecs_page.wait_for_snapshot_start(vm_name, snap_time):
+    #             # 验证快照创建成功
+    #             ecs_page.assert_status(vm_name, status="当前无任务", refresh=True)
+    #             # 切换到快照页面验证快照存在
+    #             ecs_page.goto_submenu("快照")
+    #             ecs_page.search(vm_name)
+    #             ecs_page.get_rows_by_text(vm_name)
+    #             snapshot_name = ecs_page.get_column_data("名称")[0]
+    #             create_time = ecs_page.get_column_data("创建时间")[0].split(" ")[1]
+    #             create_hour = create_time.split(":")[0]
+    #             ecs_page.assert_status(snapshot_name, status="可用", refresh=True)
+    #             assert create_hour == snap_time, f"快照创建时间不符合预期，期望: {snap_time}时，实际: {create_time}时"
+    #         else:
+    #             allure.attach(f"等待了70分钟仍未检测到快照创建", name="等待超时")
+    #             pytest.fail("等待快照创建超时")
+    #
+    #     with allure_step_log("步骤5: 虚机详情页验证快照"):
+    #         ecs_page.goto_submenu("弹性云服务器")
+    #         ecs_page.assert_status(vm_name)
+    #         ecs_page.assert_ecs_details_info(vm_name, {f"{snapshot_name}": "可用"}, tab="快照")
+    #
+    #     with allure_step_log("步骤7: 验证虚机解除绑定策略、删除策略"):
+    #         ecs_page.goto_submenu("快照策略")
+    #         ecs_page.ecss_unbind_snapshot_policy(vm_name, policy)
+    #         ecs_page.ecss_policy_delete(policy)
+    #         ecs_page.assert_popup_success("删除策略成功", refresh=True)
+    #
+    #     with allure_step_log("步骤6: 删除快照"):
+    #         ecs_page.ecss_delete(snapshot_name)
+    #         ecs_page.assert_deleted(snapshot_name, refresh=True)

@@ -1,7 +1,48 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
+
+
+def _cleanup_residual_dc_resources(dc_page):
+    """按虚拟接口→虚拟网关→物理连接顺序清理残留资源。"""
+    try:
+        notifications = dc_page.page.locator(".el-notification__closeBtn")
+        for i in range(notifications.count()):
+            notifications.nth(i).click()
+            dc_page.page.wait_for_timeout(300)
+    except Exception:
+        pass
+
+    try:
+        dc_page._ensure_virtual_interface_list()
+        vif_names = dc_page.get_column_data("名称")
+        for name in vif_names:
+            if name and name.startswith("vif-"):
+                dc_page.virtual_interface_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟接口时跳过: {e}")
+
+    try:
+        dc_page._ensure_virtual_gateway_list()
+        vgw_names = dc_page.get_column_data("名称")
+        for name in vgw_names:
+            if name and name.startswith("vgw-"):
+                dc_page.virtual_gateway_delete(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理虚拟网关时跳过: {e}")
+
+    try:
+        dc_page._ensure_physical_connection_list()
+        pc_names = dc_page.get_column_data("物理连接名称")
+        for name in pc_names:
+            if name and name.startswith("physical-"):
+                dc_page.dc_physical_connection_terminate(name)
+                dc_page.assert_deleted(name, timeout=60)
+    except Exception as e:
+        logger.info(f"清理物理连接时跳过: {e}")
 
 
 @allure.epic('网络服务')
@@ -20,6 +61,9 @@ class TestDCBasic:
         contact_name = "张三"
         contact_phone = "13805403159"
         contact_email = "ll@sugon.com"
+
+        with allure_step_log("步骤0: 清理残留资源（虚拟接口→虚拟网关→物理连接）"):
+            _cleanup_residual_dc_resources(dc_page)
 
         with allure_step_log("步骤1: 进入物理连接页面并创建物理连接"):
             dc_page._ensure_physical_connection_list()

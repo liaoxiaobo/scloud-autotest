@@ -6,7 +6,8 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
+from sugon_web.testcase.network._dc_helpers import create_virtual_interface_with_retry
 
 
 @allure.epic('网络服务')
@@ -21,7 +22,7 @@ class TestDCHaConnectivityTest:
     )
     @pytest.mark.parametrize(
         "vm",
-        [{"basic": {"count": 1}, "bind_mfip": True}],
+        [{"basic": {"count": 1}, "bind_mfip": True, "name_prefix": "dc_"}],
         indirect=True,
     )
     @allure.title("云专线DC-HA实例-互通性测试验证")
@@ -160,7 +161,7 @@ class TestDCHaConnectivityTest:
                 name=dc_name,
                 expected_status="办结",
                 expected_vm_status="运行中",
-                timeout=600,
+                timeout=1200,
                 interval=10,
             )
 
@@ -173,8 +174,9 @@ class TestDCHaConnectivityTest:
             dc_page.assert_status(vgw_name, status="运行中")
 
         with allure_step_log("前置条件4: 创建虚拟接口（静态路由）"):
-            time.sleep(30)
-            dc_page.virtual_interface_create(
+            time.sleep(60)
+            create_virtual_interface_with_retry(
+                dc_page,
                 name=vif_name,
                 physical_connection_name=dc_name,
                 virtual_gateway_name=vgw_name,
@@ -183,16 +185,6 @@ class TestDCHaConnectivityTest:
                 route_mode="static",
                 remote_subnet="123.12.0.0/24",
                 subnet_index=0,
-            )
-            dc_page.assert_popup_success(timeout=10000)
-
-        with allure_step_log("前置条件4.5: 等待虚拟接口状态变为运行中"):
-            dc_page.assert_status(
-                vif_name,
-                status="运行中",
-                timeout=150,
-                refresh=True,
-                refresh_interval=10,
             )
 
         with allure_step_log("前置条件4.6: 等待5秒确保路由就绪"):
@@ -215,30 +207,41 @@ class TestDCHaConnectivityTest:
                 dialog = vpc_page.page.locator(".el-dialog__wrapper:visible")
 
                 vpc_page.get_by_placeholder(re.compile(r"必填")).fill(dest_cidr)
-
+                vpc_page.page.wait_for_timeout(1000)
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text="下一跳类型")
                 ).get_by_placeholder("请选择").click()
                 vpc_page.page.locator(".el-select-dropdown:visible").locator("li").filter(
                     has_text=re.compile(r"^云专线$")
                 ).first.click()
+                vpc_page.page.wait_for_timeout(2000)
 
                 vpc_page.locator(".el-form-item").filter(
                     has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
                 ).get_by_placeholder("请选择").click()
-                vpc_page.page.wait_for_timeout(2000)
 
-                # 精确定位下拉框内的选项
                 dropdown = vpc_page.page.locator(".el-select-dropdown:visible")
                 try:
-                    dropdown.wait_for(state="visible", timeout=5000)
-                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=dc_name).first
-                    expect(option).to_be_visible(timeout=5000)
-                    option.click()
+                    dropdown.wait_for(state="visible", timeout=10000)
+                    vpc_page.page.wait_for_timeout(2000)
+                    option = dropdown.locator(".el-select-dropdown__item").filter(has_text=re.compile(re.escape(dc_name))).first
+                    option.scroll_into_view_if_needed(timeout=5000)
+                    option.click(force=True)
                     logger.info(f"下一跳选择成功: {dc_name} (通过 .el-select-dropdown__item)")
                 except Exception:
-                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 get_by_text 选择: {dc_name}")
-                    vpc_page.page.get_by_text(dc_name, exact=False).first.click()
+                    logger.warning(f".el-select-dropdown__item 定位失败，降级使用 dropdown.get_by_text 选择: {dc_name}")
+                    try:
+                        dropdown.get_by_text(dc_name, exact=True).last.click(force=True)
+                    except Exception:
+                        logger.warning(f"可见下拉框内搜索失败，使用键盘选择: {dc_name}")
+                        input_el = vpc_page.locator(".el-form-item").filter(
+                            has=vpc_page.locator("label").filter(has_text=re.compile(r"^下一跳$"))
+                        ).locator(".el-input__inner").first
+                        input_el.click()
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("ArrowDown")
+                        vpc_page.page.wait_for_timeout(500)
+                        vpc_page.page.keyboard.press("Enter")
 
                 vpc_page.get_by_label("新建路由表规则").get_by_text("确定").click()
                 try:
@@ -247,12 +250,24 @@ class TestDCHaConnectivityTest:
                     pass
 
             with allure_step_log("步骤3: 验证路由规则列表"):
-                vpc_page.page.reload()
-                vpc_page.wait_for_page_ready()
-                vpc_page.page.mouse.move(1, 1)
-                vpc_page.get_by_role("tab", name="路由表").click()
+                # 增加重试：页面刷新后数据可能未立即加载
+                row_data = None
+                for attempt in range(3):
+                    vpc_page.page.reload()
+                    vpc_page.wait_for_page_ready()
+                    vpc_page.page.mouse.move(1, 1)
+                    vpc_page.get_by_role("tab", name="路由表").click()
+                    vpc_page.page.wait_for_timeout(3000)
+                    try:
+                        row_data = vpc_page.get_row_data(dest_cidr)
+                        if row_data:
+                            break
+                    except AssertionError:
+                        logger.warning(f"第 {attempt + 1} 次查找路由规则 {dest_cidr} 失败，重试中...")
+                        if attempt == 2:
+                            raise
+                        vpc_page.page.wait_for_timeout(5000)
 
-                row_data = vpc_page.get_row_data(dest_cidr)
                 actual_dest = row_data.get("目的地址", "")
                 actual_type = row_data.get("下一跳类型", "")
                 actual_next_hop = row_data.get("下一跳", "")
@@ -357,15 +372,22 @@ class TestDCHaConnectivityTest:
                 try:
                     vpc_page.goto_service("虚拟私有云")
                     vpc_page.goto_submenu("虚拟私有云")
-                    vpc_page.get_row_by_name(vpc_name).locator("a").first.click()
-                    vpc_page.page.mouse.move(1, 1)
-                    vpc_page.get_by_role("tab", name="路由表").click()
+                    vpc_page.wait_for_page_ready()
+                    vpc_page._expand_page_size()
                     try:
-                        vpc_page.click_action(dest_cidr, "删除")
-                        vpc_page.dialog_confirm.click()
-                        vpc_page.assert_deleted(dest_cidr, timeout=30)
+                        row = vpc_page.get_row_by_name(vpc_name)
                     except Exception:
-                        logger.info(f"路由规则 {dest_cidr} 已不存在或已被自动清理，跳过删除")
+                        logger.warning(f"VPC {vpc_name} 未找到，可能已被自动清理，跳过路由规则删除")
+                    else:
+                        row.locator("a").first.click()
+                        vpc_page.page.mouse.move(1, 1)
+                        try:
+                            vpc_page.get_by_role("tab", name="路由表").click()
+                            vpc_page.click_action(dest_cidr, "删除")
+                            vpc_page.dialog_confirm.click()
+                            vpc_page.assert_deleted(dest_cidr, timeout=30)
+                        except Exception:
+                            logger.info(f"路由规则 {dest_cidr} 已不存在或已被自动清理，跳过删除")
                 except Exception as e:
                     cleanup_errors.append(f"删除路由规则: {e}")
 

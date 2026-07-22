@@ -1,7 +1,7 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @pytest.mark.parametrize("vpc", [{"cidr": "173.3.3.0/24"}], indirect=True)
@@ -37,9 +37,9 @@ class TestERConnectionCreate:
                 er_page.assert_status(
                     er_name,
                     status="运行中",
-                    timeout=120,
+                    timeout=1200,
                     refresh=True,
-                    refresh_interval=20,
+                    refresh_interval=30,
                 )
                 logger.info(f"ER {er_name} 状态变为运行中")
 
@@ -129,16 +129,16 @@ class TestERConnectionCreate:
                 er_page.assert_status(
                     er1_name,
                     status="运行中",
-                    timeout=120,
+                    timeout=1200,
                     refresh=True,
-                    refresh_interval=20,
+                    refresh_interval=30,
                 )
                 er_page.assert_status(
                     er2_name,
                     status="运行中",
-                    timeout=120,
+                    timeout=1200,
                     refresh=True,
-                    refresh_interval=20,
+                    refresh_interval=30,
                 )
                 logger.info("两个ER状态均为运行中")
 

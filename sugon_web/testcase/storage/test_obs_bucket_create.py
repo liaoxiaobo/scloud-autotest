@@ -4,7 +4,7 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @allure.epic('存储服务')
@@ -56,40 +56,25 @@ class TestOBSBucketCreate:
     def test_obs_bucket_create_success(self, obs_page):
         bucket_name = random_data()
 
-        with allure_step_log("步骤1: 导航到OBS，选择项目，进入新建桶页面并填写信息"):
+        with allure_step_log("步骤1: 导航到OBS，选择项目，验证默认区域"):
             obs_page.goto_service("对象存储专业版")
             obs_page.select_top_nav_project(
                 org_name=["sugoncloud", "智能云事业部"],
                 project_name="公共测试"
             )
             obs_page.goto_submenu("桶列表")
+            # 临时打开创建页验证区域
             obs_page.btn_create.click()
             obs_page.wait_for_page_ready()
             region_name = obs_page._get_selected_region_name()
             assert region_name == "RegionOne", f"区域应为'RegionOne'，实际为'{region_name}'"
-            obs_page._input_bucket_name.fill(bucket_name)
-            obs_page._input_bucket_capacity.fill("10")
-            # 选择标准存储
-            obs_page.page.get_by_text("标准存储", exact=True).first.click()
-
-        with allure_step_log("步骤2: 提交创建桶"):
-            obs_page.btn_submit.click()
-            # 等待提交处理完成（后端可能需要较长时间）
-            obs_page.page.wait_for_timeout(10000)
-            current_url = obs_page.page.url
-            if "/create" in current_url:
-                # 再等待5秒后重试检查
-                obs_page.page.wait_for_timeout(5000)
-                current_url = obs_page.page.url
-            if "/create" in current_url:
-                # 收集页面上的错误信息辅助诊断
-                error_messages = obs_page.page.locator(
-                    ".el-form-item__error, .el-message__content, .el-notification__content"
-                ).all_inner_texts()
-                raise AssertionError(
-                    f"提交后URL未跳转，仍在创建页: {current_url}，错误信息: {error_messages}"
-                )
+            # 使用子菜单导航返回列表页，避免取消按钮可能带来的页面状态不稳定
+            obs_page.goto_submenu("桶列表")
             obs_page.wait_for_page_ready()
+
+        with allure_step_log("步骤2: 创建桶"):
+            # 使用 Page Object 方法（含30秒轮询+回退机制）
+            obs_page.obs_bucket_create(bucket_name, capacity="10")
 
         with allure_step_log("步骤3: 校验桶列表显示信息"):
             obs_page.goto_submenu("桶列表")

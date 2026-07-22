@@ -1,11 +1,12 @@
 import allure
 import pytest
+from sugon_web.common.mfip_helper import MfipHelper
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import skip_stor, random_data
+from sugon_web.utils.data import random_data
+from sugon_web.utils.decorators import skip_stor
 
 
-@allure.epic('计算服务')
-@allure.feature('弹性云服务器 ECS')
 @allure.story('创建功能验证')
 class TestECSCreate:
 
@@ -27,7 +28,7 @@ class TestECSCreate:
 
     @allure.title("创建功能验证: 快照来源")
     @skip_stor("usan","local", "nfs")
-    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ops_page, ssh_vm):
+    def test_ecs_create_with_snapshot(self, ecss, ecs_page, ssh_vm, admin_browser_context, config, ssh_host):
         name = random_data()
         snapshot_name = ecss.get("name")
         with allure_step_log("步骤1: 创建启动方式为 快照 的云服务器"):
@@ -43,8 +44,11 @@ class TestECSCreate:
             assert ecs_page.get_row_data(name).get("镜像名称") == snapshot_name, "镜像名称快照不一致"
 
             # 登录虚机验证
-            ip = ecs_page.get_row_data(name).get("IP地址").split(':')[1]
-            mfip = ops_page.bind_mfip(ip.strip())
+            vm_meta = collect_vm_metadata(ecs_page, ssh_host, name)
+            mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, vm_meta["port_id"],
+                project_id=vm_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(name, ssh_vm)
 
@@ -129,7 +133,7 @@ class TestECSCreate:
             ecs_page.assert_deleted(name)
 
     @allure.title("创建功能验证: 云硬盘来源")
-    def test_ecs_create_from_volume(self, ecs_page, ops_page, ssh_vm, evs_page):
+    def test_ecs_create_from_volume(self, ecs_page, ssh_vm, evs_page, admin_browser_context, config, ssh_host):
         """
         测试从云硬盘创建云服务器
         """
@@ -148,8 +152,11 @@ class TestECSCreate:
 
         with allure_step_log("步骤3: 验证云服务器创建成功"):
             ecs_page.assert_status(vm_name)
-            ip = ecs_page.get_row_data(vm_name).get("IP地址").split(':')[1]
-            mfip = ops_page.bind_mfip(ip.strip())
+            vm_meta = collect_vm_metadata(ecs_page, ssh_host, vm_name)
+            mfip = MfipHelper.bind_mfip_with_admin_context(
+                admin_browser_context, config, vm_meta["port_id"],
+                project_id=vm_meta.get("project_id", "admin-inner-project"),
+            )
             ssh_vm.connect(mfip)
             ecs_page.assert_ecs_enable(vm_name, ssh_vm)
 

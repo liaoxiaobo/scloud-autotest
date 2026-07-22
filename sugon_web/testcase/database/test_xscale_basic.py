@@ -4,7 +4,7 @@ from time import sleep, time
 import allure
 import pytest
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, random_string
+from sugon_web.utils.data import random_data, random_string
 
 NODE_TYPES = ["元数据节点", "日志节点", "计算节点", "存储节点"]
 
@@ -243,6 +243,11 @@ class TestXScaleBasic:
     @pytest.mark.parametrize("node_type", NODE_TYPES, ids=NODE_TYPES)
     def test_restart_node(self, xscale_page, xscale, node_type):
         instance_name = xscale["name"]
+
+        with allure_step_log("前置检查：确认实例状态已恢复到就绪/正常"):
+            xscale_page.goto_submenu("实例管理")
+            xscale_page.assert_status(instance_name, status="就绪", refresh=True, timeout=600)
+            xscale_page.assert_status(instance_name, status="正常", refresh=True, timeout=600)
 
         with allure_step_log(f"步骤一：进入实例 {instance_name} 详情页，获取{node_type}列表第一条节点并执行重启"):
             node_name = xscale_page.restart_node(instance_name, node_type=node_type)
@@ -690,6 +695,11 @@ class TestXScaleBasic:
     def test_restart_storage_nodes(self, xscale_page, xscale):
         """测试 XScale 实例详情页批量重启存储节点功能。"""
         instance_name = xscale["name"]
+
+        with allure_step_log("前置检查：确认实例已恢复到可重启状态"):
+            xscale_page.goto_submenu("实例管理")
+            xscale_page.assert_status(instance_name, status="就绪", refresh=True, timeout=600)
+            xscale_page.assert_status(instance_name, status="正常", refresh=True, timeout=600)
 
         with allure_step_log("步骤一：通过详情页按钮批量重启存储节点"):
             storage_nodes = xscale_page.restart_storage_nodes(instance_name)

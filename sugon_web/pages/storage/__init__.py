@@ -1,6 +1,7 @@
 from .evs import EvsPage as VolumePage
 from .evss import EvssPage
 from .recycle import RecyclePage
+from .sfs import SfsPage
 
 
 class EvsPage(VolumePage, RecyclePage, EvssPage):
@@ -8,4 +9,4 @@ class EvsPage(VolumePage, RecyclePage, EvssPage):
     service_name = "云硬盘"
 
 
-__all__ = ["EvsPage", "VolumePage", "RecyclePage", "EvssPage"]
+__all__ = ["EvsPage", "VolumePage", "RecyclePage", "EvssPage", "SfsPage"]

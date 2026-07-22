@@ -1,3 +1,36 @@
+"""
+【职责】解析 SCLI 表格输出，提供资源后端查询、校验、删除等待、镜像管理与云硬盘状态操作等便捷方法，供测试做后端状态断言与准备。
+
+【层级】Fixture 层；被 SSH 类继承，通过 SSH fixture 调用。
+
+【接口】
+查询：
+- guest_show(ref) -> dict：执行 scli guest show 并解析为字典，支持 UUID 或名称。
+- volume_show(volume_ref) -> dict：执行 scli volume show 并解析为字典。
+- get_volume_id(volume_name) -> str：按名称查询云硬盘 UUID。
+- get_volume_size(volume_ref) -> int：查询云硬盘容量（单位 GB）。
+校验：
+- assert_resource_created(name, command="scli guest list", timeout=600)：轮询断言资源已在后端创建。
+- assert_guest_fields(ecs_id, expected_fields, error_prefix) -> dict：断言 guest show 中多个字段值。
+- assert_guest_node(ecs_id, expected_node, error_prefix)：断言虚机后端所在节点。
+删除等待：
+- wait_resource_deleted(names, check_command, timeout=600, interval=5)：轮询等待资源从后端删除。
+- wait_volume_deleted / wait_vm_deleted / wait_image_deleted(names, timeout=600, interval=5)：云硬盘/虚机/镜像删除等待封装。
+镜像管理：
+- glance_image_create(name, image, backend, size=20, ...)：通过 scli image create 上传镜像。
+- glance_image_delete(name)：通过 scli image delete 删除镜像。
+- image_download(image, img_path="...")：为镜像导入准备远端镜像文件。
+其他：
+- set_volume_state(volume_ref, state)：通过 scli volume reset-state 重置云硬盘状态。
+- parse_table_output(output) -> dict：静态方法，将 CLI 表格输出解析为结构化字典。
+
+【示例】
+def test_vm_backend(ssh_host):
+    info = ssh_host.guest_show("vm-01")
+    assert info.get("status") == "ACTIVE"
+    ssh_host.wait_resource_deleted("vm-01", check_command="scli guest list")
+"""
+
 import re
 import shlex
 import time
@@ -269,8 +302,7 @@ class ScliMixin:
             --property architecture={arch} \
             --property hw_firmware_type={hw_firmware_type} \
             --file {image_name} \
-            --backend {backend} \
-            --progress '
+            --backend {backend}'
 
         for key, value in kwargs.items():
             cmd = cmd + f"--property {key}={value} "
@@ -281,7 +313,7 @@ class ScliMixin:
         img_source = Config.get("image_source")
         full_url = rf"{img_source}{img_path}/{image}"
         if image not in self.run("ls"):
-            self.run(f"sudo curl {full_url} -o {image}")
+            self.run(f"sudo curl -fsS {full_url} -o {image}")
             self.file_exist(image)
 
     def glance_image_delete(self, name):

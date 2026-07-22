@@ -1,11 +1,10 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data, only_stor
+from sugon_web.utils.data import random_data, load_data
+from sugon_web.utils.decorators import only_stor
 
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
 @allure.story('云硬盘-创建功能验证')
 class TestEVSCreate:
 
@@ -40,7 +39,7 @@ class TestEVSCreate:
             assert data['可启动'] == ('是' if not params['empty'] else '否')
             assert data['容量'] == f"{params['size']}GiB"
             assert data['共享盘'] == ('是' if params.get('shared', False) else '否')
-            assert data['机密存储开启关闭   筛选   重置 '] == "关闭"
+            assert data['机密存储'] == "关闭"
 
         with allure_step_log("步骤2: 删除单个云硬盘"):
             evs_page.evs_remove(name)
@@ -70,7 +69,7 @@ class TestEVSCreate:
             evs_page.set_table_header("机密存储")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
-            assert data['机密存储开启关闭   筛选   重置 '] == "开启"
+            assert data['机密存储'] == "开启"
 
         with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘
@@ -102,7 +101,7 @@ class TestEVSCreate:
             evs_page.set_table_header("机密存储")
             data = evs_page.get_row_data(volume_name)
             assert data['共享盘'] == '否'
-            assert data['机密存储开启关闭   筛选   重置 '] == "开启"
+            assert data['机密存储'] == "开启"
 
         with allure_step_log("步骤2: 删除加密云硬盘"):
             # 删除云硬盘

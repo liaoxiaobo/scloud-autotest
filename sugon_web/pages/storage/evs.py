@@ -54,7 +54,9 @@ class EvsPage(BasePage):
 
     def _enable_encryption(self, encryption_key):
         """启用加密并选择密钥。"""
-        self.locator("label").filter(has_text="机密存储").locator("span").nth(1).click()
+        encrypt_label = self.page.locator("form label").filter(has_text="机密存储")
+        if not encrypt_label.get_by_role("checkbox").is_checked():
+            encrypt_label.click()
         self.get_by_text("选择密钥").first.click()
         self.get_by_role("radio", name=encryption_key).click()
         self.page.locator("section").get_by_text("确定").first.click()
@@ -131,7 +133,9 @@ class EvsPage(BasePage):
             self._enable_virtio_scsi()
 
         if shared:
-            self.locator("label").filter(has_text="共享盘").locator("span").nth(1).click()
+            shared_label = self.page.locator("form label").filter(has_text="共享盘")
+            if not shared_label.get_by_role("checkbox").is_checked():
+                shared_label.click()
 
         self._input_size.fill(str(size))
         self.dialog_confirm.click()

@@ -1,3 +1,28 @@
+"""
+【职责】页面对象基类，组合 Playwright 与各通用 Mixin，为所有 page object 提供统一的定位、交互、等待、断言能力。
+
+【层级】Page 层；pages/ 下所有页面对象必须继承此类。
+
+【接口】
+- 继承 Playwright 的定位器与操作方法。
+- 继承 NavigationMixin、ButtonsMixin、DialogsMixin、InputsMixin、SelectorsMixin、TablesMixin、ActionsMixin、AssertionsMixin、WaitsMixin 的公共能力。
+- self.stor / self.storage_pool / self.volume_type 从 Config 自动初始化。
+
+【示例】
+from sugon_web.common.base import BasePage, submenu
+
+class EcsPage(BasePage):
+    service_name = "弹性云服务器"
+
+    @submenu("弹性云服务器")
+    def ecs_create(self, name):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.dialog_confirm.click()
+
+【前置依赖】实例化时传入已通过 auth.prepare_page_session 完成登录的 Playwright Page。
+"""
+
 from playwright.sync_api import Page
 
 from sugon_web.common.playwright import Playwright
@@ -11,7 +36,7 @@ from sugon_web.common.components.actions import ActionsMixin
 from sugon_web.assertions.base import AssertionsMixin
 from sugon_web.common.components.waits import WaitsMixin
 from sugon_web.config.config import Config
-from sugon_web.config.constants import SERVICE_MAP, SERVICE_PATH_MAP
+from sugon_web.config.constants import SERVICE_PATH_MAP
 
 
 

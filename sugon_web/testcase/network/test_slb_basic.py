@@ -3,7 +3,7 @@ import pytest
 import ipaddress
 import random
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, load_data
+from sugon_web.utils.data import random_data, load_data
 
 @allure.epic('网络服务')
 @allure.feature('负载均衡')
@@ -63,7 +63,7 @@ class TestSlbBasic:
         """
         lb_name = f"lb-{params['protocol'].lower()}-{params['port']}"
         create_kwargs = {
-            "slb_name": slb,
+            "slb_name": slb["name"],
             "lb_name": lb_name,
             "protocol": params["protocol"],
             "port": params["port"],
@@ -90,7 +90,7 @@ class TestSlbBasic:
             "redirect_port": params.get("redirect_port"),
         }
 
-        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建 {params['protocol']} 监听器 {lb_name}"):
+        with allure_step_log(f"步骤1: 为负载均衡 {slb['name']} 创建 {params['protocol']} 监听器 {lb_name}"):
             vpc_page.slb_lb_create(**create_kwargs)
 
         with allure_step_log("步骤2: 验证监听器创建成功"):
@@ -101,16 +101,16 @@ class TestSlbBasic:
             vpc_page.assert_listener_exists(lb_name)
 
         with allure_step_log(f"步骤3: 删除监听器 {lb_name}"):
-            vpc_page.slb_lb_delete(slb, lb_name)
+            vpc_page.slb_lb_delete(slb["name"], lb_name)
             vpc_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
 
     @allure.title("通过SLB列表页进入监听器详情页")
     def test_goto_lb_detail_from_slb_list(self, vpc_page, slb):
         lb_name = f"lb-tcp-{random_data()}"
 
-        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建监听器 {lb_name}"):
+        with allure_step_log(f"步骤1: 为负载均衡 {slb['name']} 创建监听器 {lb_name}"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=80,
@@ -123,12 +123,12 @@ class TestSlbBasic:
             vpc_page.assert_listener_exists(lb_name)
 
         with allure_step_log(f"步骤2: 从SLB列表页进入监听器 {lb_name} 详情页"):
-            vpc_page.slb_list_goto_lb_detail(slb, lb_name)
+            vpc_page.slb_list_goto_lb_detail(slb["name"], lb_name)
             vpc_page.assert_listener_exists(lb_name)
             vpc_page.assert_lb_basic_info(lb_name)
 
         with allure_step_log(f"步骤3: 删除监听器 {lb_name}"):
-            vpc_page.slb_lb_delete(slb, lb_name)
+            vpc_page.slb_lb_delete(slb["name"], lb_name)
             vpc_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
 
     @allure.title("监听器详情编辑名称")
@@ -203,9 +203,9 @@ class TestSlbDelete:
     def test_slb_delete_with_lb(self, vpc_page, slb):
         lb_name = f"lb-tcp-{random_data()}"
 
-        with allure_step_log(f"步骤1: 为负载均衡 {slb} 创建监听器 {lb_name}"):
+        with allure_step_log(f"步骤1: 为负载均衡 {slb['name']} 创建监听器 {lb_name}"):
             vpc_page.slb_lb_create(
-                slb_name=slb,
+                slb_name=slb["name"],
                 lb_name=lb_name,
                 protocol="TCP",
                 port=80,
@@ -217,16 +217,16 @@ class TestSlbDelete:
             vpc_page.assert_popup_success(f"新建监听器 {lb_name} 成功")
             vpc_page.assert_listener_exists(lb_name)
 
-        with allure_step_log(f"步骤2: 删除仍存在监听器的负载均衡 {slb}，校验失败提示"):
+        with allure_step_log(f"步骤2: 删除仍存在监听器的负载均衡 {slb['name']}，校验失败提示"):
             vpc_page.goto_submenu("负载均衡（基础版）")
-            vpc_page.slb_delete(slb)
-            vpc_page.assert_dialog_error("该负载均衡存在监听器,不允许删除", "共删除1项，删除失败1项")
+            vpc_page.slb_delete(slb["name"])
+            vpc_page.assert_slb_dialog_error("该负载均衡存在监听器,不允许删除", "共删除1项，删除失败1项")
 
-        with allure_step_log(f"步骤3: 进入负载均衡 {slb} 详情删除监听器 {lb_name}"):
-            vpc_page.goto_slb_detail(slb, "监听器")
-            vpc_page.slb_lb_delete(slb, lb_name)
+        with allure_step_log(f"步骤3: 进入负载均衡 {slb['name']} 详情删除监听器 {lb_name}"):
+            vpc_page.goto_slb_detail(slb["name"], "监听器")
+            vpc_page.slb_lb_delete(slb["name"], lb_name)
             vpc_page.assert_popup_success(f"删除监听器 {lb_name} 成功")
 
-        with allure_step_log(f"步骤4: 再次删除负载均衡 {slb}"):
-            vpc_page.slb_delete(slb)
-            vpc_page.assert_deleted(slb)
+        with allure_step_log(f"步骤4: 再次删除负载均衡 {slb['name']}"):
+            vpc_page.slb_delete(slb["name"])
+            vpc_page.assert_deleted(slb["name"])

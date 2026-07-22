@@ -22,19 +22,30 @@ slow_mo: 0
 # 环境通用配置
 # -----------------------------------------------------------------------------
 # 默认测试环境地址
-host: 172.22.3.140
+host: 172.22.3.150
 
 # 存储池类型 (ceph/usan/local/nfs/xstor等)
-stor: xbd
+stor: zbs
 
 # 默认测试数据
 data: Autotest
 
-# 登录用户名
-username: admin
+# 默认测试用户角色 (admin/dept_admin/user)
+user_role: admin
 
-# 登录密码
-password: keystone_sugon
+# 各角色登录凭据（按角色固化配置）
+users:
+  admin:
+    username: admin
+    password: keystone_sugon
+  dept_admin:
+    username: sugoncloud
+    password: Sugon@12345
+    project: "公共测试"
+  user:
+    username: autotest-user
+    password: Sugon@12345
+    project: "公共测试"
 
 # 镜像源地址
 image_source: http://172.22.5.66:9090
@@ -47,6 +58,30 @@ pkey: pkey_scloudadmin
 
 # 默认公网网络
 network: public_net(基础版)
+
+# -----------------------------------------------------------------------------
+# BMS 裸金属回归基线配置
+# -----------------------------------------------------------------------------
+bms:
+  # BMS 操作用例复用的实例名称
+  instance_name: bms-0430
+  # BMS 带外 IP
+  bmc_ip: 172.22.2.173
+  # BMS 优先使用的物理节点
+  preferred_node: master02.cloud.local
+  # BMS 网络名称
+  network_name: bms
+  # BMS 实例登录密码
+  password: admin1234@sugon
+  # BMS 创建/重建使用的裸金属镜像
+  image_name: centos76-bms-0511-base
+  # BMS 裸金属镜像在控制节点上的目标路径
+  image_file: /home/scloudadmin/centos76-bms-0511.raw
+  # BMS 裸金属镜像下载地址
+  image_url: http://172.22.5.66:9090/offlinePackage/image_download/support-fsagent/centos76-bms-0511.raw
+  # BMS 镜像导入后端和最小系统盘
+  image_backend: bms
+  image_min_disk: 50
 
 # XStor存储配置
 xstor: |

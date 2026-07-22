@@ -1,8 +1,11 @@
 import allure
 import pytest
+import re
+from sugon_web.common.mfip_helper import MfipHelper
 from sugon_web.common.playwright import expect
-from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.testcase.compute._ecs_helpers import collect_vm_metadata
+from sugon_web.utils.logger import allure_step_log, logger
+from sugon_web.utils.data import random_data
 
 @allure.epic('网络服务')
 @allure.feature('网络安全-安全组')
@@ -26,7 +29,7 @@ class TestSGScenario:
 
         with allure_step_log(f"步骤2: 列表页，点击安全组名称进入详情，查看安全组规则。默认自带两条出方向的规则"):
             vpc_page.goto_sg_detail(sg_name)
-            directions = vpc_page.get_column_data("方向入口出口   筛选   重置 ")
+            directions = vpc_page.get_column_data("方向")
             assert len(directions) == 2, "安全组详情页默认出方向规则数非2"
 
             # 检查是否都是出口方向
@@ -172,7 +175,7 @@ class TestSGScenario:
     @allure.title("验证入方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_two_vms(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, ops_page, vpc, vm, vm_sg_binding):
+    def test_sg_two_vms(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -235,7 +238,12 @@ class TestSGScenario:
 
             with allure_step_log(f"步骤5: 生效性验证"):
                 ssh_host.ping(fip1, connected=False)
-                vm2_mfip = ops_page.bind_mfip(vm2_ip, network=network_name)
+                ecs_page.goto_submenu("弹性云服务器")
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
         finally:
@@ -255,7 +263,7 @@ class TestSGScenario:
     @allure.title("创建入方向规则-远程安全组类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_inter_binding(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, ops_page, vpc, vm, vm_sg_binding):
+    def test_sg_inter_binding(self, eip, sg, vpc_page, ssh_vm, ssh_host, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -315,7 +323,12 @@ class TestSGScenario:
                 ssh_host.ping(fip1, connected=False)
 
             with allure_step_log("步骤6: 登录vm2虚机，对vm1虚机发起ping请求，预期结果：可以ping通"):
-                vm2_mfip = ops_page.bind_mfip(vm2_ip, network=network_name)
+                ecs_page.goto_submenu("弹性云服务器")
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
 
@@ -405,7 +418,7 @@ class TestSGScenario:
     @allure.title("验证出方向规则-cidr类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_egress_rule_logic(self, sg, vpc_page, ssh_vm, ecs_page, ops_page, vpc, vm, vm_sg_binding):
+    def test_sg_egress_rule_logic(self, sg, vpc_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding, admin_browser_context, config, ssh_host):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -470,7 +483,12 @@ class TestSGScenario:
                 ssh_vm.ping(vm2_ip, connected=False)
 
             with allure_step_log(f"步骤7: 登录vm2, ping vm1, 预期结果：可以ping通"):
-                vm2_mfip = ops_page.bind_mfip(vm2_ip, network=network_name)
+                ecs_page.goto_submenu("弹性云服务器")
+                vm2_meta = collect_vm_metadata(ecs_page, ssh_host, vm2_name)
+                vm2_mfip = MfipHelper.bind_mfip_with_admin_context(
+                    admin_browser_context, config, vm2_meta["port_id"],
+                    project_id=vm2_meta.get("project_id", "admin-inner-project"),
+                )
                 ssh_vm.connect(vm2_mfip)
                 ssh_vm.ping(vm1["ip"], connected=True)
         finally:
@@ -489,7 +507,7 @@ class TestSGScenario:
     @allure.title("验证出方向规则-远程安全组类型")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_egress_inter_binding(self, sg, vpc_page, ssh_vm, ecs_page, ops_page, vpc, vm, vm_sg_binding):
+    def test_sg_egress_inter_binding(self, sg, vpc_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -597,7 +615,7 @@ class TestSGScenario:
     @allure.title("验证出方向规则-默认规则删除")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_default_egress_deletion(self, sg, vpc_page, ssh_vm, ecs_page, ops_page, vpc, vm, vm_sg_binding):
+    def test_sg_default_egress_deletion(self, sg, vpc_page, ssh_vm, ecs_page, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")
@@ -655,7 +673,7 @@ class TestSGScenario:
     @allure.title("验证云服务器详情页自定义安全组规则绑定与生效性")
     @pytest.mark.parametrize("sg", [1], indirect=True)
     @pytest.mark.parametrize("vm", [{"basic": {"count": 1}, "inject_dependencies": False}], indirect=True)
-    def test_sg_vm_binding_connectivity(self, sg, ecs_page, ops_page, vpc_page, ssh_vm, vpc, vm, vm_sg_binding):
+    def test_sg_vm_binding_connectivity(self, sg, ecs_page, vpc_page, ssh_vm, vpc, vm, vm_sg_binding):
         vm1 = vm
         sg1 = sg
         network_name = vpc.get("name")

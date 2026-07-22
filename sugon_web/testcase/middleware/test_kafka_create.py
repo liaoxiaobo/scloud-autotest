@@ -2,10 +2,10 @@ import allure
 import pytest
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import load_data, random_data, random_string
+from sugon_web.utils.data import load_data, random_data, random_string
 
 
-@allure.epic('数据库服务')
+@allure.epic('中间件')
 @allure.feature('分布式消息服务 Kafka')
 class TestKafkaCreate:
 

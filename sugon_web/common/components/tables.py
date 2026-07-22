@@ -1,3 +1,30 @@
+"""
+【职责】提供表格数据读取、行定位、列提取、勾选、排序、分页扩展等能力，返回用户可见的表头与单元格内容。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- table_headers -> list[str]：获取主内容区第一个可见表格的表头列表。
+- table_rows -> list[Locator]：获取主内容区第一个可见表格的数据行列表。
+- get_row_by_name(name) -> Locator：按名称查找数据行（前缀/精确匹配，返回最后匹配行）。
+- get_rows_by_text(text) -> Locator：按文本包含匹配数据行（返回所有命中行）。
+- get_row_data(name) -> TableRowData：按名称（前缀/精确匹配）获取整行数据，返回表头:内容的字典。
+- get_row_data_by_locator(loc) -> TableRowData：按行定位器获取整行数据。
+- get_column_data(header_name, deduplicate=True, context="auto") -> ColumnData：按表头名获取该列所有数据。
+- select_rows_by_names(names)：按名称列表勾选表格行。
+- assert_row_contains(name, expected_data, timeout=300)：断言指定行包含期望文本。
+- set_table_header(names, enable=True)：设置表头列显示/隐藏。
+- sort_by_header(header_name, order="desc")：按表头排序。
+
+【示例】
+class TestMyFeature:
+    def test_list(self, my_page):
+        row_data = my_page.get_row_data("vm-01")
+        assert row_data.get("状态") == "运行中"
+        directions = my_page.get_column_data("方向")
+        assert len(directions) == 2
+"""
+
 import re
 from typing import TYPE_CHECKING
 
@@ -16,6 +43,90 @@ class TablesMixin:
     设计为与 Playwright 组合使用，依赖 self.locator / self.logger。
     """
 
+    _HEADER_NOISE_SELECTORS = [
+        '.el-table__column-filter-trigger',
+        '.el-table-filter',
+        '.el-table__filter',
+        '.el-table__filter-panel',
+        '.el-table-filter-panel',
+        '.filter-panel',
+        '[class*="filter-panel"]',
+        '[class*="table-filter"]',
+        '.el-popper',
+        '.el-popover',
+        '.el-dropdown',
+        '.el-dropdown-menu',
+        '.el-checkbox',
+        '.el-checkbox-group',
+        '.el-radio',
+        '.el-radio-group',
+        '.caret-wrapper',
+        '.el-table__column-sorter',
+        '.el-icon-arrow-down',
+        '.el-icon-arrow-up',
+        '.el-icon--right',
+        '[class*="filter-trigger"]',
+        '[class*="sort-caret"]',
+        '[class*="sorter"]',
+        'svg',
+        'i[class^="el-icon"]',
+    ]
+
+    def _extract_header_text(self, th_locator) -> str:
+        """从单个 <th> 元素中提取纯列名文本。
+
+        通过浏览器端 JS 执行，剔除筛选按钮、排序图标、下拉箭头等
+        交互元素产生的噪声文本，返回用户可见的列标题。
+
+        Args:
+            th_locator: 表格表头单元格 (<th>) 的 Playwright Locator 对象。
+
+        Returns:
+            清洗后的列名文本；若提取失败则回退到 text_content() 的原始值。
+        """
+        try:
+            return th_locator.evaluate("""
+                (el, selectors) => {
+                    const cell = el.querySelector('.cell');
+                    if (!cell) {
+                        return el.textContent.trim();
+                    }
+
+                    // 策略1：移除已知噪声元素
+                    const clone = cell.cloneNode(true);
+                    selectors.forEach(selector => {
+                        try {
+                            clone.querySelectorAll(selector).forEach(node => node.remove());
+                        } catch (e) {}
+                    });
+                    let text = (clone.textContent || '').replace(/\\s+/g, ' ').trim();
+
+                    // 策略2：兜底——如果仍有"筛选"+"重置"或文本过长，保守取首个文本/元素节点
+                    const noiseWords = ['筛选', '重置'];
+                    const hasNoise = noiseWords.every(w => text.includes(w));
+                    if (hasNoise || text.length > 15) {
+                        for (const node of cell.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                const t = node.textContent.trim();
+                                if (t) return t;
+                            }
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                const tag = node.tagName.toLowerCase();
+                                if (tag === 'span' || tag === 'div' || tag === 'p') {
+                                    const t = node.textContent.trim();
+                                    if (t && !noiseWords.every(w => t.includes(w))) return t;
+                                }
+                            }
+                        }
+                    }
+
+                    return text;
+                }
+            """, self._HEADER_NOISE_SELECTORS)
+        except Exception as e:
+            self.logger.warning(f"精确提取表头文本失败，回退到原始方式: {e}")
+            return (th_locator.text_content() or '').strip()
+
     @property
     def table_headers(self) -> list[str]:
         """获取主内容区第一个可见表格的表头文本列表。
@@ -29,12 +140,14 @@ class TablesMixin:
         header_wrapper = self.locator("#cloud-container-content .el-table__header-wrapper:visible").first
 
         if header_wrapper.count() > 0:
-            headers = header_wrapper.locator("th").all_text_contents()
+            th_elements = header_wrapper.locator("th").all()
+            headers = [self._extract_header_text(th) for th in th_elements]
             self.logger.info(f"页面表头信息: {headers}, 共{len(headers)}个")
         else:
             self.logger.warning(f"未找到表头信息，尝试使用备用定位方式")
             if self.locator("thead").count() > 0:
-                headers = self.locator("thead:visible th").first.all_text_contents()
+                th_elements = self.locator("thead:visible th").all()
+                headers = [self._extract_header_text(th) for th in th_elements]
                 self.logger.info(f"使用备用方式获取表头信息: {headers}, 共{len(headers)}个")
             else:
                 self.logger.error(f"未找到任何表头信息")
@@ -60,62 +173,33 @@ class TablesMixin:
         return rows
 
     def get_row_by_name(self, name: str) -> Locator:
-        """公共方法: 根据名称查找数据行,用于获取单个或第一个匹配的行(前缀匹配优先)"""
+        """公共方法: 根据名称查找数据行,用于获取单个或最后一个匹配的行(前缀匹配优先)"""
+        self._expand_page_size()
         t_body = self.locator(".el-table__body-wrapper")
         if t_body.count() == 0:
             t_body = self
 
+        # 策略1：按单元格文本精确匹配（最稳定，不受行序变化影响）
         try:
-            pattern = re.compile(rf"^{re.escape(name)}\s")
-            target_rows = t_body.locator("tr").filter(has_text=pattern)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到精确匹配 {name} 的数据行(空白字符)")
-                return target_rows.first
-
-            pattern2 = re.compile(rf"^{re.escape(name)}:\w+")
-            target_rows = t_body.locator("tr").filter(has_text=pattern2)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(冒号)")
-                return target_rows.first
-
-            pattern3 = re.compile(rf"^{re.escape(name)}/\w+")
-            target_rows = t_body.locator("tr").filter(has_text=pattern3)
-            if target_rows.count() > 0:
-                self.logger.debug(f"找到带ID的匹配 {name} 的数据行(斜杠)")
-                return target_rows.first
-
+            exact_cells = t_body.locator("td").filter(
+                has_text=re.compile(rf"^\s*{re.escape(name)}\s*$")
+            )
+            if exact_cells.count() > 0:
+                self.logger.info(f"找到精确匹配 '{name}' 的数据行")
+                return exact_cells.locator("xpath=ancestor::tr[1]").last
         except Exception as e:
-            self.logger.debug(f"正则匹配失败: {e}")
+            self.logger.debug(f"精确匹配失败: {e}")
 
+        # 策略2：按单元格文本前缀匹配（兼容 "name ID:xxx"、"name/xxx" 等）
         try:
-            target_rows = t_body.locator("tr")
-            for i in range(target_rows.count()):
-                current_row = target_rows.nth(i)
-                try:
-                    cells = current_row.locator("td")
-                    for j in range(cells.count()):
-                        cell_text = cells.nth(j).text_content()
-                        if cell_text and cell_text.strip() == name:
-                            self.logger.info(f"通过遍历找到 '{name}' 的精确匹配行")
-                            return current_row
-                except Exception as e:
-                    self.logger.debug(f"检查行 {i} 时出错: {e}")
-                    continue
-
-            for i in range(target_rows.count()):
-                current_row = target_rows.nth(i)
-                try:
-                    cells = current_row.locator("td")
-                    for j in range(cells.count()):
-                        cell_text = cells.nth(j).text_content()
-                        if cell_text and cell_text.strip().startswith(name):
-                            self.logger.info(f"通过遍历找到 '{name}' 的前缀匹配行(单元格: {cell_text.strip()})")
-                            return current_row
-                except Exception as e:
-                    self.logger.debug(f"检查行 {i} 时出错: {e}")
-                    continue
+            prefix_cells = t_body.locator("td").filter(
+                has_text=re.compile(rf"^\s*{re.escape(name)}")
+            )
+            if prefix_cells.count() > 0:
+                self.logger.info(f"找到前缀匹配 '{name}' 的数据行")
+                return prefix_cells.locator("xpath=ancestor::tr[1]").last
         except Exception as e:
-            self.logger.info(f"遍历表格行失败: {e}")
+            self.logger.debug(f"前缀匹配失败: {e}")
 
         raise AssertionError(f"未找到名称为 '{name}' 的数据行")
 
@@ -155,7 +239,7 @@ class TablesMixin:
         try:
             target_row = self.get_row_by_name(name)
         except AssertionError as e:
-            self.logger.error(f"获取数据行失败: {str(e)}")
+            self.logger.warning(f"获取数据行失败: {str(e)}")
             raise
 
         table_index = target_row.evaluate("""
@@ -167,7 +251,9 @@ class TablesMixin:
         """)
 
         if table_index != -1:
-            headers = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper th").all_text_contents()
+            header_wrapper = self.locator(".el-table").nth(table_index).locator(".el-table__header-wrapper")
+            th_elements = header_wrapper.locator("th").all()
+            headers = [self._extract_header_text(th) for th in th_elements]
         else:
             headers = self.table_headers
 
@@ -236,7 +322,8 @@ class TablesMixin:
                 if header_wrapper.count() == 0:
                     continue
 
-                headers = header_wrapper.locator("th").all_text_contents()
+                th_elements = header_wrapper.locator("th").all()
+                headers = [self._extract_header_text(th) for th in th_elements]
 
                 if header_name in headers:
                     visible_table = table
@@ -283,16 +370,146 @@ class TablesMixin:
         self.logger.info(f"获取到的列数据共{len(column_data)}条: {column_data}")
         return column_data
 
+    def _find_page_size_scope(self) -> Locator | None:
+        """自动探测含可见分页条数切换器的容器。
+
+        优先可见弹窗/抽屉（分页器大概率在其中），其次列表区（激活 tab / 主内容区）。
+        用 :visible 与 is_visible() 同步过滤，避免对隐藏候选逐个 expect 产生无效等待。
+        """
+        sizes_inner = self.page.locator(".el-pagination__sizes .el-input__inner")
+        candidates = [
+            ("dialog/drawer", self.page.locator(
+                ".el-dialog:visible, .el-dialog__wrapper:visible, "
+                ".one-dialog-box:visible, .el-drawer:visible"
+            )),
+            ("active-tab", self.locator(".el-tab-pane:not([aria-hidden='true'])")),
+            ("main-content", self.locator("#cloud-container-content")),
+        ]
+        for label, base in candidates:
+            for candidate in base.filter(has=sizes_inner).all():
+                if candidate.is_visible():
+                    # self.logger.info(f"自动探测到分页容器: {label}")
+                    return candidate
+        return None
+
+    def _expand_page_size(self, target_size: str = "50", container: Locator | None = None) -> bool:
+        """尝试将当前交互上下文中的分页条数扩大。
+
+        显式传入 container（如弹窗）时直接使用；未传入时自动探测可见分页容器
+        （优先可见弹窗/抽屉，其次列表区）。探测和点击均用 expect 智能等待。
+
+        点击前先判断：当前条数已达标、或数据量不足一页时，直接返回避免无效点击。
+        点击后优先选 target_size，没有则依次尝试 100/50 条/页；未找到匹配项按 ESC 关闭下拉。
+
+        Args:
+            target_size: 目标分页条数，默认 "50"
+            container: 可选，指定分页器所在容器 Locator（如弹窗）。
+
+        Returns:
+            bool: 是否成功调整分页条数
+        """
+        # 确定分页容器：显式传入优先，否则自动探测
+        search_scope = container if container is not None else self._find_page_size_scope()
+        if search_scope is None:
+            self.logger.debug("未找到可见的分页器容器")
+            return False
+
+        # 在确定容器内定位分页条数切换器（容器内必有，给异步渲染留出等待）
+        size_trigger = search_scope.locator(".el-pagination__sizes .el-input__inner").first
+        try:
+            expect(size_trigger).to_be_visible(timeout=5000)
+        except AssertionError:
+            self.logger.debug("未找到可见的分页条数切换器")
+            return False
+
+        try:
+            current_text = size_trigger.input_value() or size_trigger.text_content() or ""
+            current_match = re.search(r"(\d+)", current_text)
+            current_size = int(current_match.group(1)) if current_match else None
+            if current_size is not None and current_size >= int(target_size):
+                return True
+
+            # 当前列表数据量小于当前分页条数时，无需切换分页。
+            # 优先从分页器的总条数元素读取真实数据总量，取不到再回退到当前页可见行数。
+            rows_count = None
+            total_locator = search_scope.locator(".el-pagination__total")
+            try:
+                if total_locator.count() > 0:
+                    total_text = total_locator.first.text_content() or ""
+                    total_match = re.search(r"(\d+)", total_text)
+                    if total_match:
+                        rows_count = int(total_match.group(1))
+            except Exception:
+                rows_count = None
+
+            if rows_count is None:
+                table = search_scope.locator(".el-table:visible").first
+                if table.count() > 0:
+                    try:
+                        rows_count = table.locator(".el-table__body-wrapper tr").count()
+                    except Exception:
+                        rows_count = None
+
+            if current_size is not None and rows_count is not None and rows_count < current_size:
+                return True
+        except Exception:
+            pass
+
+        try:
+            expect(size_trigger).to_be_enabled(timeout=10000)
+            size_trigger.click(timeout=10000)
+
+            # Element UI select dropdown 可能 teleport 到 body，优先在容器内查找，
+            # 容器内没有匹配项时立即回退到全局可见下拉，避免在容器内空等完整超时。
+            for size_text in [f"{target_size}条/页", "100条/页", "50条/页"]:
+                scope_option = search_scope.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                page_option = self.page.locator("div.el-select-dropdown:visible li").filter(has_text=size_text).last
+                option = scope_option if scope_option.count() > 0 else page_option
+                expect(option).to_be_visible(timeout=5000)
+
+                option.click(timeout=10000)
+                if hasattr(self, "wait_for_page_ready"):
+                    self.wait_for_page_ready()
+                else:
+                    try:
+                        expect(self.page.locator(".el-loading-mask")).to_be_hidden(timeout=10000)
+                    except AssertionError:
+                        pass
+                self.logger.info(f"分页条数已调整为 {size_text}")
+                return True
+
+            # 点开了下拉但没找到选项，关闭下拉避免遮挡后续操作
+            self.page.keyboard.press("Escape")
+            self.logger.warning(f"未找到目标分页选项 {target_size}，已关闭下拉")
+            return False
+
+        except Exception as e:
+            self.logger.warning(f"扩大分页条数失败: {e}")
+            return False
+
     def select_rows_by_names(self, names: list[str]) -> None:
         """公共方法: 根据名称列表勾选表格行
+
+        兼容 Element UI 表格：行可能没有可访问名称(role=row[name])，
+        因此通过 get_row_by_name 定位行，再点击行内复选框的 label。
 
         Args:
             names: 资源名称列表
         """
+        # 先尝试扩大分页条数，让尽可能多的目标行在同一页可见
+        self._expand_page_size()
+
         for name in names:
-            loc = self.get_by_role("row", name=name).locator("label span").last
-            if not loc.is_checked():
-                loc.click()
+            row = self.get_row_by_name(name)
+            row.scroll_into_view_if_needed()
+            # Element UI 复选框：原生 input 隐藏，点击 label 触发选中
+            checkbox_label = row.locator(".el-checkbox").first
+            checkbox_input = row.locator(".el-checkbox__original").first
+            if checkbox_input.count() > 0 and not checkbox_input.is_checked():
+                if checkbox_label.count() > 0:
+                    checkbox_label.click(force=True)
+                else:
+                    checkbox_input.check(force=True)
                 self.logger.info(f"勾选资源 '{name}'")
 
     def get_row_data_by_locator(self, loc: Locator) -> TableRowData:
@@ -393,3 +610,27 @@ class TablesMixin:
         else:
             caret_wrapper.locator("i.ascending").click()
             self.logger.info(f"已按 {header_name} 升序排列")
+
+    def _get_interactive_row(self, row: Locator) -> Locator:
+        """获取可交互的行（优先返回 fixed-right 层，避免被遮挡）"""
+        try:
+            # 1. 获取当前行在所属 tbody 中的物理索引
+            row_index = row.evaluate("el => Array.from(el.parentNode.children).indexOf(el)")
+
+            # 2. 获取当前所属表格在页面所有 el-table 中的索引，用于解决多表格共存时的定位偏移
+            table_index = row.evaluate("""
+                el => {
+                    const table = el.closest('.el-table');
+                    if (!table) return -1;
+                    return Array.from(document.querySelectorAll('.el-table')).indexOf(table);
+                }
+            """)
+
+            if table_index != -1:
+                # 3. 在对应的表格内根据索引定位固定列中心对应的行
+                fixed_right = self.locator(".el-table").nth(table_index).locator(".el-table__fixed-right .el-table__row").nth(row_index)
+                if fixed_right.count() > 0 and fixed_right.is_visible():
+                    return fixed_right
+        except Exception as e:
+            self.logger.debug(f"通过索引获取可交互行时出错: {e}")
+        return row

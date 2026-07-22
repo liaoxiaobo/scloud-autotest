@@ -5,7 +5,7 @@ import allure
 from playwright.sync_api import expect
 
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 
 
 @allure.epic('存储服务')
@@ -31,12 +31,18 @@ class TestOBSFolderShare:
                 re.compile(r"/detail|/bucket")
             )
             obs_page.obs_object_tab_click()
+            obs_page.wait_for_page_ready()
+            obs_page.page.wait_for_timeout(3000)
             obs_page.obs_folder_create(folder_name)
             obs_page.assert_list_contain(folder_name)
 
         with allure_step_log("步骤2: 进入文件夹并批量上传对象"):
             obs_page.obs_object_enter_folder(folder_name)
+            obs_page.wait_for_page_ready()
+            obs_page.page.wait_for_timeout(2000)
             obs_page.obs_object_batch_upload(batch_files)
+            # 批量上传后列表异步刷新，需较长时间等待后台处理
+            obs_page.page.wait_for_timeout(15000)
             for f in batch_files:
                 fname = os.path.basename(f)
                 obs_page.assert_object_list_contain(fname)
@@ -124,13 +130,9 @@ class TestOBSFolderShare:
         with allure_step_log("步骤8: 关闭分享弹窗"):
             obs_page.obs_folder_share_close()
 
-        with allure_step_log("清理: 删除文件夹及对象"):
-            obs_page.obs_object_tab_click()
-            obs_page.obs_object_enter_folder(folder_name)
-            for f in batch_files:
-                fname = os.path.basename(f)
-                obs_page.obs_object_delete(fname)
-                obs_page.assert_deleted(fname)
+        with allure_step_log("清理: 删除文件夹"):
             obs_page.obs_object_back_to_list(bucket["name"])
+            obs_page.obs_object_tab_click()
+            obs_page.wait_for_page_ready()
             obs_page.obs_folder_delete(folder_name)
             obs_page.assert_deleted(folder_name)

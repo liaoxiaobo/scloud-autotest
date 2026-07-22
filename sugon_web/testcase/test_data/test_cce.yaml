@@ -1,0 +1,44 @@
+cce:
+    test_cce_create:
+        - version: "1.20.4"
+          container_runtime: "docker"
+          proxy_mode: "ipvs"
+          network_model: "flannel"
+          node_count: 4
+          volume_size: 50
+          flavor: "cce.d6.large"
+        - version: "1.20.4"
+          container_runtime: "docker"
+          proxy_mode: "iptables"
+          network_model: "calico"
+          node_count: 4
+          volume_size: 50
+          flavor: "cce.d6.large"
+        - version: "1.22.17"
+          container_runtime: "docker"
+          proxy_mode: "ipvs"
+          network_model: "flannel"
+          node_count: 4
+          volume_size: 50
+          flavor: "cce.d6.large"
+        - version: "1.22.17"
+          container_runtime: "docker"
+          proxy_mode: "iptables"
+          network_model: "calico"
+          node_count: 4
+          volume_size: 50
+          flavor: "cce.d6.large"
+        - version: "1.22.17"
+          container_runtime: "containerd"
+          proxy_mode: "ipvs"
+          network_model: "flannel"
+          node_count: 4
+          volume_size: 50
+          flavor: "cce.d6.large"
+        - version: "1.22.17"
+          container_runtime: "containerd"
+          proxy_mode: "iptables"
+          network_model: "calico"
+          node_count: 5
+          volume_size: 60
+          flavor: "cce.d6.xlarge"

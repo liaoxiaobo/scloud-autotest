@@ -35,13 +35,13 @@ class OpsPage(BasePage):
             timeout: 接口等待超时时间（毫秒）
         """
         self.get_by_placeholder(placeholder).click()
-        dropdown = self.page.locator(".el-select-dropdown:visible")
+        # 过滤掉正在离开动画中的旧下拉框，避免 ElementUI 动画期间同时存在两个可见下拉框导致 strict mode 冲突
+        dropdown = self.page.locator(
+            ".el-select-dropdown:visible:not(.el-zoom-in-top-leave-active):not(.el-zoom-in-top-leave-to)"
+        ).last
+        expect(dropdown).to_be_visible(timeout=timeout)
 
-        if locator_type == "title":
-            target_item = self.get_by_title(value)
-        else:
-            target_item = dropdown.get_by_role("listitem").filter(has_text=re.compile(rf"^{re.escape(value)}$"))
-            expect(target_item).to_have_count(1, timeout=timeout)
+        # 若指定了接口模式，先等待异步接口返回，确保选项已加载
         if api_url_pattern:
             try:
                 with self.page.expect_response(
@@ -52,15 +52,37 @@ class OpsPage(BasePage):
                     ),
                     timeout=timeout
                 ):
-                    self.page.wait_for_timeout(1000)
-                    target_item.click()
-                logger.info(f"选择 '{value}' 后已捕获接口: {api_url_pattern}")
+                    pass
+                logger.info(f"下拉框选项接口已返回: {api_url_pattern}")
             except PlaywrightTimeoutError:
-                logger.warning(f"选择 '{value}' 后未捕获接口 {api_url_pattern}")
-                target_item.click()
-        else:
-            self.page.wait_for_timeout(2000)
-            target_item.click()
+                logger.warning(f"未捕获接口 {api_url_pattern}，继续轮询等待选项")
+
+        # 轮询等待目标选项出现在下拉框中（慢环境/异步加载兼容）
+        target_item = None
+        for _ in range(30):
+            candidate = dropdown.locator(".el-select-dropdown__item").filter(
+                has_text=re.compile(re.escape(value))
+            ).first
+            if candidate.count() > 0 and candidate.is_visible():
+                target_item = candidate
+                break
+            self.page.wait_for_timeout(500)
+
+        if target_item is None:
+            # 兜底：获取当前所有选项文本用于诊断
+            all_items = dropdown.locator(".el-select-dropdown__item")
+            item_texts = []
+            for i in range(min(all_items.count(), 20)):
+                try:
+                    item_texts.append(all_items.nth(i).inner_text(timeout=2000))
+                except Exception:
+                    pass
+            raise AssertionError(
+                f"下拉框选项 '{value}' 未找到。当前可见选项: {item_texts}"
+            )
+
+        target_item.scroll_into_view_if_needed(timeout=timeout)
+        target_item.click(force=True)
 
     @submenu("平台网络")
     def mfip_create(self, project: str, network: str, ip: str, exact: bool = True):
@@ -79,7 +101,9 @@ class OpsPage(BasePage):
         # 选择端口
         self.get_by_placeholder("请选择端口").click()
         self.page.wait_for_timeout(500)
-        dropdown = self.page.locator(".el-select-dropdown:visible")
+        dropdown = self.page.locator(
+            ".el-select-dropdown:visible:not(.el-zoom-in-top-leave-active):not(.el-zoom-in-top-leave-to)"
+        ).last
         option = dropdown.get_by_text(ip, exact=exact).first
         option.click()
         self.get_by_label("新建管理IP").get_by_text("确定").click()

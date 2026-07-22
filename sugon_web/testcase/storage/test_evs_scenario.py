@@ -2,10 +2,9 @@ import re
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log
-from sugon_web.utils.util import random_data, skip_stor
+from sugon_web.utils.data import random_data
+from sugon_web.utils.decorators import skip_stor
 
-@allure.epic('存储服务')
-@allure.feature('云硬盘')
 @allure.story('云硬盘-业务场景覆盖验证')
 class TestEVSScenario:
 

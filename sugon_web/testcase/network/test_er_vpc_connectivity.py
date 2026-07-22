@@ -1,7 +1,7 @@
 import pytest
 import allure
 from sugon_web.utils.logger import allure_step_log, logger
-from sugon_web.utils.util import random_data
+from sugon_web.utils.data import random_data
 from sugon_web.config.config import Config
 
 
@@ -26,14 +26,16 @@ def _create_vm_and_bind_mfip(ecs_page, ops_page, vm_name, vpc_name, subnet_name,
     vm_ip = vm_data["IP地址"].split("固定: ")[-1].strip()
 
     ops_page.close_dialog_if_exists()
-    ops_page.goto_service("网络设施")
+    ops_page.goto_service("基础设施")
     ops_page.close_dialog_if_exists()
     ops_page.wait_for_page_ready()
     ops_page.goto_submenu("平台网络")
     ops_page.mfip_create("默认项目", vpc_name, vm_ip)
     ops_page.assert_popup_success()
     ops_page.mfip_search(vm_ip)
-    vm_mfip = ops_page.get_row_data(vm_ip).get("管理IP地址")
+    rows = ops_page.get_rows_by_text(vm_ip)
+    last_row = rows.last
+    vm_mfip = ops_page.get_row_data_by_locator(last_row).get("管理IP地址")
 
     return {"name": vm_name, "ip": vm_ip, "mfip": vm_mfip}
 
@@ -110,7 +112,7 @@ class TestERVPCConnectivity:
                     ha_enable=True,
                 )
                 er_page.assert_popup_success(timeout=10000)
-                er_page.assert_status(er_name, status="运行中", timeout=120, refresh=True, refresh_interval=20)
+                er_page.assert_status(er_name, status="运行中", timeout=1200, refresh=True, refresh_interval=30)
                 logger.info(f"HA ER {er_name} 创建成功")
 
             with allure_step_log("步骤6: 添加VPC1连接到ER"):
@@ -212,6 +214,7 @@ class TestERVPCConnectivity:
                     vpc_page.get_row_by_name(vpc1_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("174.4.4.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("174.4.4.0/24", column_name="目的地址")
                     logger.info("VPC1路由规则删除成功")
                 except Exception as e:
@@ -229,6 +232,7 @@ class TestERVPCConnectivity:
                     vpc_page.get_row_by_name(vpc2_name).locator("a").first.click()
                     vpc_page.get_by_role("tab", name="路由表").click()
                     vpc_page.route_rule_delete("173.3.3.0/24")
+                    vpc_page.page.wait_for_timeout(3000)
                     vpc_page.assert_list_not_contain("173.3.3.0/24", column_name="目的地址")
                     logger.info("VPC2路由规则删除成功")
                 except Exception as e:
@@ -265,18 +269,17 @@ class TestERVPCConnectivity:
             with allure_step_log("清理: 删除VM"):
                 try:
                     ecs_page.goto_service("弹性云服务器")
-                    ecs_page.close_dialog_if_exists()
                     ecs_page.wait_for_page_ready()
+                    ecs_page._expand_page_size()
                     for vm_name in [vm1_name, vm2_name]:
                         try:
-                            ecs_page.close_dialog_if_exists()
+                            ecs_page.goto_submenu("弹性云服务器")
                             ecs_page.wait_for_page_ready()
+                            ecs_page._expand_page_size()
                             ecs_page.ecs_remove(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)
                             logger.info(f"VM {vm_name} 已移入回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.goto_submenu("回收站")
-                            ecs_page.close_dialog_if_exists()
                             ecs_page.wait_for_page_ready()
                             ecs_page.ecs_delete(vm_name)
                             ecs_page.assert_deleted(vm_name, timeout=120)

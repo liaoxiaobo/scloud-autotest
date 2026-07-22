@@ -110,6 +110,7 @@ class ErMixin(BasePage):
         with allure_step_log("点击立即创建"):
             submit_btn = dialog.get_by_text("立即创建", exact=True)
             expect(submit_btn).to_be_visible(timeout=5000)
+            self.page.wait_for_timeout(2000)
             submit_btn.click()
 
     def er_delete(self, name: str):
@@ -428,6 +429,7 @@ class ErMixin(BasePage):
                 dest_input = dialog_body.get_by_placeholder("必填 如：10.0.13.0/24")
                 expect(dest_input).to_be_visible(timeout=5000)
                 dest_input.fill(destination)
+                self.page.wait_for_timeout(1000)
 
             # 选择下一跳类型
             with allure_step_log(f"选择下一跳类型: {next_hop_type}"):
@@ -559,8 +561,11 @@ class ErMixin(BasePage):
         with allure_step_log(f"删除路由表规则: {destination}"):
             # 在路由表列表中找到包含目的地址的行，点击删除
             self.click_action(destination, "删除")
-            # 确认删除对话框
-            dialog = self.page.locator(".el-dialog__wrapper:visible")
+            self.page.wait_for_timeout(500)
+            # 确认删除对话框（兼容 el-dialog 与 sugon-dialog 两种实现）
+            dialog = self.page.locator(
+                ".el-dialog__wrapper:visible, .sugon-dialog:visible, .el-message-box__wrapper:visible"
+            ).first
             expect(dialog).to_be_visible(timeout=5000)
             expect(dialog).to_contain_text("删除", timeout=3000)
             self.dialog_confirm.click()

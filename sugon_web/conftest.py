@@ -1,3 +1,21 @@
+"""
+全局 Pytest 配置与 Session/Class/Function 级 Fixture 定义。
+
+职责范围:
+- 命令行参数注册 (pytest_addoption)
+- 运行产物目录隔离与 Allure 配置 (pytest_configure)
+- 浏览器/上下文/页面生命周期管理
+- 登录态维护与自动重试登录
+- SSH 连接、节点信息探测、部署模式与补丁版本初始化
+- 测试失败自动截图并附加到 Allure
+
+============================================================
+⚠️ 重要提示：该文件禁止修改已有方法 ⚠️
+如需新增功能，请仅通过新增函数/fixture 实现。
+严禁直接改动现有代码。
+============================================================
+"""
+
 import datetime
 import os
 import re
@@ -7,8 +25,9 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from sugon_web.utils.logger import logger, allure_step_log
-from sugon_web.utils.util import get_file_abspath, capture_failure_screenshot, get_page_from_item
+from sugon_web.utils.logger import logger
+from sugon_web.utils.data import get_file_abspath
+from sugon_web.utils.hooks import capture_failure_screenshot, get_page_from_item
 from sugon_web.common.remote.ssh import SSH
 from sugon_web.common.base import BasePage
 from sugon_web.config.config import Config
@@ -19,8 +38,20 @@ def pytest_addoption(parser):
     parser.addoption("--browser-type", action="store", help="指定浏览器类型 (chromium/firefox/webkit)")
     parser.addoption("--headless", action="store", help="是否无头模式 (true/false)")
     parser.addoption("--stor", action="store", help="指定存储类型")
-    parser.addoption("--username", action="store", help="登录用户名")
-    parser.addoption("--password", action="store", help="登录密码")
+    parser.addoption("--user-role", action="store", default=None, help="指定测试用户角色 (admin/dept_admin/user)，未指定时使用 base.yaml 中的 user_role")
+    parser.addoption("--tracing", action="store_true", default=False, help="开启 Playwright tracing")
+    parser.addoption("--env-label", action="store", default=None, help="多环境执行时的环境标识，用于隔离 allure-result 与 logs 目录")
+    parser.addoption("--bms-instance-name", action="store", help="指定BMS复用实例名称，覆盖配置文件 bms.instance_name")
+    parser.addoption("--bms-bmc-ip", action="store", help="指定BMS带外IP，覆盖配置文件 bms.bmc_ip")
+    parser.addoption("--bms-preferred-node", action="store", help="指定BMS优先物理节点，覆盖配置文件 bms.preferred_node")
+    parser.addoption("--bms-network-name", action="store", help="指定BMS网络名称，覆盖配置文件 bms.network_name")
+    parser.addoption("--bms-password", action="store", help="指定BMS实例登录密码，覆盖配置文件 bms.password")
+    parser.addoption(
+        "--smoke",
+        action="store_true",
+        default=False,
+        help="冒烟模式：等同 -m smoke，任一用例失败立即停止（-x），简化输出（--tb=line）",
+    )
 
 def _get_run_id_from_args(config):
     """从 pytest 命令行参数提取运行标识，保留与 sugon_web/testcase 一致的目录层级"""
@@ -81,15 +112,41 @@ def _get_run_id_from_args(config):
     return "default"
 
 
+def _get_explicit_allure_dir(config, project_root):
+    """Return the CLI --alluredir path when one is provided."""
+    report_dir = getattr(config.option, "allure_report_dir", None)
+    if not report_dir:
+        return None, None
+
+    allure_dir = Path(report_dir)
+    if not allure_dir.is_absolute():
+        allure_dir = project_root / allure_dir
+    allure_dir = allure_dir.resolve()
+
+    try:
+        run_id = allure_dir.relative_to(project_root / "allure-result").as_posix()
+    except ValueError:
+        run_id = None
+
+    return allure_dir, run_id
+
+
 def pytest_configure(config):
     """pytest 配置钩子，用于设置日志文件路径和 allure-result 目录"""
 
     # 获取项目根目录
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
+    explicit_allure_dir, explicit_run_id = _get_explicit_allure_dir(config, project_root)
 
     # 从命令行参数提取运行标识（测试文件名或类名）
     run_id = _get_run_id_from_args(config)
+    env_label = config.getoption("--env-label")
+    if explicit_run_id:
+        run_id = explicit_run_id
+    elif env_label:
+        # 多环境调度执行时，直接用 env-label 作为产物目录，与 Jenkins 调度 label 对齐
+        run_id = env_label
     os.environ['_PYTEST_RUN_ID'] = run_id
 
     # 创建 logs 子目录（按 run_id 隔离）
@@ -102,7 +159,7 @@ def pytest_configure(config):
     config.option.log_file = str(log_file_path)
 
     # 创建 allure-result 子目录（按 run_id 隔离），仅清理本子目录历史数据
-    allure_dir = project_root / "allure-result" / run_id
+    allure_dir = explicit_allure_dir or (project_root / "allure-result" / run_id)
     if allure_dir.exists():
         import shutil
         shutil.rmtree(allure_dir)
@@ -110,6 +167,93 @@ def pytest_configure(config):
 
     # 设置 allure-result 目录路径
     config.option.allure_report_dir = str(allure_dir)
+
+    if config.getoption("--smoke", default=False):
+        config.option.maxfail = 1
+        config.option.tb = "line"
+        if config.option.markexpr:
+            config.option.markexpr = f"({config.option.markexpr}) and smoke"
+        else:
+            config.option.markexpr = "smoke"
+
+
+def pytest_collection_modifyitems(config, items):
+    """保持 BMS 用例在串行执行时按资源生命周期顺序运行。"""
+    bms_file_order = {
+        "image_prepare": 0,
+        "network_prepare": 1,
+        "soft_create": 2,
+        "sanity": 3,
+        "bind_eip": 4,
+        "monitor": 5,
+        "rename": 6,
+        "security_group": 7,
+        "label": 8,
+        "remove_label": 9,
+        "shutdown": 10,
+        "start": 11,
+        "rebuild": 12,
+        "cleanup": 13,
+    }
+
+    def _bms_order_key(item):
+        filename = item.path.name
+        for name_part, order in sorted(bms_file_order.items(), key=lambda item: len(item[0]), reverse=True):
+            if name_part in filename:
+                return order, filename, item.nodeid
+        number_match = re.search(r"test_bms_(\d+)", filename)
+        if number_match:
+            return int(number_match.group(1)), filename, item.nodeid
+        return 999, filename, item.nodeid
+
+    bms_items = [
+        item
+        for item in items
+        if "/testcase/compute/test_bms" in str(item.path).replace("\\", "/")
+    ]
+    for item in bms_items:
+        item.add_marker("bms")
+        filename = item.path.name
+        if (
+            "image_prepare" in filename
+            or "network_prepare" in filename
+            or "soft_create" in filename
+            or "sanity" in filename
+        ):
+            item.add_marker("bms_prepare")
+        elif "rebuild" in filename or "cleanup" in filename:
+            item.add_marker("bms_destructive")
+        else:
+            item.add_marker("bms_regression")
+    if len(bms_items) > 1:
+        ordered_bms_items = iter(sorted(bms_items, key=_bms_order_key))
+        for index, item in enumerate(items):
+            if item in bms_items:
+                items[index] = next(ordered_bms_items)
+
+    # 为每个测试用例注入 host/stor 环境 tag，替代 inject_env_tags.py 的事后注入
+    host = config.getoption("--host")
+    stor = config.getoption("--stor")
+    for item in items:
+        if host:
+            item.add_marker(allure.tag(f"host:{host}"))
+        if stor:
+            item.add_marker(allure.tag(f"stor:{stor}"))
+
+    # 非 admin 角色自动跳过尚未适配的 admin 专属用例
+    user_role = config.getoption("--user-role")
+    if user_role is None:
+        # pytest_collection_modifyitems 在 config fixture 之前运行，
+        # 需要手动加载 base.yaml 才能读取默认 user_role
+        Config.load(host=config.getoption("--host"))
+        user_role = Config.get("user_role", "admin")
+    if user_role != "admin":
+        skip_marker = pytest.mark.skip(
+            reason=f"当前用例仅支持 admin 执行，暂未适配测试用户角色 '{user_role}'"
+        )
+        for item in items:
+            if item.get_closest_marker("requires_admin"):
+                item.add_marker(skip_marker)
 
 
 @pytest.fixture(scope="session")
@@ -120,8 +264,7 @@ def config(pytestconfig):
     browser_type = pytestconfig.getoption("--browser-type")
     headless = pytestconfig.getoption("--headless")
     stor = pytestconfig.getoption("--stor")
-    username = pytestconfig.getoption("--username")
-    password = pytestconfig.getoption("--password")
+    user_role = pytestconfig.getoption("--user-role")
 
     # 加载配置
     Config.load(host=host)
@@ -131,9 +274,20 @@ def config(pytestconfig):
         browser=browser_type,
         headless=headless,
         stor=stor,
-        username=username,
-        password=password
+        user_role=user_role
     )
+
+    # 根据当前角色从 users 配置中读取登录凭据
+    resolved_role = Config.get("user_role", "admin")
+    users = Config.get("users", {})
+    role_cfg = users.get(resolved_role, {})
+    username = role_cfg.get("username", "")
+    password = role_cfg.get("password", "")
+    if not username or not password:
+        logger.warning(f"未找到角色 '{resolved_role}' 的登录凭据配置，请检查 base.yaml/env.yaml 中的 users 配置")
+    Config.set("username", username)
+    Config.set("password", password)
+
     logger.info(f"测试配置加载完成: {Config.get()}")
     return Config
 
@@ -157,8 +311,12 @@ def browser(config):
             browser = getattr(p, browser_type).launch(
                 headless=headless,
                 slow_mo=slow_mo,
-                args=["--ignore-certificate-errors", "--ignore-certificate-errors-spki-list"],
-            )
+                args=["--ignore-certificate-errors",
+                      "--ignore-certificate-errors-spki-list",
+                      "--disable-gpu",
+                      "--disable-dev-shm-usage",
+                      "--no-sandbox",
+                      ])
             logger.info(f"浏览器 {browser_type} 启动成功")
 
             yield browser
@@ -183,44 +341,135 @@ def browser_context(browser, request):
     context = browser.new_context(
         ignore_https_errors=True,  # 忽略 SSL 错误
         permissions=["clipboard-read", "clipboard-write"],  # 剪贴板权限
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
     )
+
+    # 根据 --tracing 参数决定是否开启 Playwright tracing
+    trace_enabled = request.config.getoption("--tracing")
+    trace_path = None
+    if trace_enabled:
+        trace_dir = Path(__file__).resolve().parent.parent / "traces"
+        trace_dir.mkdir(exist_ok=True)
+        trace_path = trace_dir / f"trace_{request.node.name}.zip"
+        # screenshots=False + sources=False 大幅减小 trace 体积（约90%），
+        # 保留 snapshots=True 以获取 DOM 结构用于失败分析（弹窗内容、数据量等）
+        context.tracing.start(screenshots=False, snapshots=True, sources=False)
+        logger.info(f"tracing 已开启，trace 文件将保存至: {trace_path}")
 
     logger.info("浏览器上下文创建成功")
     request.node._browser_context = context
 
     yield context
 
+    if trace_enabled and trace_path:
+        context.tracing.stop(path=str(trace_path))
+        logger.info(f"tracing 已停止，trace 文件: {trace_path}")
     context.close()
     logger.info("浏览器上下文已关闭")
 
 
+def _get_admin_credentials(config):
+    """获取 admin 账号密码，优先使用 users.admin 配置。"""
+    admin_cfg = config.get("users", {}).get("admin", {})
+    username = admin_cfg.get("username")
+    password = admin_cfg.get("password")
+    if not username or not password:
+        logger.warning("未配置 users.admin 凭据，admin 相关操作将回退到当前角色凭据")
+        username = config.get("username")
+        password = config.get("password")
+    return username, password
+
+
+def _create_admin_logged_in_page(admin_browser_context, config):
+    """基于 admin browser context 创建并返回一个已登录的 admin page。"""
+    from sugon_web.common.auth import prepare_page_session
+
+    base_url = config.get("base_url")
+    username, password = _get_admin_credentials(config)
+
+    logger.info("创建 admin page...")
+    page = admin_browser_context.new_page()
+
+    try:
+        prepare_page_session(page, config, username=username, password=password)
+
+        # 安全网：若URL异常（如 no-permission），重新加载以恢复
+        if "no-permission" in page.url:
+            logger.info(f"admin page 在 no-permission，尝试重新加载恢复...")
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+
+        base_page_obj = BasePage(page)
+        base_page_obj.close_dialog_if_exists()
+
+        logger.info("admin page 创建并登录成功")
+        return page
+    except Exception:
+        page.close()
+        raise
+
+
+@pytest.fixture(scope="session")
+def admin_browser_context(browser, config):
+    """
+    Session 级 admin 浏览器上下文。
+
+    用于普通用户角色执行测试时，需要 admin 权限的辅助操作
+    （如 ops 页面、MFIP 绑定、环境准备等）。
+    上下文在 session 开始时完成 admin 登录并复用登录态，
+    避免每次需要 admin 操作时都重新登录。
+    """
+    logger.info("开始初始化 admin browser context")
+
+    context = browser.new_context(
+        ignore_https_errors=True,  # 忽略 SSL 错误
+        timezone_id="Asia/Shanghai",  # 固定浏览器时区为北京时间
+    )
+
+    try:
+        warmup_page = _create_admin_logged_in_page(context, config)
+        logger.info("admin browser context 登录成功")
+        warmup_page.close()
+    except Exception as e:
+        context.close()
+        logger.error(f"admin browser context 初始化失败: {e}")
+        raise
+
+    logger.info("admin browser context 初始化成功")
+    yield context
+
+    logger.info("admin browser context 关闭中...")
+    context.close()
+    logger.info("admin browser context 已关闭")
+
+
 def _create_logged_in_page(browser_context, config):
     """基于给定的 context 创建并返回一个已登录页面。"""
+    from sugon_web.common.auth import prepare_page_session
+
     base_url = config.get("base_url")
-    username = config.get("username")
-    password = config.get("password")
 
     logger.info("创建新页面...")
     page = browser_context.new_page()
     logger.info("页面创建成功")
 
-    logger.info(f"导航到目标URL: {base_url}")
-    page.goto(base_url, wait_until="domcontentloaded")
-    logger.info(f"页面导航完成，当前URL: {page.url}")
+    prepare_page_session(page, config)
 
-    try:
-        # 首次访问后，前端通常会异步跳转到首页或登录页，先等待路由稳定。
-        page.wait_for_url(re.compile(r".*#/(index|login)$"), timeout=10000)
-    except Exception:
-        logger.debug(f"首次访问后未在预期时间内跳转到首页/登录页，当前URL: {page.url}")
-    logger.info(f"页面导航完成，当前URL: {page.url}")
+    # 安全网：若URL异常（如 no-permission），重新加载以恢复
+    if "no-permission" in page.url:
+        logger.info(f"页面在 no-permission，尝试重新加载恢复...")
+        try:
+            page.goto(base_url)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"重新加载后URL: {page.url}")
+        except Exception as e:
+            logger.warning(f"重新加载失败: {e}")
 
-    if not _is_logged_in(page):
-        _login(page, {"username": username, "password": password})
-        logger.info("登录成功")
-
-        base_page_obj = BasePage(page)
-        base_page_obj.close_dialog_if_exists()
+    base_page_obj = BasePage(page)
+    base_page_obj.close_dialog_if_exists()
 
     # 拦截 page.close()，在 fixture 失败关闭 page 前自动截图
     _orig_close = page.close
@@ -240,6 +489,21 @@ def _create_logged_in_page(browser_context, config):
 
     page.close = _close_with_screenshot
     return page
+
+
+@pytest.fixture(scope="function")
+def admin_page(admin_browser_context, config):
+    """
+    Function 级 admin page。
+
+    从 admin_browser_context 创建新 page，复用 admin 登录态。
+    每个测试方法获得独立的 admin page，避免页面状态互相污染。
+    """
+    page = _create_admin_logged_in_page(admin_browser_context, config)
+    try:
+        yield page
+    finally:
+        page.close()
 
 
 @pytest.fixture(scope="function")
@@ -307,6 +571,21 @@ def _attach_pre_captured_screenshots(item, stage):
 def pytest_runtest_setup(item):
     """在setup阶段开始时记录标记"""
     logger.info(f"=== SETUP START: {item.name} ===")
+    block_reason = getattr(item.config, "_bms_block_reason", None)
+    if block_reason and item.get_closest_marker("bms"):
+        pytest.skip(block_reason)
+
+    # 多环境调度执行时，把 host/stor 注入为 Allure 参数，使同一用例在不同环境
+    # 下拥有不同的 historyId，避免 Allure 报告把多环境结果聚合/覆盖为 retry。
+    host = item.config.getoption("--host")
+    stor = item.config.getoption("--stor")
+    if host or stor:
+        env = f"{host or 'default'} / {stor or 'default'}"
+        allure.dynamic.parameter("env", env)
+        # 保持报告标题干净，不带 [env:...] 后缀
+        allure.dynamic.title(item.originalname or item.name)
+        # 增加组合环境标签，便于 Allure 按环境筛选
+        allure.dynamic.tag(f"env:{env}")
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -326,6 +605,17 @@ def pytest_runtest_makereport(item, call):
     """处理测试报告，在失败时截图并添加到Allure报告"""
     outcome = yield
     rep = outcome.get_result()
+
+    if (
+        item.get_closest_marker("bms_prepare")
+        and rep.when in ("setup", "call")
+        and (rep.failed or rep.skipped)
+        and not getattr(item.config, "_bms_block_reason", None)
+    ):
+        outcome_text = "失败" if rep.failed else "跳过"
+        item.config._bms_block_reason = (
+            f"BMS前置用例 {item.name} {outcome_text}，跳过后续BMS用例"
+        )
 
     # 先处理 fixture 失败时预截图的数据（fixture 在 makereport 前已关闭 page）
     _attach_pre_captured_screenshots(item, rep.when)
@@ -372,9 +662,31 @@ def ssh_host(config):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def load_deploy_mode(ssh_host, config):
-    """会话初始化时读取部署模式并写入 Config。"""
-    Config.load_deploy_mode(ssh_host)
+def load_deploy_mode(ssh_host):
+    """会话初始化时读取部署模式并写入 Config。
+
+    通过 SSH 读取远端 env.yaml 中的 deploy_mode，剥离自 Config 类
+    （配置管理器不应包含 SSH 业务逻辑）。
+    """
+    env_file = "/opt/extra/init-base/env/env.yaml"
+    read_cmd = f"cat {env_file} | grep deploy_mode"
+    deploy_mode = None
+
+    try:
+        current_node = ssh_host.run("hostname", check_rc=True).strip()
+        if current_node == "master01":
+            output = ssh_host.run(read_cmd, check_rc=True)
+        else:
+            output = ssh_host.run(
+                f'ssh -o StrictHostKeyChecking=no master01 "{read_cmd}"', check_rc=True
+            )
+        match = re.search(r"^\s*deploy_mode\s*:\s*(\S+)", output, re.MULTILINE)
+        deploy_mode = match.group(1).strip() if match else None
+    except Exception as exc:
+        logger.warning(f"读取 deploy_mode 失败: {exc}")
+
+    Config.set("deploy_mode", deploy_mode)
+    return deploy_mode
 
 
 @pytest.fixture(scope="session")
@@ -398,76 +710,6 @@ def ssh_vm(jump_host):
     finally:
         ssh.close()
 
-def _is_logged_in(page):
-    """检查是否已登录"""
-    current_url = page.url or ""
-    return ("/#/index" in current_url or "/#" in current_url) and "login" not in current_url
-
-
-def _login(page, config, max_retries=3):
-    """
-    执行登录操作，带轮询重试机制
-
-    Args:
-        page: Playwright page 对象
-        config: 配置字典，包含 username 和 password
-        max_retries: 最大重试次数，默认3次
-
-    Returns:
-        bool: 登录成功返回 True
-
-    Raises:
-        Exception: 超过最大重试次数后抛出异常
-    """
-    username = config.get("username")
-    password = config.get("password")
-
-    if not username or not password:
-        raise ValueError("环境配置中缺少用户名或密码")
-
-    with allure_step_log("尝试登录"):
-        for attempt in range(1, max_retries + 1):
-            if attempt > 1:
-                logger.info(f"\n{'=' * 40}")
-                logger.info(f"【登录尝试】第 {attempt}/{max_retries} 次")
-                logger.info(f"{'=' * 40}")
-
-            try:
-                # 先关闭登录页可能弹出的提示弹窗（如版本更新、安全提示等）
-                for _close_attempt in range(3):
-                    try:
-                        dialog_btn = page.locator(".el-message-box__wrapper button, .el-dialog__wrapper button").filter(has_text=re.compile(r"确定|知道了|关闭|确认")).first
-                        if dialog_btn.count() > 0 and dialog_btn.is_visible(timeout=1000):
-                            dialog_btn.click()
-                            page.wait_for_timeout(500)
-                            continue
-                    except Exception:
-                        pass
-                    break
-
-                # 填写登录信息
-                page.get_by_placeholder("请输入登录账号").fill(username)
-                page.get_by_placeholder("请输入登录密码").fill(password)
-                page.get_by_text("登 录").click()
-
-                # 登录成功后应进入控制台首页，避免仅凭登录框消失误判。
-                page.wait_for_url(re.compile(r".*#/index$"), timeout=10000)
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_load_state("load")
-
-                if _is_logged_in(page):
-                    return True
-
-                raise Exception(f"登录后未进入控制台首页，当前URL: {page.url}")
-
-            except Exception as e:
-                logger.info(f"第{attempt}次登录未成功: {e}")
-                if attempt == max_retries:
-                    raise Exception(f"登录失败，已重试 {max_retries} 次，请检查账号密码或网络状态")
-                continue
-
-        return False
-
 @pytest.fixture(scope="session", autouse=True)
 def check_compute_nodes(ssh_host, config):
     """
@@ -490,7 +732,7 @@ def check_compute_nodes(ssh_host, config):
         _node_count = _output.split('(')[1].split(')')[0]
 
         # 将节点信息更新到 config 中
-        Config._config['_node_count'] = _node_count
+        Config.set('_node_count', _node_count)
 
         # 返回节点信息
         return {
@@ -574,13 +816,13 @@ def _get_patch_version(ssh_host, config):
     version_info = ssh_host._get_release_version(first_host)
     env_dic.update(version_info)
 
-    Config._config['patch'] = env_dic
+    Config.set('patch', env_dic)
 
     try:
         architecture = ssh_host.run(r"arch", check_rc=True)
     except Exception as e:
         architecture = None
         logger.warning(f"无法获取节点架构信息: {e}")
-    Config._config['architecture'] = architecture
+    Config.set('architecture', architecture)
 
     _write_allure_environment()

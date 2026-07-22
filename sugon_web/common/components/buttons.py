@@ -1,3 +1,24 @@
+"""
+【职责】封装页面常见按钮定位器（新建、提交、搜索、重置、刷新、批量删除），解决同一按钮在不同页面 DOM 不一致的定位问题；并提供被 ButtonsMixin、DialogsMixin 共用的基类 BaseElementMixin（_find_element）。
+
+【层级】Page 层；被 BasePage 组合，page object 通过 BasePage 间接使用。
+
+【接口】
+- btn_create -> Locator：新建/创建按钮。
+- btn_submit -> Locator：表单“立即创建”提交按钮。
+- _btn_search -> Locator：搜索按钮（主要供 ActionsMixin.search 使用）。
+- btn_reset -> Locator：重置按钮。
+- btn_refresh -> Locator：刷新按钮。
+- btn_batch_delete -> Locator：批量删除按钮。
+
+【示例】
+class MyPage(BasePage):
+    def create_resource(self, name):
+        self.btn_create.click()
+        self.input_name().fill(name)
+        self.btn_submit.click()
+"""
+
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Locator
@@ -47,7 +68,7 @@ class ButtonsMixin(BaseElementMixin):
             self.locator("button").filter(has_text="新建"),
             self.get_by_role("button", name="新建")
         ]
-        return self._find_element(locators, "新建按钮")
+        return self._find_element(locators, "新建按钮", timeout=15000)
 
     @property
     def btn_submit(self) -> Locator:
